@@ -1,0 +1,69 @@
+import { z } from "zod";
+
+const numericString = (defaultVal: string) =>
+  z.string().default(defaultVal).transform(Number).pipe(z.number().positive());
+
+const numericStringMax1 = (defaultVal: string) =>
+  z.string().default(defaultVal).transform(Number).pipe(z.number().positive().max(1));
+
+const envSchema = z.object({
+  // Mode
+  TRADING_MODE: z.enum(["paper", "live"]).default("paper"),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+
+  // Solana
+  HELIUS_API_KEY: z.string().min(1, "HELIUS_API_KEY is required"),
+  SOLANA_PRIVATE_KEY: z.string().min(1, "SOLANA_PRIVATE_KEY is required"),
+  JITO_TIP_AMOUNT: numericString("0.001"),
+
+  // Polygon / Polymarket
+  POLYMARKET_API_KEY: z.string().min(1, "POLYMARKET_API_KEY is required"),
+  POLYMARKET_SECRET: z.string().min(1, "POLYMARKET_SECRET is required"),
+  POLYGON_PRIVATE_KEY: z.string().min(1, "POLYGON_PRIVATE_KEY is required"),
+
+  // Price Feeds
+  BINANCE_WS_URL: z.string().url().default("wss://stream.binance.com:9443"),
+  COINBASE_WS_URL: z.string().url().default("wss://ws-feed.exchange.coinbase.com"),
+
+  // Telegram
+  TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
+  TELEGRAM_CHAT_ID: z.string().min(1, "TELEGRAM_CHAT_ID is required"),
+
+  // Google Sheets
+  GOOGLE_SHEETS_ID: z.string().min(1, "GOOGLE_SHEETS_ID is required"),
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1, "GOOGLE_SERVICE_ACCOUNT_JSON is required"),
+
+  // Risk Limits
+  MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),
+  MAX_POLYMARKET_BET_USDC: numericString("20"),
+  DAILY_LOSS_LIMIT_USD: numericString("25"),
+  MAX_SLIPPAGE_PUMPFUN: numericStringMax1("0.01"),
+  MAX_SLIPPAGE_POLYMARKET: numericStringMax1("0.005"),
+
+  // Gas
+  MIN_SOL_RESERVE: numericString("0.1"),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+let cachedEnv: Env | null = null;
+
+export function loadEnv(): Env {
+  if (cachedEnv) return cachedEnv;
+
+  const result = envSchema.safeParse(process.env);
+
+  if (!result.success) {
+    const errors = result.error.issues
+      .map((issue) => `  ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Environment validation failed:\n${errors}`);
+  }
+
+  cachedEnv = result.data;
+  return cachedEnv;
+}
+
+export function isPaperMode(): boolean {
+  return loadEnv().TRADING_MODE === "paper";
+}

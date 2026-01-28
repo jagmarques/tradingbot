@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Private keys / wallets
+*.pem
+*.key
+wallet.json
+
+# Claude / AI dev tooling
+.claude/
+CLAUDE.md
+
+# Planning / internal dev files
+.planning/
+.cursor/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+
+# SQLite database (local dev)
+*.db
+*.sqlite
+*.sqlite3
+
+# Prompt spec (internal)
+PROMPT.md
