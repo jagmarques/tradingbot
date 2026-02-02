@@ -12,10 +12,30 @@ import {
 } from "../risk/manager.js";
 import { getSolBalanceFormatted } from "../solana/wallet.js";
 import { getMaticBalanceFormatted, getUsdcBalanceFormatted } from "../polygon/wallet.js";
-import { getUserTimezone, setUserTimezone, isValidTimezone } from "../database/timezones.js";
+import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
+let lastMenuMessageId: number | null = null;
+let lastDataMessageId: number | null = null;
+let lastTimezonePromptId: number | null = null;
+let lastStatusUpdateId: number | null = null;
+
+const MAIN_MENU_BUTTONS = [
+  [{ text: "📊 Status", callback_data: "status" }],
+  [{ text: "💰 Balance", callback_data: "balance" }],
+  [{ text: "📈 P&L", callback_data: "pnl" }],
+  [{ text: "🔄 Trades", callback_data: "trades" }],
+  [
+    { text: "⏸️ Stop", callback_data: "stop" },
+    { text: "▶️ Resume", callback_data: "resume" },
+  ],
+  [
+    { text: "⛔ Kill", callback_data: "kill" },
+    { text: "✅ Unkill", callback_data: "unkill" },
+  ],
+  [{ text: "⏱️ Timezone", callback_data: "timezone" }],
+];
 
 export async function startBot(): Promise<void> {
   const env = loadEnv();
@@ -35,11 +55,46 @@ export async function startBot(): Promise<void> {
   bot.command("kill", handleKill);
   bot.command("unkill", handleUnkill);
 
-  // Callback query handler for timezone selection
-  bot.callbackQuery(/^tz:/, handleTimezoneCallback);
+  // Inline button callback handlers
+  bot.callbackQuery("status", async (ctx) => {
+    await handleStatus(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("balance", async (ctx) => {
+    await handleBalance(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("pnl", async (ctx) => {
+    await handlePnl(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("trades", async (ctx) => {
+    await handleTrades(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("timezone", async (ctx) => {
+    await handleTimezone(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("stop", async (ctx) => {
+    await handleStop(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("resume", async (ctx) => {
+    await handleResume(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("kill", async (ctx) => {
+    await handleKill(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("unkill", async (ctx) => {
+    await handleUnkill(ctx);
+    await ctx.answerCallbackQuery();
+  });
 
-  // Text handler for timezone detection from user time input
-  bot.on("message:text", handleTimeInput);
+  // Text handler for timezone detection during setup
+  bot.on("message:text", handleTextInput);
 
   // Error handling
   bot.catch((err) => {
@@ -84,6 +139,57 @@ export async function sendMessage(text: string): Promise<void> {
   }
 }
 
+export async function sendMainMenu(): Promise<void> {
+  if (!bot || !chatId) {
+    console.warn("[Telegram] Bot not initialized, cannot send menu");
+    return;
+  }
+
+  try {
+    // Delete previous menu if exists
+    if (lastMenuMessageId) {
+      await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
+    }
+    const msg = await bot.api.sendMessage(chatId, "🤖", {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
+    });
+    lastMenuMessageId = msg.message_id;
+  } catch (err) {
+    console.error("[Telegram] Failed to send menu:", err);
+  }
+}
+
+// Send data message and delete previous one to keep chat clean
+async function sendDataMessage(text: string): Promise<void> {
+  if (!bot || !chatId) return;
+  try {
+    // Delete previous data message if exists
+    if (lastDataMessageId) {
+      await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
+    }
+    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    lastDataMessageId = msg.message_id;
+  } catch (err) {
+    console.error("[Telegram] Failed to send data message:", err);
+  }
+}
+
+// Send status message and delete previous one to keep chat clean
+export async function sendStatusMessage(text: string): Promise<void> {
+  if (!bot || !chatId) return;
+  try {
+    // Delete previous status message if exists
+    if (lastStatusUpdateId) {
+      await bot.api.deleteMessage(chatId, lastStatusUpdateId).catch(() => {});
+    }
+    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    lastStatusUpdateId = msg.message_id;
+  } catch (err) {
+    console.error("[Telegram] Failed to send status message:", err);
+  }
+}
+
 // Command handlers
 async function handleStart(ctx: Context): Promise<void> {
   const userId = ctx.from?.id?.toString();
@@ -92,29 +198,20 @@ async function handleStart(ctx: Context): Promise<void> {
     return;
   }
 
-  const userTz = getUserTimezone(userId);
+  let userTz = getUserTimezone(userId);
   if (!userTz) {
-    await ctx.reply("What is your current time? (format: HH:MM, e.g., 14:30)");
-    return;
+    setUserTimezone(userId, "UTC");
+    userTz = "UTC";
   }
 
-  await ctx.reply(
-    "Trading Bot Active\n\n" +
-      "Commands:\n" +
-      "/status - Current bot status\n" +
-      "/balance - Wallet balances\n" +
-      "/pnl - Daily P&L\n" +
-      "/trades - Today's trades\n" +
-      "/timezone - Change timezone\n" +
-      "/stop - Pause trading\n" +
-      "/resume - Resume trading\n" +
-      "/kill - Emergency stop all\n" +
-      "/unkill - Deactivate kill switch\n" +
-      ""
-  );
+
+  const msg = await ctx.reply("🤖 Trading Bot", {
+    reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
+  });
+  lastMenuMessageId = msg.message_id;
 }
 
-async function handleStatus(ctx: Context): Promise<void> {
+async function handleStatus(_ctx: Context): Promise<void> {
   try {
     const status = await getRiskStatus();
 
@@ -135,14 +232,14 @@ async function handleStatus(ctx: Context): Promise<void> {
       `$${status.dailyPnl.toFixed(2)} (${status.dailyPnlPercentage.toFixed(1)}%)` +
       (status.pauseReason ? `\n\n⚠️ Pause Reason: ${status.pauseReason}` : "");
 
-    await ctx.reply(message, { parse_mode: "HTML" });
+    await sendDataMessage(message);
+    await sendMainMenu();
   } catch (err) {
-    await ctx.reply("Error fetching status");
     console.error("[Telegram] Status error:", err);
   }
 }
 
-async function handleBalance(ctx: Context): Promise<void> {
+async function handleBalance(_ctx: Context): Promise<void> {
   try {
     const [solBalance, maticBalance, usdcBalance] = await Promise.all([
       getSolBalanceFormatted(),
@@ -158,14 +255,14 @@ async function handleBalance(ctx: Context): Promise<void> {
       `MATIC: ${maticBalance}\n` +
       `USDC: ${usdcBalance}`;
 
-    await ctx.reply(message, { parse_mode: "HTML" });
+    await sendDataMessage(message);
+    await sendMainMenu();
   } catch (err) {
-    await ctx.reply("Error fetching balances");
     console.error("[Telegram] Balance error:", err);
   }
 }
 
-async function handlePnl(ctx: Context): Promise<void> {
+async function handlePnl(_ctx: Context): Promise<void> {
   try {
     const pnl = getDailyPnl();
     const pnlPct = getDailyPnlPercentage();
@@ -180,19 +277,20 @@ async function handlePnl(ctx: Context): Promise<void> {
       `Wins: ${trades.filter((t) => t.pnl > 0).length}\n` +
       `Losses: ${trades.filter((t) => t.pnl < 0).length}`;
 
-    await ctx.reply(message, { parse_mode: "HTML" });
+    await sendDataMessage(message);
+    await sendMainMenu();
   } catch (err) {
-    await ctx.reply("Error fetching P&L");
     console.error("[Telegram] P&L error:", err);
   }
 }
 
-async function handleTrades(ctx: Context): Promise<void> {
+async function handleTrades(_ctx: Context): Promise<void> {
   try {
     const trades = getTodayTrades();
 
     if (trades.length === 0) {
-      await ctx.reply("No trades today");
+      await sendDataMessage("No trades today");
+      await sendMainMenu();
       return;
     }
 
@@ -209,168 +307,105 @@ async function handleTrades(ctx: Context): Promise<void> {
         `   P&L: $${trade.pnl.toFixed(2)} | ${time}\n\n`;
     }
 
-    await ctx.reply(message, { parse_mode: "HTML" });
+    await sendDataMessage(message);
+    await sendMainMenu();
   } catch (err) {
-    await ctx.reply("Error fetching trades");
     console.error("[Telegram] Trades error:", err);
   }
 }
 
-async function handleStop(ctx: Context): Promise<void> {
+async function handleStop(_ctx: Context): Promise<void> {
   pauseTrading("Manual pause via Telegram");
-  await ctx.reply("⏸️ Trading paused");
   console.log("[Telegram] Trading paused by user");
+  await sendDataMessage("⏸️ Trading paused");
+  await sendMainMenu();
 }
 
-async function handleResume(ctx: Context): Promise<void> {
+async function handleResume(_ctx: Context): Promise<void> {
   resumeTrading();
-  await ctx.reply("▶️ Trading resumed");
   console.log("[Telegram] Trading resumed by user");
+  await sendDataMessage("▶️ Trading resumed");
+  await sendMainMenu();
 }
 
-async function handleKill(ctx: Context): Promise<void> {
+async function handleKill(_ctx: Context): Promise<void> {
   activateKillSwitch();
-  await ctx.reply("⛔ KILL SWITCH ACTIVATED\nAll trading stopped immediately");
   console.log("[Telegram] Kill switch activated by user");
+  await sendDataMessage("⛔ Kill switch activated");
+  await sendMainMenu();
 }
 
-async function handleUnkill(ctx: Context): Promise<void> {
+async function handleUnkill(_ctx: Context): Promise<void> {
   deactivateKillSwitch();
-  await ctx.reply("✅ Kill switch deactivated\nTrading can resume");
   console.log("[Telegram] Kill switch deactivated by user");
+  await sendDataMessage("✅ Kill switch deactivated");
+  await sendMainMenu();
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {
-  const userId = ctx.from?.id?.toString();
-  if (!userId) {
-    await ctx.reply("Could not identify user");
-    return;
-  }
-
-  const text = ctx.message?.text || "";
-  const args = text.split(/\s+/).slice(1);
-
-  if (args.length === 0) {
-    const current = getUserTimezone(userId);
-    if (current) {
-      await ctx.reply(`Your timezone: ${current}`);
-    } else {
-      await ctx.reply("No timezone set. Usage: /timezone Europe/Amsterdam");
-    }
-    return;
-  }
-
-  const tz = args[0];
-  if (!isValidTimezone(tz)) {
-    await ctx.reply(`Invalid timezone: ${tz}\n\nExamples:\n- Europe/Amsterdam\n- America/New_York\n- Asia/Tokyo\n- UTC`);
-    return;
-  }
-
-  setUserTimezone(userId, tz);
-  await ctx.reply(`Timezone set to: ${tz}`);
+  const msg = await ctx.reply("What is your current time? (format: HH:MM, e.g., 14:30)");
+  lastTimezonePromptId = msg.message_id;
 }
 
-async function handleTimezoneCallback(ctx: Context): Promise<void> {
-  const userId = ctx.from?.id?.toString();
-  if (!userId) {
-    await ctx.answerCallbackQuery({ text: "Could not identify user" });
-    return;
-  }
-
-  const callbackData = ctx.callbackQuery?.data;
-  if (!callbackData || !callbackData.startsWith("tz:")) {
-    await ctx.answerCallbackQuery({ text: "Invalid timezone selection" });
-    return;
-  }
-
-  const timezone = callbackData.substring(3);
-  if (!isValidTimezone(timezone)) {
-    await ctx.answerCallbackQuery({ text: "Invalid timezone" });
-    return;
-  }
-
-  setUserTimezone(userId, timezone);
-  await ctx.answerCallbackQuery({ text: `Timezone set to ${timezone}` });
-  await ctx.editMessageText(
-    "Trading Bot Active\n\n" +
-      "Commands:\n" +
-      "/status - Current bot status\n" +
-      "/balance - Wallet balances\n" +
-      "/pnl - Daily P&L\n" +
-      "/trades - Today's trades\n" +
-      "/timezone - Change timezone\n" +
-      "/stop - Pause trading\n" +
-      "/resume - Resume trading\n" +
-      "/kill - Emergency stop all\n" +
-      "/unkill - Deactivate kill switch\n" +
-      ""
-  );
-}
-
-async function handleTimeInput(ctx: Context): Promise<void> {
+async function handleTextInput(ctx: Context): Promise<void> {
   const userId = ctx.from?.id?.toString();
   if (!userId || !ctx.message || !ctx.message.text) {
     return;
   }
 
-  const userTz = getUserTimezone(userId);
-  if (userTz) {
-    return;
-  }
-
   const input = ctx.message.text.trim();
-  const timeMatch = input.match(/^(\d{1,2}):(\d{2})$/);
 
-  if (!timeMatch) {
-    await ctx.reply("Invalid format. Use HH:MM (e.g., 14:30)");
+  // Handle time input for timezone detection
+  if (input.match(/^(\d{1,2}):(\d{2})$/)) {
+    const timeMatch = input.match(/^(\d{1,2}):(\d{2})$/);
+    if (!timeMatch) {
+      await ctx.reply("Invalid format. Use HH:MM (e.g., 14:30)");
+      return;
+    }
+
+    const userHour = parseInt(timeMatch[1], 10);
+    const userMinute = parseInt(timeMatch[2], 10);
+
+    if (userHour > 23 || userMinute > 59) {
+      await ctx.reply("Invalid time. Hours: 0-23, Minutes: 0-59");
+      return;
+    }
+
+    const serverTime = new Date();
+    const serverHour = serverTime.getHours();
+    const serverMinute = serverTime.getMinutes();
+
+    const userTimeMinutes = userHour * 60 + userMinute;
+    const serverTimeMinutes = serverHour * 60 + serverMinute;
+    let offsetMinutes = userTimeMinutes - serverTimeMinutes;
+
+    if (offsetMinutes < -720) offsetMinutes += 1440;
+    if (offsetMinutes > 720) offsetMinutes -= 1440;
+
+    const offsetHours = Math.round(offsetMinutes / 60);
+    const tz = findTimezoneForOffset(offsetHours);
+
+    if (!tz) {
+      await ctx.reply(
+        `Offset: UTC${offsetHours > 0 ? "+" : ""}${offsetHours}\n\n` +
+          "Could not auto-detect timezone"
+      );
+      return;
+    }
+
+    setUserTimezone(userId, tz);
+
+    // Delete timezone prompt and user's message
+    if (lastTimezonePromptId) {
+      await bot?.api.deleteMessage(chatId!, lastTimezonePromptId).catch(() => {});
+      lastTimezonePromptId = null;
+    }
+    await bot?.api.deleteMessage(chatId!, ctx.message.message_id).catch(() => {});
+
+    // Show menu
+    await sendMainMenu();
     return;
   }
-
-  const userHour = parseInt(timeMatch[1], 10);
-  const userMinute = parseInt(timeMatch[2], 10);
-
-  if (userHour > 23 || userMinute > 59) {
-    await ctx.reply("Invalid time. Hours: 0-23, Minutes: 0-59");
-    return;
-  }
-
-  const serverTime = new Date();
-  const serverHour = serverTime.getHours();
-  const serverMinute = serverTime.getMinutes();
-
-  const userTimeMinutes = userHour * 60 + userMinute;
-  const serverTimeMinutes = serverHour * 60 + serverMinute;
-  let offsetMinutes = userTimeMinutes - serverTimeMinutes;
-
-  if (offsetMinutes < -720) offsetMinutes += 1440;
-  if (offsetMinutes > 720) offsetMinutes -= 1440;
-
-  const offsetHours = Math.round(offsetMinutes / 60);
-  const tz = findTimezoneForOffset(offsetHours);
-
-  if (!tz) {
-    await ctx.reply(
-      `Offset: UTC${offsetHours > 0 ? "+" : ""}${offsetHours}\n\n` +
-        "Could not auto-detect. Enter: /timezone Europe/London"
-    );
-    return;
-  }
-
-  setUserTimezone(userId, tz);
-
-  await ctx.reply(
-    "Trading Bot Active\n\n" +
-      "Commands:\n" +
-      "/status - Current bot status\n" +
-      "/balance - Wallet balances\n" +
-      "/pnl - Daily P&L\n" +
-      "/trades - Today's trades\n" +
-      "/timezone - Change timezone\n" +
-      "/stop - Pause trading\n" +
-      "/resume - Resume trading\n" +
-      "/kill - Emergency stop all\n" +
-      "/unkill - Deactivate kill switch"
-  );
 }
 
 function findTimezoneForOffset(offsetHours: number): string | null {

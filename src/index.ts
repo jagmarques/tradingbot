@@ -8,7 +8,7 @@ dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
 import { loadEnv, isPaperMode } from "./config/env.js";
 import { initDb, closeDb } from "./services/database/db.js";
 import { startHealthServer, stopHealthServer } from "./services/health/server.js";
-import { startBot, stopBot } from "./services/telegram/bot.js";
+import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
 import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusReporter, stopStatusReporter } from "./services/telegram/notifications.js";
 import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pricefeeds/manager.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
@@ -50,6 +50,9 @@ async function main(): Promise<void> {
 
     // Start Telegram bot
     await startBot();
+
+    // Send main menu first (before other messages for consistent sizing)
+    await sendMainMenu();
 
     // Notify startup
     await notifyBotStarted();
