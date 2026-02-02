@@ -30,9 +30,9 @@ const envSchema = z.object({
   TELEGRAM_CHAT_ID: z.string().min(1, "TELEGRAM_CHAT_ID is required"),
   TIMEZONE: z.string().default("UTC").catch("UTC"),
 
-  // Google Sheets
-  GOOGLE_SHEETS_ID: z.string().min(1, "GOOGLE_SHEETS_ID is required"),
-  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1, "GOOGLE_SERVICE_ACCOUNT_JSON is required"),
+  // Google Sheets (optional)
+  GOOGLE_SHEETS_ID: z.string().min(1).optional(),
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
   // Risk Limits
   MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),
