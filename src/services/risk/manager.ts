@@ -1,0 +1,257 @@
+import { loadEnv, isPaperMode } from "../../config/env.js";
+import { getSolBalance } from "../solana/wallet.js";
+import { getMaticBalance } from "../polygon/wallet.js";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  CAPITAL_LOSS_PAUSE_PERCENTAGE,
+  STARTING_CAPITAL_USD,
+} from "../../config/constants.js";
+
+export interface RiskStatus {
+  tradingEnabled: boolean;
+  killSwitchActive: boolean;
+  dailyPnl: number;
+  dailyPnlPercentage: number;
+  solBalance: number;
+  maticBalance: number;
+  hasMinGas: boolean;
+  isPaperMode: boolean;
+  pauseReason?: string;
+}
+
+export interface Trade {
+  id: string;
+  strategy: "pumpfun" | "polymarket";
+  type: "BUY" | "SELL";
+  amount: number;
+  price: number;
+  pnl: number;
+  timestamp: number;
+}
+
+// State
+let killSwitchActive = false;
+let tradingPaused = false;
+let pauseReason: string | undefined;
+
+const dailyTrades: Trade[] = [];
+let dailyStartBalance = STARTING_CAPITAL_USD;
+let lastDayReset = new Date().toDateString();
+
+// Reset daily stats at midnight
+function checkDayReset(): void {
+  const today = new Date().toDateString();
+  if (today !== lastDayReset) {
+    dailyTrades.length = 0;
+    // Reset to current balance (set at init, will be updated daily)
+    lastDayReset = today;
+    console.log("[Risk] Daily stats reset");
+  }
+}
+
+// Set initial balance (call once at startup)
+export function setDailyStartBalance(balanceSol: number): void {
+  dailyStartBalance = balanceSol;
+  console.log(`[Risk] Daily balance baseline set to ${balanceSol} SOL`);
+}
+
+// Calculate daily P&L
+export function getDailyPnl(): number {
+  checkDayReset();
+  return dailyTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+}
+
+// Calculate daily P&L percentage
+export function getDailyPnlPercentage(): number {
+  const pnl = getDailyPnl();
+  return dailyStartBalance > 0 ? (pnl / dailyStartBalance) * 100 : 0;
+}
+
+// Record a trade
+export function recordTrade(trade: Omit<Trade, "id" | "timestamp">): void {
+  checkDayReset();
+
+  const fullTrade: Trade = {
+    ...trade,
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+  };
+
+  dailyTrades.push(fullTrade);
+  console.log(`[Risk] Trade recorded: ${trade.type} ${trade.amount} (P&L: ${trade.pnl})`);
+
+  // Check if we hit daily loss limit
+  checkDailyLossLimit();
+}
+
+// Check daily loss limit
+function checkDailyLossLimit(): void {
+  const env = loadEnv();
+  const dailyPnl = getDailyPnl();
+
+  if (dailyPnl < 0 && Math.abs(dailyPnl) >= env.DAILY_LOSS_LIMIT_USD) {
+    pauseTrading(`Daily loss limit reached: $${Math.abs(dailyPnl).toFixed(2)}`);
+  }
+
+  // Also check percentage-based limit
+  const pnlPercentage = getDailyPnlPercentage();
+  if (pnlPercentage < 0 && Math.abs(pnlPercentage) >= CAPITAL_LOSS_PAUSE_PERCENTAGE) {
+    pauseTrading(`Capital loss limit reached: ${Math.abs(pnlPercentage).toFixed(1)}%`);
+  }
+}
+
+// Pause trading
+export function pauseTrading(reason: string): void {
+  tradingPaused = true;
+  pauseReason = reason;
+  console.log(`[Risk] Trading paused: ${reason}`);
+}
+
+// Resume trading
+export function resumeTrading(): void {
+  tradingPaused = false;
+  pauseReason = undefined;
+  console.log("[Risk] Trading resumed");
+}
+
+// Activate kill switch
+export function activateKillSwitch(): void {
+  killSwitchActive = true;
+  tradingPaused = true;
+  pauseReason = "Kill switch activated";
+  console.log("[Risk] KILL SWITCH ACTIVATED - All trading stopped");
+}
+
+// Deactivate kill switch
+export function deactivateKillSwitch(): void {
+  killSwitchActive = false;
+  tradingPaused = false;
+  pauseReason = undefined;
+  console.log("[Risk] Kill switch deactivated");
+}
+
+// Check if trading is allowed
+export function canTrade(): boolean {
+  if (killSwitchActive) return false;
+  if (tradingPaused) return false;
+  return true;
+}
+
+// Check slippage
+export function checkSlippage(
+  expectedPrice: number,
+  actualPrice: number,
+  maxSlippage: number
+): { allowed: boolean; slippage: number } {
+  const slippage = Math.abs(actualPrice - expectedPrice) / expectedPrice;
+  return {
+    allowed: slippage <= maxSlippage,
+    slippage,
+  };
+}
+
+// Verify gas balance
+export async function verifyGasBalances(): Promise<{
+  sol: { balance: number; sufficient: boolean };
+  matic: { balance: number; sufficient: boolean };
+}> {
+  const env = loadEnv();
+
+  const solLamports = await getSolBalance();
+  const solBalance = Number(solLamports) / LAMPORTS_PER_SOL;
+  const solSufficient = solBalance >= env.MIN_SOL_RESERVE;
+
+  const maticWei = await getMaticBalance();
+  const maticBalance = Number(maticWei) / 1e18;
+  const maticSufficient = maticBalance >= 0.1; // Min 0.1 MATIC for gas
+
+  return {
+    sol: { balance: solBalance, sufficient: solSufficient },
+    matic: { balance: maticBalance, sufficient: maticSufficient },
+  };
+}
+
+// Get full risk status
+export async function getRiskStatus(): Promise<RiskStatus> {
+  checkDayReset();
+
+  const gasBalances = await verifyGasBalances();
+  const dailyPnl = getDailyPnl();
+  const dailyPnlPercentage = getDailyPnlPercentage();
+
+  return {
+    tradingEnabled: canTrade(),
+    killSwitchActive,
+    dailyPnl,
+    dailyPnlPercentage,
+    solBalance: gasBalances.sol.balance,
+    maticBalance: gasBalances.matic.balance,
+    hasMinGas: gasBalances.sol.sufficient && gasBalances.matic.sufficient,
+    isPaperMode: isPaperMode(),
+    pauseReason,
+  };
+}
+
+// Pre-trade validation
+export async function validateTrade(params: {
+  strategy: "pumpfun" | "polymarket";
+  type: "BUY" | "SELL";
+  amountUsd: number;
+  expectedPrice: number;
+  actualPrice: number;
+}): Promise<{ allowed: boolean; reason?: string }> {
+  const env = loadEnv();
+
+  // Check kill switch
+  if (killSwitchActive) {
+    return { allowed: false, reason: "Kill switch active" };
+  }
+
+  // Check if trading is paused
+  if (tradingPaused) {
+    return { allowed: false, reason: pauseReason || "Trading paused" };
+  }
+
+  // Check daily loss limit
+  const potentialLoss = params.type === "BUY" ? params.amountUsd : 0;
+  const projectedDailyPnl = getDailyPnl() - potentialLoss;
+  if (projectedDailyPnl < 0 && Math.abs(projectedDailyPnl) > env.DAILY_LOSS_LIMIT_USD) {
+    return { allowed: false, reason: "Would exceed daily loss limit" };
+  }
+
+  // Check slippage
+  const maxSlippage =
+    params.strategy === "pumpfun" ? env.MAX_SLIPPAGE_PUMPFUN : env.MAX_SLIPPAGE_POLYMARKET;
+  const slippageCheck = checkSlippage(params.expectedPrice, params.actualPrice, maxSlippage);
+  if (!slippageCheck.allowed) {
+    return {
+      allowed: false,
+      reason: `Slippage ${(slippageCheck.slippage * 100).toFixed(2)}% exceeds max ${maxSlippage * 100}%`,
+    };
+  }
+
+  // Check gas balances
+  const gasBalances = await verifyGasBalances();
+  if (params.strategy === "pumpfun" && !gasBalances.sol.sufficient) {
+    return { allowed: false, reason: `Insufficient SOL: ${gasBalances.sol.balance.toFixed(4)}` };
+  }
+  if (params.strategy === "polymarket" && !gasBalances.matic.sufficient) {
+    return {
+      allowed: false,
+      reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+// Get today's trades
+export function getTodayTrades(): Trade[] {
+  checkDayReset();
+  return [...dailyTrades];
+}
+
+// Check if in paper mode
+export function isInPaperMode(): boolean {
+  return isPaperMode();
+}

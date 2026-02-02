@@ -10,7 +10,10 @@ export const SELL_TARGETS = {
 
 // Trailing stop-loss activates after this multiplier
 export const TRAILING_STOP_ACTIVATION = 5;
-export const TRAILING_STOP_PERCENTAGE = 0.2; // 20% drop from peak triggers sell
+export const TRAILING_STOP_PERCENTAGE = 0.15; // 15% drop from peak triggers sell
+
+// Stagnation timeout - exit at break-even if stuck too long
+export const STAGNATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Split buy percentages for pump.fun snipes
 export const SPLIT_BUY = {
@@ -46,3 +49,14 @@ export const CAPITAL_PER_STRATEGY_USD = 50;
 
 // Loss limits
 export const CAPITAL_LOSS_PAUSE_PERCENTAGE = 30;
+
+// Polymarket hedging
+export const TARGET_ARBITRAGE_PROFIT_PCT = 0.5; // 0.5% net profit target after all fees
+export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold time
+export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
+export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
+
+// Jito retry configuration
+export const JITO_MAX_RETRIES = 3;
+export const JITO_RETRY_BASE_MS = 500;
+export const JITO_RETRY_MAX_MS = 4000;
