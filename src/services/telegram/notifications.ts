@@ -1,4 +1,4 @@
-import { sendMessage } from "./bot.js";
+import { sendMessage, sendStatusMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades, type Trade, getRiskStatus } from "../risk/manager.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
@@ -224,10 +224,7 @@ function escapeHtml(text: string): string {
 
 // Start periodic status reporter (hourly)
 export function startStatusReporter(): void {
-  // Send first status immediately
-  sendStatusUpdate();
-
-  // Then every hour
+  // Send status every hour (first one after 1 hour)
   statusReporterInterval = setInterval(() => {
     sendStatusUpdate();
   }, 60 * 60 * 1000);
@@ -257,7 +254,7 @@ async function sendStatusUpdate(): Promise<void> {
     const pnlEmoji = pnl >= 0 ? "📈" : "📉";
 
     const message =
-      `${statusEmoji} ${modeEmoji} <b>Hourly Status</b>\n\n` +
+      `${statusEmoji} ${modeEmoji} <b>Status</b>\n\n` +
       `<b>Trading</b>\n` +
       `Status: ${status.tradingEnabled ? "Active" : "Paused"}\n` +
       `SOL: ${status.solBalance.toFixed(4)}\n` +
@@ -266,7 +263,7 @@ async function sendStatusUpdate(): Promise<void> {
       `${pnlEmoji} $${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n` +
       `Trades: ${trades.length}`;
 
-    await sendMessage(message);
+    await sendStatusMessage(message);
   } catch (err) {
     console.error("[Telegram] Status update error:", err);
   }
