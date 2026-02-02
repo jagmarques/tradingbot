@@ -9,6 +9,12 @@ let spreadsheetId: string | null = null;
 export async function initSheets(): Promise<void> {
   const env = loadEnv();
 
+  // Skip if Google Sheets not configured
+  if (!env.GOOGLE_SHEETS_ID || !env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    console.log("[Sheets] Not configured, skipping initialization");
+    return;
+  }
+
   try {
     const credentials = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON);
 
