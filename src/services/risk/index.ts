@@ -1,0 +1,18 @@
+export {
+  getDailyPnl,
+  getDailyPnlPercentage,
+  recordTrade,
+  pauseTrading,
+  resumeTrading,
+  activateKillSwitch,
+  deactivateKillSwitch,
+  canTrade,
+  checkSlippage,
+  verifyGasBalances,
+  getRiskStatus,
+  validateTrade,
+  getTodayTrades,
+  isInPaperMode,
+  type RiskStatus,
+  type Trade,
+} from "./manager.js";
