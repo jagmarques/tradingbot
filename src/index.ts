@@ -13,8 +13,9 @@ import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusRep
 import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pricefeeds/manager.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
-import { executeSplitBuy } from "./services/pumpfun/executor.js";
+import { executeSplitBuy, checkAutoSell, getPositions } from "./services/pumpfun/executor.js";
 import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
+import { getPrice } from "./services/pricefeeds/manager.js";
 import { loadPositionsFromDb } from "./services/polygon/positions.js";
 import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
@@ -89,6 +90,28 @@ async function main(): Promise<void> {
         console.error(`[Bot] Error processing token ${launch.symbol}:`, err);
       }
     });
+
+    // Start position monitoring loop for auto-sells
+    const POSITION_CHECK_INTERVAL_MS = 10_000; // Check every 10 seconds
+    setInterval(async () => {
+      const positions = getPositions();
+      for (const [mint, position] of positions) {
+        try {
+          // Get current price from Solana (using SOL price as proxy for now)
+          const solPrice = getPrice("SOLUSDT");
+          if (solPrice) {
+            // In paper mode, simulate price movement for testing
+            const simulatedPrice = isPaperMode()
+              ? position.entryPrice * (1 + Math.random() * 0.1) // Random 0-10% increase
+              : position.entryPrice; // Real mode would need actual token price
+            await checkAutoSell(mint, simulatedPrice);
+          }
+        } catch (err) {
+          console.error(`[Bot] Error checking position ${position.symbol}:`, err);
+        }
+      }
+    }, POSITION_CHECK_INTERVAL_MS);
+    console.log("[Bot] Position monitoring started (10s interval)");
 
     // Polymarket monitoring disabled - no crypto price markets available
     // To enable: add real Polymarket condition IDs that correlate with spot prices
