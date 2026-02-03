@@ -14,7 +14,7 @@ import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pri
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
 import { executeSplitBuy } from "./services/pumpfun/executor.js";
-import { startMonitoring as startPolymarketMonitoring, stopMonitoring as stopPolymarketMonitoring, registerMarket, onOpportunity, executeArbitrage } from "./services/polygon/arbitrage.js";
+import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
 import { loadPositionsFromDb } from "./services/polygon/positions.js";
 import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
@@ -90,35 +90,17 @@ async function main(): Promise<void> {
       }
     });
 
-    // Register markets and start Polymarket monitoring
-    registerMarket("0xbd7e4a3c8d963f34ae25e9c0d1e6c16db0bde24d", "BTCUSDT", true);
-    registerMarket("0xcddd6d8e0b9e57ca7ceae6b2ecbfa6661e29c0a0", "ETHUSDT", true);
-    registerMarket("0x1234567890abcdef1234567890abcdef12345678", "SOLUSDT", true);
-    registerMarket("0xabcdef1234567890abcdef1234567890abcdef12", "MATICUSDT", true);
+    // Polymarket monitoring disabled - no crypto price markets available
+    // To enable: add real Polymarket condition IDs that correlate with spot prices
+    console.log("[Bot] Polymarket arbitrage disabled - no valid crypto markets configured");
 
-    await startPolymarketMonitoring();
+    // await startPolymarketMonitoring();
 
-    // Subscribe to Polymarket arbitrage opportunities and execute
-    onOpportunity(async (opportunity) => {
-      try {
-        console.log(`[Bot] Arbitrage opportunity: ${opportunity.direction} ${opportunity.tokenId}`);
-
-        // Check daily loss limit before executing
-        const dailyLoss = getDailyPnlPercentage();
-        if (dailyLoss >= 100) {
-          console.error("[Bot] Daily loss limit reached");
-          return;
-        }
-
-        const result = await executeArbitrage(opportunity, 10); // $10 per trade
-        if (result.success) {
-          console.log(`[Bot] Arbitrage executed: ${result.orderId}`);
-          // Trade recording happens in arbitrage.ts monitorPositions when position closes
-        }
-      } catch (err) {
-        console.error(`[Bot] Error executing arbitrage:`, err);
-      }
-    });
+    // Polymarket opportunity handler disabled until valid markets are configured
+    // onOpportunity(async (opportunity) => {
+    //   const result = await executeArbitrage(opportunity, 10);
+    //   if (result.success) console.log(`[Bot] Arbitrage executed: ${result.orderId}`);
+    // });
 
     console.log("[Bot] All services started successfully");
     console.log("[Bot] Waiting for trading opportunities...");
