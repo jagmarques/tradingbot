@@ -1,8 +1,10 @@
 import { z } from "zod";
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const numericString = (defaultVal: string) =>
   z.string().default(defaultVal).transform(Number).pipe(z.number().positive());
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 const numericStringMax1 = (defaultVal: string) =>
   z.string().default(defaultVal).transform(Number).pipe(z.number().positive().max(1));
 
@@ -21,9 +23,22 @@ const envSchema = z.object({
   POLYMARKET_SECRET: z.string().min(1, "POLYMARKET_SECRET is required"),
   POLYGON_PRIVATE_KEY: z.string().min(1, "POLYGON_PRIVATE_KEY is required"),
 
+  // EVM chains (Base, BNB, Arbitrum, Avalanche) - uses same key for all EVM chains
+  PRIVATE_KEY_EVM: z.string().min(1).optional(),
+
+  // RPC URLs (with public defaults - use private RPCs in production)
+  RPC_URL_BASE: z.string().url().default("https://mainnet.base.org"),
+  RPC_URL_BNB: z.string().url().default("https://bsc-dataseed1.binance.org"),
+  RPC_URL_ARBITRUM: z.string().url().default("https://arb1.arbitrum.io/rpc"),
+  RPC_URL_AVALANCHE: z.string().url().default("https://api.avax.network/ext/bc/C/rpc"),
+
   // Price Feeds
   BINANCE_WS_URL: z.string().url().default("wss://stream.binance.com:9443"),
   COINBASE_WS_URL: z.string().url().default("wss://ws-feed.exchange.coinbase.com"),
+
+  // Binance API (optional - for spot hedging)
+  BINANCE_API_KEY: z.string().min(1).optional(),
+  BINANCE_SECRET: z.string().min(1).optional(),
 
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
