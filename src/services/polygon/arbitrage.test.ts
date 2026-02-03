@@ -29,6 +29,10 @@ vi.mock("../database/arbitrage-positions.js", () => ({
   loadOpenPositions: vi.fn(() => []),
 }));
 
+vi.mock("../database/trades.js", () => ({
+  insertTrade: vi.fn(),
+}));
+
 describe("Polymarket Arbitrage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,6 +103,27 @@ describe("Polymarket Arbitrage", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Confidence");
+    });
+
+    it("should record spot hedge price when executing", async () => {
+      const { executeArbitrage } = await import("./arbitrage.js");
+
+      const opportunity = {
+        tokenId: "token-123",
+        marketSymbol: "BTCUSDT",
+        direction: "BUY" as const,
+        polymarketPrice: 0.55,
+        spotPrice: 0.60,
+        priceDiff: 0.05,
+        confidence: 90,
+        timestamp: Date.now(),
+      };
+
+      const result = await executeArbitrage(opportunity, 10);
+
+      expect(result.success).toBe(true);
+      expect(result.spotHedgePrice).toBe(0.60); // From mocked getPrice
+      expect(result.pairId).toBeDefined();
     });
   });
 

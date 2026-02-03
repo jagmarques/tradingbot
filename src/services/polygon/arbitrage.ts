@@ -168,19 +168,35 @@ export async function executeArbitrage(
     };
   }
 
-  // Create position
+  // Get spot price for hedge
+  const spotPrice = getSpotPrice(opportunity.marketSymbol);
+
+  // Create position with spot hedge
   const position = createPosition(
     opportunity.tokenId,
     opportunity.direction,
     price,
-    sizeDollars
+    sizeDollars,
+    spotPrice ? opportunity.marketSymbol : undefined,
+    spotPrice || undefined
   );
+
+  // Determine spot side for logging
+  const spotSide = opportunity.direction === "BUY" ? "SHORT" : "LONG";
 
   // Paper mode
   if (isPaperMode()) {
+    const hedgeLog = spotPrice
+      ? ` + ${spotSide} spot @ ${spotPrice}`
+      : "";
     console.log(
-      `[Arbitrage] PAPER: Opened position ${position.id}: ${opportunity.direction} @ ${price}`
+      `[Arbitrage] PAPER: Opened position ${position.id}: ${opportunity.direction} @ ${price}${hedgeLog}`
     );
+    if (spotPrice) {
+      console.log(
+        `[Arbitrage] PAPER: Hedge created with spot ${opportunity.marketSymbol} @ ${spotPrice}`
+      );
+    }
     updatePositionStatus(position.id, "active");
     setPositionOrderId(position.id, `paper_${Date.now()}`);
     return {
@@ -188,6 +204,7 @@ export async function executeArbitrage(
       opportunity,
       orderId: `paper_${Date.now()}`,
       pairId: position.id,
+      spotHedgePrice: spotPrice || undefined,
       isPaper: true,
     };
   }
@@ -213,8 +230,11 @@ export async function executeArbitrage(
   setPositionOrderId(position.id, order.id);
   updatePositionStatus(position.id, "active");
 
+  const hedgeLog = spotPrice
+    ? ` + ${spotSide} spot @ ${spotPrice}`
+    : "";
   console.log(
-    `[Arbitrage] Opened position ${position.id}: ${opportunity.direction} @ ${price}`
+    `[Arbitrage] Opened position ${position.id}: ${opportunity.direction} @ ${price}${hedgeLog}`
   );
 
   return {
@@ -222,6 +242,7 @@ export async function executeArbitrage(
     opportunity,
     orderId: order.id,
     pairId: position.id,
+    spotHedgePrice: spotPrice || undefined,
     isPaper: false,
   };
 }
@@ -238,8 +259,14 @@ function monitorPositions(): void {
       continue;
     }
 
+    // Get current spot price for hedged positions
+    let currentSpotPrice: number | undefined;
+    if (position.spotSymbol) {
+      currentSpotPrice = getSpotPrice(position.spotSymbol) || undefined;
+    }
+
     // Check if should exit
-    const { shouldExit, reason } = shouldExitPosition(position, currentPrice);
+    const { shouldExit, reason } = shouldExitPosition(position, currentPrice, currentSpotPrice);
 
     if (shouldExit) {
       console.log(`[Arbitrage] Exiting position ${position.id}: ${reason}`);
@@ -248,7 +275,7 @@ function monitorPositions(): void {
       updatePositionStatus(position.id, "exiting");
 
       // Calculate final P&L
-      const result = closePosition(position.id, currentPrice);
+      const result = closePosition(position.id, currentPrice, currentSpotPrice);
 
       if (result) {
         const holdTimeSeconds = Math.floor(result.holdTimeMs / 1000);
@@ -268,9 +295,32 @@ function monitorPositions(): void {
         });
 
         const mode = isPaperMode() ? "PAPER: " : "";
-        console.log(
-          `[Arbitrage] ${mode}Closed position ${position.id}: P&L $${result.pnl.toFixed(2)} (${result.pnlPercentage.toFixed(2)}%) after ${holdTimeSeconds}s`
-        );
+
+        // Log combined P&L if hedged
+        if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice) {
+          // Calculate individual P&Ls for logging
+          let polyPnl = 0;
+          if (position.side === "BUY") {
+            polyPnl = (currentPrice - position.entryPrice) * (position.size / position.entryPrice);
+          } else {
+            polyPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
+          }
+
+          let spotPnl = 0;
+          if (position.spotSide === "SHORT") {
+            spotPnl = (position.spotEntryPrice - currentSpotPrice) * (position.size / position.spotEntryPrice);
+          } else if (position.spotSide === "LONG") {
+            spotPnl = (currentSpotPrice - position.spotEntryPrice) * (position.size / position.spotEntryPrice);
+          }
+
+          console.log(
+            `[Arbitrage] ${mode}Closed hedge: Poly P&L $${polyPnl.toFixed(2)} + Spot P&L $${spotPnl.toFixed(2)} = Net $${result.pnl.toFixed(2)} (${result.pnlPercentage.toFixed(2)}%) after ${holdTimeSeconds}s`
+          );
+        } else {
+          console.log(
+            `[Arbitrage] ${mode}Closed position ${position.id}: P&L $${result.pnl.toFixed(2)} (${result.pnlPercentage.toFixed(2)}%) after ${holdTimeSeconds}s`
+          );
+        }
       }
     }
   }
