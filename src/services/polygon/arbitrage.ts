@@ -297,13 +297,15 @@ function monitorPositions(): void {
         const mode = isPaperMode() ? "PAPER: " : "";
 
         // Log combined P&L if hedged
-        if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice) {
+        if (position.spotSymbol && position.spotEntryPrice && position.spotEntryPrice > 0 && currentSpotPrice) {
           // Calculate individual P&Ls for logging
           let polyPnl = 0;
-          if (position.side === "BUY") {
-            polyPnl = (currentPrice - position.entryPrice) * (position.size / position.entryPrice);
-          } else {
-            polyPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
+          if (position.entryPrice > 0) {
+            if (position.side === "BUY") {
+              polyPnl = (currentPrice - position.entryPrice) * (position.size / position.entryPrice);
+            } else {
+              polyPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
+            }
           }
 
           let spotPnl = 0;
