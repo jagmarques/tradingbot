@@ -13,9 +13,8 @@ import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusRep
 import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pricefeeds/manager.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
-import { executeSplitBuy, checkAutoSell, getPositions } from "./services/pumpfun/executor.js";
+import { executeSplitBuy, checkAutoSell, getPositions, getTokenPrice } from "./services/pumpfun/executor.js";
 import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
-import { getPrice } from "./services/pricefeeds/manager.js";
 import { loadPositionsFromDb } from "./services/polygon/positions.js";
 import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
@@ -97,14 +96,32 @@ async function main(): Promise<void> {
       const positions = getPositions();
       for (const [mint, position] of positions) {
         try {
-          // Get current price from Solana (using SOL price as proxy for now)
-          const solPrice = getPrice("SOLUSDT");
-          if (solPrice) {
-            // In paper mode, simulate price movement for testing
-            const simulatedPrice = isPaperMode()
-              ? position.entryPrice * (1 + Math.random() * 0.1) // Random 0-10% increase
-              : position.entryPrice; // Real mode would need actual token price
-            await checkAutoSell(mint, simulatedPrice);
+          let currentPrice: number | null = null;
+
+          if (isPaperMode()) {
+            // Paper mode: simulate realistic price movement
+            // Random walk with occasional pumps to test auto-sell targets
+            const ageMinutes = (Date.now() - position.createdAt) / 60000;
+            const baseMultiplier = 1 + (Math.random() - 0.3) * 0.5; // -15% to +35% per check
+            const timeFactor = 1 + ageMinutes * 0.1; // Gradually increase over time
+            const pumpChance = Math.random();
+
+            if (pumpChance > 0.95) {
+              // 5% chance of 10x+ pump
+              currentPrice = position.entryPrice * (10 + Math.random() * 90);
+            } else if (pumpChance > 0.85) {
+              // 10% chance of 2-5x pump
+              currentPrice = position.entryPrice * (2 + Math.random() * 3);
+            } else {
+              currentPrice = position.entryPrice * baseMultiplier * timeFactor;
+            }
+          } else {
+            // Live mode: get actual token price from bonding curve
+            currentPrice = await getTokenPrice(mint);
+          }
+
+          if (currentPrice && currentPrice > 0) {
+            await checkAutoSell(mint, currentPrice);
           }
         } catch (err) {
           console.error(`[Bot] Error checking position ${position.symbol}:`, err);

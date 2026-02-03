@@ -512,3 +512,37 @@ export async function closePosition(mint: string): Promise<ExecutionResult> {
   await sellRemainingPosition(position);
   return { success: true, isPaper: isPaperMode() };
 }
+
+// Get current token price from bonding curve
+export async function getTokenPrice(mint: string): Promise<number | null> {
+  try {
+    const connection = (await import("../solana/wallet.js")).getConnection();
+    const [bondingCurve] = PublicKey.findProgramAddressSync(
+      [Buffer.from("bonding-curve"), new PublicKey(mint).toBuffer()],
+      PUMPFUN_PUBKEY
+    );
+
+    // Get bonding curve SOL balance (liquidity)
+    const solBalance = await connection.getBalance(bondingCurve);
+    if (solBalance === 0) return null;
+
+    // Estimate price based on bonding curve formula
+    // Price = SOL_reserve / token_supply (simplified)
+    // For more accurate pricing, would need to parse bonding curve account data
+    const solReserve = solBalance / LAMPORTS_PER_SOL;
+
+    // Get position to calculate relative price change
+    const position = positions.get(mint);
+    if (!position || position.totalTokens === BigInt(0)) return null;
+
+    // Estimate current price based on liquidity change
+    const initialLiquidity = Number(position.totalCostLamports) / LAMPORTS_PER_SOL;
+    const liquidityRatio = solReserve / (initialLiquidity || 1);
+
+    // Price moves with liquidity (bonding curve)
+    return position.entryPrice * Math.sqrt(liquidityRatio);
+  } catch (err) {
+    console.error(`[Executor] Failed to get token price for ${mint}:`, err);
+    return null;
+  }
+}
