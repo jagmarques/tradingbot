@@ -145,11 +145,12 @@ export async function executeSplitBuy(
     console.error(`[Executor] Failed to record trade: ${err}`);
   }
 
-  // Create position
+  // Create position with calculated entry price
+  const calculatedEntryPrice = phase1Amount / Number(result1.tokensReceived || 1n);
   const position: Position = {
     mint,
     symbol: launch.symbol,
-    entryPrice: 0, // Will be calculated from actual trade
+    entryPrice: calculatedEntryPrice,
     totalTokens: result1.tokensReceived || BigInt(0),
     totalCostLamports: BigInt(Math.floor(phase1Amount * LAMPORTS_PER_SOL)),
     buyPhase: 1,
