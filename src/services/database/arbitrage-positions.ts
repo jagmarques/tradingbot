@@ -17,9 +17,13 @@ export function savePosition(position: Position): void {
       status,
       target_profit,
       estimated_fees,
+      spot_symbol,
+      spot_side,
+      spot_entry_price,
+      spot_size,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `);
 
   stmt.run(
@@ -32,7 +36,11 @@ export function savePosition(position: Position): void {
     position.entryTimestamp,
     position.status,
     position.targetProfit,
-    position.estimatedFees
+    position.estimatedFees,
+    position.spotSymbol || null,
+    position.spotSide || null,
+    position.spotEntryPrice || null,
+    position.spotSize || null
   );
 }
 
@@ -57,6 +65,10 @@ export function loadOpenPositions(): Position[] {
     status: "pending" | "active" | "exiting" | "closed";
     target_profit: number;
     estimated_fees: number;
+    spot_symbol: string | null;
+    spot_side: "LONG" | "SHORT" | null;
+    spot_entry_price: number | null;
+    spot_size: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -70,6 +82,10 @@ export function loadOpenPositions(): Position[] {
     status: row.status,
     targetProfit: row.target_profit,
     estimatedFees: row.estimated_fees,
+    spotSymbol: row.spot_symbol,
+    spotSide: row.spot_side,
+    spotEntryPrice: row.spot_entry_price,
+    spotSize: row.spot_size,
   }));
 }
 
