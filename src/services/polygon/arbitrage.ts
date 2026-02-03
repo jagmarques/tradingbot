@@ -1,6 +1,7 @@
 import { getMidPrice, getSpread, getBestBid, getBestAsk, onOrderbookUpdate } from "./orderbook.js";
 import { placeFokOrder } from "./polymarket.js";
 import { getPrice as getSpotPrice } from "../pricefeeds/manager.js";
+import { hasBinanceCredentials, placeMarketOrder } from "../pricefeeds/binance-spot.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { MIN_CONFIDENCE_PERCENTAGE, MAX_ACTIVE_HEDGED_PAIRS } from "../../config/constants.js";
 import {
@@ -181,8 +182,12 @@ export async function executeArbitrage(
     spotPrice || undefined
   );
 
-  // Determine spot side for logging
+  // Determine spot side for logging and execution
+  // Spot hedge is opposite of Polymarket direction:
+  // - BUY on Polymarket = SHORT spot (SELL on Binance)
+  // - SELL on Polymarket = LONG spot (BUY on Binance)
   const spotSide = opportunity.direction === "BUY" ? "SHORT" : "LONG";
+  const spotOrderSide: "BUY" | "SELL" = opportunity.direction === "BUY" ? "SELL" : "BUY";
 
   // Paper mode
   if (isPaperMode()) {
@@ -192,9 +197,9 @@ export async function executeArbitrage(
     console.log(
       `[Arbitrage] PAPER: Opened position ${position.id}: ${opportunity.direction} @ ${price}${hedgeLog}`
     );
-    if (spotPrice) {
+    if (spotPrice && opportunity.marketSymbol) {
       console.log(
-        `[Arbitrage] PAPER: Hedge created with spot ${opportunity.marketSymbol} @ ${spotPrice}`
+        `[Arbitrage] PAPER: Would execute ${spotOrderSide} ${opportunity.marketSymbol} for $${sizeDollars.toFixed(2)}`
       );
     }
     updatePositionStatus(position.id, "active");
@@ -230,8 +235,25 @@ export async function executeArbitrage(
   setPositionOrderId(position.id, order.id);
   updatePositionStatus(position.id, "active");
 
-  const hedgeLog = spotPrice
-    ? ` + ${spotSide} spot @ ${spotPrice}`
+  let spotHedgePrice = spotPrice || undefined;
+
+  // Execute spot hedge order (live mode only)
+  if (hasBinanceCredentials() && opportunity.marketSymbol) {
+    const spotResult = await placeMarketOrder(opportunity.marketSymbol, spotOrderSide, sizeDollars);
+    if (spotResult) {
+      console.log(
+        `[Arbitrage] Spot hedge opened: ${spotOrderSide} ${opportunity.marketSymbol} @ ${spotResult.avgPrice}`
+      );
+      spotHedgePrice = parseFloat(spotResult.avgPrice);
+    } else {
+      console.warn(
+        `[Arbitrage] Spot hedge failed for ${opportunity.marketSymbol}, position partially hedged`
+      );
+    }
+  }
+
+  const hedgeLog = spotHedgePrice
+    ? ` + ${spotSide} spot @ ${spotHedgePrice}`
     : "";
   console.log(
     `[Arbitrage] Opened position ${position.id}: ${opportunity.direction} @ ${price}${hedgeLog}`
@@ -242,13 +264,13 @@ export async function executeArbitrage(
     opportunity,
     orderId: order.id,
     pairId: position.id,
-    spotHedgePrice: spotPrice || undefined,
+    spotHedgePrice,
     isPaper: false,
   };
 }
 
 // Monitor active positions for exit conditions
-function monitorPositions(): void {
+async function monitorPositions(): Promise<void> {
   const positions = getActivePositions();
 
   for (const position of positions) {
@@ -273,6 +295,29 @@ function monitorPositions(): void {
 
       // Mark as exiting
       updatePositionStatus(position.id, "exiting");
+
+      // Close spot hedge first (live mode only)
+      if (!isPaperMode() && hasBinanceCredentials() && position.spotSymbol && position.spotSize) {
+        // Close side is opposite of entry side
+        // If SHORT entry (SELL), close with BUY
+        // If LONG entry (BUY), close with SELL
+        const closeSide: "BUY" | "SELL" = position.spotSide === "SHORT" ? "BUY" : "SELL";
+        const spotResult = await placeMarketOrder(position.spotSymbol, closeSide, position.spotSize);
+        if (spotResult) {
+          console.log(
+            `[Arbitrage] Spot hedge closed: ${closeSide} ${position.spotSymbol} @ ${spotResult.avgPrice}`
+          );
+        } else {
+          console.warn(
+            `[Arbitrage] Spot hedge close failed for ${position.spotSymbol}`
+          );
+        }
+      } else if (isPaperMode() && position.spotSymbol && position.spotSize) {
+        const closeSide = position.spotSide === "SHORT" ? "BUY" : "SELL";
+        console.log(
+          `[Arbitrage] PAPER: Would close spot ${closeSide} ${position.spotSymbol} for $${position.spotSize.toFixed(2)}`
+        );
+      }
 
       // Calculate final P&L
       const result = closePosition(position.id, currentPrice, currentSpotPrice);
@@ -354,7 +399,9 @@ export function startMonitoring(): void {
 
   // Start monitoring positions every 5 seconds
   monitoringInterval = setInterval(() => {
-    monitorPositions();
+    monitorPositions().catch((err) => {
+      console.error("[Arbitrage] Position monitoring error:", err);
+    });
   }, 5000);
 
   console.log("[Arbitrage] Monitoring started");
