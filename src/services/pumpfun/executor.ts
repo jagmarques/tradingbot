@@ -14,6 +14,8 @@ import {
   TRAILING_STOP_ACTIVATION,
   TRAILING_STOP_PERCENTAGE,
   STAGNATION_TIMEOUT_MS,
+  ESTIMATED_GAS_FEE_SOL,
+  ESTIMATED_SLIPPAGE_PUMPFUN,
 } from "../../config/constants.js";
 import { TokenLaunch } from "./detector.js";
 import { insertTrade } from "../database/trades.js";
@@ -123,6 +125,8 @@ export async function executeSplitBuy(
   // Record buy in database
   try {
     const entryPrice = phase1Amount / Number(result1.tokensReceived || 1n);
+    const estimatedSlippage = phase1Amount * ESTIMATED_SLIPPAGE_PUMPFUN;
+    const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
     await insertTrade({
       strategy: "pumpfun",
       type: "BUY",
@@ -133,7 +137,7 @@ export async function executeSplitBuy(
       price: entryPrice,
       pnl: 0,
       pnlPercentage: 0,
-      fees: 0,
+      fees: totalFees,
       txHash: result1.signature,
       status: "completed",
     });
@@ -353,6 +357,8 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
         const sellValue = Number(portionSize) * currentPrice;
         const costBasis = Number(portionSize) * position.entryPrice;
         const pnl = sellValue - costBasis;
+        const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
+        const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
         await insertTrade({
           strategy: "pumpfun",
           type: "SELL",
@@ -361,9 +367,9 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           amountUsd: sellValue,
           amountTokens: Number(portionSize),
           price: currentPrice,
-          pnl,
-          pnlPercentage: (pnl / costBasis) * 100,
-          fees: 0,
+          pnl: pnl - totalFees,
+          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          fees: totalFees,
           txHash: result.signature,
           status: "completed",
         });
@@ -385,6 +391,8 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
         const sellValue = Number(portionSize) * currentPrice;
         const costBasis = Number(portionSize) * position.entryPrice;
         const pnl = sellValue - costBasis;
+        const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
+        const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
         await insertTrade({
           strategy: "pumpfun",
           type: "SELL",
@@ -393,9 +401,9 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           amountUsd: sellValue,
           amountTokens: Number(portionSize),
           price: currentPrice,
-          pnl,
-          pnlPercentage: (pnl / costBasis) * 100,
-          fees: 0,
+          pnl: pnl - totalFees,
+          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          fees: totalFees,
           txHash: result.signature,
           status: "completed",
         });
@@ -417,6 +425,8 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
         const sellValue = Number(portionSize) * currentPrice;
         const costBasis = Number(portionSize) * position.entryPrice;
         const pnl = sellValue - costBasis;
+        const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
+        const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
         await insertTrade({
           strategy: "pumpfun",
           type: "SELL",
@@ -425,9 +435,9 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           amountUsd: sellValue,
           amountTokens: Number(portionSize),
           price: currentPrice,
-          pnl,
-          pnlPercentage: (pnl / costBasis) * 100,
-          fees: 0,
+          pnl: pnl - totalFees,
+          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          fees: totalFees,
           txHash: result.signature,
           status: "completed",
         });
