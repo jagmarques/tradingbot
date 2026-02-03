@@ -143,6 +143,9 @@ export function checkSlippage(
   actualPrice: number,
   maxSlippage: number
 ): { allowed: boolean; slippage: number } {
+  if (expectedPrice <= 0) {
+    return { allowed: false, slippage: 1 }; // 100% slippage if no expected price
+  }
   const slippage = Math.abs(actualPrice - expectedPrice) / expectedPrice;
   return {
     allowed: slippage <= maxSlippage,

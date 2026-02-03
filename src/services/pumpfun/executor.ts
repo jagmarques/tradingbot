@@ -312,11 +312,11 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
   }
 
   // Check trailing stop
-  if (position.trailingStopActive) {
+  if (position.trailingStopActive && position.peakPrice > 0) {
     const dropFromPeak = (position.peakPrice - currentPrice) / position.peakPrice;
     if (dropFromPeak >= TRAILING_STOP_PERCENTAGE) {
       console.log(`[Executor] Trailing stop triggered for ${position.symbol}`);
-      await sellRemainingPosition(position);
+      await sellRemainingPosition(position, currentPrice);
       return;
     }
   }
@@ -329,7 +329,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
     // Only exit if current price is at or above entry (break-even or small profit)
     if (currentPrice >= position.entryPrice) {
       console.log(`[Executor] Stagnation timeout for ${position.symbol} - exiting at ${multiplier.toFixed(2)}x after ${Math.floor(positionAge / 3600000)}h`);
-      await sellRemainingPosition(position);
+      await sellRemainingPosition(position, currentPrice);
       return;
     } else {
       // Below break-even, log but wait (might recover)
@@ -369,7 +369,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           amountTokens: Number(portionSize),
           price: currentPrice,
           pnl: pnl - totalFees,
-          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          pnlPercentage: costBasis > 0 ? ((pnl - totalFees) / costBasis) * 100 : 0,
           fees: totalFees,
           txHash: result.signature,
           status: "completed",
@@ -403,7 +403,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           amountTokens: Number(portionSize),
           price: currentPrice,
           pnl: pnl - totalFees,
-          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          pnlPercentage: costBasis > 0 ? ((pnl - totalFees) / costBasis) * 100 : 0,
           fees: totalFees,
           txHash: result.signature,
           status: "completed",
@@ -414,17 +414,19 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
     }
   }
 
-  // Third sell at 100x
+  // Third sell at 100x - sell all remaining tokens to avoid rounding loss
   if (multiplier >= SELL_TARGETS.THIRD && !position.soldPortions.third) {
-    console.log(`[Executor] Selling final 1/3 at ${SELL_TARGETS.THIRD}x for ${position.symbol}`);
-    const result = await executeSell(mint, portionSize);
+    // Calculate remaining tokens to avoid BigInt division loss
+    const thirdPortionSize = position.totalTokens - portionSize - portionSize;
+    console.log(`[Executor] Selling final portion at ${SELL_TARGETS.THIRD}x for ${position.symbol}`);
+    const result = await executeSell(mint, thirdPortionSize);
     if (result.success) {
       position.soldPortions.third = true;
 
       // Record sell in database
       try {
-        const sellValue = Number(portionSize) * currentPrice;
-        const costBasis = Number(portionSize) * position.entryPrice;
+        const sellValue = Number(thirdPortionSize) * currentPrice;
+        const costBasis = Number(thirdPortionSize) * position.entryPrice;
         const pnl = sellValue - costBasis;
         const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
         const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
@@ -434,10 +436,10 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
           tokenAddress: mint,
           tokenSymbol: position.symbol,
           amountUsd: sellValue,
-          amountTokens: Number(portionSize),
+          amountTokens: Number(thirdPortionSize),
           price: currentPrice,
           pnl: pnl - totalFees,
-          pnlPercentage: ((pnl - totalFees) / costBasis) * 100,
+          pnlPercentage: costBasis > 0 ? ((pnl - totalFees) / costBasis) * 100 : 0,
           fees: totalFees,
           txHash: result.signature,
           status: "completed",
@@ -452,7 +454,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
 }
 
 // Sell all remaining tokens
-async function sellRemainingPosition(position: Position): Promise<void> {
+async function sellRemainingPosition(position: Position, exitPrice: number): Promise<void> {
   const remaining =
     position.totalTokens -
     (position.soldPortions.first ? position.totalTokens / BigInt(3) : BigInt(0)) -
@@ -466,7 +468,7 @@ async function sellRemainingPosition(position: Position): Promise<void> {
 
       // Record sell in database
       try {
-        const sellValue = Number(remaining) * position.peakPrice;
+        const sellValue = Number(remaining) * exitPrice;
         const costBasis = Number(remaining) * position.entryPrice;
         const pnl = sellValue - costBasis;
         const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
@@ -478,7 +480,7 @@ async function sellRemainingPosition(position: Position): Promise<void> {
           tokenSymbol: position.symbol,
           amountUsd: sellValue,
           amountTokens: Number(remaining),
-          price: position.peakPrice,
+          price: exitPrice,
           pnl: pnl - totalFees,
           pnlPercentage: position.entryPrice > 0 ? ((pnl - totalFees) / costBasis) * 100 : 0,
           fees: totalFees,
@@ -511,7 +513,9 @@ export async function closePosition(mint: string): Promise<ExecutionResult> {
     return { success: false, error: "Position not found", isPaper: isPaperMode() };
   }
 
-  await sellRemainingPosition(position);
+  // Get current price for accurate P&L, fallback to entry price
+  const currentPrice = await getTokenPrice(mint) || position.entryPrice;
+  await sellRemainingPosition(position, currentPrice);
   return { success: true, isPaper: isPaperMode() };
 }
 

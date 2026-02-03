@@ -128,17 +128,19 @@ export function closePosition(
 
   // Calculate Polymarket P&L
   let polymarketPnl = 0;
-  if (position.side === "BUY") {
-    // Bought at entry, selling at exit
-    polymarketPnl = (exitPrice - position.entryPrice) * (position.size / position.entryPrice);
-  } else {
-    // Sold at entry, buying back at exit
-    polymarketPnl = (position.entryPrice - exitPrice) * (position.size / position.entryPrice);
+  if (position.entryPrice > 0) {
+    if (position.side === "BUY") {
+      // Bought at entry, selling at exit
+      polymarketPnl = (exitPrice - position.entryPrice) * (position.size / position.entryPrice);
+    } else {
+      // Sold at entry, buying back at exit
+      polymarketPnl = (position.entryPrice - exitPrice) * (position.size / position.entryPrice);
+    }
   }
 
   // Calculate spot hedge P&L if present
   let spotPnl = 0;
-  if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice !== undefined) {
+  if (position.spotSymbol && position.spotEntryPrice && position.spotEntryPrice > 0 && currentSpotPrice !== undefined) {
     if (position.spotSide === "SHORT") {
       // SHORT spot: profit when price falls
       spotPnl = (position.spotEntryPrice - currentSpotPrice) * (position.size / position.spotEntryPrice);
@@ -198,15 +200,17 @@ export function shouldExitPosition(
 
   // Calculate potential P&L at current price
   let polymarketPnl = 0;
-  if (position.side === "BUY") {
-    polymarketPnl = (currentPrice - position.entryPrice) * (position.size / position.entryPrice);
-  } else {
-    polymarketPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
+  if (position.entryPrice > 0) {
+    if (position.side === "BUY") {
+      polymarketPnl = (currentPrice - position.entryPrice) * (position.size / position.entryPrice);
+    } else {
+      polymarketPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
+    }
   }
 
   // Calculate spot hedge P&L if present
   let spotPnl = 0;
-  if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice !== undefined) {
+  if (position.spotSymbol && position.spotEntryPrice && position.spotEntryPrice > 0 && currentSpotPrice !== undefined) {
     if (position.spotSide === "SHORT") {
       spotPnl = (position.spotEntryPrice - currentSpotPrice) * (position.size / position.spotEntryPrice);
     } else if (position.spotSide === "LONG") {
