@@ -104,6 +104,10 @@ export function initDb(dbPath?: string): Database.Database {
       status TEXT NOT NULL,
       target_profit REAL NOT NULL,
       estimated_fees REAL NOT NULL,
+      spot_symbol TEXT,
+      spot_side TEXT,
+      spot_entry_price REAL,
+      spot_size REAL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
