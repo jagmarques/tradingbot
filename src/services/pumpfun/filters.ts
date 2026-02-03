@@ -1,7 +1,7 @@
 import { getConnection } from "../solana/wallet.js";
 import { TokenLaunch } from "./detector.js";
 import { MAX_DEV_SUPPLY_PERCENTAGE, MIN_LIQUIDITY_SOL } from "../../config/constants.js";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 export interface FilterResult {
   passed: boolean;
@@ -69,8 +69,8 @@ export async function checkDevSupply(
 
     // Get token accounts for the creator
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-      (await import("@solana/web3.js")).PublicKey.prototype.constructor(creator),
-      { mint: (await import("@solana/web3.js")).PublicKey.prototype.constructor(mint) }
+      new PublicKey(creator),
+      { mint: new PublicKey(mint) }
     );
 
     if (tokenAccounts.value.length === 0) {
@@ -85,7 +85,7 @@ export async function checkDevSupply(
 
     // Get total supply
     const mintInfo = await connection.getParsedAccountInfo(
-      (await import("@solana/web3.js")).PublicKey.prototype.constructor(mint)
+      new PublicKey(mint)
     );
 
     const totalSupply =
@@ -167,9 +167,7 @@ export function checkMetadata(launch: TokenLaunch): FilterResult {
 export async function checkDevHistory(creator: string): Promise<FilterResult> {
   try {
     const connection = getConnection();
-    const creatorPubkey = (await import("@solana/web3.js")).PublicKey.prototype.constructor(
-      creator
-    );
+    const creatorPubkey = new PublicKey(creator);
 
     // Get recent transactions
     const signatures = await connection.getSignaturesForAddress(creatorPubkey, {
