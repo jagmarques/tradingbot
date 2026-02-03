@@ -20,6 +20,7 @@ import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/man
 import { getSolBalance } from "./services/solana/wallet.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
+let positionMonitorInterval: NodeJS.Timeout | null = null;
 
 async function main(): Promise<void> {
   console.log("[Bot] Starting Trading Bot...");
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
 
     // Start position monitoring loop for auto-sells
     const POSITION_CHECK_INTERVAL_MS = 10_000; // Check every 10 seconds
-    setInterval(async () => {
+    positionMonitorInterval = setInterval(async () => {
       const positions = getPositions();
       for (const [mint, position] of positions) {
         try {
@@ -165,6 +166,10 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
+    if (positionMonitorInterval) {
+      clearInterval(positionMonitorInterval);
+      positionMonitorInterval = null;
+    }
     stopStatusReporter();
     stopPumpfunDetector();
     stopPolymarketMonitoring();
