@@ -22,6 +22,8 @@ export {
   getPositions,
   getPosition,
   closePosition,
+  getTokenPrice,
+  loadPositionsFromDb,
   type Position,
   type ExecutionResult,
 } from "./executor.js";

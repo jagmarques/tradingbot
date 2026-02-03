@@ -20,6 +20,11 @@ import {
 import { TokenLaunch } from "./detector.js";
 import { insertTrade } from "../database/trades.js";
 import { validateTrade, getDailyPnlPercentage } from "../risk/manager.js";
+import {
+  savePosition as savePositionToDb,
+  deletePosition as deletePositionFromDb,
+  loadAllPositions,
+} from "../database/pumpfun-positions.js";
 
 const PUMPFUN_PUBKEY = new PublicKey(PUMPFUN_PROGRAM_ID);
 
@@ -160,6 +165,7 @@ export async function executeSplitBuy(
     createdAt: Date.now(),
   };
   positions.set(mint, position);
+  savePositionToDb(position);
 
   // Schedule Phase 2 (30% after delay)
   setTimeout(async () => {
@@ -174,6 +180,7 @@ export async function executeSplitBuy(
       pos.buyPhase = 2;
       pos.totalTokens += result2.tokensReceived || BigInt(0);
       pos.totalCostLamports += BigInt(Math.floor(phase2Amount * LAMPORTS_PER_SOL));
+      savePositionToDb(pos);
     }
 
     // Schedule Phase 3 (40% after another delay)
@@ -189,6 +196,7 @@ export async function executeSplitBuy(
         pos.buyPhase = 3;
         pos.totalTokens += result3.tokensReceived || BigInt(0);
         pos.totalCostLamports += BigInt(Math.floor(phase3Amount * LAMPORTS_PER_SOL));
+        savePositionToDb(pos);
         console.log(`[Executor] Split buy complete for ${launch.symbol}`);
       }
     }, SPLIT_BUY_DELAY_MS);
@@ -341,6 +349,8 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
   if (multiplier >= TRAILING_STOP_ACTIVATION && !position.trailingStopActive) {
     console.log(`[Executor] Trailing stop activated for ${position.symbol} at ${multiplier}x`);
     position.trailingStopActive = true;
+    position.peakPrice = currentPrice; // Ensure peak is set
+    savePositionToDb(position);
   }
 
   // Auto-sell at targets
@@ -377,6 +387,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
       } catch (err) {
         console.error(`[Executor] Failed to record trade: ${err}`);
       }
+      savePositionToDb(position);
     }
   }
 
@@ -411,6 +422,7 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
       } catch (err) {
         console.error(`[Executor] Failed to record trade: ${err}`);
       }
+      savePositionToDb(position);
     }
   }
 
@@ -448,7 +460,8 @@ export async function checkAutoSell(mint: string, currentPrice: number): Promise
         console.error(`[Executor] Failed to record trade: ${err}`);
       }
 
-      positions.delete(mint); // Position fully closed
+      positions.delete(mint);
+      deletePositionFromDb(mint);
     }
   }
 }
@@ -492,6 +505,7 @@ async function sellRemainingPosition(position: Position, exitPrice: number): Pro
       }
 
       positions.delete(position.mint);
+      deletePositionFromDb(position.mint);
     }
   }
 }
@@ -551,4 +565,35 @@ export async function getTokenPrice(mint: string): Promise<number | null> {
     console.error(`[Executor] Failed to get token price for ${mint}:`, err);
     return null;
   }
+}
+
+// Load positions from database (for startup recovery)
+export function loadPositionsFromDb(): number {
+  const dbPositions = loadAllPositions();
+
+  // Clear existing in-memory positions
+  positions.clear();
+
+  // Load into memory
+  for (const pos of dbPositions) {
+    const position: Position = {
+      mint: pos.mint,
+      symbol: pos.symbol,
+      entryPrice: pos.entryPrice,
+      totalTokens: pos.totalTokens,
+      totalCostLamports: pos.totalCostLamports,
+      buyPhase: pos.buyPhase,
+      peakPrice: pos.peakPrice,
+      trailingStopActive: pos.trailingStopActive,
+      soldPortions: pos.soldPortions,
+      createdAt: pos.createdAt,
+    };
+    positions.set(pos.mint, position);
+  }
+
+  if (dbPositions.length > 0) {
+    console.log(`[Executor] Loaded ${dbPositions.length} Pump.fun positions from database`);
+  }
+
+  return dbPositions.length;
 }

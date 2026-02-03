@@ -31,6 +31,12 @@ vi.mock("../risk/manager.js", () => ({
   getDailyPnlPercentage: vi.fn().mockReturnValue(0),
 }));
 
+vi.mock("../database/pumpfun-positions.js", () => ({
+  savePosition: vi.fn(),
+  deletePosition: vi.fn(),
+  loadAllPositions: vi.fn().mockReturnValue([]),
+}));
+
 vi.mock("@solana/web3.js", async () => {
   const actual = await vi.importActual<typeof import("@solana/web3.js")>("@solana/web3.js");
   return {
