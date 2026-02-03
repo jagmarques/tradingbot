@@ -469,6 +469,8 @@ async function sellRemainingPosition(position: Position): Promise<void> {
         const sellValue = Number(remaining) * position.peakPrice;
         const costBasis = Number(remaining) * position.entryPrice;
         const pnl = sellValue - costBasis;
+        const estimatedSlippage = sellValue * ESTIMATED_SLIPPAGE_PUMPFUN;
+        const totalFees = ESTIMATED_GAS_FEE_SOL + estimatedSlippage;
         await insertTrade({
           strategy: "pumpfun",
           type: "SELL",
@@ -477,9 +479,9 @@ async function sellRemainingPosition(position: Position): Promise<void> {
           amountUsd: sellValue,
           amountTokens: Number(remaining),
           price: position.peakPrice,
-          pnl,
-          pnlPercentage: position.entryPrice > 0 ? (pnl / costBasis) * 100 : 0,
-          fees: 0,
+          pnl: pnl - totalFees,
+          pnlPercentage: position.entryPrice > 0 ? ((pnl - totalFees) / costBasis) * 100 : 0,
+          fees: totalFees,
           txHash: result.signature,
           status: "completed",
         });
