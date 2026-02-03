@@ -55,8 +55,15 @@ export const TARGET_ARBITRAGE_PROFIT_PCT = 0.5; // 0.5% net profit target after 
 export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold time
 export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
 export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
+export const SPOT_HEDGE_FEE_BPS = 10; // 0.1% Binance maker/taker fee
 
 // Jito retry configuration
 export const JITO_MAX_RETRIES = 3;
 export const JITO_RETRY_BASE_MS = 500;
 export const JITO_RETRY_MAX_MS = 4000;
+
+// Realistic fee estimation for paper trading
+export const ESTIMATED_GAS_FEE_SOL = 0.003; // 3000 lamports typical Solana gas
+export const ESTIMATED_GAS_FEE_MATIC = 0.001; // ~0.001 MATIC (~$0.00011) for Polygon gas
+export const ESTIMATED_SLIPPAGE_PUMPFUN = 0.01; // 1% estimated slippage on Pump.fun
+export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% estimated slippage on Polymarket

@@ -230,4 +230,77 @@ describe("Positions", () => {
       expect(getActivePositionCount()).toBe(0);
     });
   });
+
+  describe("Spot hedge integration", () => {
+    it("should create position with spot hedge", () => {
+      const position = createPosition(
+        "token123",
+        "BUY",
+        0.6,
+        100,
+        "BTCUSDT",
+        50000
+      );
+
+      expect(position.spotSymbol).toBe("BTCUSDT");
+      expect(position.spotEntryPrice).toBe(50000);
+      expect(position.spotSide).toBe("SHORT"); // Opposite of BUY
+      expect(position.spotSize).toBe(100); // Dollar-neutral
+      expect(position.estimatedFees).toBeGreaterThan(0); // Should include spot fees
+    });
+
+    it("should calculate combined P&L for hedged position (profit scenario)", () => {
+      const position = createPosition(
+        "token123",
+        "BUY",
+        0.5,
+        100,
+        "BTCUSDT",
+        50000
+      );
+
+      // BUY Polymarket at 0.5, exit at 0.6 (+$20 poly P&L)
+      // SHORT spot at 50000, exit at 49000 (+$2 spot P&L)
+      const result = closePosition(position.id, 0.6, 49000);
+
+      expect(result).not.toBeNull();
+      expect(result!.pnl).toBeGreaterThan(0);
+      expect(result!.pnlPercentage).toBeGreaterThan(0);
+    });
+
+    it("should calculate combined P&L for hedged position (loss scenario)", () => {
+      const position = createPosition(
+        "token123",
+        "SELL",
+        0.7,
+        100,
+        "BTCUSDT",
+        50000
+      );
+
+      // SELL Polymarket at 0.7, exit at 0.8 (-$14 poly P&L)
+      // LONG spot at 50000, exit at 49000 (-$2 spot P&L)
+      const result = closePosition(position.id, 0.8, 49000);
+
+      expect(result).not.toBeNull();
+      expect(result!.pnl).toBeLessThan(0);
+    });
+
+    it("should include spot P&L in shouldExitPosition calculation", () => {
+      const position = createPosition(
+        "token123",
+        "BUY",
+        0.5,
+        100,
+        "BTCUSDT",
+        50000
+      );
+
+      // Polymarket profit + spot profit should reach target
+      const { shouldExit, reason } = shouldExitPosition(position, 0.6, 49000);
+
+      expect(shouldExit).toBe(true);
+      expect(reason).toContain("Profit target reached");
+    });
+  });
 });

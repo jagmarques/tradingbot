@@ -2,6 +2,9 @@ import {
   TARGET_ARBITRAGE_PROFIT_PCT,
   ARBITRAGE_PAIR_TIMEOUT_MS,
   STAGNATION_TIMEOUT_MS,
+  ESTIMATED_GAS_FEE_MATIC,
+  ESTIMATED_SLIPPAGE_POLYMARKET,
+  SPOT_HEDGE_FEE_BPS,
 } from "../../config/constants.js";
 import {
   savePosition as savePositionToDb,
@@ -22,6 +25,10 @@ export interface Position {
   status: PositionStatus;
   targetProfit: number;
   estimatedFees: number;
+  spotSymbol: string | null;
+  spotSide: "LONG" | "SHORT" | null;
+  spotEntryPrice: number | null;
+  spotSize: number | null;
 }
 
 export interface PositionResult {
@@ -40,11 +47,20 @@ function generatePositionId(): string {
 }
 
 // Calculate fees for the position
-function calculateFees(): number {
-  // Polymarket fee (gas only, estimated at ~$0.50 per trade)
-  // Entry + exit = 2 trades
-  const polymarketFee = 0.5 * 2;
-  return polymarketFee;
+function calculateFees(sizeUsd: number = 10, hasSpotHedge: boolean = false): number {
+  // Polymarket fees: gas (MATIC converted to USD) + slippage
+  // Entry: gas + slippage, Exit: gas + slippage
+  const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.065; // ~$0.000107 per MATIC gas, 2 transactions
+  const slippageFeeUsd = sizeUsd * ESTIMATED_SLIPPAGE_POLYMARKET * 2; // Entry and exit
+  let totalFees = gasFeeUsd + slippageFeeUsd;
+
+  // Add spot hedge fees if present (entry + exit)
+  if (hasSpotHedge) {
+    const spotFeeUsd = sizeUsd * 2 * (SPOT_HEDGE_FEE_BPS / 10000);
+    totalFees += spotFeeUsd;
+  }
+
+  return totalFees;
 }
 
 // Create a new position
@@ -52,12 +68,25 @@ export function createPosition(
   tokenId: string,
   side: "BUY" | "SELL",
   price: number,
-  sizeUsd: number
+  sizeUsd: number,
+  spotSymbol?: string,
+  spotEntryPrice?: number
 ): Position {
   const id = generatePositionId();
 
-  // Calculate estimated fees
-  const estimatedFees = calculateFees();
+  // Determine spot hedge details
+  let spotSide: "LONG" | "SHORT" | null = null;
+  let spotSize: number | null = null;
+
+  if (spotSymbol && spotEntryPrice !== undefined) {
+    // Spot hedge is opposite of Polymarket side
+    spotSide = side === "BUY" ? "SHORT" : "LONG";
+    spotSize = sizeUsd; // Dollar-neutral hedge
+  }
+
+  // Calculate estimated fees (including spot if hedged)
+  const hasSpotHedge = spotSymbol !== undefined;
+  const estimatedFees = calculateFees(sizeUsd, hasSpotHedge);
 
   // Calculate target profit in USD
   const targetProfit = sizeUsd * (TARGET_ARBITRAGE_PROFIT_PCT / 100);
@@ -72,6 +101,10 @@ export function createPosition(
     status: "pending",
     targetProfit,
     estimatedFees,
+    spotSymbol: spotSymbol || null,
+    spotSide,
+    spotEntryPrice: spotEntryPrice !== undefined ? spotEntryPrice : null,
+    spotSize,
   };
 
   activePositions.set(id, position);
@@ -85,7 +118,8 @@ export function createPosition(
 // Calculate P&L for closing a position
 export function closePosition(
   positionId: string,
-  exitPrice: number
+  exitPrice: number,
+  currentSpotPrice?: number
 ): PositionResult | null {
   const position = activePositions.get(positionId);
   if (!position) {
@@ -102,8 +136,20 @@ export function closePosition(
     polymarketPnl = (position.entryPrice - exitPrice) * (position.size / position.entryPrice);
   }
 
+  // Calculate spot hedge P&L if present
+  let spotPnl = 0;
+  if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice !== undefined) {
+    if (position.spotSide === "SHORT") {
+      // SHORT spot: profit when price falls
+      spotPnl = (position.spotEntryPrice - currentSpotPrice) * (position.size / position.spotEntryPrice);
+    } else if (position.spotSide === "LONG") {
+      // LONG spot: profit when price rises
+      spotPnl = (currentSpotPrice - position.spotEntryPrice) * (position.size / position.spotEntryPrice);
+    }
+  }
+
   // Total P&L minus fees
-  const netPnl = polymarketPnl - position.estimatedFees;
+  const netPnl = polymarketPnl + spotPnl - position.estimatedFees;
   const pnlPercentage = (netPnl / position.size) * 100;
   const holdTimeMs = Date.now() - position.entryTimestamp;
 
@@ -135,7 +181,8 @@ export function getPosition(positionId: string): Position | null {
 // Determine if a position should be exited
 export function shouldExitPosition(
   position: Position,
-  currentPrice: number
+  currentPrice: number,
+  currentSpotPrice?: number
 ): { shouldExit: boolean; reason: string } {
   // Calculate current P&L
   const now = Date.now();
@@ -157,7 +204,17 @@ export function shouldExitPosition(
     polymarketPnl = (position.entryPrice - currentPrice) * (position.size / position.entryPrice);
   }
 
-  const currentNetPnl = polymarketPnl - position.estimatedFees;
+  // Calculate spot hedge P&L if present
+  let spotPnl = 0;
+  if (position.spotSymbol && position.spotEntryPrice && currentSpotPrice !== undefined) {
+    if (position.spotSide === "SHORT") {
+      spotPnl = (position.spotEntryPrice - currentSpotPrice) * (position.size / position.spotEntryPrice);
+    } else if (position.spotSide === "LONG") {
+      spotPnl = (currentSpotPrice - position.spotEntryPrice) * (position.size / position.spotEntryPrice);
+    }
+  }
+
+  const currentNetPnl = polymarketPnl + spotPnl - position.estimatedFees;
 
   // Exit if profit target reached
   if (currentNetPnl >= position.targetProfit) {
