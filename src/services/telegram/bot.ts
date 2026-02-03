@@ -21,6 +21,14 @@ let lastDataMessageId: number | null = null;
 let lastTimezonePromptId: number | null = null;
 let lastStatusUpdateId: number | null = null;
 
+// Authorization check - only allow commands from configured chat ID
+function isAuthorized(ctx: Context): boolean {
+  const fromId = ctx.from?.id?.toString();
+  const msgChatId = ctx.chat?.id?.toString();
+  // Check both user ID and chat ID for security
+  return fromId === chatId || msgChatId === chatId;
+}
+
 const MAIN_MENU_BUTTONS = [
   [{ text: "📊 Status", callback_data: "status" }],
   [{ text: "💰 Balance", callback_data: "balance" }],
@@ -192,6 +200,11 @@ export async function sendStatusMessage(text: string): Promise<void> {
 
 // Command handlers
 async function handleStart(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /start from user ${ctx.from?.id}`);
+    return;
+  }
+
   const userId = ctx.from?.id?.toString();
   if (!userId) {
     await ctx.reply("Could not identify user");
@@ -205,13 +218,18 @@ async function handleStart(ctx: Context): Promise<void> {
   }
 
 
-  const msg = await ctx.reply("🤖 Trading Bot", {
+  const msg = await ctx.reply("Trading Bot", {
     reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
   });
   lastMenuMessageId = msg.message_id;
 }
 
-async function handleStatus(_ctx: Context): Promise<void> {
+async function handleStatus(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /status from user ${ctx.from?.id}`);
+    return;
+  }
+
   try {
     const status = await getRiskStatus();
 
@@ -239,7 +257,12 @@ async function handleStatus(_ctx: Context): Promise<void> {
   }
 }
 
-async function handleBalance(_ctx: Context): Promise<void> {
+async function handleBalance(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /balance from user ${ctx.from?.id}`);
+    return;
+  }
+
   try {
     const [solBalance, maticBalance, usdcBalance] = await Promise.all([
       getSolBalanceFormatted(),
@@ -262,7 +285,12 @@ async function handleBalance(_ctx: Context): Promise<void> {
   }
 }
 
-async function handlePnl(_ctx: Context): Promise<void> {
+async function handlePnl(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /pnl from user ${ctx.from?.id}`);
+    return;
+  }
+
   try {
     const pnl = getDailyPnl();
     const pnlPct = getDailyPnlPercentage();
@@ -284,7 +312,12 @@ async function handlePnl(_ctx: Context): Promise<void> {
   }
 }
 
-async function handleTrades(_ctx: Context): Promise<void> {
+async function handleTrades(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /trades from user ${ctx.from?.id}`);
+    return;
+  }
+
   try {
     const trades = getTodayTrades();
 
@@ -314,40 +347,69 @@ async function handleTrades(_ctx: Context): Promise<void> {
   }
 }
 
-async function handleStop(_ctx: Context): Promise<void> {
+async function handleStop(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /stop from user ${ctx.from?.id}`);
+    return;
+  }
+
   pauseTrading("Manual pause via Telegram");
   console.log("[Telegram] Trading paused by user");
-  await sendDataMessage("⏸️ Trading paused");
+  await sendDataMessage("Trading paused");
   await sendMainMenu();
 }
 
-async function handleResume(_ctx: Context): Promise<void> {
+async function handleResume(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /resume from user ${ctx.from?.id}`);
+    return;
+  }
+
   resumeTrading();
   console.log("[Telegram] Trading resumed by user");
-  await sendDataMessage("▶️ Trading resumed");
+  await sendDataMessage("Trading resumed");
   await sendMainMenu();
 }
 
-async function handleKill(_ctx: Context): Promise<void> {
+async function handleKill(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /kill from user ${ctx.from?.id}`);
+    return;
+  }
+
   activateKillSwitch();
   console.log("[Telegram] Kill switch activated by user");
-  await sendDataMessage("⛔ Kill switch activated");
+  await sendDataMessage("Kill switch activated");
   await sendMainMenu();
 }
 
-async function handleUnkill(_ctx: Context): Promise<void> {
+async function handleUnkill(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /unkill from user ${ctx.from?.id}`);
+    return;
+  }
+
   deactivateKillSwitch();
   console.log("[Telegram] Kill switch deactivated by user");
-  await sendDataMessage("✅ Kill switch deactivated");
+  await sendDataMessage("Kill switch deactivated");
   await sendMainMenu();
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /timezone from user ${ctx.from?.id}`);
+    return;
+  }
+
   const msg = await ctx.reply("What is your current time? (format: HH:MM, e.g., 14:30)");
   lastTimezonePromptId = msg.message_id;
 }
 
 async function handleTextInput(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    return;
+  }
+
   const userId = ctx.from?.id?.toString();
   if (!userId || !ctx.message || !ctx.message.text) {
     return;
