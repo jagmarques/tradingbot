@@ -13,9 +13,9 @@ import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusRep
 import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pricefeeds/manager.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
-import { executeSplitBuy, checkAutoSell, getPositions, getTokenPrice } from "./services/pumpfun/executor.js";
+import { executeSplitBuy, checkAutoSell, getPositions, getTokenPrice, loadPositionsFromDb as loadPumpfunPositions } from "./services/pumpfun/executor.js";
 import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
-import { loadPositionsFromDb } from "./services/polygon/positions.js";
+import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
 
@@ -36,9 +36,11 @@ async function main(): Promise<void> {
     console.log("[Bot] Database initialized");
 
     // Load open positions from database (recovery from crash)
-    const recoveredPositions = loadPositionsFromDb();
-    if (recoveredPositions > 0) {
-      console.log(`[Bot] Recovered ${recoveredPositions} open positions from previous session`);
+    const recoveredPumpfun = loadPumpfunPositions();
+    const recoveredPolymarket = loadPolymarketPositions();
+    const totalRecovered = recoveredPumpfun + recoveredPolymarket;
+    if (totalRecovered > 0) {
+      console.log(`[Bot] Recovered ${totalRecovered} open positions (${recoveredPumpfun} Pump.fun, ${recoveredPolymarket} Polymarket)`);
     }
 
     // Set daily loss baseline to actual wallet balance

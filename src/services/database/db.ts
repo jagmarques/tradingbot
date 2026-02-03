@@ -112,11 +112,28 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS pumpfun_positions (
+      mint TEXT PRIMARY KEY,
+      symbol TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      total_tokens TEXT NOT NULL,
+      total_cost_lamports TEXT NOT NULL,
+      buy_phase INTEGER NOT NULL,
+      peak_price REAL NOT NULL,
+      trailing_stop_active INTEGER NOT NULL,
+      sold_first INTEGER NOT NULL,
+      sold_second INTEGER NOT NULL,
+      sold_third INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
     CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
     CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
     CREATE INDEX IF NOT EXISTS idx_arbitrage_positions_status ON arbitrage_positions(status);
+    CREATE INDEX IF NOT EXISTS idx_pumpfun_positions_created ON pumpfun_positions(created_at);
   `);
 
   console.log("[Database] Initialized at", finalPath);
