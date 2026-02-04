@@ -9,6 +9,11 @@ const CHAIN_IDS: Record<Chain, string> = {
   ethereum: "ethereum",
   polygon: "polygon",
   base: "base",
+  arbitrum: "arbitrum",
+  bsc: "bsc",
+  optimism: "optimism",
+  avalanche: "avalanche",
+  sonic: "sonic",
 };
 
 interface BoostedToken {

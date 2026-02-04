@@ -1,4 +1,4 @@
-export type Chain = "solana" | "ethereum" | "polygon" | "base";
+export type Chain = "solana" | "ethereum" | "polygon" | "base" | "arbitrum" | "bsc" | "optimism" | "avalanche" | "sonic";
 
 export interface Trader {
   address: string;
@@ -112,5 +112,25 @@ export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
   base: [
     "0x3304E22DDaa22bCdC5fCa2269b418046aE7b566A",
     "0x9696f59E4d72E237BE84fFd425DCaD154Bf96976",
+  ],
+  arbitrum: [
+    "0xB38e8c17e38363aF6EbdCb3dAE12e0243582891D",
+    "0x1714400FF23dB4aF24F9fd64e7039e6597f18C2b",
+  ],
+  bsc: [
+    "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3",
+    "0x3c783c21a0383057D128bae431894a5C19F9Cf06",
+  ],
+  optimism: [
+    "0x82E0b8cDD80Af5930c4452c684E71c861148Ec8A",
+    "0xB0D502E938ed5f4df2E681fE6E419ff29631d62b",
+  ],
+  avalanche: [
+    "0x9f8c163cBA728e99993ABe7495F06c0A3c8Ac8b9",
+    "0x4483f0b6e2f5486d06958c20f8c39a7abe87bf8f",
+  ],
+  sonic: [
+    "0xF491e7B69E4244ad4002BC14e878a34207E38c29",
+    "0x16327E3FbDaCA3bcF7E38F5Af2599D2DDc33aE52",
   ],
 };

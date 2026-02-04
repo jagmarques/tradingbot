@@ -42,8 +42,8 @@ function cleanupSolanaCache(): void {
   }
 }
 
-// Etherscan supports: Ethereum, Polygon, Base (no API limits like Moralis)
-const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "base"];
+// Etherscan-family explorers: each has separate rate limits (5/sec each)
+const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "base", "arbitrum", "bsc", "optimism", "avalanche", "sonic"];
 
 let isRunning = false;
 let isDiscovering = false;
