@@ -107,8 +107,7 @@ export async function getWalletPnlSummary(
 
 export async function discoverTradersFromTokens(
   chain: Chain,
-  tokenAddresses: string[],
-  maxWalletsToCheck: number = 30
+  tokenAddresses: string[]
 ): Promise<Map<string, MoralisWalletPnl>> {
   const profitableTraders = new Map<string, MoralisWalletPnl>();
 
@@ -119,8 +118,8 @@ export async function discoverTradersFromTokens(
 
   const walletActivity = new Map<string, number>();
 
-  for (const token of tokenAddresses.slice(0, 10)) {
-    const transfers = await getTokenTransfers(token, chain, 50);
+  for (const token of tokenAddresses) {
+    const transfers = await getTokenTransfers(token, chain, 200);
 
     for (const transfer of transfers) {
       if (transfer.to_address) {
@@ -136,7 +135,6 @@ export async function discoverTradersFromTokens(
 
   const sortedWallets = Array.from(walletActivity.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, maxWalletsToCheck)
     .map(([addr]) => addr);
 
   for (const wallet of sortedWallets) {

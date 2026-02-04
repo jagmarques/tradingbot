@@ -53,7 +53,7 @@ async function getBoostedTokens(): Promise<BoostedToken[]> {
 }
 
 // Fetch trending tokens for a specific chain
-export async function getTrendingTokens(chain: Chain, limit: number = 20): Promise<string[]> {
+export async function getTrendingTokens(chain: Chain, limit: number = 50): Promise<string[]> {
   // Check cache first
   const cached = tokenCache.get(chain);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -77,8 +77,8 @@ export async function getTrendingTokens(chain: Chain, limit: number = 20): Promi
       return chainTokens;
     }
 
-    // Fallback: search for popular tokens on chain
-    const fallbackTokens = await searchChainTokens(chain, limit);
+    // Fallback: get top pairs on chain
+    const fallbackTokens = await getTopPairsOnChain(chain, limit);
     if (fallbackTokens.length > 0) {
       tokenCache.set(chain, { tokens: fallbackTokens, timestamp: Date.now() });
     }
@@ -89,46 +89,53 @@ export async function getTrendingTokens(chain: Chain, limit: number = 20): Promi
   }
 }
 
-// Search for active tokens on a chain using search endpoint
-async function searchChainTokens(chain: Chain, limit: number): Promise<string[]> {
+// Get top pairs on a chain by volume
+async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
-
-  // Search for common trading pairs on this chain
-  const searchTerms = ["meme", "pepe", "doge", "ai", "trump"];
   const tokens = new Set<string>();
 
-  for (const term of searchTerms) {
-    if (tokens.size >= limit) break;
+  try {
+    // Use pairs endpoint to get active pairs on chain
+    const url = `${DEXSCREENER_BASE}/latest/dex/pairs/${chainId}`;
+    const response = await fetch(url);
 
-    try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
-      const response = await fetch(url);
-
-      if (!response.ok) continue;
-
+    if (response.ok) {
       const data = (await response.json()) as { pairs?: DexScreenerPair[] };
       const pairs = data.pairs || [];
 
-      for (const pair of pairs) {
-        if (pair.chainId === chainId && tokens.size < limit) {
-          const volume = pair.volume?.h24 || 0;
-          const liquidity = pair.liquidity?.usd || 0;
+      // Sort by volume and filter by activity
+      const activePairs = pairs
+        .filter((p) => (p.volume?.h24 || 0) > 1000 && (p.liquidity?.usd || 0) > 1000)
+        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
 
-          // Only tokens with decent activity
-          if (volume > 10000 && liquidity > 5000) {
+      for (const pair of activePairs) {
+        if (tokens.size >= limit) break;
+        tokens.add(pair.baseToken.address);
+      }
+    }
+  } catch {
+    // Fallback: try search with generic term
+    try {
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${chainId}`;
+      const response = await fetch(url);
+
+      if (response.ok) {
+        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+        const pairs = (data.pairs || []).filter((p) => p.chainId === chainId);
+
+        for (const pair of pairs) {
+          if (tokens.size >= limit) break;
+          if ((pair.volume?.h24 || 0) > 1000) {
             tokens.add(pair.baseToken.address);
           }
         }
       }
-
-      // Rate limit
-      await new Promise((r) => setTimeout(r, 100));
     } catch {
-      continue;
+      // Silent fail
     }
   }
 
-  console.log(`[DexScreener] Found ${tokens.size} tokens via search on ${chain}`);
+  console.log(`[DexScreener] Found ${tokens.size} active tokens on ${chain}`);
   return Array.from(tokens);
 }
 
