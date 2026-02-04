@@ -10,9 +10,8 @@ import {
 
 const DISCOVERY_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
-// Only Base supported for Moralis profitability (free tier)
-// BNB, Arbitrum, Avalanche not supported
-const MORALIS_CHAINS: Chain[] = ["base"];
+// Moralis profitability supports: Ethereum, Polygon, Base
+const MORALIS_CHAINS: Chain[] = ["ethereum", "polygon", "base"];
 
 let discoveryTimer: NodeJS.Timeout | null = null;
 let isDiscovering = false;

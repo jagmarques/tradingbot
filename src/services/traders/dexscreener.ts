@@ -6,10 +6,9 @@ const DEXSCREENER_BASE = "https://api.dexscreener.com";
 // Map our chain names to DexScreener chain IDs
 const CHAIN_IDS: Record<Chain, string> = {
   solana: "solana",
+  ethereum: "ethereum",
+  polygon: "polygon",
   base: "base",
-  bnb: "bsc",
-  arbitrum: "arbitrum",
-  avalanche: "avalanche",
 };
 
 interface BoostedToken {
