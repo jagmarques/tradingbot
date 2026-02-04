@@ -4,15 +4,12 @@ import { getDb } from "../database/db.js";
 // Etherscan API V2 - unified multichain endpoint
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
 
-// Chain IDs for Etherscan V2 API
+// Chain IDs for Etherscan V2 API (free tier only)
+// Paid chains removed: base (8453), bsc (56), optimism (10), avalanche (43114)
 const CHAIN_IDS: Record<string, number> = {
   ethereum: 1,
   polygon: 137,
-  base: 8453,
   arbitrum: 42161,
-  bsc: 56,
-  optimism: 10,
-  avalanche: 43114,
   sonic: 146,
 };
 
@@ -329,9 +326,14 @@ export async function discoverTradersFromTokens(
   return profitableTraders;
 }
 
-// Check if Etherscan is configured (works without API key, just slower)
+// Check if Etherscan is configured (V2 requires API key)
 export function isEtherscanConfigured(): boolean {
-  return true; // Always available, API key just increases rate limit
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.log("[Etherscan] ETHERSCAN_API_KEY not set - EVM discovery disabled");
+    return false;
+  }
+  return true;
 }
 
 // Cleanup old cache entries (run periodically)
