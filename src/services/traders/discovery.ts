@@ -97,7 +97,7 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   console.log(`[Discovery] Checking ${popularTokens.length} trending tokens on ${chain}`);
 
-  const profitableTraders = await discoverTradersFromTokens(chain, popularTokens, 30);
+  const profitableTraders = await discoverTradersFromTokens(chain, popularTokens);
 
   let discovered = 0;
 
@@ -157,9 +157,9 @@ async function discoverTradersOnSolana(): Promise<number> {
 
   const traderFrequency = new Map<string, number>();
 
-  for (const mint of recentTokens.slice(0, 15)) {
+  for (const mint of recentTokens) {
     try {
-      const earlyBuyers = await findEarlyBuyers(mint, 20);
+      const earlyBuyers = await findEarlyBuyers(mint, 50);
       for (const buyer of earlyBuyers) {
         traderFrequency.set(buyer, (traderFrequency.get(buyer) || 0) + 1);
       }
@@ -172,7 +172,6 @@ async function discoverTradersOnSolana(): Promise<number> {
   const potentialTraders = Array.from(traderFrequency.entries())
     .filter(([_, count]) => count >= 1)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 100)
     .map(([address]) => address);
 
   console.log(`[Discovery] Found ${potentialTraders.length} potential Solana traders`);
