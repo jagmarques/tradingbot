@@ -41,9 +41,6 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
-  // Moralis API (optional - for trader discovery)
-  MORALIS_API_KEY: z.string().min(1).optional(),
-
   // Risk Limits
   MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),
   MAX_POLYMARKET_BET_USDC: numericString("20"),
