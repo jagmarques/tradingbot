@@ -144,51 +144,59 @@ export async function getTrendingTokens(chain: Chain, limit: number = 50): Promi
   }
 }
 
-// Chain-specific search terms to find active tokens
-const CHAIN_SEARCH_TERMS: Record<Chain, string[]> = {
-  solana: ["sol", "bonk", "jup", "ray", "orca"],
-  ethereum: ["pepe", "shib", "uni", "link", "aave", "meme", "ai"],
-  polygon: ["matic", "pol", "quick", "aave", "sand", "mana"],
-  base: ["base", "brett", "toshi", "degen"],
-  arbitrum: ["arb", "gmx", "magic", "grail", "rdnt"],
-  bsc: ["bnb", "cake", "bake", "xvs"],
-  optimism: ["op", "velo", "snx"],
-  avalanche: ["avax", "joe", "png", "qi"],
-  sonic: ["sonic", "s"],
-};
+// Cache for latest token profiles
+let profilesCache: { tokens: BoostedToken[]; timestamp: number } | null = null;
+const PROFILES_CACHE_TTL_MS = 60 * 1000;
+let profilesFetchPromise: Promise<BoostedToken[]> | null = null;
 
-// Get tokens via search (pairs endpoint doesn't support chain filtering)
+// Fetch latest token profiles (dynamically trending)
+async function getLatestProfiles(): Promise<BoostedToken[]> {
+  if (profilesCache && Date.now() - profilesCache.timestamp < PROFILES_CACHE_TTL_MS) {
+    return profilesCache.tokens;
+  }
+
+  if (profilesFetchPromise) {
+    return profilesFetchPromise;
+  }
+
+  profilesFetchPromise = (async () => {
+    try {
+      const url = `${DEXSCREENER_BASE}/token-profiles/latest/v1`;
+      const response = await rateLimitedFetch(url);
+
+      if (!response.ok) {
+        console.error(`[DexScreener] Profiles API error ${response.status}`);
+        return profilesCache?.tokens || [];
+      }
+
+      const tokens = (await response.json()) as BoostedToken[];
+      profilesCache = { tokens, timestamp: Date.now() };
+      return tokens;
+    } catch (err) {
+      console.error("[DexScreener] Error fetching profiles:", err);
+      return profilesCache?.tokens || [];
+    } finally {
+      profilesFetchPromise = null;
+    }
+  })();
+
+  return profilesFetchPromise;
+}
+
+// Get dynamic trending tokens (no hardcoded terms)
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
 
-  const searchTerms = [
-    ...(CHAIN_SEARCH_TERMS[chain] || []),
-    "pepe", "doge", "usdc", "weth", "meme", "ai",
-  ];
+  // Get latest token profiles (dynamic trending)
+  const profiles = await getLatestProfiles();
+  const profilesOnChain = profiles
+    .filter((t) => t.chainId === chainId)
+    .map((t) => t.tokenAddress);
 
-  for (const term of searchTerms) {
+  for (const token of profilesOnChain) {
     if (tokens.size >= limit) break;
-
-    try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
-      const response = await rateLimitedFetch(url);
-
-      if (!response.ok) continue;
-
-      const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-      const pairs = (data.pairs || [])
-        .filter((p) => p.chainId === chainId)
-        .filter((p) => (p.volume?.h24 || 0) > 500)
-        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
-
-      for (const pair of pairs) {
-        if (tokens.size >= limit) break;
-        tokens.add(pair.baseToken.address);
-      }
-    } catch {
-      continue;
-    }
+    tokens.add(token);
   }
 
   console.log(`[DexScreener] Found ${tokens.size} active tokens on ${chain}`);
