@@ -1,6 +1,6 @@
 import { Chain, TRADER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
-import { isMoralisConfigured, discoverTradersFromTokens, getPopularTokens } from "./moralis.js";
+import { isMoralisConfigured, isMoralisRateLimited, discoverTradersFromTokens, getPopularTokens } from "./moralis.js";
 import {
   isHeliusConfigured,
   analyzeWalletPnl,
@@ -72,7 +72,7 @@ async function runDiscovery(): Promise<void> {
 
   let totalDiscovered = 0;
 
-  if (isMoralisConfigured()) {
+  if (isMoralisConfigured() && !isMoralisRateLimited()) {
     for (const chain of MORALIS_CHAINS) {
       try {
         const discovered = await discoverTradersOnEvmChain(chain);
@@ -82,6 +82,8 @@ async function runDiscovery(): Promise<void> {
         console.error(`[Discovery] Error on ${chain}:`, err);
       }
     }
+  } else if (isMoralisRateLimited()) {
+    console.log("[Discovery] Moralis rate limited - skipping EVM chains");
   }
 
   if (isHeliusConfigured()) {
