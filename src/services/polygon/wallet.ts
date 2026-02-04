@@ -18,7 +18,7 @@ let wallet: Wallet | null = null;
 
 export function getProvider(): JsonRpcProvider {
   if (!provider) {
-    provider = new JsonRpcProvider(POLYGON_RPC_URL);
+    provider = new JsonRpcProvider(POLYGON_RPC_URL, undefined, { batchMaxCount: 1 });
     console.log("[Polygon] Provider connected");
   }
   return provider;
