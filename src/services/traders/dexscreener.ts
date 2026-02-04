@@ -43,6 +43,9 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
 let boostedCache: { tokens: BoostedToken[]; timestamp: number } | null = null;
 const BOOSTED_CACHE_TTL_MS = 60 * 1000; // 1 min cache
 
+// Mutex to prevent race condition on boosted tokens fetch
+let boostedFetchPromise: Promise<BoostedToken[]> | null = null;
+
 // Rate limiting for DexScreener (300 req/min = 5/sec)
 let lastDexScreenerRequest = 0;
 const MIN_DEXSCREENER_INTERVAL_MS = 250;
@@ -57,29 +60,41 @@ async function rateLimitedFetch(url: string): Promise<Response> {
   return fetch(url);
 }
 
-// Fetch boosted/promoted tokens from DexScreener (cached globally)
+// Fetch boosted/promoted tokens from DexScreener (cached globally with mutex)
 async function getBoostedTokens(): Promise<BoostedToken[]> {
   // Return cached if fresh
   if (boostedCache && Date.now() - boostedCache.timestamp < BOOSTED_CACHE_TTL_MS) {
     return boostedCache.tokens;
   }
 
-  try {
-    const url = `${DEXSCREENER_BASE}/token-boosts/top/v1`;
-    const response = await rateLimitedFetch(url);
-
-    if (!response.ok) {
-      console.error(`[DexScreener] Boosted API error ${response.status}`);
-      return boostedCache?.tokens || [];
-    }
-
-    const tokens = (await response.json()) as BoostedToken[];
-    boostedCache = { tokens, timestamp: Date.now() };
-    return tokens;
-  } catch (err) {
-    console.error("[DexScreener] Error fetching boosted:", err);
-    return boostedCache?.tokens || [];
+  // If another fetch is in progress, wait for it
+  if (boostedFetchPromise) {
+    return boostedFetchPromise;
   }
+
+  // Start fetch with mutex
+  boostedFetchPromise = (async () => {
+    try {
+      const url = `${DEXSCREENER_BASE}/token-boosts/top/v1`;
+      const response = await rateLimitedFetch(url);
+
+      if (!response.ok) {
+        console.error(`[DexScreener] Boosted API error ${response.status}`);
+        return boostedCache?.tokens || [];
+      }
+
+      const tokens = (await response.json()) as BoostedToken[];
+      boostedCache = { tokens, timestamp: Date.now() };
+      return tokens;
+    } catch (err) {
+      console.error("[DexScreener] Error fetching boosted:", err);
+      return boostedCache?.tokens || [];
+    } finally {
+      boostedFetchPromise = null;
+    }
+  })();
+
+  return boostedFetchPromise;
 }
 
 // Fetch trending tokens for a specific chain
