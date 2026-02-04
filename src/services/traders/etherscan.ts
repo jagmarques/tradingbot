@@ -164,7 +164,7 @@ async function getTokenTransfers(
   }
 }
 
-// Analyze wallet trades and calculate PnL
+// Analyze wallet trades and calculate PnL using stablecoin flows
 export async function analyzeWalletPnl(
   wallet: string,
   chain: Chain
@@ -184,27 +184,45 @@ export async function analyzeWalletPnl(
     return null;
   }
 
-  // Group by token to track buys/sells
-  const tokenTrades = new Map<
-    string,
-    { buys: TokenTransfer[]; sells: TokenTransfer[] }
-  >();
-
+  // Group transfers by transaction hash to find token<->stablecoin swaps
+  const txGroups = new Map<string, TokenTransfer[]>();
   for (const tx of transfers) {
-    // Skip stablecoins - we use them as quote currency
-    if (STABLECOINS.has(tx.tokenAddress)) continue;
-
-    if (!tokenTrades.has(tx.tokenAddress)) {
-      tokenTrades.set(tx.tokenAddress, { buys: [], sells: [] });
+    if (!txGroups.has(tx.hash)) {
+      txGroups.set(tx.hash, []);
     }
+    txGroups.get(tx.hash)!.push(tx);
+  }
 
-    const trades = tokenTrades.get(tx.tokenAddress)!;
+  // Track USD spent/received per token
+  const tokenPnl = new Map<string, { spent: number; received: number }>();
 
-    // Incoming = buy, outgoing = sell
-    if (tx.to === walletLower) {
-      trades.buys.push(tx);
-    } else if (tx.from === walletLower) {
-      trades.sells.push(tx);
+  for (const [, txTransfers] of txGroups) {
+    // Find stablecoin transfers in this tx
+    const stableTransfers = txTransfers.filter((t) => STABLECOINS.has(t.tokenAddress));
+    const tokenTransfers = txTransfers.filter((t) => !STABLECOINS.has(t.tokenAddress));
+
+    if (stableTransfers.length === 0 || tokenTransfers.length === 0) continue;
+
+    for (const stableTx of stableTransfers) {
+      // Stablecoin has 6 decimals typically
+      const usdAmount = parseFloat(stableTx.value) / 1e6;
+      if (usdAmount < 1) continue; // Skip dust
+
+      for (const tokenTx of tokenTransfers) {
+        if (!tokenPnl.has(tokenTx.tokenAddress)) {
+          tokenPnl.set(tokenTx.tokenAddress, { spent: 0, received: 0 });
+        }
+        const pnl = tokenPnl.get(tokenTx.tokenAddress)!;
+
+        // BUY: wallet sends stablecoin OUT, receives token IN
+        if (stableTx.from === walletLower && tokenTx.to === walletLower) {
+          pnl.spent += usdAmount;
+        }
+        // SELL: wallet sends token OUT, receives stablecoin IN
+        else if (stableTx.to === walletLower && tokenTx.from === walletLower) {
+          pnl.received += usdAmount;
+        }
+      }
     }
   }
 
@@ -214,31 +232,18 @@ export async function analyzeWalletPnl(
   let losingTrades = 0;
   let totalPnlUsd = 0;
 
-  for (const [, { buys, sells }] of tokenTrades) {
-    if (buys.length === 0 || sells.length === 0) continue;
+  for (const [, { spent, received }] of tokenPnl) {
+    // Only count as trade if both bought and sold
+    if (spent < 10 || received < 10) continue;
 
-    // Simple PnL: compare total buy value vs total sell value
-    // Note: This is approximate - real calculation would need USD prices at time of trade
-    const totalBought = buys.reduce((sum, b) => sum + parseFloat(b.value), 0);
-    const totalSold = sells.reduce((sum, s) => sum + parseFloat(s.value), 0);
+    totalTrades++;
+    const pnl = received - spent;
+    totalPnlUsd += pnl;
 
-    // If sold more than bought (in token terms), it's likely profitable
-    // This is a heuristic - selling at higher price means more tokens per USD
-    if (totalSold > 0 && totalBought > 0) {
-      totalTrades++;
-
-      // Rough heuristic: if sold amount > 80% of bought, consider it a completed trade
-      const ratio = totalSold / totalBought;
-      if (ratio > 0.8) {
-        if (ratio > 1.05) {
-          // Sold more tokens than bought = likely bought low, sold high
-          winningTrades++;
-          totalPnlUsd += 10; // Placeholder - real calc needs price data
-        } else if (ratio < 0.95) {
-          losingTrades++;
-          totalPnlUsd -= 5;
-        }
-      }
+    if (pnl > 0) {
+      winningTrades++;
+    } else {
+      losingTrades++;
     }
   }
 
