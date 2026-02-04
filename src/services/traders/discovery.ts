@@ -163,50 +163,10 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   console.log(`[Discovery] Checking ${popularTokens.length} trending tokens on ${chain}`);
 
+  // Etherscan now saves traders immediately to DB as they're discovered
   const profitableTraders = await discoverTradersFromTokens(chain, popularTokens);
 
-  let discovered = 0;
-
-  // Etherscan already filtered - all traders here are profitable (standard or big hitter)
-  for (const [address, prof] of profitableTraders) {
-    const existing = getTrader(address, chain);
-    if (existing) continue;
-
-    const profitFactor =
-      prof.losingTrades > 0
-        ? Math.min(10, prof.winningTrades / prof.losingTrades)
-        : prof.winningTrades > 0
-          ? 10
-          : 0;
-
-    const score = Math.min(
-      100,
-      prof.winRate * 0.4 +
-        Math.min(100, profitFactor * 10) * 0.3 +
-        Math.min(100, prof.totalTrades * 2) * 0.3
-    );
-
-    upsertTrader({
-      address,
-      chain,
-      score: Math.round(score * 10) / 10,
-      winRate: prof.winRate,
-      profitFactor,
-      consistency: 50,
-      totalTrades: prof.totalTrades,
-      winningTrades: prof.winningTrades,
-      losingTrades: prof.losingTrades,
-      totalPnlUsd: prof.totalPnlUsd,
-      avgHoldTimeMs: 0,
-      largestWinPct: 0,
-      discoveredAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
-    discovered++;
-  }
-
-  return discovered;
+  return profitableTraders.size;
 }
 
 async function discoverTradersOnSolana(): Promise<number> {
