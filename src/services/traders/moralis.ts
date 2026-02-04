@@ -3,9 +3,10 @@ import { Chain } from "./types.js";
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
-// Moralis profitability endpoint only supports: eth, polygon, base
-// Source: https://docs.moralis.com/web3-data-api/evm/profitability-faqs
-const SUPPORTED_CHAINS: Partial<Record<Chain, string>> = {
+// Moralis profitability supports: Ethereum, Polygon, Base
+const SUPPORTED_CHAINS: Record<string, string> = {
+  ethereum: "eth",
+  polygon: "polygon",
   base: "base",
 };
 
@@ -112,7 +113,7 @@ export async function discoverTradersFromTokens(
   const profitableTraders = new Map<string, MoralisWalletPnl>();
 
   if (!isMoralisChainSupported(chain)) {
-    console.log(`[Moralis] Chain ${chain} not supported for profitability`);
+    console.log(`[Moralis] Chain ${chain} not supported`);
     return profitableTraders;
   }
 
