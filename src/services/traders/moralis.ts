@@ -166,7 +166,7 @@ export async function discoverTradersFromTokens(
   for (const wallet of sortedWallets) {
     const pnl = await getWalletPnlSummary(wallet, chain);
 
-    if (pnl && pnl.total_trades >= 10 && pnl.win_rate >= 55 && pnl.total_pnl_usd > 500) {
+    if (pnl && pnl.total_trades >= 10 && pnl.win_rate >= 80 && pnl.total_pnl_usd > 500) {
       profitableTraders.set(wallet, pnl);
       console.log(
         `[Moralis] +${chain.toUpperCase()} ${wallet.slice(0, 8)}... (${pnl.win_rate.toFixed(0)}% win, $${pnl.total_pnl_usd.toFixed(0)})`
