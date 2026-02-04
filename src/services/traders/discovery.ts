@@ -42,8 +42,8 @@ function cleanupSolanaCache(): void {
   }
 }
 
-// Etherscan-family explorers: each has separate rate limits (5/sec each)
-const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "base", "arbitrum", "bsc", "optimism", "avalanche", "sonic"];
+// EVM chains - free tier only (paid: base, bsc, optimism, avalanche)
+const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "arbitrum", "sonic"];
 
 let isRunning = false;
 let isDiscovering = false;
@@ -113,7 +113,7 @@ async function runDiscovery(): Promise<void> {
     // Each API has separate rate limits, no reason to wait
     const tasks: Promise<{ chain: string; discovered: number }>[] = [];
 
-    // EVM chains via Etherscan (each chain = separate API = 5 calls/sec each)
+    // EVM chains via Etherscan (free tier: ethereum, polygon, arbitrum, sonic)
     if (isEtherscanConfigured()) {
       for (const chain of EVM_CHAINS) {
         tasks.push(
