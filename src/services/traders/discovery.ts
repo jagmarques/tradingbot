@@ -222,11 +222,11 @@ async function discoverTradersOnSolana(): Promise<number> {
 
       if (!analysis) continue;
 
-      // Relaxed criteria for Solana
+      // Use same 80% win rate threshold as EVM chains
       if (
-        analysis.winRate >= 50 && // 50% win rate (was 55%)
-        analysis.totalTrades >= 3 && // 3 trades (was 5)
-        analysis.totalPnlSol > 0.1 // 0.1 SOL profit (was 0.5)
+        analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 && // 80% win rate
+        analysis.totalTrades >= 5 &&
+        analysis.totalPnlSol > 0.5 // At least 0.5 SOL profit
       ) {
         // Estimate USD PnL
         const solPrice = 150;
