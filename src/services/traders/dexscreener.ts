@@ -73,7 +73,7 @@ async function getBoostedTokens(): Promise<BoostedToken[]> {
   }
 
   // Start fetch with mutex
-  boostedFetchPromise = (async () => {
+  boostedFetchPromise = (async (): Promise<BoostedToken[]> => {
     try {
       const url = `${DEXSCREENER_BASE}/token-boosts/top/v1`;
       const response = await rateLimitedFetch(url);
@@ -159,7 +159,7 @@ async function getLatestProfiles(): Promise<BoostedToken[]> {
     return profilesFetchPromise;
   }
 
-  profilesFetchPromise = (async () => {
+  profilesFetchPromise = (async (): Promise<BoostedToken[]> => {
     try {
       const url = `${DEXSCREENER_BASE}/token-profiles/latest/v1`;
       const response = await rateLimitedFetch(url);
@@ -263,4 +263,127 @@ export async function getTokenPairs(tokenAddress: string): Promise<DexScreenerPa
   } catch {
     return [];
   }
+}
+
+// Cache for new pairs per chain
+const newPairsCache = new Map<Chain, { tokens: string[]; timestamp: number }>();
+const NEW_PAIRS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min cache
+
+// Get newly created pairs (recent token launches) using search as fallback
+// Note: DexScreener doesn't have a direct "new pairs by chain" endpoint
+export async function getNewPairs(chain: Chain, limit: number = 30): Promise<string[]> {
+  const cached = newPairsCache.get(chain);
+  if (cached && Date.now() - cached.timestamp < NEW_PAIRS_CACHE_TTL_MS) {
+    return cached.tokens.slice(0, limit);
+  }
+
+  const chainId = CHAIN_IDS[chain];
+  if (!chainId) return [];
+
+  try {
+    // Use token-profiles/latest which has newly listed tokens
+    const url = `${DEXSCREENER_BASE}/token-profiles/latest/v1`;
+    const response = await rateLimitedFetch(url);
+
+    if (!response.ok) {
+      // Silently return cached/empty - this endpoint may not always work
+      return cached?.tokens || [];
+    }
+
+    const data = (await response.json()) as Array<{ chainId: string; tokenAddress: string }>;
+
+    // Filter for our chain
+    const tokens = data
+      .filter((t) => t.chainId === chainId)
+      .map((t) => t.tokenAddress)
+      .slice(0, limit);
+
+    if (tokens.length > 0) {
+      newPairsCache.set(chain, { tokens, timestamp: Date.now() });
+      console.log(`[DexScreener] Found ${tokens.length} new tokens on ${chain}`);
+    }
+
+    return tokens;
+  } catch {
+    // Silently fail - this is a nice-to-have feature
+    return cached?.tokens || [];
+  }
+}
+
+// Cache for high-volume tokens
+const volumeCache = new Map<Chain, { tokens: string[]; timestamp: number }>();
+const VOLUME_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min cache
+
+// Get high-volume tokens (not necessarily trending)
+export async function getHighVolumeTokens(chain: Chain, minVolumeUsd: number = 50000, limit: number = 30): Promise<string[]> {
+  const cached = volumeCache.get(chain);
+  if (cached && Date.now() - cached.timestamp < VOLUME_CACHE_TTL_MS) {
+    return cached.tokens.slice(0, limit);
+  }
+
+  const chainId = CHAIN_IDS[chain];
+  if (!chainId) return [];
+
+  try {
+    // Search broadly to find high-volume pairs
+    const searchTerms = ["", "a", "e", "i", "o", "u"]; // Common letters to get variety
+    const allPairs: DexScreenerPair[] = [];
+
+    for (const term of searchTerms.slice(0, 3)) { // Limit API calls
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term || "token"}`;
+      const response = await rateLimitedFetch(url);
+      if (!response.ok) continue;
+
+      const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+      const chainPairs = (data.pairs || []).filter((p) => p.chainId === chainId);
+      allPairs.push(...chainPairs);
+    }
+
+    // Dedupe and filter by volume
+    const tokenVolumes = new Map<string, number>();
+    for (const pair of allPairs) {
+      const addr = pair.baseToken.address;
+      const vol = pair.volume?.h24 || 0;
+      if (vol >= minVolumeUsd) {
+        tokenVolumes.set(addr, Math.max(tokenVolumes.get(addr) || 0, vol));
+      }
+    }
+
+    // Sort by volume and return top
+    const tokens = Array.from(tokenVolumes.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([addr]) => addr);
+
+    if (tokens.length > 0) {
+      volumeCache.set(chain, { tokens, timestamp: Date.now() });
+      console.log(`[DexScreener] Found ${tokens.length} high-volume tokens on ${chain} (>$${minVolumeUsd})`);
+    }
+
+    return tokens;
+  } catch (err) {
+    console.error(`[DexScreener] Error fetching high-volume on ${chain}:`, err);
+    return cached?.tokens || [];
+  }
+}
+
+// Get ALL tokens worth checking (trending + new launches + high volume)
+export async function getAllActiveTokens(chain: Chain, limit: number = 100): Promise<string[]> {
+  const allTokens = new Set<string>();
+
+  // 1. Trending/boosted tokens
+  const trending = await getTrendingTokens(chain, 30);
+  for (const t of trending) allTokens.add(t);
+
+  // 2. New token launches (hidden gems)
+  const newPairs = await getNewPairs(chain, 30);
+  for (const t of newPairs) allTokens.add(t);
+
+  // 3. High-volume non-trending
+  const highVolume = await getHighVolumeTokens(chain, 50000, 30);
+  for (const t of highVolume) allTokens.add(t);
+
+  const result = Array.from(allTokens).slice(0, limit);
+  console.log(`[DexScreener] Total ${result.length} unique tokens on ${chain} (trending + new + high-vol)`);
+  return result;
 }

@@ -168,7 +168,7 @@ export function upsertTrader(trader: Trader): void {
   `);
 
   stmt.run(
-    trader.address,
+    trader.address.toLowerCase(),
     trader.chain,
     trader.score,
     trader.winRate,
@@ -189,7 +189,7 @@ export function upsertTrader(trader: Trader): void {
 export function getTrader(address: string, chain: Chain): Trader | null {
   const db = getDb();
   const stmt = db.prepare("SELECT * FROM trader_wallets WHERE address = ? AND chain = ?");
-  const row = stmt.get(address, chain) as Record<string, unknown> | undefined;
+  const row = stmt.get(address.toLowerCase(), chain) as Record<string, unknown> | undefined;
 
   if (!row) return null;
 
@@ -235,6 +235,62 @@ export function getTopTraders(limit: number = 50, chain?: Chain): Trader[] {
   const rows = stmt.all(...params) as Record<string, unknown>[];
 
   return rows.map(mapRowToTrader);
+}
+
+export type TraderSortBy = "score" | "pnl" | "pnl_pct";
+
+export interface TraderWithPnlPct extends Trader {
+  totalInvested: number;
+  pnlPct: number;
+}
+
+// Get traders with calculated PnL % and flexible sorting
+export function getTopTradersSorted(
+  limit: number = 50,
+  sortBy: TraderSortBy = "score",
+  chain?: Chain
+): TraderWithPnlPct[] {
+  const db = getDb();
+
+  // Get all traders first
+  let query = "SELECT * FROM trader_wallets";
+  const params: unknown[] = [];
+
+  if (chain) {
+    query += " WHERE chain = ?";
+    params.push(chain);
+  }
+
+  const stmt = db.prepare(query);
+  const rows = stmt.all(...params) as Record<string, unknown>[];
+  const traders = rows.map(mapRowToTrader);
+
+  // Calculate PnL % for each trader from their token trades
+  const tradersWithPct: TraderWithPnlPct[] = traders.map((trader) => {
+    const tokenTrades = db
+      .prepare("SELECT SUM(buy_amount_usd) as total_invested FROM trader_token_trades WHERE wallet_address = ? AND chain = ?")
+      .get(trader.address.toLowerCase(), trader.chain) as { total_invested: number | null } | undefined;
+
+    const totalInvested = tokenTrades?.total_invested || 0;
+    const pnlPct = totalInvested > 0 ? (trader.totalPnlUsd / totalInvested) * 100 : 0;
+
+    return {
+      ...trader,
+      totalInvested,
+      pnlPct,
+    };
+  });
+
+  // Sort based on criteria
+  if (sortBy === "pnl") {
+    tradersWithPct.sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+  } else if (sortBy === "pnl_pct") {
+    tradersWithPct.sort((a, b) => b.pnlPct - a.pnlPct);
+  } else {
+    tradersWithPct.sort((a, b) => b.score - a.score);
+  }
+
+  return tradersWithPct.slice(0, limit);
 }
 
 // Insert trader trade
@@ -665,9 +721,9 @@ export function upsertTokenTrade(trade: TokenTrade): void {
 
   stmt.run(
     trade.id,
-    trade.walletAddress,
+    trade.walletAddress.toLowerCase(),
     trade.chain,
-    trade.tokenAddress,
+    trade.tokenAddress.toLowerCase(),
     trade.tokenSymbol,
     trade.buyAmountUsd,
     trade.sellAmountUsd,
@@ -710,4 +766,63 @@ export function deleteTokenTrades(walletAddress: string, chain: Chain): void {
   const db = getDb();
   const stmt = db.prepare("DELETE FROM trader_token_trades WHERE wallet_address = ? AND chain = ?");
   stmt.run(walletAddress.toLowerCase(), chain);
+}
+
+// Delete stale traders (no update in last N days)
+export function deleteStaleTraders(maxAgeMs: number = 30 * 24 * 60 * 60 * 1000): number {
+  const db = getDb();
+  const cutoff = Date.now() - maxAgeMs;
+
+  // Get stale traders first for cleanup
+  const staleTraders = db
+    .prepare("SELECT address, chain FROM trader_wallets WHERE updated_at < ?")
+    .all(cutoff) as { address: string; chain: string }[];
+
+  if (staleTraders.length === 0) return 0;
+
+  // Delete their token trades
+  for (const trader of staleTraders) {
+    db.prepare("DELETE FROM trader_token_trades WHERE wallet_address = ? AND chain = ?")
+      .run(trader.address, trader.chain);
+  }
+
+  // Delete the traders
+  const result = db
+    .prepare("DELETE FROM trader_wallets WHERE updated_at < ?")
+    .run(cutoff);
+
+  if (result.changes > 0) {
+    console.log(`[Traders] Cleaned ${result.changes} stale traders (no activity in 30 days)`);
+  }
+
+  return result.changes;
+}
+
+// Delete traders that don't meet quality criteria (negative PnL, low score)
+export function deleteInvalidTraders(): number {
+  const db = getDb();
+
+  // Get invalid traders (negative PnL)
+  const invalidTraders = db
+    .prepare("SELECT address, chain, total_pnl_usd, score FROM trader_wallets WHERE total_pnl_usd <= 0")
+    .all() as { address: string; chain: string; total_pnl_usd: number; score: number }[];
+
+  if (invalidTraders.length === 0) return 0;
+
+  // Delete their token trades
+  for (const trader of invalidTraders) {
+    db.prepare("DELETE FROM trader_token_trades WHERE wallet_address = ? AND chain = ?")
+      .run(trader.address, trader.chain);
+  }
+
+  // Delete the traders
+  const result = db
+    .prepare("DELETE FROM trader_wallets WHERE total_pnl_usd <= 0")
+    .run();
+
+  if (result.changes > 0) {
+    console.log(`[Traders] Removed ${result.changes} traders with negative/zero PnL`);
+  }
+
+  return result.changes;
 }

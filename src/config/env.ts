@@ -41,6 +41,18 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
+  // AI (DeepSeek for Polymarket betting)
+  DEEPSEEK_API_KEY: z.string().min(1).optional(),
+
+  // AI Betting Config
+  AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
+  AIBETTING_MAX_BET: numericString("10"),
+  AIBETTING_MAX_EXPOSURE: numericString("50"),
+  AIBETTING_MAX_POSITIONS: numericString("5"),
+  AIBETTING_MIN_EDGE: numericStringMax1("0.08"),
+  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.6"),
+  AIBETTING_SCAN_INTERVAL: numericString("1800000"), // 30 min (markets resolve in days)
+
   // Risk Limits
   MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),
   MAX_POLYMARKET_BET_USDC: numericString("20"),

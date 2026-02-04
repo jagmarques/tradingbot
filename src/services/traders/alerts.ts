@@ -2,6 +2,7 @@ import { Trader, TraderTrade, TraderAlert } from "./types.js";
 import { insertTraderAlert, alertExists } from "./storage.js";
 import { sendMessage } from "../telegram/bot.js";
 import { onTraderTrade } from "./tracker.js";
+import { executeCopyTrade, findOpenPosition, closeCopiedPosition } from "../copy/executor.js";
 
 let unsubscribe: (() => void) | null = null;
 
@@ -86,6 +87,34 @@ async function handleTraderTrade(trader: Trader, trade: TraderTrade): Promise<vo
     console.log(`[TraderAlerts] Sent alert for ${trader.address.slice(0, 8)}...`);
   } catch (err) {
     console.error("[TraderAlerts] Failed to send alert:", err);
+  }
+
+  // Execute copy trade if enabled (only for BUY trades)
+  if (trade.type === "BUY") {
+    try {
+      const copyResult = await executeCopyTrade(trader, trade);
+      if (copyResult?.success) {
+        console.log(`[TraderAlerts] Copy trade executed for ${trade.tokenAddress.slice(0, 8)}...`);
+      }
+    } catch (err) {
+      console.error("[TraderAlerts] Copy trade error:", err);
+    }
+  }
+
+  // Close copied position if trader sells
+  if (trade.type === "SELL") {
+    try {
+      const openPosition = findOpenPosition(trader.address, trade.tokenAddress);
+      if (openPosition) {
+        console.log(`[TraderAlerts] Trader sold, closing copied position for ${trade.tokenAddress.slice(0, 8)}...`);
+        const closeResult = await closeCopiedPosition(openPosition, "Trader sold");
+        if (closeResult.success) {
+          console.log(`[TraderAlerts] Closed copy position, PnL: ${closeResult.pnlNative?.toFixed(6)} native`);
+        }
+      }
+    } catch (err) {
+      console.error("[TraderAlerts] Close copy error:", err);
+    }
   }
 }
 

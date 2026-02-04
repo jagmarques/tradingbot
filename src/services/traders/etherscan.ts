@@ -290,6 +290,12 @@ export async function analyzeWalletPnl(
     });
   }
 
+  // Check if wallet is stale (no activity in 30 days)
+  const lastActivity = Math.max(...tokenTrades.map((t) => t.lastSellTimestamp), 0);
+  if (lastActivity > 0 && Date.now() - lastActivity > STALENESS_THRESHOLD_MS) {
+    return null; // Skip stale wallets
+  }
+
   const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
   const profitability: WalletProfitability = {
@@ -312,6 +318,9 @@ export async function analyzeWalletPnl(
 
 // Max wallets to check per cycle (prevents hour-long cycles)
 const MAX_WALLETS_PER_CYCLE = 200;
+
+// Skip wallets with no activity in last 30 days
+const STALENESS_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Discover profitable traders from token transfers
 export async function discoverTradersFromTokens(
@@ -360,10 +369,11 @@ export async function discoverTradersFromTokens(
 
     if (!profitability) continue;
 
-    // Check if meets standard trader thresholds (20+ trades, 80%+ win rate)
+    // Check if meets standard trader thresholds (20+ trades, 80%+ win rate, positive PnL)
     const isStandardTrader =
       profitability.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
-      profitability.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100;
+      profitability.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
+      profitability.totalPnlUsd > 0;
 
     // Check if meets big hitter thresholds (3-19 trades, 80%+ win, $5000+ PnL)
     const isBigHitter =
@@ -376,13 +386,19 @@ export async function discoverTradersFromTokens(
       profitableTraders.set(wallet, profitability);
       const type = isStandardTrader ? "TRADER" : "BIG_HIT";
 
-      // Save immediately to DB
-      const profitFactor =
-        profitability.losingTrades > 0
-          ? Math.min(10, profitability.winningTrades / profitability.losingTrades)
-          : profitability.winningTrades > 0
-            ? 10
-            : 0;
+      // Calculate real profit factor from actual profit/loss amounts
+      let profitFactor = 0;
+      if (profitability.tokenTrades && profitability.tokenTrades.length > 0) {
+        const grossProfit = profitability.tokenTrades
+          .filter((t) => t.pnl > 0)
+          .reduce((sum, t) => sum + t.pnl, 0);
+        const grossLoss = Math.abs(
+          profitability.tokenTrades
+            .filter((t) => t.pnl < 0)
+            .reduce((sum, t) => sum + t.pnl, 0)
+        );
+        profitFactor = grossLoss > 0 ? Math.min(10, grossProfit / grossLoss) : grossProfit > 0 ? 10 : 0;
+      }
 
       const score = Math.min(
         100,

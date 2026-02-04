@@ -66,3 +66,18 @@ export const ESTIMATED_GAS_FEE_SOL = 0.003; // 3000 lamports typical Solana gas
 export const ESTIMATED_GAS_FEE_MATIC = 0.001; // ~0.001 MATIC (~$0.00011) for Polygon gas
 export const ESTIMATED_SLIPPAGE_PUMPFUN = 0.01; // 1% estimated slippage on Pump.fun
 export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% estimated slippage on Polymarket
+
+// EVM chain gas fees (in native token)
+export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
+  ethereum: 0.003, // ~$6-10 in ETH gas
+  polygon: 0.001, // ~$0.001 MATIC
+  base: 0.0001, // Base is cheap
+  arbitrum: 0.0001, // Arbitrum is cheap
+  bsc: 0.0005, // BNB gas
+  optimism: 0.0001, // OP is cheap
+  avalanche: 0.01, // AVAX gas
+  sonic: 0.001, // Sonic gas
+};
+
+// Slippage estimates for copy trading
+export const ESTIMATED_SLIPPAGE_DEX = 0.01; // 1% slippage on DEX swaps (entry + exit)

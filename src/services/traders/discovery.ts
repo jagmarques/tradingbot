@@ -1,12 +1,12 @@
-import { Chain, TRADER_THRESHOLDS } from "./types.js";
+import { Chain, TRADER_THRESHOLDS, BIG_HITTER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
 import {
   isEtherscanConfigured,
   discoverTradersFromTokens,
-  getPopularTokens,
   initProfitabilityCache,
   cleanupCache,
 } from "./etherscan.js";
+import { getAllActiveTokens } from "./dexscreener.js";
 import {
   isHeliusConfigured,
   analyzeWalletPnl,
@@ -67,7 +67,7 @@ export function startDiscovery(): void {
   initProfitabilityCache();
 
   isRunning = true;
-  console.log("[Discovery] Starting continuous discovery (no API limits)");
+  console.log("[Discovery] Starting continuous discovery");
   console.log(`[Discovery] APIs: Etherscan=${hasEtherscan}, Helius=${hasHelius}`);
 
   runContinuousDiscovery();
@@ -129,14 +129,25 @@ async function runDiscovery(): Promise<void> {
       }
     }
 
-    // Solana via Helius (separate API)
+    // Solana via Helius - both Pump.fun and all DEXes (DexScreener tokens)
     if (isHeliusConfigured()) {
+      // Pump.fun specific discovery
       tasks.push(
-        discoverTradersOnSolana()
-          .then((discovered) => ({ chain: "solana", discovered }))
+        discoverTradersOnSolanaPumpfun()
+          .then((discovered) => ({ chain: "solana-pumpfun", discovered }))
           .catch((err) => {
-            console.error("[Discovery] Error on Solana:", err);
-            return { chain: "solana", discovered: 0 };
+            console.error("[Discovery] Error on Solana Pump.fun:", err);
+            return { chain: "solana-pumpfun", discovered: 0 };
+          })
+      );
+
+      // All DEXes via DexScreener tokens + Helius analysis
+      tasks.push(
+        discoverTradersOnSolanaAllDexes()
+          .then((discovered) => ({ chain: "solana-dex", discovered }))
+          .catch((err) => {
+            console.error("[Discovery] Error on Solana DEXes:", err);
+            return { chain: "solana-dex", discovered: 0 };
           })
       );
     }
@@ -155,21 +166,22 @@ async function runDiscovery(): Promise<void> {
 }
 
 async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
-  const popularTokens = await getPopularTokens(chain);
-  if (popularTokens.length === 0) {
-    console.log(`[Discovery] No trending tokens found on ${chain}`);
+  // Get ALL active tokens: trending + new launches + high volume
+  const activeTokens = await getAllActiveTokens(chain, 50);
+  if (activeTokens.length === 0) {
+    console.log(`[Discovery] No active tokens found on ${chain}`);
     return 0;
   }
 
-  console.log(`[Discovery] Checking ${popularTokens.length} trending tokens on ${chain}`);
+  console.log(`[Discovery] Checking ${activeTokens.length} tokens on ${chain} (trending + new + high-vol)`);
 
   // Etherscan now saves traders immediately to DB as they're discovered
-  const profitableTraders = await discoverTradersFromTokens(chain, popularTokens);
+  const profitableTraders = await discoverTradersFromTokens(chain, activeTokens);
 
   return profitableTraders.size;
 }
 
-async function discoverTradersOnSolana(): Promise<number> {
+async function discoverTradersOnSolanaPumpfun(): Promise<number> {
   cleanupSolanaCache();
   console.log("[Discovery] Scanning Solana Pump.fun traders...");
 
@@ -275,6 +287,123 @@ async function discoverTradersOnSolana(): Promise<number> {
     console.log(`[Discovery] Checked ${newWalletsChecked} new Solana wallets`);
   }
 
+  return discovered;
+}
+
+// Discover traders on all Solana DEXes (Raydium, Orca, Jupiter) via DexScreener + Helius
+async function discoverTradersOnSolanaAllDexes(): Promise<number> {
+  console.log("[Discovery] Scanning Solana DEX traders (Raydium, Orca, Jupiter)...");
+
+  // Get trending/active Solana tokens from DexScreener
+  const solanaTokens = await getAllActiveTokens("solana", 30);
+  console.log(`[Discovery] Found ${solanaTokens.length} active Solana tokens from DexScreener`);
+
+  if (solanaTokens.length === 0) return 0;
+
+  const traderFrequency = new Map<string, number>();
+
+  // Find early buyers for each token using Helius
+  for (const mint of solanaTokens) {
+    try {
+      const earlyBuyers = await findEarlyBuyers(mint, 30);
+      for (const buyer of earlyBuyers) {
+        traderFrequency.set(buyer, (traderFrequency.get(buyer) || 0) + 1);
+      }
+      await new Promise((r) => setTimeout(r, 100)); // Rate limit
+    } catch (err) {
+      console.error(`[Discovery] Error finding DEX buyers for ${mint.slice(0, 8)}...:`, err);
+    }
+  }
+
+  // Sort by frequency (traders on multiple tokens = more consistent)
+  const potentialTraders = Array.from(traderFrequency.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 100)
+    .map(([address]) => address);
+
+  traderFrequency.clear();
+  console.log(`[Discovery] Found ${potentialTraders.length} potential Solana DEX traders`);
+
+  let discovered = 0;
+
+  for (const address of potentialTraders) {
+    // Skip if already tracked
+    const existing = getTrader(address, "solana");
+    if (existing) continue;
+
+    // Skip if recently checked
+    const lastChecked = checkedSolanaWallets.get(address);
+    if (lastChecked && Date.now() - lastChecked < SOLANA_CACHE_TTL_MS) {
+      continue;
+    }
+
+    try {
+      const analysis = await analyzeWalletPnl(address);
+      checkedSolanaWallets.set(address, Date.now());
+      if (!analysis) continue;
+
+      // Check big hitter thresholds (fewer trades but high profit)
+      const solPrice = 150;
+      const totalPnlUsd = analysis.totalPnlSol * solPrice;
+
+      // Check standard trader thresholds (must have positive PnL)
+      const isStandardTrader =
+        analysis.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
+        analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
+        totalPnlUsd > 0;
+
+      const isBigHitter =
+        analysis.totalTrades >= BIG_HITTER_THRESHOLDS.MIN_TRADES &&
+        analysis.totalTrades < TRADER_THRESHOLDS.MIN_TRADES &&
+        analysis.winRate >= BIG_HITTER_THRESHOLDS.MIN_WIN_RATE * 100 &&
+        totalPnlUsd >= BIG_HITTER_THRESHOLDS.MIN_TOTAL_PNL_USD;
+
+      if (isStandardTrader || isBigHitter) {
+        const profitFactor =
+          analysis.losingTrades > 0
+            ? Math.min(10, analysis.winningTrades / analysis.losingTrades)
+            : analysis.winningTrades > 0
+              ? 10
+              : 0;
+
+        const score = Math.min(
+          100,
+          analysis.winRate * 0.4 +
+            Math.min(100, profitFactor * 10) * 0.3 +
+            Math.min(100, analysis.totalTrades * 2) * 0.3
+        );
+
+        upsertTrader({
+          address,
+          chain: "solana",
+          score: Math.round(score * 10) / 10,
+          winRate: analysis.winRate,
+          profitFactor,
+          consistency: 50,
+          totalTrades: analysis.totalTrades,
+          winningTrades: analysis.winningTrades,
+          losingTrades: analysis.losingTrades,
+          totalPnlUsd,
+          avgHoldTimeMs: 0,
+          largestWinPct: 0,
+          discoveredAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+
+        discovered++;
+        const type = isStandardTrader ? "TRADER" : "BIG_HIT";
+        console.log(
+          `[Discovery] +SOL [${type}] ${address.slice(0, 8)}... (${analysis.winRate.toFixed(0)}% win, ${analysis.totalTrades} trades, $${totalPnlUsd.toFixed(0)})`
+        );
+      }
+
+      await new Promise((r) => setTimeout(r, 100)); // Rate limit
+    } catch (err) {
+      console.error(`[Discovery] Error analyzing DEX trader ${address.slice(0, 8)}...:`, err);
+    }
+  }
+
+  console.log(`[Discovery] Discovered ${discovered} profitable Solana DEX traders`);
   return discovered;
 }
 

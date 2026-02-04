@@ -8,7 +8,8 @@ dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
 import { loadEnv, isPaperMode } from "./config/env.js";
 import { initDb, closeDb } from "./services/database/db.js";
 import { startHealthServer, stopHealthServer } from "./services/health/server.js";
-import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
+import { startBot, stopBot, sendMainMenu, getChatId } from "./services/telegram/bot.js";
+import { getSettings } from "./services/settings/settings.js";
 import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusReporter, stopStatusReporter } from "./services/telegram/notifications.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
@@ -20,6 +21,10 @@ import { getSolBalance } from "./services/solana/wallet.js";
 import { initTracker, startTracking, stopTracking, getTrackedTraderCount } from "./services/traders/tracker.js";
 import { startDiscovery, stopDiscovery } from "./services/traders/discovery.js";
 import { startTraderAlerts, stopTraderAlerts } from "./services/traders/alerts.js";
+import { validateCopyChains } from "./services/evm/index.js";
+import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions } from "./services/aibetting/index.js";
+import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
+import { initCryptoCopyTracking } from "./services/copy/executor.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 let positionMonitorInterval: NodeJS.Timeout | null = null;
@@ -40,12 +45,15 @@ async function main(): Promise<void> {
     // Initialize trader tracker
     initTracker();
 
+    // Initialize crypto copy tracking
+    const recoveredCryptocopies = initCryptoCopyTracking();
+
     // Load open positions from database (recovery from crash)
     const recoveredPumpfun = loadPumpfunPositions();
     const recoveredPolymarket = loadPolymarketPositions();
-    const totalRecovered = recoveredPumpfun + recoveredPolymarket;
+    const totalRecovered = recoveredPumpfun + recoveredPolymarket + recoveredCryptocopies;
     if (totalRecovered > 0) {
-      console.log(`[Bot] Recovered ${totalRecovered} open positions (${recoveredPumpfun} Pump.fun, ${recoveredPolymarket} Polymarket)`);
+      console.log(`[Bot] Recovered ${totalRecovered} open positions (${recoveredPumpfun} Pump.fun, ${recoveredPolymarket} Polymarket, ${recoveredCryptocopies} Crypto copies)`);
     }
 
     // Set daily loss baseline to actual wallet balance
@@ -74,6 +82,16 @@ async function main(): Promise<void> {
     // Subscribe to Pump.fun token launches and execute trades
     onTokenLaunch(async (launch) => {
       try {
+        // Check if auto-snipe is enabled
+        const userId = getChatId();
+        if (userId) {
+          const settings = getSettings(userId);
+          if (!settings.autoSnipeEnabled) {
+            console.log(`[Bot] Auto-snipe disabled, skipping ${launch.symbol}`);
+            return;
+          }
+        }
+
         console.log(`[Bot] Analyzing token: ${launch.symbol} (${launch.mint})`);
         const analysis = await analyzeToken(launch);
 
@@ -141,17 +159,34 @@ async function main(): Promise<void> {
     startTraderAlerts();
     console.log(`[Bot] Trader tracker started (${getTrackedTraderCount()} wallets tracked)`);
 
-    // Polymarket monitoring disabled - no crypto price markets available
-    // To enable: add real Polymarket condition IDs that correlate with spot prices
-    console.log("[Bot] Polymarket arbitrage disabled - no valid crypto markets configured");
+    // Validate EVM copy-trading chains
+    await validateCopyChains();
 
-    // await startPolymarketMonitoring();
+    // AI-powered Polymarket betting
+    if (env.AIBETTING_ENABLED === "true" && env.DEEPSEEK_API_KEY) {
+      // Recover open positions from database
+      const recoveredAIBets = initAIBettingPositions();
+      if (recoveredAIBets > 0) {
+        console.log(`[Bot] Recovered ${recoveredAIBets} AI betting positions`);
+      }
 
-    // Polymarket opportunity handler disabled until valid markets are configured
-    // onOpportunity(async (opportunity) => {
-    //   const result = await executeArbitrage(opportunity, 10);
-    //   if (result.success) console.log(`[Bot] Arbitrage executed: ${result.orderId}`);
-    // });
+      startAIBetting({
+        maxBetSize: env.AIBETTING_MAX_BET,
+        maxTotalExposure: env.AIBETTING_MAX_EXPOSURE,
+        maxPositions: env.AIBETTING_MAX_POSITIONS,
+        minEdge: env.AIBETTING_MIN_EDGE,
+        minConfidence: env.AIBETTING_MIN_CONFIDENCE,
+        scanIntervalMs: env.AIBETTING_SCAN_INTERVAL,
+        categoriesEnabled: ["politics", "crypto", "sports", "business", "other"],
+      });
+      console.log("[Bot] AI Betting started");
+    } else {
+      console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and DEEPSEEK_API_KEY to enable)");
+    }
+
+    // Start Polymarket top trader tracking
+    startPolyTraderTracking(60000); // Check every minute
+    console.log("[Bot] Polymarket trader tracking started");
 
     console.log("[Bot] All services started successfully");
     console.log("[Bot] Waiting for trading opportunities...");
@@ -183,6 +218,8 @@ async function shutdown(signal: string): Promise<void> {
     stopStatusReporter();
     stopPumpfunDetector();
     stopPolymarketMonitoring();
+    stopAIBetting();
+    stopPolyTraderTracking();
     stopTraderAlerts();
     stopDiscovery();
     stopTracking();
