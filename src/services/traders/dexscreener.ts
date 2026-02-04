@@ -183,40 +183,46 @@ async function getLatestProfiles(): Promise<BoostedToken[]> {
   return profilesFetchPromise;
 }
 
-// Get dynamic trending tokens
+// Search terms for each chain (DexScreener APIs mostly return Solana)
+const CHAIN_TERMS: Record<string, string[]> = {
+  ethereum: ["pepe", "shib", "uni", "link", "aave"],
+  polygon: ["matic", "quick", "aave"],
+  arbitrum: ["arb", "gmx", "magic"],
+  sonic: ["sonic"],
+  base: ["brett", "degen"],
+  bsc: ["cake", "bnb"],
+};
+
+// Get trending tokens via search (boosted/profiles APIs don't cover EVM chains)
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
 
-  // Get latest token profiles (dynamic trending)
+  // Get from profiles first (works for Solana mostly)
   const profiles = await getLatestProfiles();
-  const profilesOnChain = profiles
-    .filter((t) => t.chainId === chainId)
-    .map((t) => t.tokenAddress);
-
-  for (const token of profilesOnChain) {
+  for (const t of profiles.filter((p) => p.chainId === chainId)) {
     if (tokens.size >= limit) break;
-    tokens.add(token);
+    tokens.add(t.tokenAddress);
   }
 
-  // Fallback: search by chain name if no tokens found
-  if (tokens.size === 0) {
+  // Search for popular tokens on this chain
+  const terms = CHAIN_TERMS[chain] || [chain];
+  for (const term of terms) {
+    if (tokens.size >= limit) break;
     try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${chain}`;
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
       const response = await rateLimitedFetch(url);
-      if (response.ok) {
-        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-        const pairs = (data.pairs || [])
-          .filter((p) => p.chainId === chainId)
-          .filter((p) => (p.volume?.h24 || 0) > 500)
-          .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
-        for (const pair of pairs) {
-          if (tokens.size >= limit) break;
-          tokens.add(pair.baseToken.address);
-        }
+      if (!response.ok) continue;
+      const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+      const pairs = (data.pairs || [])
+        .filter((p) => p.chainId === chainId && (p.volume?.h24 || 0) > 500)
+        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
+      for (const pair of pairs) {
+        if (tokens.size >= limit) break;
+        tokens.add(pair.baseToken.address);
       }
     } catch {
-      // Ignore search errors
+      continue;
     }
   }
 
