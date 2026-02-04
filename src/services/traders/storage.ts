@@ -5,6 +5,7 @@ import {
   TraderAlert,
   WalletTransfer,
   WalletCluster,
+  TokenTrade,
   Chain,
   TRANSFER_THRESHOLDS,
 } from "./types.js";
@@ -116,6 +117,27 @@ export function initTraderTables(): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_cluster_members_wallet ON cluster_members(wallet_address, chain)
+  `);
+
+  // Token trades - detailed trade history per token
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trader_token_trades (
+      id TEXT PRIMARY KEY,
+      wallet_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      token_address TEXT NOT NULL,
+      token_symbol TEXT NOT NULL,
+      buy_amount_usd REAL NOT NULL,
+      sell_amount_usd REAL NOT NULL,
+      pnl_usd REAL NOT NULL,
+      pnl_pct REAL NOT NULL,
+      first_buy_timestamp INTEGER NOT NULL,
+      last_sell_timestamp INTEGER NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_token_trades_wallet ON trader_token_trades(wallet_address, chain)
   `);
 
   console.log("[Traders] Database tables initialized");
@@ -625,4 +647,67 @@ function mapRowToTransfer(row: Record<string, unknown>): WalletTransfer {
     txHash: row.tx_hash as string,
     timestamp: row.timestamp as number,
   };
+}
+
+// ===== TOKEN TRADE HISTORY =====
+
+// Insert or update token trade
+export function upsertTokenTrade(trade: TokenTrade): void {
+  const db = getDb();
+
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO trader_token_trades (
+      id, wallet_address, chain, token_address, token_symbol,
+      buy_amount_usd, sell_amount_usd, pnl_usd, pnl_pct,
+      first_buy_timestamp, last_sell_timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    trade.id,
+    trade.walletAddress,
+    trade.chain,
+    trade.tokenAddress,
+    trade.tokenSymbol,
+    trade.buyAmountUsd,
+    trade.sellAmountUsd,
+    trade.pnlUsd,
+    trade.pnlPct,
+    trade.firstBuyTimestamp,
+    trade.lastSellTimestamp
+  );
+}
+
+// Get token trades for a wallet
+export function getTokenTrades(walletAddress: string, chain: Chain): TokenTrade[] {
+  const db = getDb();
+
+  const stmt = db.prepare(`
+    SELECT * FROM trader_token_trades
+    WHERE wallet_address = ? AND chain = ?
+    ORDER BY pnl_usd DESC
+  `);
+
+  const rows = stmt.all(walletAddress.toLowerCase(), chain) as Record<string, unknown>[];
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    walletAddress: row.wallet_address as string,
+    chain: row.chain as Chain,
+    tokenAddress: row.token_address as string,
+    tokenSymbol: row.token_symbol as string,
+    buyAmountUsd: row.buy_amount_usd as number,
+    sellAmountUsd: row.sell_amount_usd as number,
+    pnlUsd: row.pnl_usd as number,
+    pnlPct: row.pnl_pct as number,
+    firstBuyTimestamp: row.first_buy_timestamp as number,
+    lastSellTimestamp: row.last_sell_timestamp as number,
+  }));
+}
+
+// Delete token trades for a wallet (for re-analysis)
+export function deleteTokenTrades(walletAddress: string, chain: Chain): void {
+  const db = getDb();
+  const stmt = db.prepare("DELETE FROM trader_token_trades WHERE wallet_address = ? AND chain = ?");
+  stmt.run(walletAddress.toLowerCase(), chain);
 }

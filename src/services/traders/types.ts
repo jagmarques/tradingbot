@@ -41,6 +41,21 @@ export interface TraderAlert {
   sentAt: number;
 }
 
+// Token-level trade summary (historical analysis)
+export interface TokenTrade {
+  id: string;
+  walletAddress: string;
+  chain: Chain;
+  tokenAddress: string;
+  tokenSymbol: string;
+  buyAmountUsd: number;
+  sellAmountUsd: number;
+  pnlUsd: number;
+  pnlPct: number;
+  firstBuyTimestamp: number;
+  lastSellTimestamp: number;
+}
+
 export interface WalletTransfer {
   id: string;
   fromAddress: string;

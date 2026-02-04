@@ -19,7 +19,8 @@ import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
 import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
-import { getTopTraders } from "../traders/storage.js";
+import { getTopTraders, getTokenTrades, getTrader } from "../traders/storage.js";
+import { Chain } from "../traders/types.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -121,6 +122,18 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
 
+  // Handle trader detail button clicks (format: trader_ADDRESS_CHAIN)
+  bot.callbackQuery(/^trader_(.+)_(.+)$/, async (ctx) => {
+    await handleTraderDetail(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  // Handle back to traders list
+  bot.callbackQuery("back_to_traders", async (ctx) => {
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
   // Text handler for timezone detection during setup
   bot.on("message:text", handleTextInput);
 
@@ -189,14 +202,20 @@ export async function sendMainMenu(): Promise<void> {
 }
 
 // Send data message and delete previous one to keep chat clean
-async function sendDataMessage(text: string): Promise<void> {
+async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
     // Delete previous data message if exists
     if (lastDataMessageId) {
       await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
     }
-    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    const options: { parse_mode: "HTML"; reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] } } = {
+      parse_mode: "HTML",
+    };
+    if (inlineKeyboard) {
+      options.reply_markup = { inline_keyboard: inlineKeyboard };
+    }
+    const msg = await bot.api.sendMessage(chatId, text, options);
     lastDataMessageId = msg.message_id;
   } catch (err) {
     console.error("[Telegram] Failed to send data message:", err);
@@ -404,25 +423,88 @@ async function handleTraders(ctx: Context): Promise<void> {
 
     if (topTradersList.length === 0) {
       message += "No traders tracked yet";
-    } else {
-      message += `<b>Top ${topTradersList.length} Traders</b>\n\n`;
-
-      for (const trader of topTradersList) {
-        const winRate = trader.winRate.toFixed(0);
-        message +=
-          `${trader.chain.toUpperCase()}\n` +
-          `<code>${trader.address}</code>\n` +
-          `Score: ${trader.score.toFixed(0)} | Win: ${winRate}%\n` +
-          `Trades: ${trader.totalTrades} | PnL: $${trader.totalPnlUsd.toFixed(0)}\n\n`;
-      }
-
-      message += `\nUse /traderspdf for full report`;
+      await sendDataMessage(message);
+      await sendMainMenu();
+      return;
     }
 
-    await sendDataMessage(message);
+    message += "Click a trader to see trade details:";
+
+    // Create inline keyboard buttons for each trader
+    const traderButtons: { text: string; callback_data: string }[][] = [];
+    for (const trader of topTradersList) {
+      const pnlSign = trader.totalPnlUsd >= 0 ? "+" : "";
+      const buttonText = `${trader.chain.toUpperCase()} | ${trader.totalTrades}T | ${trader.winRate.toFixed(0)}%W | ${pnlSign}$${trader.totalPnlUsd.toFixed(0)}`;
+      traderButtons.push([{
+        text: buttonText,
+        callback_data: `trader_${trader.address}_${trader.chain}`,
+      }]);
+    }
+
+    await sendDataMessage(message, traderButtons);
     await sendMainMenu();
   } catch (err) {
     console.error("[Telegram] Traders error:", err);
+  }
+}
+
+async function handleTraderDetail(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized trader detail from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    // Extract address and chain from callback data (format: trader_ADDRESS_CHAIN)
+    const match = ctx.callbackQuery?.data?.match(/^trader_(.+)_(.+)$/);
+    if (!match) return;
+
+    const [, address, chain] = match;
+    const trader = getTrader(address, chain as Chain);
+
+    if (!trader) {
+      await sendDataMessage("Trader not found");
+      return;
+    }
+
+    const tokenTrades = getTokenTrades(address, chain as Chain);
+
+    let message = `<b>Trader Details</b>\n\n`;
+    message += `<b>Chain:</b> ${trader.chain.toUpperCase()}\n`;
+    message += `<b>Address:</b>\n<code>${trader.address}</code>\n\n`;
+    message += `<b>Score:</b> ${trader.score.toFixed(0)}\n`;
+    message += `<b>Win Rate:</b> ${trader.winRate.toFixed(0)}%\n`;
+    message += `<b>Total Trades:</b> ${trader.totalTrades}\n`;
+    message += `<b>Winning:</b> ${trader.winningTrades} | <b>Losing:</b> ${trader.losingTrades}\n`;
+    const pnlSign = trader.totalPnlUsd >= 0 ? "+" : "";
+    message += `<b>Total PnL:</b> ${pnlSign}$${trader.totalPnlUsd.toFixed(0)}\n\n`;
+
+    if (tokenTrades.length === 0) {
+      message += "<i>No detailed trade history available</i>";
+    } else {
+      message += `<b>Trade History (${tokenTrades.length} tokens):</b>\n\n`;
+
+      for (const trade of tokenTrades.slice(0, 10)) {
+        const tradePnlSign = trade.pnlUsd >= 0 ? "+" : "";
+        const pnlPctSign = trade.pnlPct >= 0 ? "+" : "";
+        const buyDate = new Date(trade.firstBuyTimestamp).toLocaleDateString();
+        const sellDate = new Date(trade.lastSellTimestamp).toLocaleDateString();
+
+        message += `<b>${trade.tokenSymbol}</b>\n`;
+        message += `Buy: $${trade.buyAmountUsd.toFixed(0)} (${buyDate})\n`;
+        message += `Sell: $${trade.sellAmountUsd.toFixed(0)} (${sellDate})\n`;
+        message += `PnL: ${tradePnlSign}$${trade.pnlUsd.toFixed(0)} (${pnlPctSign}${trade.pnlPct.toFixed(0)}%)\n\n`;
+      }
+
+      if (tokenTrades.length > 10) {
+        message += `<i>...and ${tokenTrades.length - 10} more trades</i>`;
+      }
+    }
+
+    const backButton = [[{ text: "Back to Traders", callback_data: "back_to_traders" }]];
+    await sendDataMessage(message, backButton);
+  } catch (err) {
+    console.error("[Telegram] Trader detail error:", err);
   }
 }
 
