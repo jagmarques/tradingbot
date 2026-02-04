@@ -160,6 +160,7 @@ async function getTokenTransfers(
     const data = (await response.json()) as { status: string; result: Record<string, string>[] };
 
     if (data.status !== "1" || !Array.isArray(data.result)) {
+      console.log(`[Etherscan] ${chain} response: ${JSON.stringify(data).slice(0, 200)}`);
       return [];
     }
 
