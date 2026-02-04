@@ -236,7 +236,7 @@ async function handleStart(ctx: Context): Promise<void> {
   }
 
 
-  const msg = await ctx.reply("Trading Bot", {
+  const msg = await ctx.reply("🤖", {
     reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
   });
   lastMenuMessageId = msg.message_id;
