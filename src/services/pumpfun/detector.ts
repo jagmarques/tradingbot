@@ -22,6 +22,10 @@ const launchCallbacks: Set<LaunchCallback> = new Set();
 
 const PUMPFUN_PUBKEY = new PublicKey(PUMPFUN_PROGRAM_ID);
 
+// Retry config for transient RPC errors
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 500;
+
 // Pump.fun instruction discriminators
 const CREATE_INSTRUCTION = Buffer.from([0x18, 0x1e, 0xc8, 0x28, 0x05, 0x1c, 0x07, 0x77]);
 
@@ -92,6 +96,31 @@ function notifyCallbacks(launch: TokenLaunch): void {
   }
 }
 
+function isTransientError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("503") || msg.includes("Service unavailable") || msg.includes("timeout");
+}
+
+async function fetchWithRetry<T>(
+  fn: () => Promise<T>,
+  retries: number = MAX_RETRIES
+): Promise<T | null> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (!isTransientError(err) || attempt === retries) {
+        throw err;
+      }
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
 async function setupSubscription(): Promise<void> {
   const connection = getConnection();
 
@@ -107,10 +136,12 @@ async function setupSubscription(): Promise<void> {
       }
 
       try {
-        // Fetch the full transaction to parse details
-        const tx = await connection.getParsedTransaction(logs.signature, {
-          maxSupportedTransactionVersion: 0,
-        });
+        // Fetch with retry for transient 503 errors
+        const tx = await fetchWithRetry(() =>
+          connection.getParsedTransaction(logs.signature, {
+            maxSupportedTransactionVersion: 0,
+          })
+        );
 
         if (!tx?.meta || tx.meta.err) return;
 
@@ -119,7 +150,6 @@ async function setupSubscription(): Promise<void> {
 
         for (const ix of instructions) {
           if ("programId" in ix && ix.programId.equals(PUMPFUN_PUBKEY)) {
-            // This is a Pump.fun instruction
             if ("data" in ix && typeof ix.data === "string") {
               const data = Buffer.from(ix.data, "base64");
               const accountKeys = message.accountKeys.map((k) =>
@@ -135,7 +165,9 @@ async function setupSubscription(): Promise<void> {
           }
         }
       } catch (err) {
-        console.error("[PumpFun] Error processing transaction:", err);
+        if (!isTransientError(err)) {
+          console.error("[PumpFun] Error processing transaction:", err);
+        }
       }
     },
     "confirmed"

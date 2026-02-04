@@ -290,26 +290,16 @@ async function handleBalance(ctx: Context): Promise<void> {
   }
 
   try {
-    const [
-      solBalance,
-      maticBalance,
-      usdcBalance,
-      baseEthBalance,
-      bnbBalance,
-      arbitrumEthBalance,
-      avaxBalance,
-    ] = await Promise.all([
-      getSolBalanceFormatted(),
-      getMaticBalanceFormatted(),
-      getUsdcBalanceFormatted(),
-      getBaseEthBalance().catch(() => BigInt(0)),
-      getBnbBalance().catch(() => BigInt(0)),
-      getArbitrumEthBalance().catch(() => BigInt(0)),
-      getAvaxBalance().catch(() => BigInt(0)),
-    ]);
-
-    // Format EVM balances (wei to native token with 4 decimals)
     const formatWei = (wei: bigint): string => (Number(wei) / 1e18).toFixed(4);
+
+    // Fetch balances sequentially to avoid RPC batching issues
+    const solBalance = await getSolBalanceFormatted().catch(() => "Error");
+    const maticBalance = await getMaticBalanceFormatted().catch(() => "Error");
+    const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
+    const baseEthBalance = await getBaseEthBalance().catch(() => BigInt(0));
+    const bnbBalance = await getBnbBalance().catch(() => BigInt(0));
+    const arbitrumEthBalance = await getArbitrumEthBalance().catch(() => BigInt(0));
+    const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
 
     const message =
       `<b>Wallet Balances</b>\n\n` +
@@ -331,6 +321,7 @@ async function handleBalance(ctx: Context): Promise<void> {
     await sendMainMenu();
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
+    await sendDataMessage("Failed to fetch balances");
   }
 }
 
