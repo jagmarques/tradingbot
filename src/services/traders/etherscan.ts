@@ -1,5 +1,6 @@
 import { Chain, TRADER_THRESHOLDS, BIG_HITTER_THRESHOLDS } from "./types.js";
 import { getDb } from "../database/db.js";
+import { upsertTrader, getTrader } from "./storage.js";
 
 // Etherscan API V2 - unified multichain endpoint
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
@@ -272,6 +273,9 @@ export async function analyzeWalletPnl(
   return profitability;
 }
 
+// Max wallets to check per cycle (prevents hour-long cycles)
+const MAX_WALLETS_PER_CYCLE = 200;
+
 // Discover profitable traders from token transfers
 export async function discoverTradersFromTokens(
   chain: Chain,
@@ -296,13 +300,24 @@ export async function discoverTradersFromTokens(
 
   console.log(`[Etherscan] Found ${walletActivity.size} active wallets on ${chain}`);
 
+  // Sort by activity and limit to top N wallets
   const sortedWallets = Array.from(walletActivity.entries())
     .filter(([addr]) => !QUOTE_TOKENS.has(addr))
     .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_WALLETS_PER_CYCLE)
     .map(([addr]) => addr);
+
+  console.log(`[Etherscan] Checking top ${sortedWallets.length} wallets on ${chain}`);
 
   let checked = 0;
   for (const wallet of sortedWallets) {
+    // Skip if already tracked
+    const existing = getTrader(wallet, chain);
+    if (existing) {
+      checked++;
+      continue;
+    }
+
     const profitability = await analyzeWalletPnl(wallet, chain);
     checked++;
 
@@ -323,6 +338,39 @@ export async function discoverTradersFromTokens(
     if (isStandardTrader || isBigHitter) {
       profitableTraders.set(wallet, profitability);
       const type = isStandardTrader ? "TRADER" : "BIG_HIT";
+
+      // Save immediately to DB
+      const profitFactor =
+        profitability.losingTrades > 0
+          ? Math.min(10, profitability.winningTrades / profitability.losingTrades)
+          : profitability.winningTrades > 0
+            ? 10
+            : 0;
+
+      const score = Math.min(
+        100,
+        profitability.winRate * 0.4 +
+          Math.min(100, profitFactor * 10) * 0.3 +
+          Math.min(100, profitability.totalTrades * 2) * 0.3
+      );
+
+      upsertTrader({
+        address: wallet,
+        chain,
+        score: Math.round(score * 10) / 10,
+        winRate: profitability.winRate,
+        profitFactor,
+        consistency: 50,
+        totalTrades: profitability.totalTrades,
+        winningTrades: profitability.winningTrades,
+        losingTrades: profitability.losingTrades,
+        totalPnlUsd: profitability.totalPnlUsd,
+        avgHoldTimeMs: 0,
+        largestWinPct: 0,
+        discoveredAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
       console.log(
         `[Etherscan] +${chain.toUpperCase()} [${type}] ${wallet.slice(0, 8)}... (${profitability.winRate.toFixed(0)}% win, ${profitability.totalTrades} trades, $${profitability.totalPnlUsd.toFixed(0)})`
       );
