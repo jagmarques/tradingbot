@@ -3,6 +3,21 @@ import { Chain } from "./types.js";
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
+// Cache of wallets already checked (avoid re-checking same wallets)
+const checkedWallets = new Map<string, number>();
+const CHECKED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour before re-checking
+const MAX_CACHE_SIZE = 10000;
+
+function cleanupCache(): void {
+  if (checkedWallets.size < MAX_CACHE_SIZE) return;
+  const now = Date.now();
+  for (const [key, timestamp] of checkedWallets) {
+    if (now - timestamp > CHECKED_CACHE_TTL_MS) {
+      checkedWallets.delete(key);
+    }
+  }
+}
+
 // Moralis profitability supports: Ethereum, Polygon, Base
 const SUPPORTED_CHAINS: Record<string, string> = {
   ethereum: "eth",
@@ -109,6 +124,7 @@ export async function discoverTradersFromTokens(
   chain: Chain,
   tokenAddresses: string[]
 ): Promise<Map<string, MoralisWalletPnl>> {
+  cleanupCache();
   const profitableTraders = new Map<string, MoralisWalletPnl>();
 
   if (!isMoralisChainSupported(chain)) {
@@ -128,7 +144,7 @@ export async function discoverTradersFromTokens(
       }
     }
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
   }
 
   console.log(`[Moralis] Found ${walletActivity.size} active wallets on ${chain}`);
@@ -137,8 +153,18 @@ export async function discoverTradersFromTokens(
     .sort((a, b) => b[1] - a[1])
     .map(([addr]) => addr);
 
+  let newWalletsChecked = 0;
   for (const wallet of sortedWallets) {
+    // Skip if already checked recently
+    const cacheKey = `${wallet}_${chain}`;
+    const lastChecked = checkedWallets.get(cacheKey);
+    if (lastChecked && Date.now() - lastChecked < CHECKED_CACHE_TTL_MS) {
+      continue;
+    }
+
     const pnl = await getWalletPnlSummary(wallet, chain);
+    checkedWallets.set(cacheKey, Date.now());
+    newWalletsChecked++;
 
     if (pnl && pnl.total_trades >= 10 && pnl.win_rate >= 80 && pnl.total_pnl_usd > 500) {
       profitableTraders.set(wallet, pnl);
@@ -147,7 +173,11 @@ export async function discoverTradersFromTokens(
       );
     }
 
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  if (newWalletsChecked > 0) {
+    console.log(`[Moralis] Checked ${newWalletsChecked} new wallets on ${chain}`);
   }
 
   console.log(`[Moralis] Discovered ${profitableTraders.size} profitable traders on ${chain}`);

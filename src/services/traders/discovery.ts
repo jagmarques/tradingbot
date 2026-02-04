@@ -8,12 +8,25 @@ import {
   findEarlyBuyers,
 } from "./helius.js";
 
-const DISCOVERY_INTERVAL_MS = 4 * 60 * 60 * 1000;
+// Cache of Solana wallets already analyzed
+const checkedSolanaWallets = new Map<string, number>();
+const SOLANA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const MAX_SOLANA_CACHE_SIZE = 10000;
+
+function cleanupSolanaCache(): void {
+  if (checkedSolanaWallets.size < MAX_SOLANA_CACHE_SIZE) return;
+  const now = Date.now();
+  for (const [key, timestamp] of checkedSolanaWallets) {
+    if (now - timestamp > SOLANA_CACHE_TTL_MS) {
+      checkedSolanaWallets.delete(key);
+    }
+  }
+}
 
 // Moralis profitability supports: Ethereum, Polygon, Base
 const MORALIS_CHAINS: Chain[] = ["ethereum", "polygon", "base"];
 
-let discoveryTimer: NodeJS.Timeout | null = null;
+let isRunning = false;
 let isDiscovering = false;
 
 export function startDiscovery(): void {
@@ -21,33 +34,31 @@ export function startDiscovery(): void {
   const hasHelius = isHeliusConfigured();
 
   if (!hasMoralis && !hasHelius) {
-    console.log("[Discovery] No APIs configured - skipping auto-discovery");
+    console.log("[Discovery] No APIs configured - skipping");
     return;
   }
 
-  if (discoveryTimer) {
+  if (isRunning) {
     console.log("[Discovery] Already running");
     return;
   }
 
-  console.log("[Discovery] Starting auto-discovery (every 4 hours)");
-  console.log(`[Discovery] Chains: Base=${hasMoralis}, Solana=${hasHelius}`);
+  isRunning = true;
+  console.log("[Discovery] Starting continuous discovery");
+  console.log(`[Discovery] APIs: Moralis=${hasMoralis}, Helius=${hasHelius}`);
 
-  setTimeout(() => {
-    runDiscovery();
-  }, 30_000);
-
-  discoveryTimer = setInterval(() => {
-    runDiscovery();
-  }, DISCOVERY_INTERVAL_MS);
+  runContinuousDiscovery();
 }
 
 export function stopDiscovery(): void {
-  if (discoveryTimer) {
-    clearInterval(discoveryTimer);
-    discoveryTimer = null;
-  }
+  isRunning = false;
   console.log("[Discovery] Stopped");
+}
+
+async function runContinuousDiscovery(): Promise<void> {
+  while (isRunning) {
+    await runDiscovery();
+  }
 }
 
 async function runDiscovery(): Promise<void> {
@@ -67,7 +78,6 @@ async function runDiscovery(): Promise<void> {
         const discovered = await discoverTradersOnEvmChain(chain);
         totalDiscovered += discovered;
         console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
-        await new Promise((r) => setTimeout(r, 2000));
       } catch (err) {
         console.error(`[Discovery] Error on ${chain}:`, err);
       }
@@ -148,6 +158,7 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 }
 
 async function discoverTradersOnSolana(): Promise<number> {
+  cleanupSolanaCache();
   console.log("[Discovery] Scanning Solana Pump.fun traders...");
 
   const recentTokens = await getRecentPumpfunTokens(30);
@@ -163,7 +174,7 @@ async function discoverTradersOnSolana(): Promise<number> {
       for (const buyer of earlyBuyers) {
         traderFrequency.set(buyer, (traderFrequency.get(buyer) || 0) + 1);
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 50));
     } catch (err) {
       console.error(`[Discovery] Error finding buyers for ${mint.slice(0, 8)}...:`, err);
     }
@@ -178,12 +189,21 @@ async function discoverTradersOnSolana(): Promise<number> {
 
   let discovered = 0;
 
+  let newWalletsChecked = 0;
   for (const address of potentialTraders) {
     const existing = getTrader(address, "solana");
     if (existing) continue;
 
+    // Skip if already checked recently
+    const lastChecked = checkedSolanaWallets.get(address);
+    if (lastChecked && Date.now() - lastChecked < SOLANA_CACHE_TTL_MS) {
+      continue;
+    }
+
     try {
       const analysis = await analyzeWalletPnl(address);
+      checkedSolanaWallets.set(address, Date.now());
+      newWalletsChecked++;
       if (!analysis) continue;
 
       if (
@@ -231,10 +251,14 @@ async function discoverTradersOnSolana(): Promise<number> {
         );
       }
 
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 50));
     } catch (err) {
       console.error(`[Discovery] Error analyzing ${address.slice(0, 8)}...:`, err);
     }
+  }
+
+  if (newWalletsChecked > 0) {
+    console.log(`[Discovery] Checked ${newWalletsChecked} new Solana wallets`);
   }
 
   return discovered;
@@ -246,5 +270,5 @@ export async function runManualDiscovery(): Promise<number> {
 }
 
 export function isDiscoveryRunning(): boolean {
-  return discoveryTimer !== null;
+  return isRunning;
 }
