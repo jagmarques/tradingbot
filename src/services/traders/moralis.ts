@@ -119,7 +119,7 @@ export async function discoverTradersFromTokens(
   const walletActivity = new Map<string, number>();
 
   for (const token of tokenAddresses) {
-    const transfers = await getTokenTransfers(token, chain, 200);
+    const transfers = await getTokenTransfers(token, chain, 100);
 
     for (const transfer of transfers) {
       if (transfer.to_address) {
