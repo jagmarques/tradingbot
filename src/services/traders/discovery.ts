@@ -1,6 +1,12 @@
 import { Chain, TRADER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
-import { isMoralisConfigured, isMoralisRateLimited, discoverTradersFromTokens, getPopularTokens } from "./moralis.js";
+import {
+  isEtherscanConfigured,
+  discoverTradersFromTokens,
+  getPopularTokens,
+  initProfitabilityCache,
+  cleanupCache,
+} from "./etherscan.js";
 import {
   isHeliusConfigured,
   analyzeWalletPnl,
@@ -8,32 +14,46 @@ import {
   findEarlyBuyers,
 } from "./helius.js";
 
-// Cache of Solana wallets already analyzed
+// Memory-efficient Solana cache with strict limits
 const checkedSolanaWallets = new Map<string, number>();
 const SOLANA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const MAX_SOLANA_CACHE_SIZE = 10000;
+const MAX_SOLANA_CACHE_SIZE = 5000; // Reduced from 10000
 
 function cleanupSolanaCache(): void {
-  if (checkedSolanaWallets.size < MAX_SOLANA_CACHE_SIZE) return;
   const now = Date.now();
+
+  // Always cleanup expired entries
   for (const [key, timestamp] of checkedSolanaWallets) {
     if (now - timestamp > SOLANA_CACHE_TTL_MS) {
       checkedSolanaWallets.delete(key);
     }
   }
+
+  // If still over limit, remove oldest entries
+  if (checkedSolanaWallets.size > MAX_SOLANA_CACHE_SIZE) {
+    const entries = Array.from(checkedSolanaWallets.entries())
+      .sort((a, b) => a[1] - b[1]); // Sort by timestamp (oldest first)
+
+    const toDelete = entries.slice(0, checkedSolanaWallets.size - MAX_SOLANA_CACHE_SIZE);
+    for (const [key] of toDelete) {
+      checkedSolanaWallets.delete(key);
+    }
+    console.log(`[Discovery] Pruned ${toDelete.length} old Solana cache entries`);
+  }
 }
 
-// Moralis profitability supports: Ethereum, Polygon, Base
-const MORALIS_CHAINS: Chain[] = ["ethereum", "polygon", "base"];
+// Etherscan supports: Ethereum, Polygon, Base (no API limits like Moralis)
+const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "base"];
 
 let isRunning = false;
 let isDiscovering = false;
+let cycleCount = 0;
 
 export function startDiscovery(): void {
-  const hasMoralis = isMoralisConfigured();
+  const hasEtherscan = isEtherscanConfigured();
   const hasHelius = isHeliusConfigured();
 
-  if (!hasMoralis && !hasHelius) {
+  if (!hasEtherscan && !hasHelius) {
     console.log("[Discovery] No APIs configured - skipping");
     return;
   }
@@ -43,9 +63,12 @@ export function startDiscovery(): void {
     return;
   }
 
+  // Initialize SQLite cache tables
+  initProfitabilityCache();
+
   isRunning = true;
-  console.log("[Discovery] Starting continuous discovery");
-  console.log(`[Discovery] APIs: Moralis=${hasMoralis}, Helius=${hasHelius}`);
+  console.log("[Discovery] Starting continuous discovery (no API limits)");
+  console.log(`[Discovery] APIs: Etherscan=${hasEtherscan}, Helius=${hasHelius}`);
 
   runContinuousDiscovery();
 }
@@ -58,6 +81,14 @@ export function stopDiscovery(): void {
 async function runContinuousDiscovery(): Promise<void> {
   while (isRunning) {
     await runDiscovery();
+
+    // Cleanup every 10 cycles
+    cycleCount++;
+    if (cycleCount % 10 === 0) {
+      cleanupSolanaCache();
+      cleanupCache(7 * 24 * 60 * 60 * 1000); // Clean SQLite cache older than 7 days
+      console.log(`[Discovery] Memory cleanup after ${cycleCount} cycles`);
+    }
   }
 }
 
@@ -72,8 +103,9 @@ async function runDiscovery(): Promise<void> {
 
   let totalDiscovered = 0;
 
-  if (isMoralisConfigured() && !isMoralisRateLimited()) {
-    for (const chain of MORALIS_CHAINS) {
+  // EVM chains via Etherscan (100K calls/day limit vs Moralis 1.3K)
+  if (isEtherscanConfigured()) {
+    for (const chain of EVM_CHAINS) {
       try {
         const discovered = await discoverTradersOnEvmChain(chain);
         totalDiscovered += discovered;
@@ -82,10 +114,9 @@ async function runDiscovery(): Promise<void> {
         console.error(`[Discovery] Error on ${chain}:`, err);
       }
     }
-  } else if (isMoralisRateLimited()) {
-    console.log("[Discovery] Moralis rate limited - skipping EVM chains");
   }
 
+  // Solana via Helius
   if (isHeliusConfigured()) {
     try {
       const discovered = await discoverTradersOnSolana();
@@ -113,40 +144,39 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   let discovered = 0;
 
-  for (const [address, pnl] of profitableTraders) {
+  for (const [address, prof] of profitableTraders) {
     const existing = getTrader(address, chain);
     if (existing) continue;
 
-    const totalTrades = pnl.total_wins + pnl.total_losses;
-    const winRate = pnl.win_rate || (totalTrades > 0 ? (pnl.total_wins / totalTrades) * 100 : 0);
-
-    if (winRate < TRADER_THRESHOLDS.MIN_WIN_RATE * 100 || pnl.total_pnl_usd < 500) {
+    if (prof.winRate < TRADER_THRESHOLDS.MIN_WIN_RATE * 100) {
       continue;
     }
 
     const profitFactor =
-      pnl.total_losses > 0
-        ? Math.min(10, pnl.total_wins / pnl.total_losses)
-        : pnl.total_wins > 0
+      prof.losingTrades > 0
+        ? Math.min(10, prof.winningTrades / prof.losingTrades)
+        : prof.winningTrades > 0
           ? 10
           : 0;
 
     const score = Math.min(
       100,
-      winRate * 0.4 + Math.min(100, profitFactor * 10) * 0.3 + Math.min(100, totalTrades * 2) * 0.3
+      prof.winRate * 0.4 +
+        Math.min(100, profitFactor * 10) * 0.3 +
+        Math.min(100, prof.totalTrades * 2) * 0.3
     );
 
     upsertTrader({
       address,
       chain,
       score: Math.round(score * 10) / 10,
-      winRate,
+      winRate: prof.winRate,
       profitFactor,
       consistency: 50,
-      totalTrades,
-      winningTrades: pnl.total_wins,
-      losingTrades: pnl.total_losses,
-      totalPnlUsd: pnl.total_pnl_usd,
+      totalTrades: prof.totalTrades,
+      winningTrades: prof.winningTrades,
+      losingTrades: prof.losingTrades,
+      totalPnlUsd: prof.totalPnlUsd,
       avgHoldTimeMs: 0,
       largestWinPct: 0,
       discoveredAt: Date.now(),
@@ -187,16 +217,18 @@ async function discoverTradersOnSolana(): Promise<number> {
     .sort((a, b) => b[1] - a[1])
     .map(([address]) => address);
 
+  // Clear traderFrequency to free memory
+  traderFrequency.clear();
+
   console.log(`[Discovery] Found ${potentialTraders.length} potential Solana traders`);
 
   let discovered = 0;
-
   let newWalletsChecked = 0;
+
   for (const address of potentialTraders) {
     const existing = getTrader(address, "solana");
     if (existing) continue;
 
-    // Skip if already checked recently
     const lastChecked = checkedSolanaWallets.get(address);
     if (lastChecked && Date.now() - lastChecked < SOLANA_CACHE_TTL_MS) {
       continue;
