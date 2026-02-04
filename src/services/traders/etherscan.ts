@@ -66,18 +66,20 @@ interface WalletProfitability {
   lastUpdated: number;
 }
 
-// Per-chain rate limiting (each explorer has separate 5 calls/sec limit)
-const lastRequestTimeByChain = new Map<string, number>();
+// Per-chain rate limiting with proper queue (each explorer has separate 5 calls/sec limit)
 const MIN_REQUEST_INTERVAL_MS = 220; // ~4.5 requests/sec per chain
+const fetchQueueByChain = new Map<string, Promise<void>>();
 
 async function rateLimitedFetch(url: string, chain: string): Promise<Response> {
-  const now = Date.now();
-  const lastTime = lastRequestTimeByChain.get(chain) || 0;
-  const elapsed = now - lastTime;
-  if (elapsed < MIN_REQUEST_INTERVAL_MS) {
-    await new Promise((r) => setTimeout(r, MIN_REQUEST_INTERVAL_MS - elapsed));
-  }
-  lastRequestTimeByChain.set(chain, Date.now());
+  // Get or create queue for this chain
+  const currentQueue = fetchQueueByChain.get(chain) || Promise.resolve();
+
+  // Chain onto the queue to ensure sequential execution per chain
+  const myTurn = currentQueue.then(async () => {
+    await new Promise((r) => setTimeout(r, MIN_REQUEST_INTERVAL_MS));
+  });
+  fetchQueueByChain.set(chain, myTurn);
+  await myTurn;
   return fetch(url);
 }
 
