@@ -144,57 +144,50 @@ export async function getTrendingTokens(chain: Chain, limit: number = 50): Promi
   }
 }
 
-// Get tokens via chain-specific pairs endpoint (most active)
+// Chain-specific search terms to find active tokens
+const CHAIN_SEARCH_TERMS: Record<Chain, string[]> = {
+  solana: ["sol", "bonk", "jup", "ray", "orca"],
+  ethereum: ["pepe", "shib", "uni", "link", "aave", "meme", "ai"],
+  polygon: ["matic", "pol", "quick", "aave", "sand", "mana"],
+  base: ["base", "brett", "toshi", "degen"],
+  arbitrum: ["arb", "gmx", "magic", "grail", "rdnt"],
+  bsc: ["bnb", "cake", "bake", "xvs"],
+  optimism: ["op", "velo", "snx"],
+  avalanche: ["avax", "joe", "png", "qi"],
+  sonic: ["sonic", "s"],
+};
+
+// Get tokens via search (pairs endpoint doesn't support chain filtering)
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
 
-  try {
-    // Fetch pairs directly for this chain - sorted by volume
-    const url = `${DEXSCREENER_BASE}/latest/dex/pairs/${chainId}`;
-    const response = await rateLimitedFetch(url);
+  const searchTerms = [
+    ...(CHAIN_SEARCH_TERMS[chain] || []),
+    "pepe", "doge", "usdc", "weth", "meme", "ai",
+  ];
 
-    if (response.ok) {
+  for (const term of searchTerms) {
+    if (tokens.size >= limit) break;
+
+    try {
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
+      const response = await rateLimitedFetch(url);
+
+      if (!response.ok) continue;
+
       const data = (await response.json()) as { pairs?: DexScreenerPair[] };
       const pairs = (data.pairs || [])
-        .filter((p) => (p.volume?.h24 || 0) > 1000) // Lower threshold
-        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0))
-        .slice(0, limit);
+        .filter((p) => p.chainId === chainId)
+        .filter((p) => (p.volume?.h24 || 0) > 500)
+        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
 
       for (const pair of pairs) {
+        if (tokens.size >= limit) break;
         tokens.add(pair.baseToken.address);
       }
-    }
-  } catch {
-    // Ignore errors
-  }
-
-  // Also search for common trading pairs if we need more
-  if (tokens.size < limit) {
-    const searchTerms = ["pepe", "doge", "shib", "ai", "meme", "trump", "usdc", "weth"];
-
-    for (const term of searchTerms) {
-      if (tokens.size >= limit) break;
-
-      try {
-        const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
-        const response = await rateLimitedFetch(url);
-
-        if (!response.ok) continue;
-
-        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-        const pairs = (data.pairs || [])
-          .filter((p) => p.chainId === chainId)
-          .filter((p) => (p.volume?.h24 || 0) > 500) // Lower threshold
-          .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
-
-        for (const pair of pairs) {
-          if (tokens.size >= limit) break;
-          tokens.add(pair.baseToken.address);
-        }
-      } catch {
-        continue;
-      }
+    } catch {
+      continue;
     }
   }
 
