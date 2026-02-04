@@ -30,9 +30,9 @@ interface DexScreenerPair {
   txns: { h24: { buys: number; sells: number } };
 }
 
-// Cache for trending tokens (refresh every 30 min)
+// Cache for trending tokens (refresh every 2 min)
 const tokenCache = new Map<Chain, { tokens: string[]; timestamp: number }>();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 2 * 60 * 1000;
 
 // Fetch boosted/promoted tokens from DexScreener
 async function getBoostedTokens(): Promise<BoostedToken[]> {
@@ -128,7 +128,7 @@ async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]
         tokens.add(pair.baseToken.address);
       }
 
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 50));
     } catch {
       continue;
     }
