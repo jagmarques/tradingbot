@@ -91,11 +91,6 @@ export const BIG_HITTER_THRESHOLDS = {
   MIN_WIN_RATE: 0.80,
 };
 
-export const ANALYSIS_PERIODS = {
-  PRIMARY: 90 * 24 * 60 * 60 * 1000,
-  VALIDATION: 365 * 24 * 60 * 60 * 1000,
-};
-
 export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
   solana: [
     "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
