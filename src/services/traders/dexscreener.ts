@@ -64,74 +64,73 @@ export async function getTrendingTokens(chain: Chain, limit: number = 50): Promi
   if (!chainId) return [];
 
   try {
+    const allTokens = new Set<string>();
+
     // Get boosted tokens and filter by chain
     const boosted = await getBoostedTokens();
-    const chainTokens = boosted
+    const boostedOnChain = boosted
       .filter((t) => t.chainId === chainId)
-      .map((t) => t.tokenAddress)
-      .slice(0, limit);
+      .map((t) => t.tokenAddress);
 
-    if (chainTokens.length > 0) {
-      tokenCache.set(chain, { tokens: chainTokens, timestamp: Date.now() });
-      console.log(`[DexScreener] Fetched ${chainTokens.length} boosted tokens on ${chain}`);
-      return chainTokens;
+    for (const token of boostedOnChain) {
+      allTokens.add(token);
     }
 
-    // Fallback: get top pairs on chain
-    const fallbackTokens = await getTopPairsOnChain(chain, limit);
-    if (fallbackTokens.length > 0) {
-      tokenCache.set(chain, { tokens: fallbackTokens, timestamp: Date.now() });
+    if (boostedOnChain.length > 0) {
+      console.log(`[DexScreener] Fetched ${boostedOnChain.length} boosted tokens on ${chain}`);
     }
-    return fallbackTokens;
+
+    // Always also search for more active tokens
+    const searchedTokens = await getTopPairsOnChain(chain, limit);
+    for (const token of searchedTokens) {
+      allTokens.add(token);
+    }
+
+    const finalTokens = Array.from(allTokens).slice(0, limit);
+    if (finalTokens.length > 0) {
+      tokenCache.set(chain, { tokens: finalTokens, timestamp: Date.now() });
+    }
+
+    console.log(`[DexScreener] Total ${finalTokens.length} tokens on ${chain}`);
+    return finalTokens;
   } catch (err) {
     console.error(`[DexScreener] Error fetching ${chain}:`, err);
     return [];
   }
 }
 
-// Get top pairs on a chain by volume
+// Search terms by category - not specific coins, but trading categories
+const SEARCH_CATEGORIES = ["usd", "eth", "weth", "usdc", "usdt", "dai"];
+
+// Get tokens via search on a chain
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
 
-  try {
-    // Use pairs endpoint to get active pairs on chain
-    const url = `${DEXSCREENER_BASE}/latest/dex/pairs/${chainId}`;
-    const response = await fetch(url);
+  // Search using quote token terms - finds pairs traded against these
+  for (const term of SEARCH_CATEGORIES) {
+    if (tokens.size >= limit) break;
 
-    if (response.ok) {
+    try {
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
+      const response = await fetch(url);
+
+      if (!response.ok) continue;
+
       const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-      const pairs = data.pairs || [];
-
-      // Sort by volume and filter by activity
-      const activePairs = pairs
-        .filter((p) => (p.volume?.h24 || 0) > 1000 && (p.liquidity?.usd || 0) > 1000)
+      const pairs = (data.pairs || [])
+        .filter((p) => p.chainId === chainId)
+        .filter((p) => (p.volume?.h24 || 0) > 5000 && (p.liquidity?.usd || 0) > 2000)
         .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
 
-      for (const pair of activePairs) {
+      for (const pair of pairs) {
         if (tokens.size >= limit) break;
         tokens.add(pair.baseToken.address);
       }
-    }
-  } catch {
-    // Fallback: try search with generic term
-    try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${chainId}`;
-      const response = await fetch(url);
 
-      if (response.ok) {
-        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-        const pairs = (data.pairs || []).filter((p) => p.chainId === chainId);
-
-        for (const pair of pairs) {
-          if (tokens.size >= limit) break;
-          if ((pair.volume?.h24 || 0) > 1000) {
-            tokens.add(pair.baseToken.address);
-          }
-        }
-      }
+      await new Promise((r) => setTimeout(r, 100));
     } catch {
-      // Silent fail
+      continue;
     }
   }
 
