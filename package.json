@@ -21,12 +21,14 @@
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
     "@types/node": "^25.0.10",
+    "@types/pdfkit": "^0.17.4",
     "better-sqlite3": "^12.6.2",
     "bs58": "^6.0.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
     "googleapis": "^170.1.0",
     "grammy": "^1.39.3",
+    "pdfkit": "^0.17.2",
     "typescript": "^5.9.3",
     "ws": "^8.19.0",
     "zod": "^4.3.6"

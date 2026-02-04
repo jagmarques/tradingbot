@@ -1,5 +1,6 @@
-import { Bot, Context } from "grammy";
+import { Bot, Context, InputFile } from "grammy";
 import { loadEnv } from "../../config/env.js";
+import { exportTradersToPdf } from "./pdf-export.js";
 import {
   getRiskStatus,
   activateKillSwitch,
@@ -76,6 +77,7 @@ export async function startBot(): Promise<void> {
   bot.command("resume", handleResume);
   bot.command("kill", handleKill);
   bot.command("unkill", handleUnkill);
+  bot.command("traderspdf", handleTradersPdf);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -415,19 +417,51 @@ async function handleTraders(ctx: Context): Promise<void> {
       message += `<b>Top ${topTradersList.length} Traders</b>\n\n`;
 
       for (const trader of topTradersList) {
-        const addr = trader.address.slice(0, 6) + "..." + trader.address.slice(-4);
         const winRate = trader.winRate.toFixed(0);
         message +=
-          `${trader.chain.toUpperCase()} | ${addr}\n` +
-          `   Score: ${trader.score.toFixed(0)} | Win: ${winRate}%\n` +
-          `   Trades: ${trader.totalTrades} | PnL: $${trader.totalPnlUsd.toFixed(0)}\n\n`;
+          `${trader.chain.toUpperCase()}\n` +
+          `<code>${trader.address}</code>\n` +
+          `Score: ${trader.score.toFixed(0)} | Win: ${winRate}%\n` +
+          `Trades: ${trader.totalTrades} | PnL: $${trader.totalPnlUsd.toFixed(0)}\n\n`;
       }
+
+      message += `\nUse /traderspdf for full report`;
     }
 
     await sendDataMessage(message);
     await sendMainMenu();
   } catch (err) {
     console.error("[Telegram] Traders error:", err);
+  }
+}
+
+async function handleTradersPdf(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /traderspdf from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const allTraders = getTopTraders(100);
+
+    if (allTraders.length === 0) {
+      await sendDataMessage("No traders to export");
+      return;
+    }
+
+    await sendDataMessage(`Generating PDF for ${allTraders.length} traders...`);
+
+    const pdfBuffer = await exportTradersToPdf(allTraders);
+    const filename = `traders_${new Date().toISOString().split("T")[0]}.pdf`;
+
+    await ctx.replyWithDocument(new InputFile(pdfBuffer, filename), {
+      caption: `Profitable Traders Report - ${allTraders.length} traders`,
+    });
+
+    console.log(`[Telegram] Exported ${allTraders.length} traders to PDF`);
+  } catch (err) {
+    console.error("[Telegram] Traders PDF error:", err);
+    await sendDataMessage("Failed to generate PDF");
   }
 }
 
