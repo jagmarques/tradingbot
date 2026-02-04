@@ -78,20 +78,7 @@ export function initProfitabilityCache(): void {
       PRIMARY KEY (address, chain)
     );
 
-    CREATE TABLE IF NOT EXISTS wallet_token_trades (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wallet TEXT NOT NULL,
-      chain TEXT NOT NULL,
-      token_address TEXT NOT NULL,
-      buy_value_usd REAL DEFAULT 0,
-      sell_value_usd REAL DEFAULT 0,
-      pnl_usd REAL DEFAULT 0,
-      is_closed INTEGER DEFAULT 0,
-      last_updated INTEGER NOT NULL
-    );
-
     CREATE INDEX IF NOT EXISTS idx_wallet_profitability_chain ON wallet_profitability(chain);
-    CREATE INDEX IF NOT EXISTS idx_wallet_token_trades_wallet ON wallet_token_trades(wallet, chain);
   `);
   console.log("[Etherscan] Profitability cache initialized");
 }
