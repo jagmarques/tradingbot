@@ -183,7 +183,7 @@ async function getLatestProfiles(): Promise<BoostedToken[]> {
   return profilesFetchPromise;
 }
 
-// Get dynamic trending tokens (no hardcoded terms)
+// Get dynamic trending tokens
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
@@ -197,6 +197,27 @@ async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]
   for (const token of profilesOnChain) {
     if (tokens.size >= limit) break;
     tokens.add(token);
+  }
+
+  // Fallback: search by chain name if no tokens found
+  if (tokens.size === 0) {
+    try {
+      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${chain}`;
+      const response = await rateLimitedFetch(url);
+      if (response.ok) {
+        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+        const pairs = (data.pairs || [])
+          .filter((p) => p.chainId === chainId)
+          .filter((p) => (p.volume?.h24 || 0) > 500)
+          .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
+        for (const pair of pairs) {
+          if (tokens.size >= limit) break;
+          tokens.add(pair.baseToken.address);
+        }
+      }
+    } catch {
+      // Ignore search errors
+    }
   }
 
   console.log(`[DexScreener] Found ${tokens.size} active tokens on ${chain}`);
