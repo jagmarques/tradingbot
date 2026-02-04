@@ -12,7 +12,7 @@ const MORALIS_CHAINS: Partial<Record<Chain, string>> = {
   bnb: "bsc",
   arbitrum: "arbitrum",
   avalanche: "avalanche",
-  // Solana requires different API endpoint
+  // Solana requires different API endpoint (use Helius instead)
 };
 
 interface MoralisWalletPnl {
@@ -28,17 +28,16 @@ interface MoralisWalletPnl {
   total_volume_usd: number;
 }
 
-interface MoralisTopTrader {
-  owner_address: string;
-  realized_profit_usd: number;
-  realized_profit_percentage: number;
-  count_of_trades: number;
-  avg_buy_price_usd: number;
-  avg_sell_price_usd: number;
+interface MoralisTransfer {
+  from_address: string;
+  to_address: string;
+  value: string;
+  transaction_hash: string;
+  block_timestamp: string;
 }
 
-interface MoralisTokenProfitability {
-  result: MoralisTopTrader[];
+interface MoralisTransferResponse {
+  result: MoralisTransfer[];
   cursor?: string;
 }
 
@@ -58,7 +57,7 @@ export function isMoralisConfigured(): boolean {
 }
 
 // Make Moralis API request
-async function moralisRequest<T>(endpoint: string, chain?: string): Promise<T | null> {
+async function moralisRequest<T>(endpoint: string): Promise<T | null> {
   const apiKey = getApiKey();
   if (!apiKey) {
     console.error("[Moralis] API key not configured");
@@ -71,10 +70,6 @@ async function moralisRequest<T>(endpoint: string, chain?: string): Promise<T | 
     "Content-Type": "application/json",
   };
 
-  if (chain) {
-    headers["chain"] = chain;
-  }
-
   try {
     const response = await fetch(url, { headers });
 
@@ -84,29 +79,28 @@ async function moralisRequest<T>(endpoint: string, chain?: string): Promise<T | 
       return null;
     }
 
-    return await response.json() as T;
+    return (await response.json()) as T;
   } catch (err) {
     console.error("[Moralis] Request failed:", err);
     return null;
   }
 }
 
-// Get top profitable wallets for a specific token
-// Endpoint: GET /erc20/{token_address}/top-gainers
-// CU Cost: ~10 per call
-export async function getTopTradersForToken(
+// Get recent token transfers to find active traders
+// Endpoint: GET /erc20/{token}/transfers
+// CU Cost: ~5 per call
+export async function getTokenTransfers(
   tokenAddress: string,
   chain: Chain,
-  limit: number = 50
-): Promise<MoralisTopTrader[]> {
+  limit: number = 100
+): Promise<MoralisTransfer[]> {
   const moralisChain = MORALIS_CHAINS[chain];
   if (!moralisChain) {
-    console.log(`[Moralis] Chain ${chain} not supported`);
     return [];
   }
 
-  const endpoint = `/erc20/${tokenAddress}/top-gainers?chain=${moralisChain}&limit=${limit}`;
-  const result = await moralisRequest<MoralisTokenProfitability>(endpoint);
+  const endpoint = `/erc20/${tokenAddress}/transfers?chain=${moralisChain}&limit=${limit}`;
+  const result = await moralisRequest<MoralisTransferResponse>(endpoint);
 
   if (!result?.result) {
     return [];
@@ -124,105 +118,68 @@ export async function getWalletPnlSummary(
 ): Promise<MoralisWalletPnl | null> {
   const moralisChain = MORALIS_CHAINS[chain];
   if (!moralisChain) {
-    console.log(`[Moralis] Chain ${chain} not supported`);
     return null;
   }
 
-  const endpoint = `/wallets/${walletAddress}/profitability/summary?chain=${moralisChain}`;
+  const endpoint = `/wallets/${walletAddress}/profitability/summary?chain=${moralisChain}&days=90`;
   const result = await moralisRequest<MoralisWalletPnl>(endpoint);
 
   return result;
 }
 
-// Get wallet detailed PnL breakdown by token
-// Endpoint: GET /wallets/{address}/profitability
-// CU Cost: ~15 per call
-interface MoralisWalletTokenPnl {
-  token_address: string;
-  token_symbol: string;
-  token_name: string;
-  realized_profit_usd: number;
-  realized_profit_percentage: number;
-  total_tokens_bought: number;
-  total_tokens_sold: number;
-  avg_buy_price_usd: number;
-  avg_sell_price_usd: number;
-  count_of_trades: number;
-}
-
-interface MoralisWalletProfitability {
-  result: MoralisWalletTokenPnl[];
-  cursor?: string;
-}
-
-export async function getWalletTokenPnl(
-  walletAddress: string,
+// Discover traders by analyzing token transfer activity
+// Strategy: Find wallets that actively trade trending tokens, then check their profitability
+export async function discoverTradersFromTokens(
   chain: Chain,
-  limit: number = 100
-): Promise<MoralisWalletTokenPnl[]> {
-  const moralisChain = MORALIS_CHAINS[chain];
-  if (!moralisChain) {
-    console.log(`[Moralis] Chain ${chain} not supported`);
-    return [];
-  }
+  tokenAddresses: string[],
+  maxWalletsToCheck: number = 30
+): Promise<Map<string, MoralisWalletPnl>> {
+  const walletActivity = new Map<string, number>();
 
-  const endpoint = `/wallets/${walletAddress}/profitability?chain=${moralisChain}&limit=${limit}`;
-  const result = await moralisRequest<MoralisWalletProfitability>(endpoint);
+  // Step 1: Collect wallet addresses from token transfers
+  for (const token of tokenAddresses.slice(0, 10)) {
+    // Check first 10 tokens
+    const transfers = await getTokenTransfers(token, chain, 50);
 
-  if (!result?.result) {
-    return [];
-  }
-
-  return result.result;
-}
-
-// Discover profitable traders from popular tokens on a chain
-// Returns wallets that consistently profit across multiple tokens
-export async function discoverProfitableTraders(
-  chain: Chain,
-  popularTokens: string[],
-  minTrades: number = 10,
-  _minWinRate: number = 55 // Reserved for future filtering
-): Promise<Map<string, { totalProfit: number; tradeCount: number; tokens: number }>> {
-  const traderStats = new Map<string, { totalProfit: number; tradeCount: number; tokens: number }>();
-
-  for (const token of popularTokens) {
-    const topTraders = await getTopTradersForToken(token, chain, 100);
-
-    for (const trader of topTraders) {
-      if (trader.count_of_trades < 3) continue; // Skip low activity
-
-      const existing = traderStats.get(trader.owner_address) || {
-        totalProfit: 0,
-        tradeCount: 0,
-        tokens: 0,
-      };
-
-      existing.totalProfit += trader.realized_profit_usd;
-      existing.tradeCount += trader.count_of_trades;
-      existing.tokens += 1;
-
-      traderStats.set(trader.owner_address, existing);
+    for (const transfer of transfers) {
+      // Track wallets that are buying (receiving tokens)
+      if (transfer.to_address) {
+        const addr = transfer.to_address.toLowerCase();
+        walletActivity.set(addr, (walletActivity.get(addr) || 0) + 1);
+      }
     }
 
-    // Rate limiting: 100ms between requests
+    // Rate limit: 100ms between requests
     await new Promise((r) => setTimeout(r, 100));
   }
 
-  // Filter to traders meeting criteria
-  const qualified = new Map<string, { totalProfit: number; tradeCount: number; tokens: number }>();
+  console.log(`[Moralis] Found ${walletActivity.size} active wallets on ${chain}`);
 
-  for (const [address, stats] of traderStats) {
-    if (stats.tradeCount >= minTrades && stats.tokens >= 2 && stats.totalProfit > 0) {
-      qualified.set(address, stats);
+  // Step 2: Sort by activity and check top wallets' profitability
+  const sortedWallets = Array.from(walletActivity.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxWalletsToCheck)
+    .map(([addr]) => addr);
+
+  const profitableTraders = new Map<string, MoralisWalletPnl>();
+
+  for (const wallet of sortedWallets) {
+    const pnl = await getWalletPnlSummary(wallet, chain);
+
+    if (pnl && pnl.total_trades >= 10 && pnl.win_rate >= 55 && pnl.total_pnl_usd > 500) {
+      profitableTraders.set(wallet, pnl);
+      console.log(
+        `[Moralis] +${chain.toUpperCase()} ${wallet.slice(0, 8)}... (${pnl.win_rate.toFixed(0)}% win, $${pnl.total_pnl_usd.toFixed(0)})`
+      );
     }
+
+    // Rate limit: 150ms between requests
+    await new Promise((r) => setTimeout(r, 150));
   }
 
-  console.log(
-    `[Moralis] Discovered ${qualified.size} profitable traders from ${popularTokens.length} tokens on ${chain}`
-  );
+  console.log(`[Moralis] Discovered ${profitableTraders.size} profitable traders on ${chain}`);
 
-  return qualified;
+  return profitableTraders;
 }
 
 // Re-export dynamic token fetching from DexScreener
@@ -230,4 +187,4 @@ export async function discoverProfitableTraders(
 export { getActiveTokens as getPopularTokens } from "./dexscreener.js";
 
 // Export types for external use
-export type { MoralisWalletPnl, MoralisTopTrader, MoralisWalletTokenPnl };
+export type { MoralisWalletPnl, MoralisTransfer };

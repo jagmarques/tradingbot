@@ -1,12 +1,7 @@
 // Auto-discovery of profitable traders across all chains
 import { Chain, TRADER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
-import {
-  isMoralisConfigured,
-  getTopTradersForToken,
-  getWalletPnlSummary,
-  getPopularTokens,
-} from "./moralis.js";
+import { isMoralisConfigured, discoverTradersFromTokens, getPopularTokens } from "./moralis.js";
 import {
   isHeliusConfigured,
   analyzeWalletPnl,
@@ -14,7 +9,7 @@ import {
   findEarlyBuyers,
 } from "./helius.js";
 
-// Discovery interval: 4 hours (more aggressive)
+// Discovery interval: 4 hours
 const DISCOVERY_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 // All EVM chains to discover traders on
@@ -115,117 +110,60 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   console.log(`[Discovery] Checking ${popularTokens.length} trending tokens on ${chain}`);
 
-  // Collect all trader addresses and their aggregate stats
-  const traderStats = new Map<
-    string,
-    {
-      totalProfit: number;
-      tradeCount: number;
-      tokens: number;
-    }
-  >();
+  // Use new approach: analyze token transfers to find active traders
+  const profitableTraders = await discoverTradersFromTokens(chain, popularTokens, 30);
 
-  // Get top traders for each popular token
-  for (const token of popularTokens) {
-    try {
-      const topTraders = await getTopTradersForToken(token, chain, 50);
-
-      for (const trader of topTraders) {
-        if (trader.count_of_trades < 3) continue; // Skip low activity
-
-        const existing = traderStats.get(trader.owner_address) || {
-          totalProfit: 0,
-          tradeCount: 0,
-          tokens: 0,
-        };
-
-        existing.totalProfit += trader.realized_profit_usd;
-        existing.tradeCount += trader.count_of_trades;
-        existing.tokens += 1;
-
-        traderStats.set(trader.owner_address, existing);
-      }
-
-      // Rate limiting: 150ms between requests
-      await new Promise((r) => setTimeout(r, 150));
-    } catch (err) {
-      console.error(`[Discovery] Error fetching token ${token.slice(0, 10)}...:`, err);
-    }
-  }
-
-  // Filter to qualified traders
   let discovered = 0;
 
-  for (const [address, stats] of traderStats) {
-    // Basic qualification: profitable across multiple tokens
-    if (stats.totalProfit <= 0 || stats.tokens < 2 || stats.tradeCount < 10) {
-      continue;
-    }
-
+  for (const [address, pnl] of profitableTraders) {
     // Check if already tracked
     const existing = getTrader(address, chain);
     if (existing) {
       continue;
     }
 
-    // Get detailed PnL summary from Moralis
-    try {
-      const pnlSummary = await getWalletPnlSummary(address, chain);
+    // Calculate win rate from API response
+    const totalTrades = pnl.total_wins + pnl.total_losses;
+    const winRate = pnl.win_rate || (totalTrades > 0 ? (pnl.total_wins / totalTrades) * 100 : 0);
 
-      if (pnlSummary) {
-        // Calculate win rate
-        const totalTrades = pnlSummary.total_wins + pnlSummary.total_losses;
-        const winRate = totalTrades > 0 ? (pnlSummary.total_wins / totalTrades) * 100 : 0;
-
-        // Check if meets minimum criteria
-        if (
-          winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
-          pnlSummary.total_pnl_usd > 1000 // At least $1k profit
-        ) {
-          // Calculate profit factor (estimate)
-          const profitFactor =
-            pnlSummary.total_losses > 0
-              ? Math.min(10, pnlSummary.total_wins / pnlSummary.total_losses)
-              : pnlSummary.total_wins > 0
-                ? 10
-                : 0;
-
-          // Calculate score
-          const score = Math.min(
-            100,
-            winRate * 0.4 + Math.min(100, profitFactor * 10) * 0.3 + Math.min(100, totalTrades * 2) * 0.3
-          );
-
-          // Save trader
-          upsertTrader({
-            address,
-            chain,
-            score: Math.round(score * 10) / 10,
-            winRate,
-            profitFactor,
-            consistency: 50,
-            totalTrades,
-            winningTrades: pnlSummary.total_wins,
-            losingTrades: pnlSummary.total_losses,
-            totalPnlUsd: pnlSummary.total_pnl_usd,
-            avgHoldTimeMs: 0,
-            largestWinPct: 0,
-            discoveredAt: Date.now(),
-            updatedAt: Date.now(),
-          });
-
-          discovered++;
-          console.log(
-            `[Discovery] +${chain.toUpperCase()} ${address.slice(0, 8)}... (${winRate.toFixed(0)}% win, $${pnlSummary.total_pnl_usd.toFixed(0)})`
-          );
-        }
-      }
-
-      // Rate limiting
-      await new Promise((r) => setTimeout(r, 150));
-    } catch (err) {
-      console.error(`[Discovery] Error getting PnL for ${address.slice(0, 8)}...:`, err);
+    // Check if meets minimum criteria
+    if (winRate < TRADER_THRESHOLDS.MIN_WIN_RATE * 100 || pnl.total_pnl_usd < 500) {
+      continue;
     }
+
+    // Calculate profit factor
+    const profitFactor =
+      pnl.total_losses > 0
+        ? Math.min(10, pnl.total_wins / pnl.total_losses)
+        : pnl.total_wins > 0
+          ? 10
+          : 0;
+
+    // Calculate score
+    const score = Math.min(
+      100,
+      winRate * 0.4 + Math.min(100, profitFactor * 10) * 0.3 + Math.min(100, totalTrades * 2) * 0.3
+    );
+
+    // Save trader
+    upsertTrader({
+      address,
+      chain,
+      score: Math.round(score * 10) / 10,
+      winRate,
+      profitFactor,
+      consistency: 50,
+      totalTrades,
+      winningTrades: pnl.total_wins,
+      losingTrades: pnl.total_losses,
+      totalPnlUsd: pnl.total_pnl_usd,
+      avgHoldTimeMs: 0,
+      largestWinPct: 0,
+      discoveredAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    discovered++;
   }
 
   return discovered;
@@ -247,7 +185,6 @@ async function discoverTradersOnSolana(): Promise<number> {
   const traderFrequency = new Map<string, number>();
 
   for (const mint of recentTokens.slice(0, 15)) {
-    // Check first 15 tokens
     try {
       const earlyBuyers = await findEarlyBuyers(mint, 20);
 
@@ -262,16 +199,18 @@ async function discoverTradersOnSolana(): Promise<number> {
   }
 
   // Wallets that appear in multiple early buyer lists are likely good traders
+  // Relaxed criteria: present in at least 1 token launch (was 2)
   const potentialTraders = Array.from(traderFrequency.entries())
-    .filter(([_, count]) => count >= 2) // Present in at least 2 token launches
+    .filter(([_, count]) => count >= 1)
+    .sort((a, b) => b[1] - a[1]) // Sort by frequency
+    .slice(0, 100) // Check more wallets
     .map(([address]) => address);
 
   console.log(`[Discovery] Found ${potentialTraders.length} potential Solana traders`);
 
   let discovered = 0;
 
-  for (const address of potentialTraders.slice(0, 50)) {
-    // Analyze top 50
+  for (const address of potentialTraders) {
     // Check if already tracked
     const existing = getTrader(address, "solana");
     if (existing) {
@@ -283,13 +222,13 @@ async function discoverTradersOnSolana(): Promise<number> {
 
       if (!analysis) continue;
 
-      // Check if meets criteria
+      // Relaxed criteria for Solana
       if (
-        analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
-        analysis.totalTrades >= 5 &&
-        analysis.totalPnlSol > 0.5 // At least 0.5 SOL profit
+        analysis.winRate >= 50 && // 50% win rate (was 55%)
+        analysis.totalTrades >= 3 && // 3 trades (was 5)
+        analysis.totalPnlSol > 0.1 // 0.1 SOL profit (was 0.5)
       ) {
-        // Estimate USD PnL (rough SOL price)
+        // Estimate USD PnL
         const solPrice = 150;
         const totalPnlUsd = analysis.totalPnlSol * solPrice;
 
