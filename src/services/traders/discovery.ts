@@ -103,28 +103,41 @@ async function runDiscovery(): Promise<void> {
 
   let totalDiscovered = 0;
 
-  // EVM chains via Etherscan (100K calls/day limit vs Moralis 1.3K)
+  // Run ALL chains in PARALLEL (EVM + Solana)
+  // Each API has separate rate limits, no reason to wait
+  const tasks: Promise<{ chain: string; discovered: number }>[] = [];
+
+  // EVM chains via Etherscan (each chain = separate API = 5 calls/sec each)
   if (isEtherscanConfigured()) {
     for (const chain of EVM_CHAINS) {
-      try {
-        const discovered = await discoverTradersOnEvmChain(chain);
-        totalDiscovered += discovered;
-        console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
-      } catch (err) {
-        console.error(`[Discovery] Error on ${chain}:`, err);
-      }
+      tasks.push(
+        discoverTradersOnEvmChain(chain)
+          .then((discovered) => ({ chain, discovered }))
+          .catch((err) => {
+            console.error(`[Discovery] Error on ${chain}:`, err);
+            return { chain, discovered: 0 };
+          })
+      );
     }
   }
 
-  // Solana via Helius
+  // Solana via Helius (separate API)
   if (isHeliusConfigured()) {
-    try {
-      const discovered = await discoverTradersOnSolana();
-      totalDiscovered += discovered;
-      console.log(`[Discovery] Found ${discovered} traders on Solana`);
-    } catch (err) {
-      console.error("[Discovery] Error on Solana:", err);
-    }
+    tasks.push(
+      discoverTradersOnSolana()
+        .then((discovered) => ({ chain: "solana", discovered }))
+        .catch((err) => {
+          console.error("[Discovery] Error on Solana:", err);
+          return { chain: "solana", discovered: 0 };
+        })
+    );
+  }
+
+  // Wait for all to complete
+  const results = await Promise.all(tasks);
+  for (const { chain, discovered } of results) {
+    totalDiscovered += discovered;
+    console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
   }
 
   console.log(`[Discovery] Cycle complete - ${totalDiscovered} total traders discovered`);

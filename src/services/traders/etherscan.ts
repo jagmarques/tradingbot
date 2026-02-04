@@ -42,17 +42,18 @@ interface WalletProfitability {
   lastUpdated: number;
 }
 
-// Rate limiting
-let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL_MS = 220; // ~4.5 requests/sec (under 5/sec limit)
+// Per-chain rate limiting (each explorer has separate 5 calls/sec limit)
+const lastRequestTimeByChain = new Map<string, number>();
+const MIN_REQUEST_INTERVAL_MS = 220; // ~4.5 requests/sec per chain
 
-async function rateLimitedFetch(url: string): Promise<Response> {
+async function rateLimitedFetch(url: string, chain: string): Promise<Response> {
   const now = Date.now();
-  const elapsed = now - lastRequestTime;
+  const lastTime = lastRequestTimeByChain.get(chain) || 0;
+  const elapsed = now - lastTime;
   if (elapsed < MIN_REQUEST_INTERVAL_MS) {
     await new Promise((r) => setTimeout(r, MIN_REQUEST_INTERVAL_MS - elapsed));
   }
-  lastRequestTime = Date.now();
+  lastRequestTimeByChain.set(chain, Date.now());
   return fetch(url);
 }
 
@@ -129,7 +130,7 @@ async function getTokenTransfers(
   const url = `${baseUrl}?module=account&action=tokentx&address=${wallet}&startblock=${startBlock}&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
 
   try {
-    const response = await rateLimitedFetch(url);
+    const response = await rateLimitedFetch(url, chain);
     const data = (await response.json()) as { status: string; result: Record<string, string>[] };
 
     if (data.status !== "1" || !Array.isArray(data.result)) {
