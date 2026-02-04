@@ -1,6 +1,6 @@
 import { Chain, TRADER_THRESHOLDS, BIG_HITTER_THRESHOLDS } from "./types.js";
 import { getDb } from "../database/db.js";
-import { upsertTrader, getTrader } from "./storage.js";
+import { upsertTrader, getTrader, upsertTokenTrade } from "./storage.js";
 
 // Etherscan API V2 - unified multichain endpoint
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
@@ -50,6 +50,16 @@ interface TokenTransfer {
   timestamp: number;
 }
 
+interface TokenTradeData {
+  tokenAddress: string;
+  tokenSymbol: string;
+  spent: number;
+  received: number;
+  pnl: number;
+  firstBuyTimestamp: number;
+  lastSellTimestamp: number;
+}
+
 interface WalletProfitability {
   address: string;
   chain: string;
@@ -59,6 +69,7 @@ interface WalletProfitability {
   totalPnlUsd: number;
   winRate: number;
   lastUpdated: number;
+  tokenTrades?: TokenTradeData[];
 }
 
 // Per-chain rate limiting with proper queue (each explorer has separate 5 calls/sec limit)
@@ -195,14 +206,19 @@ export async function analyzeWalletPnl(
   // Group transfers by transaction hash to find token<->stablecoin swaps
   const txGroups = new Map<string, TokenTransfer[]>();
   for (const tx of transfers) {
-    if (!txGroups.has(tx.hash)) {
-      txGroups.set(tx.hash, []);
-    }
-    txGroups.get(tx.hash)!.push(tx);
+    const group = txGroups.get(tx.hash) ?? [];
+    group.push(tx);
+    txGroups.set(tx.hash, group);
   }
 
-  // Track USD spent/received per token
-  const tokenPnl = new Map<string, { spent: number; received: number }>();
+  // Track USD spent/received per token with timestamps and symbols
+  const tokenPnl = new Map<string, {
+    symbol: string;
+    spent: number;
+    received: number;
+    firstBuyTimestamp: number;
+    lastSellTimestamp: number;
+  }>();
 
   for (const [, txTransfers] of txGroups) {
     const quoteTransfers = txTransfers.filter((t) => QUOTE_TOKENS.has(t.tokenAddress));
@@ -217,34 +233,44 @@ export async function analyzeWalletPnl(
 
       for (const tokenTx of tokenTransfers) {
         if (!tokenPnl.has(tokenTx.tokenAddress)) {
-          tokenPnl.set(tokenTx.tokenAddress, { spent: 0, received: 0 });
+          tokenPnl.set(tokenTx.tokenAddress, {
+            symbol: tokenTx.tokenSymbol || "UNKNOWN",
+            spent: 0,
+            received: 0,
+            firstBuyTimestamp: Infinity,
+            lastSellTimestamp: 0,
+          });
         }
-        const pnl = tokenPnl.get(tokenTx.tokenAddress)!;
+        const pnl = tokenPnl.get(tokenTx.tokenAddress);
+        if (!pnl) continue;
 
         // BUY: quote OUT, token IN
         if (quoteTx.from === walletLower && tokenTx.to === walletLower) {
           pnl.spent += usdAmount;
+          pnl.firstBuyTimestamp = Math.min(pnl.firstBuyTimestamp, tokenTx.timestamp);
         }
         // SELL: token OUT, quote IN
         else if (quoteTx.to === walletLower && tokenTx.from === walletLower) {
           pnl.received += usdAmount;
+          pnl.lastSellTimestamp = Math.max(pnl.lastSellTimestamp, tokenTx.timestamp);
         }
       }
     }
   }
 
-  // Calculate P&L per token
+  // Calculate P&L per token and collect trade data
   let totalTrades = 0;
   let winningTrades = 0;
   let losingTrades = 0;
   let totalPnlUsd = 0;
+  const tokenTrades: TokenTradeData[] = [];
 
-  for (const [, { spent, received }] of tokenPnl) {
+  for (const [tokenAddress, data] of tokenPnl) {
     // Only count as trade if both bought and sold
-    if (spent < 10 || received < 10) continue;
+    if (data.spent < 10 || data.received < 10) continue;
 
     totalTrades++;
-    const pnl = received - spent;
+    const pnl = data.received - data.spent;
     totalPnlUsd += pnl;
 
     if (pnl > 0) {
@@ -252,6 +278,16 @@ export async function analyzeWalletPnl(
     } else {
       losingTrades++;
     }
+
+    tokenTrades.push({
+      tokenAddress,
+      tokenSymbol: data.symbol,
+      spent: data.spent,
+      received: data.received,
+      pnl,
+      firstBuyTimestamp: data.firstBuyTimestamp === Infinity ? Date.now() : data.firstBuyTimestamp,
+      lastSellTimestamp: data.lastSellTimestamp || Date.now(),
+    });
   }
 
   const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
@@ -265,6 +301,7 @@ export async function analyzeWalletPnl(
     totalPnlUsd,
     winRate,
     lastUpdated: Date.now(),
+    tokenTrades,
   };
 
   // Cache result
@@ -370,6 +407,26 @@ export async function discoverTradersFromTokens(
         discoveredAt: Date.now(),
         updatedAt: Date.now(),
       });
+
+      // Save token trades for detailed history
+      if (profitability.tokenTrades) {
+        for (const trade of profitability.tokenTrades) {
+          const pnlPct = trade.spent > 0 ? ((trade.pnl / trade.spent) * 100) : 0;
+          upsertTokenTrade({
+            id: `${wallet}_${chain}_${trade.tokenAddress}`,
+            walletAddress: wallet,
+            chain,
+            tokenAddress: trade.tokenAddress,
+            tokenSymbol: trade.tokenSymbol,
+            buyAmountUsd: trade.spent,
+            sellAmountUsd: trade.received,
+            pnlUsd: trade.pnl,
+            pnlPct: Math.round(pnlPct * 10) / 10,
+            firstBuyTimestamp: trade.firstBuyTimestamp,
+            lastSellTimestamp: trade.lastSellTimestamp,
+          });
+        }
+      }
 
       console.log(
         `[Etherscan] +${chain.toUpperCase()} [${type}] ${wallet.slice(0, 8)}... (${profitability.winRate.toFixed(0)}% win, ${profitability.totalTrades} trades, $${profitability.totalPnlUsd.toFixed(0)})`
