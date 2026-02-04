@@ -91,8 +91,8 @@ async function runContinuousDiscovery(): Promise<void> {
         console.log(`[Discovery] Memory cleanup after ${cycleCount} cycles`);
       }
 
-      // Wait between cycles to avoid rate limits
-      await new Promise((r) => setTimeout(r, 30000));
+      // Wait between cycles (Helius free tier = 10 RPS)
+      await new Promise((r) => setTimeout(r, 5000));
     } catch (err) {
       console.error("[Discovery] Cycle error:", err);
     }
