@@ -19,6 +19,7 @@ import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/man
 import { getSolBalance } from "./services/solana/wallet.js";
 import { initTracker, startTracking, stopTracking, getTrackedTraderCount } from "./services/traders/tracker.js";
 import { startDiscovery, stopDiscovery } from "./services/traders/discovery.js";
+import { startTraderAlerts, stopTraderAlerts } from "./services/traders/alerts.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 let positionMonitorInterval: NodeJS.Timeout | null = null;
@@ -137,6 +138,7 @@ async function main(): Promise<void> {
     // Start trader tracker and auto-discovery
     await startTracking();
     startDiscovery();
+    startTraderAlerts();
     console.log(`[Bot] Trader tracker started (${getTrackedTraderCount()} wallets tracked)`);
 
     // Polymarket monitoring disabled - no crypto price markets available
@@ -181,6 +183,7 @@ async function shutdown(signal: string): Promise<void> {
     stopStatusReporter();
     stopPumpfunDetector();
     stopPolymarketMonitoring();
+    stopTraderAlerts();
     stopDiscovery();
     stopTracking();
     stopBot();
