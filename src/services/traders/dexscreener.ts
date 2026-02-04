@@ -39,21 +39,46 @@ interface DexScreenerPair {
 const tokenCache = new Map<Chain, { tokens: string[]; timestamp: number }>();
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
-// Fetch boosted/promoted tokens from DexScreener
+// Global cache for boosted tokens (same for all chains)
+let boostedCache: { tokens: BoostedToken[]; timestamp: number } | null = null;
+const BOOSTED_CACHE_TTL_MS = 60 * 1000; // 1 min cache
+
+// Rate limiting for DexScreener (300 req/min = 5/sec)
+let lastDexScreenerRequest = 0;
+const MIN_DEXSCREENER_INTERVAL_MS = 250;
+
+async function rateLimitedFetch(url: string): Promise<Response> {
+  const now = Date.now();
+  const elapsed = now - lastDexScreenerRequest;
+  if (elapsed < MIN_DEXSCREENER_INTERVAL_MS) {
+    await new Promise((r) => setTimeout(r, MIN_DEXSCREENER_INTERVAL_MS - elapsed));
+  }
+  lastDexScreenerRequest = Date.now();
+  return fetch(url);
+}
+
+// Fetch boosted/promoted tokens from DexScreener (cached globally)
 async function getBoostedTokens(): Promise<BoostedToken[]> {
+  // Return cached if fresh
+  if (boostedCache && Date.now() - boostedCache.timestamp < BOOSTED_CACHE_TTL_MS) {
+    return boostedCache.tokens;
+  }
+
   try {
     const url = `${DEXSCREENER_BASE}/token-boosts/top/v1`;
-    const response = await fetch(url);
+    const response = await rateLimitedFetch(url);
 
     if (!response.ok) {
       console.error(`[DexScreener] Boosted API error ${response.status}`);
-      return [];
+      return boostedCache?.tokens || [];
     }
 
-    return (await response.json()) as BoostedToken[];
+    const tokens = (await response.json()) as BoostedToken[];
+    boostedCache = { tokens, timestamp: Date.now() };
+    return tokens;
   } catch (err) {
     console.error("[DexScreener] Error fetching boosted:", err);
-    return [];
+    return boostedCache?.tokens || [];
   }
 }
 
@@ -118,7 +143,7 @@ async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]
 
     try {
       const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
-      const response = await fetch(url);
+      const response = await rateLimitedFetch(url);
 
       if (!response.ok) continue;
 
@@ -133,7 +158,7 @@ async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]
         tokens.add(pair.baseToken.address);
       }
 
-      await new Promise((r) => setTimeout(r, 50));
+      // Rate limiting handled by rateLimitedFetch
     } catch {
       continue;
     }
@@ -152,7 +177,7 @@ export async function getActiveTokens(chain: Chain, limit: number = 25): Promise
 export async function searchToken(query: string): Promise<DexScreenerPair[]> {
   try {
     const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${encodeURIComponent(query)}`;
-    const response = await fetch(url);
+    const response = await rateLimitedFetch(url);
 
     if (!response.ok) return [];
 
@@ -167,7 +192,7 @@ export async function searchToken(query: string): Promise<DexScreenerPair[]> {
 export async function getTokenPairs(tokenAddress: string): Promise<DexScreenerPair[]> {
   try {
     const url = `${DEXSCREENER_BASE}/latest/dex/tokens/${tokenAddress}`;
-    const response = await fetch(url);
+    const response = await rateLimitedFetch(url);
 
     if (!response.ok) return [];
 
