@@ -9,10 +9,14 @@ let unsubscribe: (() => void) | null = null;
 function formatTraderAlert(trader: Trader, trade: TraderTrade): string {
   const chainLabel: Record<string, string> = {
     solana: "SOL",
+    ethereum: "ETH",
+    polygon: "MATIC",
     base: "BASE",
-    bnb: "BNB",
     arbitrum: "ARB",
+    bsc: "BNB",
+    optimism: "OP",
     avalanche: "AVAX",
+    sonic: "S",
   };
 
   const shortAddress = `${trader.address.slice(0, 6)}...${trader.address.slice(-4)}`;
