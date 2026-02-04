@@ -19,7 +19,8 @@ import {
   upsertTrader,
 } from "./storage.js";
 
-const RPC_ENDPOINTS: Record<Chain, string> = {
+// Default public RPCs (can be overridden via env vars)
+const DEFAULT_RPC_ENDPOINTS: Record<Chain, string> = {
   solana: "https://api.mainnet-beta.solana.com",
   ethereum: "https://eth.llamarpc.com",
   polygon: "https://polygon-rpc.com",
@@ -30,6 +31,15 @@ const RPC_ENDPOINTS: Record<Chain, string> = {
   avalanche: "https://api.avax.network/ext/bc/C/rpc",
   sonic: "https://rpc.soniclabs.com",
 };
+
+// Allow custom RPC URLs via environment variables
+function getRpcUrl(chain: Chain): string {
+  const envKey = `RPC_${chain.toUpperCase()}`;
+  return process.env[envKey] || DEFAULT_RPC_ENDPOINTS[chain];
+}
+
+// Track chains that failed to connect (skip them in future polls)
+const failedChains = new Set<Chain>();
 
 const DEX_ROUTERS: Record<Chain, string[]> = {
   solana: [],
@@ -79,10 +89,13 @@ const lastBlockByChain: Map<Chain, number> = new Map();
 
 function getEvmProvider(chain: Chain): ethers.JsonRpcProvider | null {
   if (chain === "solana") return null;
+  if (failedChains.has(chain)) return null;
 
   let provider = evmProviders.get(chain);
   if (!provider) {
-    provider = new ethers.JsonRpcProvider(RPC_ENDPOINTS[chain]);
+    const rpcUrl = getRpcUrl(chain);
+    // Use staticNetwork to prevent auto-detection retries that spam logs
+    provider = new ethers.JsonRpcProvider(rpcUrl, undefined, { staticNetwork: true });
     evmProviders.set(chain, provider);
   }
   return provider;
@@ -102,17 +115,29 @@ export async function startTracking(): Promise<void> {
   isRunning = true;
   console.log("[Traders] Starting trader tracker...");
 
-  for (const chain of Object.keys(RPC_ENDPOINTS) as Chain[]) {
+  const connectedChains: Chain[] = [];
+  for (const chain of Object.keys(DEFAULT_RPC_ENDPOINTS) as Chain[]) {
     if (chain === "solana") continue;
     const provider = getEvmProvider(chain);
     if (provider) {
       try {
         const blockNumber = await provider.getBlockNumber();
         lastBlockByChain.set(chain, blockNumber);
-      } catch (err) {
-        console.error(`[Traders] Failed to get block for ${chain}:`, err);
+        connectedChains.push(chain);
+      } catch {
+        // Mark chain as failed - don't spam logs with retries
+        failedChains.add(chain);
+        evmProviders.delete(chain);
+        console.log(`[Traders] Skipping ${chain} - RPC connection failed`);
       }
     }
+  }
+
+  if (connectedChains.length > 0) {
+    console.log(`[Traders] Connected to: ${connectedChains.join(", ")}`);
+  }
+  if (failedChains.size > 0) {
+    console.log(`[Traders] Failed chains: ${Array.from(failedChains).join(", ")} (set RPC_<CHAIN> env var to override)`);
   }
 
   poll();
@@ -143,6 +168,7 @@ async function poll(): Promise<void> {
 
     for (const [chain, chainTraders] of tradersByChain) {
       if (chain === "solana") continue;
+      if (failedChains.has(chain)) continue;
       await checkEvmChain(chain, chainTraders);
     }
   } catch (err) {
@@ -216,8 +242,13 @@ async function checkEvmChain(chain: Chain, traders: Trader[]): Promise<void> {
     }
 
     lastBlockByChain.set(chain, currentBlock);
-  } catch (err) {
-    console.error(`[Traders] Error checking ${chain}:`, err);
+  } catch {
+    // Mark chain as failed to prevent continuous retries
+    if (!failedChains.has(chain)) {
+      failedChains.add(chain);
+      evmProviders.delete(chain);
+      console.log(`[Traders] Disabling ${chain} tracker - RPC error`);
+    }
   }
 }
 
