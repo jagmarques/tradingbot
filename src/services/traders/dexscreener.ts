@@ -144,38 +144,57 @@ export async function getTrendingTokens(chain: Chain, limit: number = 50): Promi
   }
 }
 
-// Search terms by category - not specific coins, but trading categories
-const SEARCH_CATEGORIES = ["usd", "eth", "weth", "usdc", "usdt", "dai"];
-
-// Get tokens via search on a chain
+// Get tokens via chain-specific pairs endpoint (most active)
 async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]> {
   const chainId = CHAIN_IDS[chain];
   const tokens = new Set<string>();
 
-  // Search using quote token terms - finds pairs traded against these
-  for (const term of SEARCH_CATEGORIES) {
-    if (tokens.size >= limit) break;
+  try {
+    // Fetch pairs directly for this chain - sorted by volume
+    const url = `${DEXSCREENER_BASE}/latest/dex/pairs/${chainId}`;
+    const response = await rateLimitedFetch(url);
 
-    try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
-      const response = await rateLimitedFetch(url);
-
-      if (!response.ok) continue;
-
+    if (response.ok) {
       const data = (await response.json()) as { pairs?: DexScreenerPair[] };
       const pairs = (data.pairs || [])
-        .filter((p) => p.chainId === chainId)
-        .filter((p) => (p.volume?.h24 || 0) > 5000 && (p.liquidity?.usd || 0) > 2000)
-        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
+        .filter((p) => (p.volume?.h24 || 0) > 1000) // Lower threshold
+        .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0))
+        .slice(0, limit);
 
       for (const pair of pairs) {
-        if (tokens.size >= limit) break;
         tokens.add(pair.baseToken.address);
       }
+    }
+  } catch {
+    // Ignore errors
+  }
 
-      // Rate limiting handled by rateLimitedFetch
-    } catch {
-      continue;
+  // Also search for common trading pairs if we need more
+  if (tokens.size < limit) {
+    const searchTerms = ["pepe", "doge", "shib", "ai", "meme", "trump", "usdc", "weth"];
+
+    for (const term of searchTerms) {
+      if (tokens.size >= limit) break;
+
+      try {
+        const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${term}`;
+        const response = await rateLimitedFetch(url);
+
+        if (!response.ok) continue;
+
+        const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+        const pairs = (data.pairs || [])
+          .filter((p) => p.chainId === chainId)
+          .filter((p) => (p.volume?.h24 || 0) > 500) // Lower threshold
+          .sort((a, b) => (b.volume?.h24 || 0) - (a.volume?.h24 || 0));
+
+        for (const pair of pairs) {
+          if (tokens.size >= limit) break;
+          tokens.add(pair.baseToken.address);
+        }
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -184,7 +203,7 @@ async function getTopPairsOnChain(chain: Chain, limit: number): Promise<string[]
 }
 
 // Get all tokens worth checking (boosted + search)
-export async function getActiveTokens(chain: Chain, limit: number = 25): Promise<string[]> {
+export async function getActiveTokens(chain: Chain, limit: number = 50): Promise<string[]> {
   return getTrendingTokens(chain, limit);
 }
 

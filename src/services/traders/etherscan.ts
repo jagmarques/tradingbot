@@ -1,4 +1,4 @@
-import { Chain } from "./types.js";
+import { Chain, TRADER_THRESHOLDS, BIG_HITTER_THRESHOLDS } from "./types.js";
 import { getDb } from "../database/db.js";
 
 // Etherscan API V2 - unified multichain endpoint
@@ -303,14 +303,25 @@ export async function discoverTradersFromTokens(
     const profitability = await analyzeWalletPnl(wallet, chain);
     checked++;
 
-    if (
-      profitability &&
-      profitability.totalTrades >= 5 &&
-      profitability.winRate >= 80
-    ) {
+    if (!profitability) continue;
+
+    // Check if meets standard trader thresholds (20+ trades, 80%+ win rate)
+    const isStandardTrader =
+      profitability.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
+      profitability.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100;
+
+    // Check if meets big hitter thresholds (3-19 trades, 80%+ win, $5000+ PnL)
+    const isBigHitter =
+      profitability.totalTrades >= BIG_HITTER_THRESHOLDS.MIN_TRADES &&
+      profitability.totalTrades < TRADER_THRESHOLDS.MIN_TRADES &&
+      profitability.winRate >= BIG_HITTER_THRESHOLDS.MIN_WIN_RATE * 100 &&
+      profitability.totalPnlUsd >= BIG_HITTER_THRESHOLDS.MIN_TOTAL_PNL_USD;
+
+    if (isStandardTrader || isBigHitter) {
       profitableTraders.set(wallet, profitability);
+      const type = isStandardTrader ? "TRADER" : "BIG_HIT";
       console.log(
-        `[Etherscan] +${chain.toUpperCase()} ${wallet.slice(0, 8)}... (${profitability.winRate.toFixed(0)}% win, ${profitability.totalTrades} trades)`
+        `[Etherscan] +${chain.toUpperCase()} [${type}] ${wallet.slice(0, 8)}... (${profitability.winRate.toFixed(0)}% win, ${profitability.totalTrades} trades, $${profitability.totalPnlUsd.toFixed(0)})`
       );
     }
   }
