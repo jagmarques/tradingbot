@@ -46,17 +46,17 @@ const BOOSTED_CACHE_TTL_MS = 60 * 1000; // 1 min cache
 // Mutex to prevent race condition on boosted tokens fetch
 let boostedFetchPromise: Promise<BoostedToken[]> | null = null;
 
-// Rate limiting for DexScreener (300 req/min = 5/sec)
-let lastDexScreenerRequest = 0;
+// Rate limiting for DexScreener with proper queue (300 req/min = 5/sec)
 const MIN_DEXSCREENER_INTERVAL_MS = 250;
+let fetchQueue: Promise<void> = Promise.resolve();
 
 async function rateLimitedFetch(url: string): Promise<Response> {
-  const now = Date.now();
-  const elapsed = now - lastDexScreenerRequest;
-  if (elapsed < MIN_DEXSCREENER_INTERVAL_MS) {
-    await new Promise((r) => setTimeout(r, MIN_DEXSCREENER_INTERVAL_MS - elapsed));
-  }
-  lastDexScreenerRequest = Date.now();
+  // Chain onto the queue to ensure sequential execution
+  const myTurn = fetchQueue.then(async () => {
+    await new Promise((r) => setTimeout(r, MIN_DEXSCREENER_INTERVAL_MS));
+  });
+  fetchQueue = myTurn;
+  await myTurn;
   return fetch(url);
 }
 
