@@ -3,20 +3,10 @@ import { Chain } from "./types.js";
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
-// Chain IDs for token transfers (string format)
-const TRANSFER_CHAINS: Partial<Record<Chain, string>> = {
+// Moralis profitability endpoint only supports: eth, polygon, base
+// Source: https://docs.moralis.com/web3-data-api/evm/profitability-faqs
+const SUPPORTED_CHAINS: Partial<Record<Chain, string>> = {
   base: "base",
-  bnb: "bsc",
-  arbitrum: "arbitrum",
-  avalanche: "avalanche",
-};
-
-// Chain IDs for profitability endpoint (hex format required)
-const PROFITABILITY_CHAINS: Partial<Record<Chain, string>> = {
-  base: "0x2105",
-  bnb: "0x38",
-  arbitrum: "0xa4b1",
-  avalanche: "0xa86a",
 };
 
 interface MoralisWalletPnl {
@@ -58,11 +48,13 @@ export function isMoralisConfigured(): boolean {
   return getApiKey() !== null;
 }
 
+export function isMoralisChainSupported(chain: Chain): boolean {
+  return chain in SUPPORTED_CHAINS;
+}
+
 async function moralisRequest<T>(endpoint: string): Promise<T | null> {
   const apiKey = getApiKey();
-  if (!apiKey) {
-    return null;
-  }
+  if (!apiKey) return null;
 
   const url = `${MORALIS_BASE_URL}${endpoint}`;
 
@@ -92,7 +84,7 @@ export async function getTokenTransfers(
   chain: Chain,
   limit: number = 100
 ): Promise<MoralisTransfer[]> {
-  const chainId = TRANSFER_CHAINS[chain];
+  const chainId = SUPPORTED_CHAINS[chain];
   if (!chainId) return [];
 
   const endpoint = `/erc20/${tokenAddress}/transfers?chain=${chainId}&limit=${limit}`;
@@ -105,7 +97,7 @@ export async function getWalletPnlSummary(
   walletAddress: string,
   chain: Chain
 ): Promise<MoralisWalletPnl | null> {
-  const chainId = PROFITABILITY_CHAINS[chain];
+  const chainId = SUPPORTED_CHAINS[chain];
   if (!chainId) return null;
 
   const endpoint = `/wallets/${walletAddress}/profitability/summary?chain=${chainId}&days=90`;
@@ -117,6 +109,13 @@ export async function discoverTradersFromTokens(
   tokenAddresses: string[],
   maxWalletsToCheck: number = 30
 ): Promise<Map<string, MoralisWalletPnl>> {
+  const profitableTraders = new Map<string, MoralisWalletPnl>();
+
+  if (!isMoralisChainSupported(chain)) {
+    console.log(`[Moralis] Chain ${chain} not supported for profitability`);
+    return profitableTraders;
+  }
+
   const walletActivity = new Map<string, number>();
 
   for (const token of tokenAddresses.slice(0, 10)) {
@@ -138,8 +137,6 @@ export async function discoverTradersFromTokens(
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxWalletsToCheck)
     .map(([addr]) => addr);
-
-  const profitableTraders = new Map<string, MoralisWalletPnl>();
 
   for (const wallet of sortedWallets) {
     const pnl = await getWalletPnlSummary(wallet, chain);

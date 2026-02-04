@@ -1,4 +1,3 @@
-// Auto-discovery of profitable traders across all chains
 import { Chain, TRADER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
 import { isMoralisConfigured, discoverTradersFromTokens, getPopularTokens } from "./moralis.js";
@@ -9,16 +8,15 @@ import {
   findEarlyBuyers,
 } from "./helius.js";
 
-// Discovery interval: 4 hours
 const DISCOVERY_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
-// All EVM chains to discover traders on
-const EVM_CHAINS: Chain[] = ["base", "bnb", "arbitrum", "avalanche"];
+// Only Base supported for Moralis profitability (free tier)
+// BNB, Arbitrum, Avalanche not supported
+const MORALIS_CHAINS: Chain[] = ["base"];
 
 let discoveryTimer: NodeJS.Timeout | null = null;
 let isDiscovering = false;
 
-// Start periodic trader discovery
 export function startDiscovery(): void {
   const hasMoralis = isMoralisConfigured();
   const hasHelius = isHeliusConfigured();
@@ -34,20 +32,17 @@ export function startDiscovery(): void {
   }
 
   console.log("[Discovery] Starting auto-discovery (every 4 hours)");
-  console.log(`[Discovery] APIs: Moralis=${hasMoralis}, Helius=${hasHelius}`);
+  console.log(`[Discovery] Chains: Base=${hasMoralis}, Solana=${hasHelius}`);
 
-  // Run initial discovery after 30 seconds (let bot stabilize first)
   setTimeout(() => {
     runDiscovery();
   }, 30_000);
 
-  // Schedule periodic discovery
   discoveryTimer = setInterval(() => {
     runDiscovery();
   }, DISCOVERY_INTERVAL_MS);
 }
 
-// Stop discovery
 export function stopDiscovery(): void {
   if (discoveryTimer) {
     clearInterval(discoveryTimer);
@@ -56,7 +51,6 @@ export function stopDiscovery(): void {
   console.log("[Discovery] Stopped");
 }
 
-// Run a discovery cycle
 async function runDiscovery(): Promise<void> {
   if (isDiscovering) {
     console.log("[Discovery] Already in progress");
@@ -68,15 +62,12 @@ async function runDiscovery(): Promise<void> {
 
   let totalDiscovered = 0;
 
-  // Discover on EVM chains via Moralis
   if (isMoralisConfigured()) {
-    for (const chain of EVM_CHAINS) {
+    for (const chain of MORALIS_CHAINS) {
       try {
         const discovered = await discoverTradersOnEvmChain(chain);
         totalDiscovered += discovered;
         console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
-
-        // Rate limiting between chains
         await new Promise((r) => setTimeout(r, 2000));
       } catch (err) {
         console.error(`[Discovery] Error on ${chain}:`, err);
@@ -84,7 +75,6 @@ async function runDiscovery(): Promise<void> {
     }
   }
 
-  // Discover on Solana via Helius
   if (isHeliusConfigured()) {
     try {
       const discovered = await discoverTradersOnSolana();
@@ -99,9 +89,7 @@ async function runDiscovery(): Promise<void> {
   isDiscovering = false;
 }
 
-// Discover traders on EVM chain via Moralis
 async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
-  // Fetch trending tokens dynamically from DexScreener
   const popularTokens = await getPopularTokens(chain);
   if (popularTokens.length === 0) {
     console.log(`[Discovery] No trending tokens found on ${chain}`);
@@ -110,28 +98,21 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   console.log(`[Discovery] Checking ${popularTokens.length} trending tokens on ${chain}`);
 
-  // Use new approach: analyze token transfers to find active traders
   const profitableTraders = await discoverTradersFromTokens(chain, popularTokens, 30);
 
   let discovered = 0;
 
   for (const [address, pnl] of profitableTraders) {
-    // Check if already tracked
     const existing = getTrader(address, chain);
-    if (existing) {
-      continue;
-    }
+    if (existing) continue;
 
-    // Calculate win rate from API response
     const totalTrades = pnl.total_wins + pnl.total_losses;
     const winRate = pnl.win_rate || (totalTrades > 0 ? (pnl.total_wins / totalTrades) * 100 : 0);
 
-    // Check if meets minimum criteria
     if (winRate < TRADER_THRESHOLDS.MIN_WIN_RATE * 100 || pnl.total_pnl_usd < 500) {
       continue;
     }
 
-    // Calculate profit factor
     const profitFactor =
       pnl.total_losses > 0
         ? Math.min(10, pnl.total_wins / pnl.total_losses)
@@ -139,13 +120,11 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
           ? 10
           : 0;
 
-    // Calculate score
     const score = Math.min(
       100,
       winRate * 0.4 + Math.min(100, profitFactor * 10) * 0.3 + Math.min(100, totalTrades * 2) * 0.3
     );
 
-    // Save trader
     upsertTrader({
       address,
       chain,
@@ -169,41 +148,32 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
   return discovered;
 }
 
-// Discover traders on Solana via Helius
 async function discoverTradersOnSolana(): Promise<number> {
   console.log("[Discovery] Scanning Solana Pump.fun traders...");
 
-  // Get recent Pump.fun tokens
   const recentTokens = await getRecentPumpfunTokens(30);
   console.log(`[Discovery] Found ${recentTokens.length} recent Pump.fun tokens`);
 
-  if (recentTokens.length === 0) {
-    return 0;
-  }
+  if (recentTokens.length === 0) return 0;
 
-  // Find early buyers for each token
   const traderFrequency = new Map<string, number>();
 
   for (const mint of recentTokens.slice(0, 15)) {
     try {
       const earlyBuyers = await findEarlyBuyers(mint, 20);
-
       for (const buyer of earlyBuyers) {
         traderFrequency.set(buyer, (traderFrequency.get(buyer) || 0) + 1);
       }
-
-      await new Promise((r) => setTimeout(r, 200)); // Rate limit
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       console.error(`[Discovery] Error finding buyers for ${mint.slice(0, 8)}...:`, err);
     }
   }
 
-  // Wallets that appear in multiple early buyer lists are likely good traders
-  // Relaxed criteria: present in at least 1 token launch (was 2)
   const potentialTraders = Array.from(traderFrequency.entries())
     .filter(([_, count]) => count >= 1)
-    .sort((a, b) => b[1] - a[1]) // Sort by frequency
-    .slice(0, 100) // Check more wallets
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 100)
     .map(([address]) => address);
 
   console.log(`[Discovery] Found ${potentialTraders.length} potential Solana traders`);
@@ -211,28 +181,21 @@ async function discoverTradersOnSolana(): Promise<number> {
   let discovered = 0;
 
   for (const address of potentialTraders) {
-    // Check if already tracked
     const existing = getTrader(address, "solana");
-    if (existing) {
-      continue;
-    }
+    if (existing) continue;
 
     try {
       const analysis = await analyzeWalletPnl(address);
-
       if (!analysis) continue;
 
-      // Use same 80% win rate threshold as EVM chains
       if (
-        analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 && // 80% win rate
+        analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
         analysis.totalTrades >= 5 &&
-        analysis.totalPnlSol > 0.5 // At least 0.5 SOL profit
+        analysis.totalPnlSol > 0.5
       ) {
-        // Estimate USD PnL
         const solPrice = 150;
         const totalPnlUsd = analysis.totalPnlSol * solPrice;
 
-        // Calculate profit factor
         const profitFactor =
           analysis.losingTrades > 0
             ? Math.min(10, analysis.winningTrades / analysis.losingTrades)
@@ -240,7 +203,6 @@ async function discoverTradersOnSolana(): Promise<number> {
               ? 10
               : 0;
 
-        // Calculate score
         const score = Math.min(
           100,
           analysis.winRate * 0.4 +
@@ -248,7 +210,6 @@ async function discoverTradersOnSolana(): Promise<number> {
             Math.min(100, analysis.totalTrades * 3) * 0.3
         );
 
-        // Save trader
         upsertTrader({
           address,
           chain: "solana",
@@ -272,7 +233,7 @@ async function discoverTradersOnSolana(): Promise<number> {
         );
       }
 
-      await new Promise((r) => setTimeout(r, 200)); // Rate limit
+      await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
       console.error(`[Discovery] Error analyzing ${address.slice(0, 8)}...:`, err);
     }
@@ -281,13 +242,11 @@ async function discoverTradersOnSolana(): Promise<number> {
   return discovered;
 }
 
-// Manual discovery trigger
 export async function runManualDiscovery(): Promise<number> {
   await runDiscovery();
   return 0;
 }
 
-// Check if discovery is active
 export function isDiscoveryRunning(): boolean {
   return discoveryTimer !== null;
 }
