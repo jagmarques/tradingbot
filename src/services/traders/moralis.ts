@@ -3,6 +3,9 @@ import { Chain } from "./types.js";
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
+// Rate limit tracking - stop calling API when daily quota exhausted
+let rateLimitedUntil: number = 0;
+
 // Cache of wallets already checked (avoid re-checking same wallets)
 const checkedWallets = new Map<string, number>();
 const CHECKED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour before re-checking
@@ -64,6 +67,10 @@ export function isMoralisConfigured(): boolean {
   return getApiKey() !== null;
 }
 
+export function isMoralisRateLimited(): boolean {
+  return rateLimitedUntil > Date.now();
+}
+
 export function isMoralisChainSupported(chain: Chain): boolean {
   return chain in SUPPORTED_CHAINS;
 }
@@ -71,6 +78,11 @@ export function isMoralisChainSupported(chain: Chain): boolean {
 async function moralisRequest<T>(endpoint: string): Promise<T | null> {
   const apiKey = getApiKey();
   if (!apiKey) return null;
+
+  // Check if rate limited
+  if (rateLimitedUntil > Date.now()) {
+    return null;
+  }
 
   const url = `${MORALIS_BASE_URL}${endpoint}`;
 
@@ -84,6 +96,18 @@ async function moralisRequest<T>(endpoint: string): Promise<T | null> {
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      // Detect rate limit (401 with "usage has been consumed")
+      if (response.status === 401 && errorText.includes("usage has been consumed")) {
+        // Calculate time until midnight UTC (when Moralis resets)
+        const now = new Date();
+        const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+        rateLimitedUntil = tomorrow.getTime();
+        const hoursLeft = Math.ceil((rateLimitedUntil - Date.now()) / (1000 * 60 * 60));
+        console.log(`[Moralis] Daily limit reached - pausing for ${hoursLeft}h until midnight UTC`);
+        return null;
+      }
+
       console.error(`[Moralis] API error ${response.status}: ${errorText}`);
       return null;
     }
