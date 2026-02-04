@@ -24,6 +24,11 @@ const RPC_ENDPOINTS: Record<Chain, string> = {
   ethereum: "https://eth.llamarpc.com",
   polygon: "https://polygon-rpc.com",
   base: "https://mainnet.base.org",
+  arbitrum: "https://arb1.arbitrum.io/rpc",
+  bsc: "https://bsc-dataseed1.binance.org",
+  optimism: "https://mainnet.optimism.io",
+  avalanche: "https://api.avax.network/ext/bc/C/rpc",
+  sonic: "https://rpc.soniclabs.com",
 };
 
 const DEX_ROUTERS: Record<Chain, string[]> = {
@@ -39,6 +44,26 @@ const DEX_ROUTERS: Record<Chain, string[]> = {
   base: [
     "0x2626664c2603336E57B271c5C0b26F421741e481", // Uniswap Universal Router
     "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43", // Aerodrome
+  ],
+  arbitrum: [
+    "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45", // Uniswap V3
+    "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", // SushiSwap
+  ],
+  bsc: [
+    "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap V2
+    "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4", // PancakeSwap V3
+  ],
+  optimism: [
+    "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45", // Uniswap V3
+    "0xa132DAB612dB5cB9fC9Ac426A0Cc215A3423F9c9", // Velodrome
+  ],
+  avalanche: [
+    "0x60aE616a2155Ee3d9A68541Ba4544862310933d4", // TraderJoe
+    "0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106", // Pangolin
+  ],
+  sonic: [
+    "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5", // SwapX
+    "0xc82Bf7A7d0C2b9C9E8e7B5e8E8D0B0d9E8b1d7a3", // Beethoven
   ],
 };
 
@@ -261,6 +286,11 @@ function getChainNativePrice(chain: Chain): number {
     ethereum: 3500,
     polygon: 1,
     base: 3500,
+    arbitrum: 3500,
+    bsc: 600,
+    optimism: 3500,
+    avalanche: 35,
+    sonic: 0.5,
   };
   return prices[chain] || 0;
 }
