@@ -292,11 +292,10 @@ export async function discoverTradersFromTokens(
 
   console.log(`[Etherscan] Found ${walletActivity.size} active wallets on ${chain}`);
 
-  // Sort by activity and analyze top wallets
+  // Sort by activity and analyze all wallets
   const sortedWallets = Array.from(walletActivity.entries())
     .filter(([addr]) => !STABLECOINS.has(addr)) // Skip stablecoin contracts
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 100) // Analyze top 100 most active
     .map(([addr]) => addr);
 
   let checked = 0;
