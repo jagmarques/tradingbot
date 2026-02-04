@@ -165,13 +165,10 @@ async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
 
   let discovered = 0;
 
+  // Etherscan already filtered - all traders here are profitable (standard or big hitter)
   for (const [address, prof] of profitableTraders) {
     const existing = getTrader(address, chain);
     if (existing) continue;
-
-    if (prof.winRate < TRADER_THRESHOLDS.MIN_WIN_RATE * 100) {
-      continue;
-    }
 
     const profitFactor =
       prof.losingTrades > 0
