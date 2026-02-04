@@ -147,7 +147,7 @@ export function connect(tokenIds: string[]): Promise<void> {
       try {
         const parsed = JSON.parse(data.toString());
         parseOrderbookUpdate(parsed);
-      } catch (err) {
+      } catch {
         // Ignore parse errors for non-JSON messages
       }
     });

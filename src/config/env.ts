@@ -32,14 +32,6 @@ const envSchema = z.object({
   RPC_URL_ARBITRUM: z.string().url().default("https://arb1.arbitrum.io/rpc"),
   RPC_URL_AVALANCHE: z.string().url().default("https://api.avax.network/ext/bc/C/rpc"),
 
-  // Price Feeds
-  BINANCE_WS_URL: z.string().url().default("wss://stream.binance.com:9443"),
-  COINBASE_WS_URL: z.string().url().default("wss://ws-feed.exchange.coinbase.com"),
-
-  // Binance API (optional - for spot hedging)
-  BINANCE_API_KEY: z.string().min(1).optional(),
-  BINANCE_SECRET: z.string().min(1).optional(),
-
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
   TELEGRAM_CHAT_ID: z.string().min(1, "TELEGRAM_CHAT_ID is required"),
@@ -48,6 +40,9 @@ const envSchema = z.object({
   // Google Sheets (optional)
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
+
+  // Moralis API (optional - for trader discovery)
+  MORALIS_API_KEY: z.string().min(1).optional(),
 
   // Risk Limits
   MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),

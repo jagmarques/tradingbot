@@ -10,22 +10,22 @@ vi.mock("./bot.js", () => ({
 
 // Mock env
 vi.mock("../../config/env.js", () => ({
-  isPaperMode: () => true,
-  loadEnv: () => ({
+  isPaperMode: (): boolean => true,
+  loadEnv: (): Record<string, string> => ({
     TIMEZONE: "UTC",
   }),
 }));
 
 // Mock database timezones
 vi.mock("../database/timezones.js", () => ({
-  getUserTimezone: () => null,
+  getUserTimezone: (): null => null,
 }));
 
 // Mock risk manager
 vi.mock("../risk/manager.js", () => ({
-  getDailyPnl: () => 25.5,
-  getDailyPnlPercentage: () => 25.5,
-  getTodayTrades: () => [
+  getDailyPnl: (): number => 25.5,
+  getDailyPnlPercentage: (): number => 25.5,
+  getTodayTrades: (): Array<Record<string, unknown>> => [
     { id: "1", strategy: "pumpfun", type: "BUY", amount: 10, price: 0.001, pnl: 15, timestamp: Date.now() },
     { id: "2", strategy: "polymarket", type: "SELL", amount: 20, price: 0.65, pnl: 10.5, timestamp: Date.now() },
   ],

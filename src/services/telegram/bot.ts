@@ -13,6 +13,12 @@ import {
 import { getSolBalanceFormatted } from "../solana/wallet.js";
 import { getMaticBalanceFormatted, getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
+import { getEthBalance as getBaseEthBalance } from "../base/executor.js";
+import { getBnbBalance } from "../bnb/executor.js";
+import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
+import { getAvaxBalance } from "../avalanche/executor.js";
+import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
+import { getTopTraders } from "../traders/storage.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -21,12 +27,18 @@ let lastDataMessageId: number | null = null;
 let lastTimezonePromptId: number | null = null;
 let lastStatusUpdateId: number | null = null;
 
-// Authorization check - only allow commands from configured chat ID
+// Authorization check - strict security
+// Only the authorized user (TELEGRAM_CHAT_ID) can send commands
+// This works in both private chats and groups
 function isAuthorized(ctx: Context): boolean {
   const fromId = ctx.from?.id?.toString();
-  const msgChatId = ctx.chat?.id?.toString();
-  // Check both user ID and chat ID for security
-  return fromId === chatId || msgChatId === chatId;
+
+  // Must have a sender
+  if (!fromId) return false;
+
+  // Only the configured user can send commands
+  // TELEGRAM_CHAT_ID should be the user's ID, not a group ID
+  return fromId === chatId;
 }
 
 const MAIN_MENU_BUTTONS = [
@@ -34,6 +46,7 @@ const MAIN_MENU_BUTTONS = [
   [{ text: "💰 Balance", callback_data: "balance" }],
   [{ text: "📈 P&L", callback_data: "pnl" }],
   [{ text: "🔄 Trades", callback_data: "trades" }],
+  [{ text: "📋 Traders", callback_data: "traders" }],
   [
     { text: "⏸️ Stop", callback_data: "stop" },
     { text: "▶️ Resume", callback_data: "resume" },
@@ -57,6 +70,7 @@ export async function startBot(): Promise<void> {
   bot.command("balance", handleBalance);
   bot.command("pnl", handlePnl);
   bot.command("trades", handleTrades);
+  bot.command("traders", handleTraders);
   bot.command("timezone", handleTimezone);
   bot.command("stop", handleStop);
   bot.command("resume", handleResume);
@@ -98,6 +112,10 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("unkill", async (ctx) => {
     await handleUnkill(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("traders", async (ctx) => {
+    await handleTraders(ctx);
     await ctx.answerCallbackQuery();
   });
 
@@ -232,10 +250,13 @@ async function handleStatus(ctx: Context): Promise<void> {
 
   try {
     const status = await getRiskStatus();
+    const traderCount = getTrackedTraderCount();
+    const trackerActive = isTrackerRunning();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeEmoji = status.isPaperMode ? "📝" : "💰";
     const killEmoji = status.killSwitchActive ? "⛔" : "✅";
+    const trackerEmoji = trackerActive ? "🟢" : "🔴";
 
     const message =
       `<b>Bot Status</b>\n\n` +
@@ -246,6 +267,9 @@ async function handleStatus(ctx: Context): Promise<void> {
       `SOL: ${status.solBalance.toFixed(4)}\n` +
       `MATIC: ${status.maticBalance.toFixed(4)}\n` +
       `Gas OK: ${status.hasMinGas ? "Yes" : "No"}\n\n` +
+      `<b>Trader Tracker</b>\n` +
+      `${trackerEmoji} Status: ${trackerActive ? "Running" : "Stopped"}\n` +
+      `Tracked Traders: ${traderCount}\n\n` +
       `<b>Daily P&L</b>\n` +
       `$${status.dailyPnl.toFixed(2)} (${status.dailyPnlPercentage.toFixed(1)}%)` +
       (status.pauseReason ? `\n\n⚠️ Pause Reason: ${status.pauseReason}` : "");
@@ -264,11 +288,26 @@ async function handleBalance(ctx: Context): Promise<void> {
   }
 
   try {
-    const [solBalance, maticBalance, usdcBalance] = await Promise.all([
+    const [
+      solBalance,
+      maticBalance,
+      usdcBalance,
+      baseEthBalance,
+      bnbBalance,
+      arbitrumEthBalance,
+      avaxBalance,
+    ] = await Promise.all([
       getSolBalanceFormatted(),
       getMaticBalanceFormatted(),
       getUsdcBalanceFormatted(),
+      getBaseEthBalance().catch(() => BigInt(0)),
+      getBnbBalance().catch(() => BigInt(0)),
+      getArbitrumEthBalance().catch(() => BigInt(0)),
+      getAvaxBalance().catch(() => BigInt(0)),
     ]);
+
+    // Format EVM balances (wei to native token with 4 decimals)
+    const formatWei = (wei: bigint): string => (Number(wei) / 1e18).toFixed(4);
 
     const message =
       `<b>Wallet Balances</b>\n\n` +
@@ -276,7 +315,15 @@ async function handleBalance(ctx: Context): Promise<void> {
       `SOL: ${solBalance}\n\n` +
       `<b>Polygon</b>\n` +
       `MATIC: ${maticBalance}\n` +
-      `USDC: ${usdcBalance}`;
+      `USDC: ${usdcBalance}\n\n` +
+      `<b>Base</b>\n` +
+      `ETH: ${formatWei(baseEthBalance)}\n\n` +
+      `<b>BNB Chain</b>\n` +
+      `BNB: ${formatWei(bnbBalance)}\n\n` +
+      `<b>Arbitrum</b>\n` +
+      `ETH: ${formatWei(arbitrumEthBalance)}\n\n` +
+      `<b>Avalanche</b>\n` +
+      `AVAX: ${formatWei(avaxBalance)}`;
 
     await sendDataMessage(message);
     await sendMainMenu();
@@ -344,6 +391,43 @@ async function handleTrades(ctx: Context): Promise<void> {
     await sendMainMenu();
   } catch (err) {
     console.error("[Telegram] Trades error:", err);
+  }
+}
+
+async function handleTraders(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /traders from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const traderCount = getTrackedTraderCount();
+    const trackerRunning = isTrackerRunning();
+    const topTradersList = getTopTraders(10);
+
+    let message = `<b>Trader Tracker</b>\n\n`;
+    message += `Status: ${trackerRunning ? "Running" : "Stopped"}\n`;
+    message += `Total Tracked: ${traderCount}\n\n`;
+
+    if (topTradersList.length === 0) {
+      message += "No traders tracked yet";
+    } else {
+      message += `<b>Top ${topTradersList.length} Traders</b>\n\n`;
+
+      for (const trader of topTradersList) {
+        const addr = trader.address.slice(0, 6) + "..." + trader.address.slice(-4);
+        const winRate = trader.winRate.toFixed(0);
+        message +=
+          `${trader.chain.toUpperCase()} | ${addr}\n` +
+          `   Score: ${trader.score.toFixed(0)} | Win: ${winRate}%\n` +
+          `   Trades: ${trader.totalTrades} | PnL: $${trader.totalPnlUsd.toFixed(0)}\n\n`;
+      }
+    }
+
+    await sendDataMessage(message);
+    await sendMainMenu();
+  } catch (err) {
+    console.error("[Telegram] Traders error:", err);
   }
 }
 
@@ -458,11 +542,13 @@ async function handleTextInput(ctx: Context): Promise<void> {
     setUserTimezone(userId, tz);
 
     // Delete timezone prompt and user's message
-    if (lastTimezonePromptId) {
-      await bot?.api.deleteMessage(chatId!, lastTimezonePromptId).catch(() => {});
+    if (chatId && lastTimezonePromptId) {
+      await bot?.api.deleteMessage(chatId, lastTimezonePromptId).catch(() => {});
       lastTimezonePromptId = null;
     }
-    await bot?.api.deleteMessage(chatId!, ctx.message.message_id).catch(() => {});
+    if (chatId) {
+      await bot?.api.deleteMessage(chatId, ctx.message.message_id).catch(() => {});
+    }
 
     // Show menu
     await sendMainMenu();

@@ -18,7 +18,7 @@ vi.mock("../solana/wallet.js", () => ({
     getParsedTransaction: vi.fn().mockResolvedValue({
       transaction: {
         message: {
-          accountKeys: [{ pubkey: { toBase58: () => "other-program" } }],
+          accountKeys: [{ pubkey: { toBase58: (): string => "other-program" } }],
         },
       },
     }),
@@ -30,10 +30,10 @@ vi.mock("@solana/web3.js", async () => {
   return {
     ...actual,
     PublicKey: class MockPublicKey {
-      static findProgramAddressSync() {
-        return [{ toBuffer: () => Buffer.alloc(32) }, 255];
+      static findProgramAddressSync(): [{ toBuffer: () => Buffer }, number] {
+        return [{ toBuffer: (): Buffer => Buffer.alloc(32) }, 255];
       }
-      toBuffer() {
+      toBuffer(): Buffer {
         return Buffer.alloc(32);
       }
     },

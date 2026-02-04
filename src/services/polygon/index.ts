@@ -41,13 +41,11 @@ export {
 } from "./orderbook.js";
 
 export {
-  registerMarket,
-  executeArbitrage,
+  executeTrade,
   startMonitoring,
   stopMonitoring,
   onOpportunity,
   isMonitoring,
-  getRegisteredMarkets,
-  type ArbitrageOpportunity,
-  type ArbitrageResult,
+  type PolymarketOpportunity,
+  type TradeResult,
 } from "./arbitrage.js";

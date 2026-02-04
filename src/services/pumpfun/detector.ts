@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
-import { getConnection } from "../solana/wallet.js";
-import { PUMPFUN_PROGRAM_ID } from "../../config/constants.js";
+import { getConnection, resetConnection } from "../solana/wallet.js";
+import { PUMPFUN_PROGRAM_ID, WEBSOCKET_RECONNECT_BASE_MS, WEBSOCKET_RECONNECT_MAX_MS } from "../../config/constants.js";
 
 export interface TokenLaunch {
   mint: string;
@@ -15,6 +15,9 @@ export interface TokenLaunch {
 type LaunchCallback = (launch: TokenLaunch) => void;
 
 let subscriptionId: number | null = null;
+let reconnectAttempts = 0;
+let reconnectTimer: NodeJS.Timeout | null = null;
+let isShuttingDown = false;
 const launchCallbacks: Set<LaunchCallback> = new Set();
 
 const PUMPFUN_PUBKEY = new PublicKey(PUMPFUN_PROGRAM_ID);
@@ -89,19 +92,15 @@ function notifyCallbacks(launch: TokenLaunch): void {
   }
 }
 
-export async function startDetector(): Promise<void> {
-  if (subscriptionId !== null) {
-    console.log("[PumpFun] Detector already running");
-    return;
-  }
-
+async function setupSubscription(): Promise<void> {
   const connection = getConnection();
-
-  console.log("[PumpFun] Starting token launch detector...");
 
   subscriptionId = connection.onLogs(
     PUMPFUN_PUBKEY,
     async (logs) => {
+      // Reset reconnect counter on successful message
+      reconnectAttempts = 0;
+
       // Check if this is a create transaction
       if (!logs.logs.some((log) => log.includes("Program log: Instruction: Create"))) {
         return;
@@ -142,18 +141,101 @@ export async function startDetector(): Promise<void> {
     "confirmed"
   );
 
-  console.log(`[PumpFun] Detector started (subscription: ${subscriptionId})`);
+  console.log(`[PumpFun] Subscription active (id: ${subscriptionId})`);
+}
+
+async function handleDisconnect(): Promise<void> {
+  if (isShuttingDown) return;
+
+  subscriptionId = null;
+
+  // Calculate backoff delay
+  const delay = Math.min(
+    WEBSOCKET_RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts),
+    WEBSOCKET_RECONNECT_MAX_MS
+  );
+  reconnectAttempts++;
+
+  console.error(`[PumpFun] WebSocket disconnected. Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+
+  reconnectTimer = setTimeout(async () => {
+    try {
+      // Reset the connection to get a fresh WebSocket
+      resetConnection();
+      await setupSubscription();
+      console.log("[PumpFun] Reconnected successfully");
+    } catch (err) {
+      console.error("[PumpFun] Reconnection failed:", err);
+      handleDisconnect();
+    }
+  }, delay);
+}
+
+export async function startDetector(): Promise<void> {
+  if (subscriptionId !== null) {
+    console.log("[PumpFun] Detector already running");
+    return;
+  }
+
+  isShuttingDown = false;
+  reconnectAttempts = 0;
+
+  console.log("[PumpFun] Starting token launch detector...");
+
+  try {
+    await setupSubscription();
+
+    // Monitor connection health with periodic checks
+    const healthCheck = setInterval(async () => {
+      if (isShuttingDown) {
+        clearInterval(healthCheck);
+        return;
+      }
+
+      try {
+        const connection = getConnection();
+        await connection.getSlot();
+      } catch {
+        console.error("[PumpFun] Health check failed, reconnecting...");
+        if (subscriptionId !== null) {
+          try {
+            const connection = getConnection();
+            await connection.removeOnLogsListener(subscriptionId);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+        handleDisconnect();
+      }
+    }, 30000); // Check every 30 seconds
+
+    console.log("[PumpFun] Detector started with auto-reconnect");
+  } catch (err) {
+    console.error("[PumpFun] Failed to start detector:", err);
+    handleDisconnect();
+  }
 }
 
 export async function stopDetector(): Promise<void> {
+  isShuttingDown = true;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   if (subscriptionId === null) {
     return;
   }
 
-  const connection = getConnection();
-  await connection.removeOnLogsListener(subscriptionId);
-  subscriptionId = null;
+  try {
+    const connection = getConnection();
+    await connection.removeOnLogsListener(subscriptionId);
+  } catch (err) {
+    console.error("[PumpFun] Error stopping subscription:", err);
+  }
 
+  subscriptionId = null;
   console.log("[PumpFun] Detector stopped");
 }
 

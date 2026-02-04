@@ -16,7 +16,8 @@ export function getConnection(): Connection {
       commitment: "confirmed",
       wsEndpoint: `wss://mainnet.helius-rpc.com/?api-key=${loadEnv().HELIUS_API_KEY}`,
     });
-    console.log("[Solana] Connection established via Helius");
+    // Note: Don't log connection URL - contains API key
+    console.log("[Solana] Connection established");
   }
   return connection;
 }
@@ -26,7 +27,9 @@ export function loadKeypair(): Keypair {
     const env = loadEnv();
     const privateKeyBytes = bs58.decode(env.SOLANA_PRIVATE_KEY);
     keypair = Keypair.fromSecretKey(privateKeyBytes);
-    console.log(`[Solana] Wallet loaded: ${keypair.publicKey.toBase58()}`);
+    // Only log truncated address for security
+    const addr = keypair.publicKey.toBase58();
+    console.log(`[Solana] Wallet loaded: ${addr.slice(0, 8)}...${addr.slice(-4)}`);
   }
   return keypair;
 }

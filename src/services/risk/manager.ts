@@ -21,7 +21,7 @@ export interface RiskStatus {
 
 export interface Trade {
   id: string;
-  strategy: "pumpfun" | "polymarket";
+  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amount: number;
   price: number;
@@ -197,7 +197,7 @@ export async function getRiskStatus(): Promise<RiskStatus> {
 
 // Pre-trade validation
 export async function validateTrade(params: {
-  strategy: "pumpfun" | "polymarket";
+  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amountUsd: number;
   expectedPrice: number;
@@ -222,7 +222,7 @@ export async function validateTrade(params: {
     return { allowed: false, reason: "Would exceed daily loss limit" };
   }
 
-  // Check slippage
+  // Check slippage - use pumpfun slippage for Solana, polymarket for EVM chains
   const maxSlippage =
     params.strategy === "pumpfun" ? env.MAX_SLIPPAGE_PUMPFUN : env.MAX_SLIPPAGE_POLYMARKET;
   const slippageCheck = checkSlippage(params.expectedPrice, params.actualPrice, maxSlippage);
@@ -233,7 +233,7 @@ export async function validateTrade(params: {
     };
   }
 
-  // Check gas balances
+  // Check gas balances for Solana strategies
   const gasBalances = await verifyGasBalances();
   if (params.strategy === "pumpfun" && !gasBalances.sol.sufficient) {
     return { allowed: false, reason: `Insufficient SOL: ${gasBalances.sol.balance.toFixed(4)}` };
@@ -244,6 +244,8 @@ export async function validateTrade(params: {
       reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
     };
   }
+  // EVM chains (base, bnb, arbitrum, avalanche) use native gas tokens
+  // Gas check handled in executor before trade
 
   return { allowed: true };
 }

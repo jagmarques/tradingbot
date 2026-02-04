@@ -2,6 +2,8 @@ import {
   PublicKey,
   TransactionInstruction,
   LAMPORTS_PER_SOL,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import { loadKeypair, hasMinimumSolReserve } from "../solana/wallet.js";
 import { createAndSubmitBundledTransaction, waitForBundleConfirmation } from "../solana/jito.js";
@@ -27,6 +29,22 @@ import {
 } from "../database/pumpfun-positions.js";
 
 const PUMPFUN_PUBKEY = new PublicKey(PUMPFUN_PROGRAM_ID);
+
+// Pump.fun program constants
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const PUMPFUN_GLOBAL = new PublicKey("4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf");
+const PUMPFUN_FEE_RECIPIENT = new PublicKey("CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM");
+const PUMPFUN_EVENT_AUTHORITY = new PublicKey("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1");
+
+// Get associated token address
+function getAssociatedTokenAddress(mint: PublicKey, owner: PublicKey): PublicKey {
+  const [address] = PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  return address;
+}
 
 export interface Position {
   mint: string;
@@ -56,26 +74,45 @@ const positions: Map<string, Position> = new Map();
 function buildBuyInstruction(
   mint: string,
   buyer: PublicKey,
-  amountLamports: bigint
+  amountLamports: bigint,
+  maxSolCost: bigint
 ): TransactionInstruction {
+  const mintPubkey = new PublicKey(mint);
+
+  // Derive PDAs
   const [bondingCurve] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bonding-curve"), new PublicKey(mint).toBuffer()],
+    [Buffer.from("bonding-curve"), mintPubkey.toBuffer()],
     PUMPFUN_PUBKEY
   );
 
+  // Associated token accounts
+  const associatedBondingCurve = getAssociatedTokenAddress(mintPubkey, bondingCurve);
+  const associatedUser = getAssociatedTokenAddress(mintPubkey, buyer);
+
+  // Buy discriminator (Anchor format: first 8 bytes of sha256("global:buy"))
   const BUY_DISCRIMINATOR = Buffer.from([0x66, 0x06, 0x3d, 0x12, 0x01, 0xda, 0xeb, 0xea]);
 
+  // Instruction data: discriminator (8) + amount (8) + max_sol_cost (8)
   const data = Buffer.alloc(24);
   BUY_DISCRIMINATOR.copy(data, 0);
-  data.writeBigUInt64LE(amountLamports, 8);
-  data.writeBigUInt64LE(BigInt(0), 16);
+  data.writeBigUInt64LE(amountLamports, 8);      // token amount to buy
+  data.writeBigUInt64LE(maxSolCost, 16);         // max SOL willing to pay
 
   return new TransactionInstruction({
     programId: PUMPFUN_PUBKEY,
     keys: [
+      { pubkey: PUMPFUN_GLOBAL, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_FEE_RECIPIENT, isSigner: false, isWritable: true },
+      { pubkey: mintPubkey, isSigner: false, isWritable: false },
       { pubkey: bondingCurve, isSigner: false, isWritable: true },
-      { pubkey: new PublicKey(mint), isSigner: false, isWritable: false },
+      { pubkey: associatedBondingCurve, isSigner: false, isWritable: true },
+      { pubkey: associatedUser, isSigner: false, isWritable: true },
       { pubkey: buyer, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_EVENT_AUTHORITY, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_PUBKEY, isSigner: false, isWritable: false },
     ],
     data,
   });
@@ -85,26 +122,45 @@ function buildBuyInstruction(
 function buildSellInstruction(
   mint: string,
   seller: PublicKey,
-  tokenAmount: bigint
+  tokenAmount: bigint,
+  minSolOutput: bigint = BigInt(0)
 ): TransactionInstruction {
+  const mintPubkey = new PublicKey(mint);
+
+  // Derive PDAs
   const [bondingCurve] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bonding-curve"), new PublicKey(mint).toBuffer()],
+    [Buffer.from("bonding-curve"), mintPubkey.toBuffer()],
     PUMPFUN_PUBKEY
   );
 
+  // Associated token accounts
+  const associatedBondingCurve = getAssociatedTokenAddress(mintPubkey, bondingCurve);
+  const associatedUser = getAssociatedTokenAddress(mintPubkey, seller);
+
+  // Sell discriminator (Anchor format: first 8 bytes of sha256("global:sell"))
   const SELL_DISCRIMINATOR = Buffer.from([0x33, 0xe6, 0x85, 0xa4, 0x01, 0x7f, 0x83, 0xad]);
 
+  // Instruction data: discriminator (8) + amount (8) + min_sol_output (8)
   const data = Buffer.alloc(24);
   SELL_DISCRIMINATOR.copy(data, 0);
-  data.writeBigUInt64LE(tokenAmount, 8);
-  data.writeBigUInt64LE(BigInt(0), 16); // min SOL out
+  data.writeBigUInt64LE(tokenAmount, 8);         // token amount to sell
+  data.writeBigUInt64LE(minSolOutput, 16);       // min SOL to receive (slippage protection)
 
   return new TransactionInstruction({
     programId: PUMPFUN_PUBKEY,
     keys: [
+      { pubkey: PUMPFUN_GLOBAL, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_FEE_RECIPIENT, isSigner: false, isWritable: true },
+      { pubkey: mintPubkey, isSigner: false, isWritable: false },
       { pubkey: bondingCurve, isSigner: false, isWritable: true },
-      { pubkey: new PublicKey(mint), isSigner: false, isWritable: false },
+      { pubkey: associatedBondingCurve, isSigner: false, isWritable: true },
+      { pubkey: associatedUser, isSigner: false, isWritable: true },
       { pubkey: seller, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_EVENT_AUTHORITY, isSigner: false, isWritable: false },
+      { pubkey: PUMPFUN_PUBKEY, isSigner: false, isWritable: false },
     ],
     data,
   });
@@ -244,7 +300,9 @@ async function executeBuy(mint: string, amountSol: number): Promise<ExecutionRes
     }
 
     const keypair = loadKeypair();
-    const buyIx = buildBuyInstruction(mint, keypair.publicKey, amountLamports);
+    // Add 5% slippage buffer to max SOL cost
+    const maxSolCost = amountLamports + (amountLamports * BigInt(5)) / BigInt(100);
+    const buyIx = buildBuyInstruction(mint, keypair.publicKey, amountLamports, maxSolCost);
     const bundleId = await createAndSubmitBundledTransaction([buyIx]);
 
     if (!bundleId) {
