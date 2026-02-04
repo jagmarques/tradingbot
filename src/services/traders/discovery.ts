@@ -80,14 +80,19 @@ export function stopDiscovery(): void {
 
 async function runContinuousDiscovery(): Promise<void> {
   while (isRunning) {
-    await runDiscovery();
+    try {
+      await runDiscovery();
 
-    // Cleanup every 10 cycles
-    cycleCount++;
-    if (cycleCount % 10 === 0) {
-      cleanupSolanaCache();
-      cleanupCache(7 * 24 * 60 * 60 * 1000); // Clean SQLite cache older than 7 days
-      console.log(`[Discovery] Memory cleanup after ${cycleCount} cycles`);
+      // Cleanup every 10 cycles
+      cycleCount++;
+      if (cycleCount % 10 === 0) {
+        cleanupSolanaCache();
+        cleanupCache(7 * 24 * 60 * 60 * 1000); // Clean SQLite cache older than 7 days
+        console.log(`[Discovery] Memory cleanup after ${cycleCount} cycles`);
+      }
+    } catch (err) {
+      console.error("[Discovery] Cycle error:", err);
+      // Continue running despite errors
     }
   }
 }
@@ -101,47 +106,50 @@ async function runDiscovery(): Promise<void> {
   isDiscovering = true;
   console.log("[Discovery] Starting discovery cycle...");
 
-  let totalDiscovered = 0;
+  try {
+    let totalDiscovered = 0;
 
-  // Run ALL chains in PARALLEL (EVM + Solana)
-  // Each API has separate rate limits, no reason to wait
-  const tasks: Promise<{ chain: string; discovered: number }>[] = [];
+    // Run ALL chains in PARALLEL (EVM + Solana)
+    // Each API has separate rate limits, no reason to wait
+    const tasks: Promise<{ chain: string; discovered: number }>[] = [];
 
-  // EVM chains via Etherscan (each chain = separate API = 5 calls/sec each)
-  if (isEtherscanConfigured()) {
-    for (const chain of EVM_CHAINS) {
+    // EVM chains via Etherscan (each chain = separate API = 5 calls/sec each)
+    if (isEtherscanConfigured()) {
+      for (const chain of EVM_CHAINS) {
+        tasks.push(
+          discoverTradersOnEvmChain(chain)
+            .then((discovered) => ({ chain, discovered }))
+            .catch((err) => {
+              console.error(`[Discovery] Error on ${chain}:`, err);
+              return { chain, discovered: 0 };
+            })
+        );
+      }
+    }
+
+    // Solana via Helius (separate API)
+    if (isHeliusConfigured()) {
       tasks.push(
-        discoverTradersOnEvmChain(chain)
-          .then((discovered) => ({ chain, discovered }))
+        discoverTradersOnSolana()
+          .then((discovered) => ({ chain: "solana", discovered }))
           .catch((err) => {
-            console.error(`[Discovery] Error on ${chain}:`, err);
-            return { chain, discovered: 0 };
+            console.error("[Discovery] Error on Solana:", err);
+            return { chain: "solana", discovered: 0 };
           })
       );
     }
-  }
 
-  // Solana via Helius (separate API)
-  if (isHeliusConfigured()) {
-    tasks.push(
-      discoverTradersOnSolana()
-        .then((discovered) => ({ chain: "solana", discovered }))
-        .catch((err) => {
-          console.error("[Discovery] Error on Solana:", err);
-          return { chain: "solana", discovered: 0 };
-        })
-    );
-  }
+    // Wait for all to complete
+    const results = await Promise.all(tasks);
+    for (const { chain, discovered } of results) {
+      totalDiscovered += discovered;
+      console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
+    }
 
-  // Wait for all to complete
-  const results = await Promise.all(tasks);
-  for (const { chain, discovered } of results) {
-    totalDiscovered += discovered;
-    console.log(`[Discovery] Found ${discovered} traders on ${chain}`);
+    console.log(`[Discovery] Cycle complete - ${totalDiscovered} total traders discovered`);
+  } finally {
+    isDiscovering = false;
   }
-
-  console.log(`[Discovery] Cycle complete - ${totalDiscovered} total traders discovered`);
-  isDiscovering = false;
 }
 
 async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {

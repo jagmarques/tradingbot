@@ -3,6 +3,19 @@ import { loadEnv } from "../../config/env.js";
 
 const HELIUS_BASE_URL = "https://api.helius.xyz/v0";
 
+// Rate limiting for Helius API with queue (10 req/sec = 100ms intervals, using 120ms for safety)
+const MIN_HELIUS_INTERVAL_MS = 120;
+let heliusFetchQueue: Promise<void> = Promise.resolve();
+
+async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
+  const myTurn = heliusFetchQueue.then(async () => {
+    await new Promise((r) => setTimeout(r, MIN_HELIUS_INTERVAL_MS));
+  });
+  heliusFetchQueue = myTurn;
+  await myTurn;
+  return fetch(url, options);
+}
+
 interface HeliusTransaction {
   signature: string;
   timestamp: number;
@@ -63,7 +76,7 @@ export async function getWalletTransactions(
   const url = `${HELIUS_BASE_URL}/addresses/${walletAddress}/transactions?api-key=${apiKey}&limit=${limit}`;
 
   try {
-    const response = await fetch(url);
+    const response = await rateLimitedFetch(url);
     if (!response.ok) {
       console.error(`[Helius] API error ${response.status}`);
       return [];
@@ -84,7 +97,7 @@ export async function getTokenHolders(
   const url = `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
 
   try {
-    const response = await fetch(url, {
+    const response = await rateLimitedFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -232,7 +245,7 @@ export async function getRecentPumpfunTokens(limit: number = 20): Promise<string
 
   try {
     // Get recent signatures for Pump.fun program
-    const response = await fetch(url, {
+    const response = await rateLimitedFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -257,7 +270,7 @@ export async function getRecentPumpfunTokens(limit: number = 20): Promise<string
 
     for (const sig of signatures.slice(0, 10)) {
       // Parse first 10 for tokens
-      const txResponse = await fetch(url, {
+      const txResponse = await rateLimitedFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -283,8 +296,6 @@ export async function getRecentPumpfunTokens(limit: number = 20): Promise<string
           }
         }
       }
-
-      await new Promise((r) => setTimeout(r, 100)); // Rate limit
     }
 
     return Array.from(mints);
@@ -300,7 +311,7 @@ export async function findEarlyBuyers(mintAddress: string, limit: number = 50): 
   const url = `${HELIUS_BASE_URL}/tokens/${mintAddress}/transactions?api-key=${apiKey}&limit=${limit}&type=SWAP`;
 
   try {
-    const response = await fetch(url);
+    const response = await rateLimitedFetch(url);
     if (!response.ok) {
       return [];
     }
