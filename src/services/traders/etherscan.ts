@@ -14,23 +14,25 @@ const CHAIN_IDS: Record<string, number> = {
 };
 
 
-// Stablecoins to identify quote currency (free tier chains only)
-const STABLECOINS = new Set([
+// Stablecoins with decimals (free tier chains only)
+const STABLECOIN_DECIMALS: Record<string, number> = {
   // Ethereum
-  "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
-  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
-  "0x6b175474e89094c44da98b954eedeac495271d0f", // DAI
+  "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,  // USDT
+  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6,  // USDC
+  "0x6b175474e89094c44da98b954eedeac495271d0f": 18, // DAI
   // Polygon
-  "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // USDT
-  "0x2791bca1f2de4661ed88a30c99a7a9449aa84174", // USDC.e
-  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359", // USDC
+  "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": 6,  // USDT
+  "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": 6,  // USDC.e
+  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359": 6,  // USDC
   // Arbitrum
-  "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", // USDT
-  "0xaf88d065e77c8cc2239327c5edb3a432268e5831", // USDC
-  "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8", // USDC.e
+  "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,  // USDT
+  "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,  // USDC
+  "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": 6,  // USDC.e
   // Sonic
-  "0x29219dd400f2bf60e5a23d13be72b486d4038894", // USDC.e
-]);
+  "0x29219dd400f2bf60e5a23d13be72b486d4038894": 6,  // USDC.e
+};
+
+const STABLECOINS = new Set(Object.keys(STABLECOIN_DECIMALS));
 
 interface TokenTransfer {
   hash: string;
@@ -204,8 +206,8 @@ export async function analyzeWalletPnl(
     if (stableTransfers.length === 0 || tokenTransfers.length === 0) continue;
 
     for (const stableTx of stableTransfers) {
-      // Stablecoin has 6 decimals typically
-      const usdAmount = parseFloat(stableTx.value) / 1e6;
+      const decimals = STABLECOIN_DECIMALS[stableTx.tokenAddress] || 6;
+      const usdAmount = parseFloat(stableTx.value) / Math.pow(10, decimals);
       if (usdAmount < 1) continue; // Skip dust
 
       for (const tokenTx of tokenTransfers) {
