@@ -19,8 +19,12 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# Create data directory for SQLite persistence
+RUN mkdir -p /app/data
+
 RUN addgroup -g 1001 -S botuser && \
-    adduser -S botuser -u 1001 -G botuser
+    adduser -S botuser -u 1001 -G botuser && \
+    chown -R botuser:botuser /app/data
 
 USER botuser
 

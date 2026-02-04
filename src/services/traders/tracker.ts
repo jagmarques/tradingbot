@@ -125,8 +125,9 @@ export async function startTracking(): Promise<void> {
         lastBlockByChain.set(chain, blockNumber);
         connectedChains.push(chain);
       } catch {
-        // Mark chain as failed - don't spam logs with retries
+        // Mark chain as failed and destroy provider to stop internal retries
         failedChains.add(chain);
+        provider.destroy();
         evmProviders.delete(chain);
         console.log(`[Traders] Skipping ${chain} - RPC connection failed`);
       }
@@ -243,9 +244,13 @@ async function checkEvmChain(chain: Chain, traders: Trader[]): Promise<void> {
 
     lastBlockByChain.set(chain, currentBlock);
   } catch {
-    // Mark chain as failed to prevent continuous retries
+    // Mark chain as failed and destroy provider to stop internal retries
     if (!failedChains.has(chain)) {
       failedChains.add(chain);
+      const provider = evmProviders.get(chain);
+      if (provider) {
+        provider.destroy();
+      }
       evmProviders.delete(chain);
       console.log(`[Traders] Disabling ${chain} tracker - RPC error`);
     }
