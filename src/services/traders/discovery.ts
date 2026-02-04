@@ -90,9 +90,11 @@ async function runContinuousDiscovery(): Promise<void> {
         cleanupCache(7 * 24 * 60 * 60 * 1000); // Clean SQLite cache older than 7 days
         console.log(`[Discovery] Memory cleanup after ${cycleCount} cycles`);
       }
+
+      // Wait between cycles to avoid rate limits
+      await new Promise((r) => setTimeout(r, 30000));
     } catch (err) {
       console.error("[Discovery] Cycle error:", err);
-      // Continue running despite errors
     }
   }
 }
