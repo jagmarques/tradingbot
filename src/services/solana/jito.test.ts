@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 
 vi.mock("../../config/env.js", () => ({
   loadEnv: vi.fn(() => ({

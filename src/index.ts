@@ -10,7 +10,6 @@ import { initDb, closeDb } from "./services/database/db.js";
 import { startHealthServer, stopHealthServer } from "./services/health/server.js";
 import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
 import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusReporter, stopStatusReporter } from "./services/telegram/notifications.js";
-import { start as startPriceFeeds, stop as stopPriceFeeds } from "./services/pricefeeds/manager.js";
 import { startDetector as startPumpfunDetector, stopDetector as stopPumpfunDetector, onTokenLaunch } from "./services/pumpfun/detector.js";
 import { analyzeToken } from "./services/pumpfun/filters.js";
 import { executeSplitBuy, checkAutoSell, getPositions, getTokenPrice, loadPositionsFromDb as loadPumpfunPositions } from "./services/pumpfun/executor.js";
@@ -18,6 +17,8 @@ import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/a
 import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { getDailyPnlPercentage, setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
+import { initTracker, startTracking, stopTracking, getTrackedTraderCount } from "./services/traders/tracker.js";
+import { startDiscovery, stopDiscovery } from "./services/traders/discovery.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 let positionMonitorInterval: NodeJS.Timeout | null = null;
@@ -34,6 +35,9 @@ async function main(): Promise<void> {
     // Initialize database
     initDb();
     console.log("[Bot] Database initialized");
+
+    // Initialize trader tracker
+    initTracker();
 
     // Load open positions from database (recovery from crash)
     const recoveredPumpfun = loadPumpfunPositions();
@@ -62,9 +66,6 @@ async function main(): Promise<void> {
 
     // Start periodic status reporter
     startStatusReporter();
-
-    // Start price feeds
-    await startPriceFeeds(["BTCUSDT", "ETHUSDT", "SOLUSDT", "MATICUSDT"]);
 
     // Start trading strategies
     await startPumpfunDetector();
@@ -133,6 +134,11 @@ async function main(): Promise<void> {
     }, POSITION_CHECK_INTERVAL_MS);
     console.log("[Bot] Position monitoring started (10s interval)");
 
+    // Start trader tracker and auto-discovery
+    await startTracking();
+    startDiscovery();
+    console.log(`[Bot] Trader tracker started (${getTrackedTraderCount()} wallets tracked)`);
+
     // Polymarket monitoring disabled - no crypto price markets available
     // To enable: add real Polymarket condition IDs that correlate with spot prices
     console.log("[Bot] Polymarket arbitrage disabled - no valid crypto markets configured");
@@ -175,7 +181,8 @@ async function shutdown(signal: string): Promise<void> {
     stopStatusReporter();
     stopPumpfunDetector();
     stopPolymarketMonitoring();
-    stopPriceFeeds();
+    stopDiscovery();
+    stopTracking();
     stopBot();
     stopHealthServer();
     closeDb();

@@ -135,7 +135,7 @@ describe("Backtest Engine", () => {
       ];
 
       let tradeNum = 0;
-      const testStrategy: StrategyFunction = (candle, position) => {
+      const testStrategy: StrategyFunction = (candle, _position) => {
         tradeNum++;
         if (tradeNum === 1) return { action: "BUY", confidence: 90, price: 100, amount: 100 };
         if (tradeNum === 2) return { action: "SELL", confidence: 90, price: 110 }; // Win

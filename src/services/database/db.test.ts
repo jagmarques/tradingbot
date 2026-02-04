@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vites
 
 // Mock env module
 vi.mock("../../config/env.js", () => ({
-  loadEnv: () => ({
+  loadEnv: (): { TRADING_MODE: string } => ({
     TRADING_MODE: "paper",
   }),
-  isPaperMode: () => true,
+  isPaperMode: (): boolean => true,
 }));
 
 import { initDb, closeDb, getDb, isDbInitialized } from "./db.js";

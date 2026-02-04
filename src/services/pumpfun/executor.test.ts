@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TokenLaunch } from "./detector.js";
 
 vi.mock("../solana/wallet.js", () => ({
-  loadKeypair: vi.fn(() => ({
-    publicKey: { toBase58: () => "test-pubkey" },
+  loadKeypair: vi.fn((): { publicKey: { toBase58: () => string } } => ({
+    publicKey: { toBase58: (): string => "test-pubkey" },
   })),
   hasMinimumSolReserve: vi.fn().mockResolvedValue(true),
 }));
@@ -42,10 +42,10 @@ vi.mock("@solana/web3.js", async () => {
   return {
     ...actual,
     PublicKey: class MockPublicKey {
-      static findProgramAddressSync() {
-        return [{ toBuffer: () => Buffer.alloc(32) }, 255];
+      static findProgramAddressSync(): [{ toBuffer: () => Buffer }, number] {
+        return [{ toBuffer: (): Buffer => Buffer.alloc(32) }, 255];
       }
-      toBuffer() {
+      toBuffer(): Buffer {
         return Buffer.alloc(32);
       }
     },

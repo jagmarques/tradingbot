@@ -17,7 +17,6 @@ vi.mock("ethers", async () => {
     },
     Wallet: class MockWallet {
       address = "0x1234567890123456789012345678901234567890";
-      constructor() {}
     },
     Contract: class MockContract {
       balanceOf = mockBalanceOf;

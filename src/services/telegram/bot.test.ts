@@ -22,19 +22,19 @@ vi.mock("grammy", () => {
       api = { sendMessage: mockSendMessage };
     },
     InlineKeyboard: class MockInlineKeyboard {
-      text() { return this; }
-      row() { return this; }
+      text(): this { return this; }
+      row(): this { return this; }
     },
   };
 });
 
 // Mock env
 vi.mock("../../config/env.js", () => ({
-  loadEnv: () => ({
+  loadEnv: (): Record<string, string> => ({
     TELEGRAM_BOT_TOKEN: "test-token",
     TELEGRAM_CHAT_ID: "123456789",
   }),
-  isPaperMode: () => true,
+  isPaperMode: (): boolean => true,
 }));
 
 // Mock risk manager

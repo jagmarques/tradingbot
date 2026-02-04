@@ -50,12 +50,11 @@ export const CAPITAL_PER_STRATEGY_USD = 50;
 // Loss limits
 export const CAPITAL_LOSS_PAUSE_PERCENTAGE = 30;
 
-// Polymarket hedging
+// Polymarket trading
 export const TARGET_ARBITRAGE_PROFIT_PCT = 0.5; // 0.5% net profit target after all fees
 export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold time
 export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
 export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
-export const SPOT_HEDGE_FEE_BPS = 10; // 0.1% Binance maker/taker fee
 
 // Jito retry configuration
 export const JITO_MAX_RETRIES = 3;

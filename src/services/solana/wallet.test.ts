@@ -15,13 +15,12 @@ vi.mock("@solana/web3.js", async () => {
   };
 });
 
-// Generate a valid keypair and get its base58 secret key for testing
+// Generate a valid keypair for testing
 const testKeypair = Keypair.generate();
-const testSecretKey = Buffer.from(testKeypair.secretKey).toString("base64");
 
 vi.mock("bs58", () => ({
   default: {
-    decode: () => testKeypair.secretKey,
+    decode: (): Uint8Array => testKeypair.secretKey,
   },
 }));
 

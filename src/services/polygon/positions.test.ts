@@ -8,6 +8,13 @@ import {
   getPosition,
 } from "./positions.js";
 
+// Helper to assert non-null and return typed value
+function assertDefined<T>(value: T | null | undefined): T {
+  expect(value).not.toBeNull();
+  expect(value).not.toBeUndefined();
+  return value as T;
+}
+
 // Mock database functions
 vi.mock("../database/arbitrage-positions.js", () => ({
   savePosition: vi.fn(),
@@ -143,13 +150,12 @@ describe("Positions", () => {
       );
 
       // Profitable exit: price went up
-      const result = closePosition(position.id, 0.6);
+      const result = assertDefined(closePosition(position.id, 0.6));
 
-      expect(result).not.toBeNull();
-      expect(result!.pnl).toBeGreaterThan(0);
-      expect(result!.pnlPercentage).toBeGreaterThan(0);
-      expect(result!.fees).toBeGreaterThan(0);
-      expect(result!.holdTimeMs).toBeGreaterThanOrEqual(0);
+      expect(result.pnl).toBeGreaterThan(0);
+      expect(result.pnlPercentage).toBeGreaterThan(0);
+      expect(result.fees).toBeGreaterThan(0);
+      expect(result.holdTimeMs).toBeGreaterThanOrEqual(0);
     });
 
     it("should calculate negative P&L correctly for BUY", () => {
@@ -161,11 +167,10 @@ describe("Positions", () => {
       );
 
       // Losing exit: price went down
-      const result = closePosition(position.id, 0.4);
+      const result = assertDefined(closePosition(position.id, 0.4));
 
-      expect(result).not.toBeNull();
-      expect(result!.pnl).toBeLessThan(0);
-      expect(result!.pnlPercentage).toBeLessThan(0);
+      expect(result.pnl).toBeLessThan(0);
+      expect(result.pnlPercentage).toBeLessThan(0);
     });
 
     it("should calculate positive P&L correctly for SELL", () => {
@@ -177,11 +182,10 @@ describe("Positions", () => {
       );
 
       // Profitable exit: price went down
-      const result = closePosition(position.id, 0.5);
+      const result = assertDefined(closePosition(position.id, 0.5));
 
-      expect(result).not.toBeNull();
-      expect(result!.pnl).toBeGreaterThan(0);
-      expect(result!.pnlPercentage).toBeGreaterThan(0);
+      expect(result.pnl).toBeGreaterThan(0);
+      expect(result.pnlPercentage).toBeGreaterThan(0);
     });
 
     it("should remove position from active positions after close", () => {
@@ -261,11 +265,10 @@ describe("Positions", () => {
 
       // BUY Polymarket at 0.5, exit at 0.6 (+$20 poly P&L)
       // SHORT spot at 50000, exit at 49000 (+$2 spot P&L)
-      const result = closePosition(position.id, 0.6, 49000);
+      const result = assertDefined(closePosition(position.id, 0.6, 49000));
 
-      expect(result).not.toBeNull();
-      expect(result!.pnl).toBeGreaterThan(0);
-      expect(result!.pnlPercentage).toBeGreaterThan(0);
+      expect(result.pnl).toBeGreaterThan(0);
+      expect(result.pnlPercentage).toBeGreaterThan(0);
     });
 
     it("should calculate combined P&L for hedged position (loss scenario)", () => {
@@ -280,10 +283,9 @@ describe("Positions", () => {
 
       // SELL Polymarket at 0.7, exit at 0.8 (-$14 poly P&L)
       // LONG spot at 50000, exit at 49000 (-$2 spot P&L)
-      const result = closePosition(position.id, 0.8, 49000);
+      const result = assertDefined(closePosition(position.id, 0.8, 49000));
 
-      expect(result).not.toBeNull();
-      expect(result!.pnl).toBeLessThan(0);
+      expect(result.pnl).toBeLessThan(0);
     });
 
     it("should include spot P&L in shouldExitPosition calculation", () => {

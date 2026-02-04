@@ -3,7 +3,7 @@ import { isPaperMode } from "../../config/env.js";
 
 export interface TradeRecord {
   id: string;
-  strategy: "pumpfun" | "polymarket";
+  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   tokenAddress?: string;
   tokenSymbol?: string;
@@ -26,7 +26,7 @@ export interface TradeRecord {
 
 export interface PositionRecord {
   id: string;
-  strategy: "pumpfun" | "polymarket";
+  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   tokenAddress: string;
   tokenSymbol?: string;
   entryPrice: number;
@@ -123,7 +123,7 @@ export function getTrade(id: string): TradeRecord | null {
 
 // Get trades with filters
 export function getTrades(options: {
-  strategy?: "pumpfun" | "polymarket";
+  strategy?: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type?: "BUY" | "SELL";
   startDate?: string;
   endDate?: string;
@@ -259,7 +259,7 @@ export function insertPosition(
 }
 
 // Get open positions
-export function getOpenPositions(strategy?: "pumpfun" | "polymarket"): PositionRecord[] {
+export function getOpenPositions(strategy?: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche"): PositionRecord[] {
   const db = getDb();
   let query = "SELECT * FROM positions WHERE status = 'open'";
   const params: unknown[] = [];
@@ -384,7 +384,7 @@ export function getStatsRange(startDate: string, endDate: string): DailyStats[] 
 function mapRowToTrade(row: Record<string, unknown>): TradeRecord {
   return {
     id: row.id as string,
-    strategy: row.strategy as "pumpfun" | "polymarket",
+    strategy: row.strategy as "pumpfun" | "polymarket" | "base",
     type: row.type as "BUY" | "SELL",
     tokenAddress: row.token_address as string | undefined,
     tokenSymbol: row.token_symbol as string | undefined,
@@ -410,7 +410,7 @@ function mapRowToTrade(row: Record<string, unknown>): TradeRecord {
 function mapRowToPosition(row: Record<string, unknown>): PositionRecord {
   return {
     id: row.id as string,
-    strategy: row.strategy as "pumpfun" | "polymarket",
+    strategy: row.strategy as "pumpfun" | "polymarket" | "base",
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string | undefined,
     entryPrice: row.entry_price as number,

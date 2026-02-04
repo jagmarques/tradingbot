@@ -4,7 +4,6 @@ import {
   STAGNATION_TIMEOUT_MS,
   ESTIMATED_GAS_FEE_MATIC,
   ESTIMATED_SLIPPAGE_POLYMARKET,
-  SPOT_HEDGE_FEE_BPS,
 } from "../../config/constants.js";
 import {
   savePosition as savePositionToDb,
@@ -47,20 +46,12 @@ function generatePositionId(): string {
 }
 
 // Calculate fees for the position
-function calculateFees(sizeUsd: number = 10, hasSpotHedge: boolean = false): number {
+function calculateFees(sizeUsd: number = 10): number {
   // Polymarket fees: gas (MATIC converted to USD) + slippage
   // Entry: gas + slippage, Exit: gas + slippage
   const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.065; // ~$0.000107 per MATIC gas, 2 transactions
   const slippageFeeUsd = sizeUsd * ESTIMATED_SLIPPAGE_POLYMARKET * 2; // Entry and exit
-  let totalFees = gasFeeUsd + slippageFeeUsd;
-
-  // Add spot hedge fees if present (entry + exit)
-  if (hasSpotHedge) {
-    const spotFeeUsd = sizeUsd * 2 * (SPOT_HEDGE_FEE_BPS / 10000);
-    totalFees += spotFeeUsd;
-  }
-
-  return totalFees;
+  return gasFeeUsd + slippageFeeUsd;
 }
 
 // Create a new position
@@ -84,9 +75,8 @@ export function createPosition(
     spotSize = sizeUsd; // Dollar-neutral hedge
   }
 
-  // Calculate estimated fees (including spot if hedged)
-  const hasSpotHedge = spotSymbol !== undefined;
-  const estimatedFees = calculateFees(sizeUsd, hasSpotHedge);
+  // Calculate estimated fees
+  const estimatedFees = calculateFees(sizeUsd);
 
   // Calculate target profit in USD
   const targetProfit = sizeUsd * (TARGET_ARBITRAGE_PROFIT_PCT / 100);
