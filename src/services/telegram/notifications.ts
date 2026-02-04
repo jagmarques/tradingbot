@@ -213,6 +213,129 @@ export async function notifyOpportunity(params: {
   await sendMessage(message);
 }
 
+// AI Betting: Bet placed notification
+export async function notifyAIBetPlaced(params: {
+  marketTitle: string;
+  side: "YES" | "NO";
+  size: number;
+  entryPrice: number;
+  aiProbability: number;
+  edge: number;
+  reasoning: string;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "";
+  const message =
+    `${mode}🤖 <b>AI BET PLACED</b>\n\n` +
+    `<b>${params.marketTitle}</b>\n\n` +
+    `Side: ${params.side}\n` +
+    `Size: $${params.size.toFixed(2)}\n` +
+    `Entry: ${(params.entryPrice * 100).toFixed(1)}c\n` +
+    `AI Prob: ${(params.aiProbability * 100).toFixed(1)}%\n` +
+    `Edge: ${(params.edge * 100).toFixed(1)}%\n\n` +
+    `<i>${params.reasoning}</i>`;
+  await sendMessage(message);
+}
+
+// AI Betting: Bet closed notification
+export async function notifyAIBetClosed(params: {
+  marketTitle: string;
+  side: "YES" | "NO";
+  pnl: number;
+  pnlPercentage: number;
+  exitReason: string;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "";
+  const emoji = params.pnl >= 0 ? "🟢" : "🔴";
+  const message =
+    `${mode}${emoji} <b>AI BET CLOSED</b>\n\n` +
+    `<b>${params.marketTitle}</b>\n\n` +
+    `Side: ${params.side}\n` +
+    `P&L: $${params.pnl.toFixed(2)} (${params.pnlPercentage >= 0 ? "+" : ""}${params.pnlPercentage.toFixed(1)}%)\n` +
+    `Reason: ${params.exitReason}`;
+  await sendMessage(message);
+}
+
+// AI Betting: Cycle summary
+export async function notifyAIBettingCycle(params: {
+  marketsAnalyzed: number;
+  opportunitiesFound: number;
+  betsPlaced: number;
+  openPositions: number;
+  totalExposure: number;
+}): Promise<void> {
+  if (params.betsPlaced === 0 && params.opportunitiesFound === 0) {
+    return; // Don't spam if nothing happened
+  }
+  const message =
+    `🤖 <b>AI Betting Cycle</b>\n\n` +
+    `Analyzed: ${params.marketsAnalyzed} markets\n` +
+    `Found: ${params.opportunitiesFound} opportunities\n` +
+    `Placed: ${params.betsPlaced} bets\n\n` +
+    `Open: ${params.openPositions} positions\n` +
+    `Exposure: $${params.totalExposure.toFixed(2)}`;
+  await sendMessage(message);
+}
+
+// Polymarket Top Trader Alert
+export async function notifyTopTraderBet(params: {
+  traderName: string;
+  traderPnl: number;
+  marketTitle: string;
+  size: number;
+  price: number;
+}): Promise<void> {
+  const pnlStr = params.traderPnl >= 0
+    ? `+$${(params.traderPnl / 1e6).toFixed(1)}M`
+    : `-$${(Math.abs(params.traderPnl) / 1e6).toFixed(1)}M`;
+
+  const message =
+    `👀 <b>TOP TRADER BET</b>\n\n` +
+    `Trader: ${escapeHtml(params.traderName)}\n` +
+    `Monthly PnL: ${pnlStr}\n\n` +
+    `<b>${escapeHtml(params.marketTitle)}</b>\n` +
+    `Size: $${params.size.toFixed(0)}\n` +
+    `Price: ${(params.price * 100).toFixed(1)}c`;
+  await sendMessage(message);
+}
+
+// Polymarket Copy Trade Notification
+export async function notifyTopTraderCopy(params: {
+  traderName: string;
+  marketTitle: string;
+  side: "YES" | "NO";
+  size: number;
+  entryPrice: number;
+  isPaper: boolean;
+}): Promise<void> {
+  const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
+  const message =
+    `${modeTag} <b>COPIED TRADE</b>\n\n` +
+    `Copying: ${escapeHtml(params.traderName)}\n\n` +
+    `<b>${escapeHtml(params.marketTitle)}</b>\n` +
+    `Side: ${params.side}\n` +
+    `Size: $${params.size.toFixed(2)}\n` +
+    `Entry: ${(params.entryPrice * 100).toFixed(1)}c`;
+  await sendMessage(message);
+}
+
+// Polymarket Copy Trade Close Notification
+export async function notifyTopTraderCopyClose(params: {
+  traderName: string;
+  marketTitle: string;
+  pnl: number;
+  pnlPct: number;
+  isPaper: boolean;
+}): Promise<void> {
+  const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
+  const pnlEmoji = params.pnl >= 0 ? "+" : "";
+  const message =
+    `${modeTag} <b>COPY CLOSED</b>\n\n` +
+    `Trader: ${escapeHtml(params.traderName)}\n\n` +
+    `<b>${escapeHtml(params.marketTitle)}</b>\n` +
+    `PnL: ${pnlEmoji}$${params.pnl.toFixed(2)} (${pnlEmoji}${params.pnlPct.toFixed(1)}%)`;
+  await sendMessage(message);
+}
+
 // Helper to escape HTML
 function escapeHtml(text: string): string {
   return text

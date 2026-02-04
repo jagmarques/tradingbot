@@ -1,0 +1,196 @@
+import { getDb } from "./db.js";
+import type { AIBettingPosition, AIAnalysis } from "../aibetting/types.js";
+
+// Save AI analysis to database
+export function saveAnalysis(analysis: AIAnalysis, marketTitle: string): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO aibetting_analyses (
+      id, market_id, market_title, probability, confidence, reasoning, key_factors, analyzed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    `${analysis.marketId}_${analysis.timestamp}`,
+    analysis.marketId,
+    marketTitle,
+    analysis.probability,
+    analysis.confidence,
+    analysis.reasoning,
+    JSON.stringify(analysis.keyFactors),
+    new Date(analysis.timestamp).toISOString()
+  );
+}
+
+// Get recent analyses for a market (for AI context)
+export function getMarketAnalysisHistory(marketId: string, limit: number = 5): AIAnalysis[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT market_id, probability, confidence, reasoning, key_factors, analyzed_at
+    FROM aibetting_analyses
+    WHERE market_id = ?
+    ORDER BY analyzed_at DESC
+    LIMIT ?
+  `).all(marketId, limit) as Array<{
+    market_id: string;
+    probability: number;
+    confidence: number;
+    reasoning: string;
+    key_factors: string;
+    analyzed_at: string;
+  }>;
+
+  return rows.map((row) => ({
+    marketId: row.market_id,
+    probability: row.probability,
+    confidence: row.confidence,
+    reasoning: row.reasoning,
+    keyFactors: JSON.parse(row.key_factors || "[]"),
+    timestamp: new Date(row.analyzed_at).getTime(),
+  }));
+}
+
+// Save AI betting position
+export function savePosition(position: AIBettingPosition): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO aibetting_positions (
+      id, market_id, market_title, market_end_date, token_id, side, entry_price, size,
+      ai_probability, confidence, expected_value, status, entry_timestamp,
+      exit_timestamp, exit_price, pnl, exit_reason, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(
+    position.id,
+    position.marketId,
+    position.marketTitle,
+    position.marketEndDate,
+    position.tokenId,
+    position.side,
+    position.entryPrice,
+    position.size,
+    position.aiProbability,
+    position.confidence,
+    position.expectedValue,
+    position.status,
+    position.entryTimestamp,
+    position.exitTimestamp || null,
+    position.exitPrice || null,
+    position.pnl || null,
+    position.exitReason || null
+  );
+}
+
+// Load open positions on startup
+export function loadOpenPositions(): AIBettingPosition[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM aibetting_positions WHERE status = 'open'
+  `).all() as Array<{
+    id: string;
+    market_id: string;
+    market_title: string;
+    market_end_date: string | null;
+    token_id: string;
+    side: string;
+    entry_price: number;
+    size: number;
+    ai_probability: number;
+    confidence: number;
+    expected_value: number;
+    status: string;
+    entry_timestamp: number;
+    exit_timestamp: number | null;
+    exit_price: number | null;
+    pnl: number | null;
+    exit_reason: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    marketId: row.market_id,
+    marketTitle: row.market_title,
+    marketEndDate: row.market_end_date || "2099-12-31T23:59:59Z",
+    tokenId: row.token_id,
+    side: row.side as "YES" | "NO",
+    entryPrice: row.entry_price,
+    size: row.size,
+    aiProbability: row.ai_probability,
+    confidence: row.confidence,
+    expectedValue: row.expected_value,
+    status: row.status as "open" | "closed",
+    entryTimestamp: row.entry_timestamp,
+    exitTimestamp: row.exit_timestamp || undefined,
+    exitPrice: row.exit_price || undefined,
+    pnl: row.pnl || undefined,
+    exitReason: row.exit_reason || undefined,
+  }));
+}
+
+// Get betting performance stats (for AI learning context)
+export function getBettingStats(): {
+  totalBets: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalPnl: number;
+  avgEdge: number;
+  bestCategories: string[];
+} {
+  const db = getDb();
+
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+      SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
+      SUM(pnl) as total_pnl,
+      AVG(expected_value) as avg_ev
+    FROM aibetting_positions
+    WHERE status = 'closed'
+  `).get() as {
+    total: number;
+    wins: number;
+    losses: number;
+    total_pnl: number;
+    avg_ev: number;
+  };
+
+  return {
+    totalBets: stats.total || 0,
+    wins: stats.wins || 0,
+    losses: stats.losses || 0,
+    winRate: stats.total > 0 ? (stats.wins / stats.total) * 100 : 0,
+    totalPnl: stats.total_pnl || 0,
+    avgEdge: stats.avg_ev || 0,
+    bestCategories: [], // TODO: track by category
+  };
+}
+
+// Get recent bet outcomes (for AI to learn from)
+export function getRecentBetOutcomes(limit: number = 20): Array<{
+  marketTitle: string;
+  side: string;
+  aiProbability: number;
+  actualOutcome: "win" | "loss";
+  pnl: number;
+}> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT market_title, side, ai_probability, pnl
+    FROM aibetting_positions
+    WHERE status = 'closed' AND pnl IS NOT NULL
+    ORDER BY exit_timestamp DESC
+    LIMIT ?
+  `).all(limit) as Array<{
+    market_title: string;
+    side: string;
+    ai_probability: number;
+    pnl: number;
+  }>;
+
+  return rows.map((row) => ({
+    marketTitle: row.market_title,
+    side: row.side,
+    aiProbability: row.ai_probability,
+    actualOutcome: row.pnl > 0 ? "win" : "loss",
+    pnl: row.pnl,
+  }));
+}

@@ -17,6 +17,8 @@ import {
   insertWalletTransfer,
   getClusterWallets,
   upsertTrader,
+  deleteStaleTraders,
+  deleteInvalidTraders,
 } from "./storage.js";
 
 // Default public RPCs (can be overridden via env vars)
@@ -103,6 +105,9 @@ function getEvmProvider(chain: Chain): ethers.JsonRpcProvider | null {
 
 export function initTracker(): void {
   initTraderTables();
+  // Clean up invalid and stale traders on startup
+  deleteInvalidTraders();
+  deleteStaleTraders();
   console.log("[Traders] Tracker initialized");
 }
 

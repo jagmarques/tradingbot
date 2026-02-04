@@ -1,14 +1,10 @@
 import Database from "better-sqlite3";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 let db: Database.Database | null = null;
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "../../../data/trades.db");
+const DB_PATH = process.env.DB_PATH || "/data/trades.db";
 
 export function getDb(): Database.Database {
   if (!db) {
@@ -128,13 +124,80 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS bot_settings (
+      telegram_user_id TEXT PRIMARY KEY,
+      auto_snipe_enabled INTEGER DEFAULT 1,
+      auto_copy_enabled INTEGER DEFAULT 0,
+      copy_percentage REAL DEFAULT 1.0,
+      min_trader_score INTEGER DEFAULT 70,
+      max_copy_per_day INTEGER DEFAULT 10,
+      daily_copy_count INTEGER DEFAULT 0,
+      daily_copy_reset TEXT,
+      copy_amount_sol REAL DEFAULT 0.02,
+      copy_amount_eth REAL DEFAULT 0.001,
+      copy_amount_matic REAL DEFAULT 2,
+      copy_amount_default REAL DEFAULT 0.005,
+      polymarket_copy_usd REAL DEFAULT 5,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS aibetting_positions (
+      id TEXT PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      market_title TEXT NOT NULL,
+      market_end_date TEXT,
+      token_id TEXT NOT NULL,
+      side TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      size REAL NOT NULL,
+      ai_probability REAL NOT NULL,
+      confidence REAL NOT NULL,
+      expected_value REAL NOT NULL,
+      status TEXT NOT NULL,
+      entry_timestamp INTEGER NOT NULL,
+      exit_timestamp INTEGER,
+      exit_price REAL,
+      pnl REAL,
+      exit_reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS aibetting_analyses (
+      id TEXT PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      market_title TEXT NOT NULL,
+      probability REAL NOT NULL,
+      confidence REAL NOT NULL,
+      reasoning TEXT NOT NULL,
+      key_factors TEXT,
+      analyzed_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
     CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
     CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
     CREATE INDEX IF NOT EXISTS idx_arbitrage_positions_status ON arbitrage_positions(status);
     CREATE INDEX IF NOT EXISTS idx_pumpfun_positions_created ON pumpfun_positions(created_at);
+    CREATE INDEX IF NOT EXISTS idx_aibetting_positions_status ON aibetting_positions(status);
+    CREATE INDEX IF NOT EXISTS idx_aibetting_positions_market ON aibetting_positions(market_id);
   `);
+
+  // Migration: Add new copy amount columns to bot_settings (for existing DBs)
+  const columns = db.pragma("table_info(bot_settings)") as Array<{ name: string }>;
+  const columnNames = columns.map((c) => c.name);
+
+  if (!columnNames.includes("copy_amount_sol")) {
+    db.exec(`
+      ALTER TABLE bot_settings ADD COLUMN copy_amount_sol REAL DEFAULT 0.02;
+      ALTER TABLE bot_settings ADD COLUMN copy_amount_eth REAL DEFAULT 0.001;
+      ALTER TABLE bot_settings ADD COLUMN copy_amount_matic REAL DEFAULT 2;
+      ALTER TABLE bot_settings ADD COLUMN copy_amount_default REAL DEFAULT 0.005;
+      ALTER TABLE bot_settings ADD COLUMN polymarket_copy_usd REAL DEFAULT 5;
+    `);
+    console.log("[Database] Migrated bot_settings: added copy amount columns");
+  }
 
   console.log("[Database] Initialized at", finalPath);
   return db;
