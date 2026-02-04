@@ -14,25 +14,30 @@ const CHAIN_IDS: Record<string, number> = {
 };
 
 
-// Stablecoins with decimals (free tier chains only)
-const STABLECOIN_DECIMALS: Record<string, number> = {
+// Quote tokens (stables + WETH) with decimals
+const QUOTE_TOKEN_DECIMALS: Record<string, number> = {
   // Ethereum
   "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,  // USDT
   "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": 6,  // USDC
   "0x6b175474e89094c44da98b954eedeac495271d0f": 18, // DAI
+  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": 18, // WETH
   // Polygon
   "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": 6,  // USDT
   "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": 6,  // USDC.e
   "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359": 6,  // USDC
+  "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": 18, // WETH
+  "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": 18, // WMATIC
   // Arbitrum
   "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": 6,  // USDT
   "0xaf88d065e77c8cc2239327c5edb3a432268e5831": 6,  // USDC
   "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": 6,  // USDC.e
+  "0x82af49447d8a07e3bd95bd0d56f35241523fbab1": 18, // WETH
   // Sonic
   "0x29219dd400f2bf60e5a23d13be72b486d4038894": 6,  // USDC.e
+  "0x039e2fb66102314ce7b64ce5ce3e5183bc94ad38": 18, // wS (wrapped Sonic)
 };
 
-const STABLECOINS = new Set(Object.keys(STABLECOIN_DECIMALS));
+const QUOTE_TOKENS = new Set(Object.keys(QUOTE_TOKEN_DECIMALS));
 
 interface TokenTransfer {
   hash: string;
@@ -199,16 +204,15 @@ export async function analyzeWalletPnl(
   const tokenPnl = new Map<string, { spent: number; received: number }>();
 
   for (const [, txTransfers] of txGroups) {
-    // Find stablecoin transfers in this tx
-    const stableTransfers = txTransfers.filter((t) => STABLECOINS.has(t.tokenAddress));
-    const tokenTransfers = txTransfers.filter((t) => !STABLECOINS.has(t.tokenAddress));
+    const quoteTransfers = txTransfers.filter((t) => QUOTE_TOKENS.has(t.tokenAddress));
+    const tokenTransfers = txTransfers.filter((t) => !QUOTE_TOKENS.has(t.tokenAddress));
 
-    if (stableTransfers.length === 0 || tokenTransfers.length === 0) continue;
+    if (quoteTransfers.length === 0 || tokenTransfers.length === 0) continue;
 
-    for (const stableTx of stableTransfers) {
-      const decimals = STABLECOIN_DECIMALS[stableTx.tokenAddress] || 6;
-      const usdAmount = parseFloat(stableTx.value) / Math.pow(10, decimals);
-      if (usdAmount < 1) continue; // Skip dust
+    for (const quoteTx of quoteTransfers) {
+      const decimals = QUOTE_TOKEN_DECIMALS[quoteTx.tokenAddress] || 18;
+      const usdAmount = parseFloat(quoteTx.value) / Math.pow(10, decimals);
+      if (usdAmount < 1) continue;
 
       for (const tokenTx of tokenTransfers) {
         if (!tokenPnl.has(tokenTx.tokenAddress)) {
@@ -216,12 +220,12 @@ export async function analyzeWalletPnl(
         }
         const pnl = tokenPnl.get(tokenTx.tokenAddress)!;
 
-        // BUY: wallet sends stablecoin OUT, receives token IN
-        if (stableTx.from === walletLower && tokenTx.to === walletLower) {
+        // BUY: quote OUT, token IN
+        if (quoteTx.from === walletLower && tokenTx.to === walletLower) {
           pnl.spent += usdAmount;
         }
-        // SELL: wallet sends token OUT, receives stablecoin IN
-        else if (stableTx.to === walletLower && tokenTx.from === walletLower) {
+        // SELL: token OUT, quote IN
+        else if (quoteTx.to === walletLower && tokenTx.from === walletLower) {
           pnl.received += usdAmount;
         }
       }
@@ -292,9 +296,8 @@ export async function discoverTradersFromTokens(
 
   console.log(`[Etherscan] Found ${walletActivity.size} active wallets on ${chain}`);
 
-  // Sort by activity and analyze all wallets
   const sortedWallets = Array.from(walletActivity.entries())
-    .filter(([addr]) => !STABLECOINS.has(addr)) // Skip stablecoin contracts
+    .filter(([addr]) => !QUOTE_TOKENS.has(addr))
     .sort((a, b) => b[1] - a[1])
     .map(([addr]) => addr);
 
