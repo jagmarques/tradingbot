@@ -1,17 +1,19 @@
 import { Chain } from "./types.js";
 import { getDb } from "../database/db.js";
 
-// Block explorer API URLs and their free tier limits
-// Free: 5 calls/sec, 100,000 calls/day per explorer
-const EXPLORER_URLS: Record<string, string> = {
-  ethereum: "https://api.etherscan.io/api",
-  polygon: "https://api.polygonscan.com/api",
-  base: "https://api.basescan.org/api",
-  arbitrum: "https://api.arbiscan.io/api",
-  bsc: "https://api.bscscan.com/api",
-  optimism: "https://api-optimistic.etherscan.io/api",
-  avalanche: "https://api.snowtrace.io/api",
-  sonic: "https://api.sonicscan.org/api",
+// Etherscan API V2 - unified multichain endpoint
+const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
+
+// Chain IDs for Etherscan V2 API
+const CHAIN_IDS: Record<string, number> = {
+  ethereum: 1,
+  polygon: 137,
+  base: 8453,
+  arbitrum: 42161,
+  bsc: 56,
+  optimism: 10,
+  avalanche: 43114,
+  sonic: 146,
 };
 
 
@@ -83,10 +85,9 @@ async function rateLimitedFetch(url: string, chain: string): Promise<Response> {
   return fetch(url);
 }
 
-function getApiKey(_chain: string): string | null {
-  // Etherscan free tier works without API key (just slower)
-  // To add API keys, add ETHERSCAN_API_KEY, POLYGONSCAN_API_KEY, BASESCAN_API_KEY to env
-  return process.env[`${_chain.toUpperCase()}SCAN_API_KEY`] || null;
+function getApiKey(): string | null {
+  // Etherscan V2 uses single API key for all chains
+  return process.env.ETHERSCAN_API_KEY || null;
 }
 
 // Initialize profitability cache table
@@ -148,12 +149,12 @@ async function getTokenTransfers(
   chain: string,
   startBlock: number = 0
 ): Promise<TokenTransfer[]> {
-  const baseUrl = EXPLORER_URLS[chain];
-  const apiKey = getApiKey(chain);
+  const chainId = CHAIN_IDS[chain];
+  const apiKey = getApiKey();
 
-  if (!baseUrl) return [];
+  if (!chainId) return [];
 
-  const url = `${baseUrl}?module=account&action=tokentx&address=${wallet}&startblock=${startBlock}&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+  const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${wallet}&startblock=${startBlock}&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
 
   try {
     const response = await rateLimitedFetch(url, chain);
