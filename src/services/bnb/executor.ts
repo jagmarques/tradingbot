@@ -37,7 +37,7 @@ let wallet: ethers.Wallet | null = null;
 function getProvider(): ethers.JsonRpcProvider {
   if (!provider) {
     const env = loadEnv();
-    provider = new ethers.JsonRpcProvider(env.RPC_URL_BNB);
+    provider = new ethers.JsonRpcProvider(env.RPC_URL_BNB, undefined, { batchMaxCount: 1 });
   }
   return provider;
 }
