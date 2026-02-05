@@ -1120,41 +1120,28 @@ async function handleClearCopies(ctx: Context): Promise<void> {
 
   try {
     const openCount = getOpenCopiedPositions().length;
+    let message = "";
 
+    // Close any open positions first
     if (openCount > 0) {
-      await sendDataMessage(`Closing ${openCount} open positions...`);
       const result = await closeAllOpenPositions();
-
-      let message = `<b>Closed ${result.closed} positions</b>\n\n`;
       const resolvedCount = result.results.filter(r => r.resolved).length;
-      const manualCount = result.results.filter(r => !r.resolved).length;
-
-      for (const r of result.results) {
-        if (r.resolved) {
-          const sign = r.pnl >= 0 ? "+" : "";
-          message += `${r.title.slice(0, 30)}...: ${sign}$${r.pnl.toFixed(2)}\n`;
-        } else {
-          message += `${r.title.slice(0, 30)}...: cleared\n`;
-        }
-      }
-
       if (resolvedCount > 0) {
         const totalSign = result.totalPnl >= 0 ? "+" : "";
-        message += `\n<b>Resolved P&L: ${totalSign}$${result.totalPnl.toFixed(2)}</b>`;
+        message += `Closed ${resolvedCount} resolved: ${totalSign}$${result.totalPnl.toFixed(2)}\n`;
       }
-      if (manualCount > 0) {
-        message += `\n<i>${manualCount} positions cleared (no P&L)</i>`;
-      }
-
-      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(message, backButton);
-    } else {
-      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage("No open positions to close.", backButton);
     }
+
+    // Delete all historical data
+    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+    const deleted = clearAllCopiedPositions();
+    message += `\nDeleted ${deleted} total records.\nStats reset to zero.`;
+
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Clear copies error:", err);
-    await sendDataMessage("Failed to close positions. Check logs.");
+    await sendDataMessage("Failed to clear copies. Check logs.");
   }
 }
 
