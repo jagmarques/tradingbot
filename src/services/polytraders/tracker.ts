@@ -279,6 +279,13 @@ async function copyTrade(
     return null;
   }
 
+  // Also check if market is already resolved (double-check with GAMMA API)
+  const resolution = await checkMarketResolution(marketInfo.tokenId);
+  if (resolution.resolved) {
+    console.log(`[PolyTraders] Skipping already resolved market: ${trade.title}`);
+    return null;
+  }
+
   // Skip markets ending very soon (only if endDate is in the future)
   // Note: endDate can be in the past on Polymarket while acceptingOrders is still true
   // So we only skip if endDate is in the future AND within MIN_MINUTES_BEFORE_END
