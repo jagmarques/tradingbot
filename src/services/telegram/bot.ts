@@ -607,14 +607,27 @@ async function handlePnl(ctx: Context): Promise<void> {
     const pnlPct = getDailyPnlPercentage();
     const trades = getTodayTrades();
 
+    // Polymarket copy stats
+    const copyStats = getCopyStats();
+    const positionsWithValues = await getOpenPositionsWithValues();
+    const positionsWithPrices = positionsWithValues.filter(p => p.currentPrice !== null);
+    const totalInvested = positionsWithPrices.reduce((sum, p) => sum + p.size, 0);
+    const totalCurrentValue = positionsWithPrices.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+    const unrealizedPnl = totalCurrentValue - totalInvested;
+
     const emoji = pnl >= 0 ? "📈" : "📉";
 
-    const message =
-      `<b>Daily P&L</b>\n\n` +
-      `${emoji} $${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n\n` +
-      `Trades Today: ${trades.length}\n` +
-      `Wins: ${trades.filter((t) => t.pnl > 0).length}\n` +
-      `Losses: ${trades.filter((t) => t.pnl < 0).length}`;
+    let message = `<b>Daily P&L</b>\n\n`;
+    message += `${emoji} $${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
+    message += `Trades: ${trades.length} | Wins: ${trades.filter((t) => t.pnl > 0).length} | Losses: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
+
+    message += `<b>Polymarket Copy</b>\n`;
+    message += `Open: ${copyStats.openPositions} | Closed: ${copyStats.closedPositions}\n`;
+    message += `Realized: $${copyStats.totalPnl.toFixed(2)} | Win rate: ${copyStats.winRate.toFixed(0)}%\n`;
+    if (positionsWithPrices.length > 0) {
+      const unrealizedSign = unrealizedPnl >= 0 ? "+" : "";
+      message += `Unrealized: ${unrealizedSign}$${unrealizedPnl.toFixed(2)}\n`;
+    }
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, backButton);
