@@ -238,19 +238,29 @@ export function getTopTraders(limit: number = 50, chain?: Chain): Trader[] {
 }
 
 export type TraderSortBy = "score" | "pnl" | "pnl_pct";
+export type TimeFilter = 1 | 3 | 6 | 12 | 0; // months, 0 = all time
 
 export interface TraderWithPnlPct extends Trader {
   totalInvested: number;
   pnlPct: number;
+  filteredPnlUsd: number;
+  filteredWinRate: number;
+  filteredTrades: number;
 }
 
-// Get traders with calculated PnL % and flexible sorting
+// Get traders with time-filtered stats and flexible sorting
 export function getTopTradersSorted(
   limit: number = 50,
   sortBy: TraderSortBy = "score",
-  chain?: Chain
+  chain?: Chain,
+  monthsFilter: TimeFilter = 12 // Default to 1 year
 ): TraderWithPnlPct[] {
   const db = getDb();
+
+  // Calculate cutoff timestamp
+  const cutoffTimestamp = monthsFilter > 0
+    ? Date.now() - (monthsFilter * 30 * 24 * 60 * 60 * 1000)
+    : 0;
 
   // Get all traders first
   let query = "SELECT * FROM trader_wallets";
@@ -265,32 +275,83 @@ export function getTopTradersSorted(
   const rows = stmt.all(...params) as Record<string, unknown>[];
   const traders = rows.map(mapRowToTrader);
 
-  // Calculate PnL % for each trader from their token trades
+  // Calculate filtered stats for each trader from their token trades
   const tradersWithPct: TraderWithPnlPct[] = traders.map((trader) => {
-    const tokenTrades = db
-      .prepare("SELECT SUM(buy_amount_usd) as total_invested FROM trader_token_trades WHERE wallet_address = ? AND chain = ?")
-      .get(trader.address.toLowerCase(), trader.chain) as { total_invested: number | null } | undefined;
+    // Get token trades within the time filter
+    let tokenQuery = `
+      SELECT
+        SUM(buy_amount_usd) as total_invested,
+        SUM(pnl_usd) as total_pnl,
+        COUNT(*) as trade_count,
+        SUM(CASE WHEN pnl_usd > 0 THEN 1 ELSE 0 END) as wins
+      FROM trader_token_trades
+      WHERE wallet_address = ? AND chain = ?
+    `;
+    const tokenParams: unknown[] = [trader.address.toLowerCase(), trader.chain];
+
+    if (cutoffTimestamp > 0) {
+      tokenQuery += " AND first_buy_timestamp >= ?";
+      tokenParams.push(cutoffTimestamp);
+    }
+
+    const tokenTrades = db.prepare(tokenQuery).get(...tokenParams) as {
+      total_invested: number | null;
+      total_pnl: number | null;
+      trade_count: number;
+      wins: number;
+    } | undefined;
 
     const totalInvested = tokenTrades?.total_invested || 0;
-    const pnlPct = totalInvested > 0 ? (trader.totalPnlUsd / totalInvested) * 100 : 0;
+    const filteredPnlUsd = tokenTrades?.total_pnl || 0;
+    const filteredTrades = tokenTrades?.trade_count || 0;
+    const filteredWinRate = filteredTrades > 0
+      ? ((tokenTrades?.wins || 0) / filteredTrades) * 100
+      : 0;
+    const pnlPct = totalInvested > 0 ? (filteredPnlUsd / totalInvested) * 100 : 0;
+
+    // Calculate filtered score based on filtered stats
+    const filteredScore = calculateScore(filteredWinRate, filteredPnlUsd, filteredTrades);
 
     return {
       ...trader,
       totalInvested,
       pnlPct,
+      filteredPnlUsd,
+      filteredWinRate,
+      filteredTrades,
+      // Override with filtered values for display
+      totalPnlUsd: filteredPnlUsd,
+      winRate: filteredWinRate,
+      totalTrades: filteredTrades,
+      score: filteredScore,
     };
   });
 
+  // Filter out traders with no activity in the time period
+  const activeTraders = tradersWithPct.filter(t => t.filteredTrades > 0);
+
   // Sort based on criteria
   if (sortBy === "pnl") {
-    tradersWithPct.sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
+    activeTraders.sort((a, b) => b.filteredPnlUsd - a.filteredPnlUsd);
   } else if (sortBy === "pnl_pct") {
-    tradersWithPct.sort((a, b) => b.pnlPct - a.pnlPct);
+    activeTraders.sort((a, b) => b.pnlPct - a.pnlPct);
   } else {
-    tradersWithPct.sort((a, b) => b.score - a.score);
+    activeTraders.sort((a, b) => b.score - a.score);
   }
 
-  return tradersWithPct.slice(0, limit);
+  return activeTraders.slice(0, limit);
+}
+
+// Calculate score from filtered stats
+function calculateScore(winRate: number, pnlUsd: number, trades: number): number {
+  if (trades === 0) return 0;
+
+  // Score components (0-100 scale)
+  const winRateScore = Math.min(winRate, 100) * 0.4; // 40% weight
+  const pnlScore = Math.min(Math.max(pnlUsd / 100, 0), 100) * 0.4; // 40% weight, normalized
+  const activityScore = Math.min(trades / 10, 100) * 0.2; // 20% weight
+
+  return Math.round(winRateScore + pnlScore + activityScore);
 }
 
 // Insert trader trade
@@ -824,5 +885,21 @@ export function deleteInvalidTraders(): number {
     console.log(`[Traders] Removed ${result.changes} traders with negative/zero PnL`);
   }
 
+  return result.changes;
+}
+
+// Clear all traders and their trades (full reset)
+export function clearAllTraders(): number {
+  const db = getDb();
+
+  // Delete all related data
+  db.prepare("DELETE FROM trader_token_trades").run();
+  db.prepare("DELETE FROM trader_trades").run();
+  db.prepare("DELETE FROM trader_alerts").run();
+
+  // Delete all traders
+  const result = db.prepare("DELETE FROM trader_wallets").run();
+
+  console.log(`[Traders] Cleared all ${result.changes} traders and related data`);
   return result.changes;
 }

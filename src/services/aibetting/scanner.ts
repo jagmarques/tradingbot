@@ -4,6 +4,7 @@ import type {
   MarketCategory,
   AIBettingConfig,
 } from "./types.js";
+import { parseDate } from "../../utils/dates.js";
 
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
@@ -140,7 +141,10 @@ export function filterCandidateMarkets(
     }
 
     // Check end date is within 1-90 days (extended window for more opportunities)
-    const endTime = new Date(market.endDate).getTime();
+    const endTime = parseDate(market.endDate);
+    if (endTime === null) {
+      return false;
+    }
     const timeUntilEnd = endTime - now;
 
     if (timeUntilEnd < oneDayMs || timeUntilEnd > ninetyDaysMs) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import {
   getDailyPnl,
   getDailyPnlPercentage,
@@ -12,6 +12,7 @@ import {
   getTodayTrades,
   isInPaperMode,
 } from "./manager.js";
+import { initDb, closeDb } from "../database/db.js";
 
 // Mock dependencies
 vi.mock("../../config/env.js", () => ({
@@ -33,6 +34,15 @@ vi.mock("../polygon/wallet.js", () => ({
 }));
 
 describe("Risk Manager", () => {
+  beforeAll(() => {
+    // Initialize in-memory database for tests
+    initDb(":memory:");
+  });
+
+  afterAll(() => {
+    closeDb();
+  });
+
   beforeEach(() => {
     // Reset state by deactivating kill switch and resuming trading
     deactivateKillSwitch();

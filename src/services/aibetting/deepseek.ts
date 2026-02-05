@@ -37,7 +37,8 @@ async function sleep(ms: number): Promise<void> {
 
 export async function callDeepSeek(
   prompt: string,
-  model: DeepSeekModel = "deepseek-chat"
+  model: DeepSeekModel = "deepseek-chat",
+  systemMessage?: string
 ): Promise<string> {
   const env = loadEnv();
 
@@ -48,7 +49,7 @@ export async function callDeepSeek(
   const messages: DeepSeekMessage[] = [
     {
       role: "system",
-      content:
+      content: systemMessage ||
         "You are an expert prediction market analyst. Always respond with valid JSON only, no markdown or extra text.",
     },
     {

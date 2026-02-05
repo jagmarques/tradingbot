@@ -4,7 +4,7 @@ import fs from "fs";
 
 let db: Database.Database | null = null;
 
-const DB_PATH = process.env.DB_PATH || "/data/trades.db";
+const DB_PATH = process.env.DB_PATH || "/app/data/trades.db";
 
 export function getDb(): Database.Database {
   if (!db) {

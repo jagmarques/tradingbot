@@ -5,6 +5,7 @@ import type {
   AIBettingConfig,
   AIBettingPosition,
 } from "./types.js";
+import { hoursUntil } from "../../utils/dates.js";
 
 // Kelly criterion for optimal bet sizing
 // f* = (bp - q) / b where b = odds, p = win prob, q = lose prob
@@ -177,13 +178,12 @@ export function shouldExitPosition(
   // Settlement risk: exit if <6h until market resolution
   const SETTLEMENT_RISK_HOURS = 6;
   if (position.marketEndDate) {
-    const timeUntilEnd = new Date(position.marketEndDate).getTime() - Date.now();
-    const hoursUntilEnd = timeUntilEnd / (1000 * 60 * 60);
+    const hours = hoursUntil(position.marketEndDate);
 
-    if (hoursUntilEnd < SETTLEMENT_RISK_HOURS && hoursUntilEnd > 0) {
+    if (hours !== null && hours < SETTLEMENT_RISK_HOURS && hours > 0) {
       return {
         shouldExit: true,
-        reason: `Settlement risk: ${hoursUntilEnd.toFixed(1)}h until market resolution`,
+        reason: `Settlement risk: ${hours.toFixed(1)}h until market resolution`,
       };
     }
   }
