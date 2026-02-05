@@ -6,6 +6,10 @@ import {
   CAPITAL_LOSS_PAUSE_PERCENTAGE,
   STARTING_CAPITAL_USD,
 } from "../../config/constants.js";
+import {
+  insertTrade as dbInsertTrade,
+  getTodayTrades as dbGetTodayTrades,
+} from "../database/trades.js";
 
 export interface RiskStatus {
   tradingEnabled: boolean;
@@ -34,7 +38,6 @@ let killSwitchActive = false;
 let tradingPaused = false;
 let pauseReason: string | undefined;
 
-const dailyTrades: Trade[] = [];
 let dailyStartBalance = STARTING_CAPITAL_USD;
 let lastDayReset = new Date().toDateString();
 
@@ -42,8 +45,7 @@ let lastDayReset = new Date().toDateString();
 function checkDayReset(): void {
   const today = new Date().toDateString();
   if (today !== lastDayReset) {
-    dailyTrades.length = 0;
-    // Reset to current balance (set at init, will be updated daily)
+    // Database automatically handles day separation via timestamps
     lastDayReset = today;
     console.log("[Risk] Daily stats reset");
   }
@@ -55,10 +57,11 @@ export function setDailyStartBalance(balanceSol: number): void {
   console.log(`[Risk] Daily balance baseline set to ${balanceSol} SOL`);
 }
 
-// Calculate daily P&L
+// Calculate daily P&L (from database)
 export function getDailyPnl(): number {
   checkDayReset();
-  return dailyTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const trades = dbGetTodayTrades();
+  return trades.reduce((sum, trade) => sum + trade.pnl, 0);
 }
 
 // Calculate daily P&L percentage
@@ -67,17 +70,22 @@ export function getDailyPnlPercentage(): number {
   return dailyStartBalance > 0 ? (pnl / dailyStartBalance) * 100 : 0;
 }
 
-// Record a trade
+// Record a trade (persisted to database)
 export function recordTrade(trade: Omit<Trade, "id" | "timestamp">): void {
   checkDayReset();
 
-  const fullTrade: Trade = {
-    ...trade,
-    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: Date.now(),
-  };
+  // Save to database for persistence
+  dbInsertTrade({
+    strategy: trade.strategy,
+    type: trade.type,
+    amountUsd: trade.amount,
+    price: trade.price,
+    pnl: trade.pnl,
+    pnlPercentage: trade.amount > 0 ? (trade.pnl / trade.amount) * 100 : 0,
+    fees: 0,
+    status: "completed",
+  });
 
-  dailyTrades.push(fullTrade);
   console.log(`[Risk] Trade recorded: ${trade.type} ${trade.amount} (P&L: ${trade.pnl})`);
 
   // Check if we hit daily loss limit
@@ -250,10 +258,19 @@ export async function validateTrade(params: {
   return { allowed: true };
 }
 
-// Get today's trades
+// Get today's trades (from database)
 export function getTodayTrades(): Trade[] {
   checkDayReset();
-  return [...dailyTrades];
+  const dbTrades = dbGetTodayTrades();
+  return dbTrades.map((t): Trade => ({
+    id: t.id,
+    strategy: t.strategy,
+    type: t.type,
+    amount: t.amountUsd,
+    price: t.price,
+    pnl: t.pnl,
+    timestamp: new Date(t.createdAt).getTime(),
+  }));
 }
 
 // Check if in paper mode

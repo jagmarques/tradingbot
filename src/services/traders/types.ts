@@ -89,21 +89,20 @@ export const SCORING_WEIGHTS = {
   VOLUME: 20,
 };
 
+// Standard traders: consistent performers
 export const TRADER_THRESHOLDS = {
   MIN_TRADES: 20,
-  MIN_WIN_RATE: 0.80,
+  MIN_WIN_RATE: 0.60,
   MIN_PROFIT_FACTOR: 1.5,
-  MAX_SINGLE_TRADE_PCT: 0.5,
-  MIN_SCORE: 60,
+  MIN_SCORE: 70,
 };
 
+// Big hitters: fewer trades but profitable
 export const BIG_HITTER_THRESHOLDS = {
-  MIN_TRADES: 3,
+  MIN_TRADES: 10,
   MAX_TRADES: 19,
   MIN_TOTAL_PNL_USD: 5000,
-  MAX_LOSS_RATIO: 0.3,
-  MIN_AVG_WIN_USD: 1000,
-  MIN_WIN_RATE: 0.80,
+  MIN_WIN_RATE: 0.60,
 };
 
 export const KNOWN_EXCHANGES: Record<Chain, string[]> = {

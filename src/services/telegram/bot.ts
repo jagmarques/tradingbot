@@ -19,8 +19,8 @@ import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
 import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
-import { getCopyStats, getOpenCopiedPositions } from "../polytraders/index.js";
-import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, type TraderSortBy } from "../traders/storage.js";
+import { getCopyStats, getOpenCopiedPositions, getOpenPositionsWithValues, closeAllOpenPositions, getTrackedTraders } from "../polytraders/index.js";
+import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, clearAllTraders, type TraderSortBy, type TimeFilter } from "../traders/storage.js";
 import { Chain } from "../traders/types.js";
 import {
   getSettings,
@@ -31,6 +31,8 @@ import {
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, getRecentBetOutcomes } from "../database/aibetting.js";
 import { getAIBettingStatus } from "../aibetting/scheduler.js";
+import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
+import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -40,6 +42,8 @@ let lastTimezonePromptId: number | null = null;
 let lastStatusUpdateId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentTraderSort: TraderSortBy = "score";
+let currentTimeFilter: TimeFilter = 12; // Default: 1 year
+const alertMessageIds: number[] = []; // Track all alert messages for cleanup
 
 // Authorization check - strict security
 // Only the authorized user (TELEGRAM_CHAT_ID) can send commands
@@ -60,7 +64,10 @@ const MAIN_MENU_BUTTONS = [
   [{ text: "💰 Balance", callback_data: "balance" }],
   [{ text: "📈 P&L", callback_data: "pnl" }],
   [{ text: "🔄 Trades", callback_data: "trades" }],
-  [{ text: "📋 Traders", callback_data: "traders" }],
+  [
+    { text: "📋 Traders", callback_data: "traders" },
+    { text: "🎲 Bettors", callback_data: "bettors" },
+  ],
   [{ text: "Settings", callback_data: "settings" }],
   [
     { text: "⏸️ Stop", callback_data: "stop" },
@@ -93,6 +100,8 @@ export async function startBot(): Promise<void> {
   bot.command("unkill", handleUnkill);
   bot.command("traderspdf", handleTradersPdf);
   bot.command("ai", handleAI);
+  bot.command("clearcopies", handleClearCopies);
+  bot.command("cleartraders", handleClearTraders);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -135,6 +144,10 @@ export async function startBot(): Promise<void> {
     await handleTraders(ctx);
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("bettors", async (ctx) => {
+    await handleBettors(ctx);
+    await ctx.answerCallbackQuery();
+  });
 
   // Handle trader detail button clicks (format: trader_ADDRESS_CHAIN)
   bot.callbackQuery(/^trader_(.+)_(.+)$/, async (ctx) => {
@@ -162,6 +175,44 @@ export async function startBot(): Promise<void> {
   bot.callbackQuery("sort_pnl_pct", async (ctx) => {
     currentTraderSort = "pnl_pct";
     await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  // Time filter callbacks
+  bot.callbackQuery("time_1", async (ctx) => {
+    currentTimeFilter = 1;
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("time_3", async (ctx) => {
+    currentTimeFilter = 3;
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("time_6", async (ctx) => {
+    currentTimeFilter = 6;
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("time_12", async (ctx) => {
+    currentTimeFilter = 12;
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("time_0", async (ctx) => {
+    currentTimeFilter = 0;
+    await handleTraders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+
+  // Clear chat callback
+  bot.callbackQuery("clear_chat", async (ctx) => {
+    // Delete all tracked alert messages
+    for (const msgId of alertMessageIds) {
+      await bot?.api.deleteMessage(chatId!, msgId).catch(() => {});
+    }
+    alertMessageIds.length = 0; // Clear the array
+    await sendMainMenu();
     await ctx.answerCallbackQuery();
   });
 
@@ -243,7 +294,7 @@ export function getChatId(): string | null {
   return chatId;
 }
 
-// Send message to configured chat
+// Send message to configured chat (alerts are cleaned up when returning to menu)
 export async function sendMessage(text: string): Promise<void> {
   if (!bot || !chatId) {
     console.warn("[Telegram] Bot not initialized, cannot send message");
@@ -251,7 +302,8 @@ export async function sendMessage(text: string): Promise<void> {
   }
 
   try {
-    await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    alertMessageIds.push(msg.message_id);
   } catch (err) {
     console.error("[Telegram] Failed to send message:", err);
   }
@@ -264,23 +316,26 @@ export async function sendMainMenu(): Promise<void> {
   }
 
   try {
-    // Delete all tracked messages when returning to menu
-    if (lastMenuMessageId) {
-      await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
-      lastMenuMessageId = null;
-    }
-    if (lastDataMessageId) {
-      await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
-      lastDataMessageId = null;
-    }
-    if (lastPromptMessageId) {
-      await bot.api.deleteMessage(chatId, lastPromptMessageId).catch(() => {});
-      lastPromptMessageId = null;
-    }
-    if (lastTimezonePromptId) {
-      await bot.api.deleteMessage(chatId, lastTimezonePromptId).catch(() => {});
-      lastTimezonePromptId = null;
-    }
+    // Collect all message IDs to delete
+    const toDelete: number[] = [];
+    if (lastMenuMessageId) toDelete.push(lastMenuMessageId);
+    if (lastDataMessageId) toDelete.push(lastDataMessageId);
+    if (lastPromptMessageId) toDelete.push(lastPromptMessageId);
+    if (lastTimezonePromptId) toDelete.push(lastTimezonePromptId);
+    toDelete.push(...alertMessageIds);
+
+    // Delete all in parallel (fire and forget)
+    const currentChatId = chatId;
+    const currentBot = bot;
+    Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
+
+    // Reset tracking
+    lastMenuMessageId = null;
+    lastDataMessageId = null;
+    lastPromptMessageId = null;
+    lastTimezonePromptId = null;
+    alertMessageIds.length = 0;
+
     const msg = await bot.api.sendMessage(chatId, "🤖", {
       parse_mode: "HTML",
       reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
@@ -343,14 +398,15 @@ async function handleStart(ctx: Context): Promise<void> {
   let userTz = getUserTimezone(userId);
   if (!userTz) {
     setUserTimezone(userId, "UTC");
-    userTz = "UTC";
   }
 
+  // Delete the /start command message itself
+  if (ctx.message?.message_id && chatId) {
+    await bot?.api.deleteMessage(chatId, ctx.message.message_id).catch(() => {});
+  }
 
-  const msg = await ctx.reply("🤖", {
-    reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
-  });
-  lastMenuMessageId = msg.message_id;
+  // Just show the menu (don't duplicate - sendMainMenu handles cleanup)
+  await sendMainMenu();
 }
 
 async function handleStatus(ctx: Context): Promise<void> {
@@ -363,30 +419,117 @@ async function handleStatus(ctx: Context): Promise<void> {
     const status = await getRiskStatus();
     const traderCount = getTrackedTraderCount();
     const trackerActive = isTrackerRunning();
+    const todayTrades = getTodayTrades();
+
+    // AI Betting data
+    const aiBettingStatus = getAIBettingStatus();
+    const aiBettingStats = getBettingStats();
+    const openAIBets = loadOpenPositions();
+
+    // Pumpfun positions
+    const pumpfunPositions = getPumpfunPositions();
+
+    // Crypto copy positions
+    const cryptoCopyPositions = getCryptoCopyPositions();
+
+    // Polymarket copy positions
+    const polymarketCopyStats = getCopyStats();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeEmoji = status.isPaperMode ? "📝" : "💰";
     const killEmoji = status.killSwitchActive ? "⛔" : "✅";
     const trackerEmoji = trackerActive ? "🟢" : "🔴";
 
-    const message =
+    let message =
       `<b>Bot Status</b>\n\n` +
       `${statusEmoji} Trading: ${status.tradingEnabled ? "Enabled" : "Disabled"}\n` +
       `${modeEmoji} Mode: ${status.isPaperMode ? "Paper" : "Live"}\n` +
-      `${killEmoji} Kill Switch: ${status.killSwitchActive ? "ACTIVE" : "Off"}\n\n` +
-      `<b>Balances</b>\n` +
-      `SOL: ${status.solBalance.toFixed(4)}\n` +
-      `MATIC: ${status.maticBalance.toFixed(4)}\n` +
-      `Gas OK: ${status.hasMinGas ? "Yes" : "No"}\n\n` +
-      `<b>Trader Tracker</b>\n` +
-      `${trackerEmoji} Status: ${trackerActive ? "Running" : "Stopped"}\n` +
-      `Tracked Traders: ${traderCount}\n\n` +
-      `<b>Daily P&L</b>\n` +
-      `$${status.dailyPnl.toFixed(2)} (${status.dailyPnlPercentage.toFixed(1)}%)` +
-      (status.pauseReason ? `\n\n⚠️ Pause Reason: ${status.pauseReason}` : "");
+      `${killEmoji} Kill Switch: ${status.killSwitchActive ? "ACTIVE" : "Off"}\n\n`;
 
-    await sendDataMessage(message);
-    await sendMainMenu();
+    // Daily P&L
+    const pnlEmoji = status.dailyPnl >= 0 ? "📈" : "📉";
+    message += `<b>Daily P&L</b>\n` +
+      `${pnlEmoji} $${status.dailyPnl.toFixed(2)} (${status.dailyPnlPercentage >= 0 ? "+" : ""}${status.dailyPnlPercentage.toFixed(1)}%)\n` +
+      `Trades: ${todayTrades.length} | Wins: ${todayTrades.filter(t => t.pnl > 0).length} | Losses: ${todayTrades.filter(t => t.pnl < 0).length}\n\n`;
+
+    // Crypto Copy Trading Section
+    message += `<b>Crypto Copy</b>\n` +
+      `Open: ${cryptoCopyPositions.length}\n`;
+    if (cryptoCopyPositions.length > 0) {
+      for (const pos of cryptoCopyPositions.slice(0, 3)) {
+        message += `  - ${pos.tokenSymbol} (${pos.chain}): ${pos.entryAmountNative.toFixed(4)} native\n`;
+      }
+      if (cryptoCopyPositions.length > 3) message += `  ...and ${cryptoCopyPositions.length - 3} more\n`;
+    }
+    message += `\n`;
+
+    // Pumpfun Section
+    message += `<b>Pump.fun</b>\n` +
+      `Open positions: ${pumpfunPositions.size}\n`;
+    if (pumpfunPositions.size > 0) {
+      for (const [, pos] of Array.from(pumpfunPositions).slice(0, 3)) {
+        const mult = pos.peakPrice / pos.entryPrice;
+        message += `  - ${pos.symbol}: ${mult.toFixed(1)}x from entry\n`;
+      }
+      if (pumpfunPositions.size > 3) message += `  ...and ${pumpfunPositions.size - 3} more\n`;
+    }
+    message += `\n`;
+
+    // Polymarket Copy Section
+    const positionsWithValues = await getOpenPositionsWithValues();
+    const positionsWithPrices = positionsWithValues.filter(p => p.currentPrice !== null);
+    const totalInvested = positionsWithPrices.reduce((sum, p) => sum + p.size, 0);
+    const totalCurrentValue = positionsWithPrices.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+    const totalPnl = totalCurrentValue - totalInvested;
+    const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+
+    message += `<b>Polymarket Copy</b>\n` +
+      `Open: ${polymarketCopyStats.openPositions} | Total: ${polymarketCopyStats.totalCopies}\n` +
+      `Win rate: ${polymarketCopyStats.winRate.toFixed(0)}% | Realized PnL: $${polymarketCopyStats.totalPnl.toFixed(2)}\n`;
+
+    if (positionsWithValues.length > 0) {
+      for (const pos of positionsWithValues) {
+        if (pos.currentPrice !== null) {
+          const currentVal = pos.currentValue ?? 0;
+          const pnlPct = pos.unrealizedPnlPct ?? 0;
+          const sign = pnlPct >= 0 ? "+" : "";
+          message += `  - ${pos.marketTitle.slice(0, 22)}...: $${pos.size.toFixed(0)} -> $${currentVal.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)\n`;
+        } else {
+          message += `  - ${pos.marketTitle.slice(0, 22)}...: $${pos.size.toFixed(0)} (?)\n`;
+        }
+      }
+      if (positionsWithPrices.length > 0) {
+        const totalSign = totalPnlPct >= 0 ? "+" : "";
+        message += `  <b>Total: $${totalInvested.toFixed(0)} -> $${totalCurrentValue.toFixed(2)} (${totalSign}${totalPnlPct.toFixed(0)}%)</b>\n`;
+      }
+    }
+    message += `\n`;
+
+    // AI Betting Section
+    message += `<b>AI Betting</b>\n` +
+      `Status: ${aiBettingStatus.running ? "Running" : "Stopped"}\n` +
+      `Open: ${openAIBets.length} | Exposure: $${aiBettingStatus.totalExposure.toFixed(2)}\n` +
+      `All-time: ${aiBettingStats.totalBets} bets | ${aiBettingStats.winRate.toFixed(0)}% WR | $${aiBettingStats.totalPnl.toFixed(2)} PnL\n`;
+
+    if (openAIBets.length > 0) {
+      message += `Open bets:\n`;
+      for (const bet of openAIBets.slice(0, 3)) {
+        message += `  - ${bet.side} ${bet.marketTitle.slice(0, 25)}... $${bet.size.toFixed(0)}\n`;
+      }
+      if (openAIBets.length > 3) message += `  ...and ${openAIBets.length - 3} more\n`;
+    }
+    message += `\n`;
+
+    // Trader Tracker
+    message += `<b>Trader Tracker</b>\n` +
+      `${trackerEmoji} ${trackerActive ? "Running" : "Stopped"} | ${traderCount} wallets`;
+
+    if (status.pauseReason) {
+      message += `\n\n⚠️ Pause: ${status.pauseReason}`;
+    }
+
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Status error:", err);
   }
@@ -426,11 +569,12 @@ async function handleBalance(ctx: Context): Promise<void> {
       `<b>Avalanche</b>\n` +
       `AVAX: ${formatWei(avaxBalance)}`;
 
-    await sendDataMessage(message);
-    await sendMainMenu();
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
-    await sendDataMessage("Failed to fetch balances");
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to fetch balances", backButton);
   }
 }
 
@@ -454,8 +598,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       `Wins: ${trades.filter((t) => t.pnl > 0).length}\n` +
       `Losses: ${trades.filter((t) => t.pnl < 0).length}`;
 
-    await sendDataMessage(message);
-    await sendMainMenu();
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] P&L error:", err);
   }
@@ -471,8 +615,8 @@ async function handleTrades(ctx: Context): Promise<void> {
     const trades = getTodayTrades();
 
     if (trades.length === 0) {
-      await sendDataMessage("No trades today");
-      await sendMainMenu();
+      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage("No trades today", backButton);
       return;
     }
 
@@ -489,8 +633,8 @@ async function handleTrades(ctx: Context): Promise<void> {
         `   P&L: $${trade.pnl.toFixed(2)} | ${time}\n\n`;
     }
 
-    await sendDataMessage(message);
-    await sendMainMenu();
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Trades error:", err);
   }
@@ -505,35 +649,51 @@ async function handleTraders(ctx: Context): Promise<void> {
   try {
     const traderCount = getTrackedTraderCount();
     const trackerRunning = isTrackerRunning();
-    const topTradersList = getTopTradersSorted(10, currentTraderSort);
+    const topTradersList = getTopTradersSorted(10, currentTraderSort, undefined, currentTimeFilter);
 
-    // Sort label
+    // Labels
     const sortLabels: Record<TraderSortBy, string> = {
       score: "Score",
       pnl: "Total PnL",
       pnl_pct: "PnL %",
     };
+    const timeLabels: Record<TimeFilter, string> = {
+      1: "1M",
+      3: "3M",
+      6: "6M",
+      12: "1Y",
+      0: "All",
+    };
 
     let message = `<b>Trader Tracker</b>\n\n`;
     message += `Status: ${trackerRunning ? "Running" : "Stopped"}\n`;
     message += `Total Tracked: ${traderCount}\n`;
-    message += `Sorted by: <b>${sortLabels[currentTraderSort]}</b>\n\n`;
+    message += `Period: <b>${timeLabels[currentTimeFilter]}</b> | Sort: <b>${sortLabels[currentTraderSort]}</b>\n\n`;
 
-    if (topTradersList.length === 0) {
-      message += "No traders tracked yet";
-      await sendDataMessage(message);
-      await sendMainMenu();
-      return;
-    }
+    // Time filter buttons
+    const timeButtons: { text: string; callback_data: string }[][] = [[
+      { text: currentTimeFilter === 1 ? "* 1M" : "1M", callback_data: "time_1" },
+      { text: currentTimeFilter === 3 ? "* 3M" : "3M", callback_data: "time_3" },
+      { text: currentTimeFilter === 6 ? "* 6M" : "6M", callback_data: "time_6" },
+      { text: currentTimeFilter === 12 ? "* 1Y" : "1Y", callback_data: "time_12" },
+      { text: currentTimeFilter === 0 ? "* All" : "All", callback_data: "time_0" },
+    ]];
 
-    message += "Click a trader to see details:";
-
-    // Sort filter buttons at top
+    // Sort filter buttons
     const sortButtons: { text: string; callback_data: string }[][] = [[
       { text: currentTraderSort === "score" ? "* Score" : "Score", callback_data: "sort_score" },
       { text: currentTraderSort === "pnl" ? "* $ PnL" : "$ PnL", callback_data: "sort_pnl" },
       { text: currentTraderSort === "pnl_pct" ? "* % PnL" : "% PnL", callback_data: "sort_pnl_pct" },
     ]];
+
+    if (topTradersList.length === 0) {
+      message += "No traders with activity in this period\n\nTry a different time filter:";
+      const allButtons = [...timeButtons, ...sortButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(message, allButtons);
+      return;
+    }
+
+    message += "Click a trader to see details:";
 
     // Create inline keyboard buttons for each trader
     const traderButtons: { text: string; callback_data: string }[][] = [];
@@ -560,11 +720,10 @@ async function handleTraders(ctx: Context): Promise<void> {
       }]);
     }
 
-    // Combine sort buttons + trader buttons
-    const allButtons = [...sortButtons, ...traderButtons];
+    // Combine: time filter + sort filter + trader buttons + back button
+    const allButtons = [...timeButtons, ...sortButtons, ...traderButtons, [{ text: "Back", callback_data: "main_menu" }]];
 
     await sendDataMessage(message, allButtons);
-    await sendMainMenu();
   } catch (err) {
     console.error("[Telegram] Traders error:", err);
   }
@@ -630,6 +789,46 @@ async function handleTraderDetail(ctx: Context): Promise<void> {
   }
 }
 
+async function handleBettors(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /bettors from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const trackedBettors = getTrackedTraders();
+    const copyStats = getCopyStats();
+
+    // Only show bettors we copy (10%+ ROI)
+    const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
+
+    let message = `<b>Copied Bettors</b>\n\n`;
+    message += `Open: ${copyStats.openPositions} | Closed: ${copyStats.closedPositions}\n`;
+    message += `Win Rate: ${copyStats.winRate.toFixed(0)}% | PnL: $${copyStats.totalPnl.toFixed(2)}\n\n`;
+
+    if (copiedBettors.length === 0) {
+      message += "No bettors with 10%+ ROI found.";
+      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(message, backButton);
+      return;
+    }
+
+    for (const bettor of copiedBettors) {
+      const roiPct = (bettor.roi * 100).toFixed(1);
+      const pnlSign = bettor.pnl >= 0 ? "+" : "";
+      message += `<b>${bettor.name}</b>\n`;
+      message += `ROI: ${roiPct}% | PnL: ${pnlSign}$${bettor.pnl.toFixed(0)} | Vol: $${(bettor.vol / 1000).toFixed(0)}k\n\n`;
+    }
+
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
+  } catch (err) {
+    console.error("[Telegram] Bettors error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to fetch bettors", backButton);
+  }
+}
+
 async function handleTradersPdf(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /traderspdf from user ${ctx.from?.id}`);
@@ -668,8 +867,8 @@ async function handleStop(ctx: Context): Promise<void> {
 
   pauseTrading("Manual pause via Telegram");
   console.log("[Telegram] Trading paused by user");
-  await sendDataMessage("Trading paused");
-  await sendMainMenu();
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage("Trading paused", backButton);
 }
 
 async function handleResume(ctx: Context): Promise<void> {
@@ -680,8 +879,8 @@ async function handleResume(ctx: Context): Promise<void> {
 
   resumeTrading();
   console.log("[Telegram] Trading resumed by user");
-  await sendDataMessage("Trading resumed");
-  await sendMainMenu();
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage("Trading resumed", backButton);
 }
 
 async function handleKill(ctx: Context): Promise<void> {
@@ -692,8 +891,8 @@ async function handleKill(ctx: Context): Promise<void> {
 
   activateKillSwitch();
   console.log("[Telegram] Kill switch activated by user");
-  await sendDataMessage("Kill switch activated");
-  await sendMainMenu();
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage("Kill switch activated", backButton);
 }
 
 async function handleUnkill(ctx: Context): Promise<void> {
@@ -704,8 +903,8 @@ async function handleUnkill(ctx: Context): Promise<void> {
 
   deactivateKillSwitch();
   console.log("[Telegram] Kill switch deactivated by user");
-  await sendDataMessage("Kill switch deactivated");
-  await sendMainMenu();
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage("Kill switch deactivated", backButton);
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {
@@ -716,6 +915,42 @@ async function handleTimezone(ctx: Context): Promise<void> {
 
   const msg = await ctx.reply("What is your current time? (format: HH:MM, e.g., 14:30)");
   lastTimezonePromptId = msg.message_id;
+}
+
+// Track AI conversation message IDs for cleanup
+let lastAIQuestionId: number | null = null;
+
+// Shows animated "..." while processing
+async function showThinking(ctx: Context): Promise<() => Promise<void>> {
+  const currentChatId = ctx.chat?.id;
+  if (!currentChatId || !bot) return async () => {};
+
+  try {
+    const frames = [".", "..", "..."];
+    let frameIndex = 0;
+
+    const msg = await ctx.reply(frames[0]);
+
+    const interval = setInterval(async () => {
+      frameIndex = (frameIndex + 1) % frames.length;
+      try {
+        await bot?.api.editMessageText(currentChatId, msg.message_id, frames[frameIndex]);
+      } catch {
+        // Ignore edit errors
+      }
+    }, 400);
+
+    return async () => {
+      clearInterval(interval);
+      try {
+        await bot?.api.deleteMessage(currentChatId, msg.message_id);
+      } catch {
+        // Ignore delete errors
+      }
+    };
+  } catch {
+    return async () => {};
+  }
 }
 
 async function handleAI(ctx: Context): Promise<void> {
@@ -739,7 +974,11 @@ async function handleAI(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.reply("Thinking...");
+  // Store user's question message ID for cleanup
+  lastAIQuestionId = ctx.message?.message_id || null;
+
+  // Start thinking animation
+  const hideThinking = await showThinking(ctx);
 
   try {
     // Gather ALL available context
@@ -826,19 +1065,91 @@ ${recentOutcomes.length === 0 ? "None yet" : recentOutcomes.slice(0, 5).map(o =>
 - Wins: ${todayTrades.filter(t => t.pnl > 0).length}
 - Losses: ${todayTrades.filter(t => t.pnl < 0).length}
 
+IMPORTANT: Respond in plain text only. NO JSON, NO code blocks, NO markdown formatting. Just natural language sentences.
 Be concise. Answer based on the data above. If asked about something not in the data, say so.`;
 
     const response = await callDeepSeek(
       `${context}\n\nUSER QUESTION: ${question}`,
-      "deepseek-chat"
+      "deepseek-chat",
+      "You are a helpful trading bot assistant. Answer questions concisely in plain text only. NO JSON, NO code blocks, NO markdown."
     );
 
-    // Send response (telegram has 4096 char limit)
+    // Stop thinking animation
+    await hideThinking();
+
+    // Delete user's question message
+    if (lastAIQuestionId && chatId) {
+      await bot?.api.deleteMessage(chatId, lastAIQuestionId).catch(() => {});
+      lastAIQuestionId = null;
+    }
+
+    // Send response with Back button (telegram has 4096 char limit)
     const truncated = response.length > 4000 ? response.slice(0, 4000) + "..." : response;
-    await ctx.reply(truncated);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(truncated, backButton);
   } catch (error) {
+    // Always stop animation on error
+    await hideThinking();
+
     console.error("[Telegram] AI query failed:", error);
-    await ctx.reply("Failed to process AI query. Check logs.");
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to process AI query. Check logs.", backButton);
+  }
+}
+
+async function handleClearCopies(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  try {
+    const openCount = getOpenCopiedPositions().length;
+
+    if (openCount > 0) {
+      await sendDataMessage(`Closing ${openCount} open positions...`);
+      const result = await closeAllOpenPositions();
+
+      let message = `<b>Closed ${result.closed} positions</b>\n\n`;
+      const resolvedCount = result.results.filter(r => r.resolved).length;
+      const manualCount = result.results.filter(r => !r.resolved).length;
+
+      for (const r of result.results) {
+        if (r.resolved) {
+          const sign = r.pnl >= 0 ? "+" : "";
+          message += `${r.title.slice(0, 30)}...: ${sign}$${r.pnl.toFixed(2)}\n`;
+        } else {
+          message += `${r.title.slice(0, 30)}...: cleared\n`;
+        }
+      }
+
+      if (resolvedCount > 0) {
+        const totalSign = result.totalPnl >= 0 ? "+" : "";
+        message += `\n<b>Resolved P&L: ${totalSign}$${result.totalPnl.toFixed(2)}</b>`;
+      }
+      if (manualCount > 0) {
+        message += `\n<i>${manualCount} positions cleared (no P&L)</i>`;
+      }
+
+      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(message, backButton);
+    } else {
+      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage("No open positions to close.", backButton);
+    }
+  } catch (err) {
+    console.error("[Telegram] Clear copies error:", err);
+    await sendDataMessage("Failed to close positions. Check logs.");
+  }
+}
+
+async function handleClearTraders(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  try {
+    const count = clearAllTraders();
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(`Cleared ${count} traders and their trades.\n\nDiscovery will find new traders from scratch.`, backButton);
+  } catch (err) {
+    console.error("[Telegram] Clear traders error:", err);
+    await sendDataMessage("Failed to clear traders. Check logs.");
   }
 }
 

@@ -185,7 +185,7 @@ async function main(): Promise<void> {
     }
 
     // Start Polymarket top trader tracking
-    startPolyTraderTracking(60000); // Check every minute
+    startPolyTraderTracking(5000); // Check every 5 seconds
     console.log("[Bot] Polymarket trader tracking started");
 
     console.log("[Bot] All services started successfully");

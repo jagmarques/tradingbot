@@ -369,13 +369,13 @@ export async function discoverTradersFromTokens(
 
     if (!profitability) continue;
 
-    // Check if meets standard trader thresholds (20+ trades, 80%+ win rate, positive PnL)
+    // Check if meets standard trader thresholds (20+ trades, 60%+ win rate, positive PnL)
     const isStandardTrader =
       profitability.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
       profitability.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
       profitability.totalPnlUsd > 0;
 
-    // Check if meets big hitter thresholds (3-19 trades, 80%+ win, $5000+ PnL)
+    // Check if meets big hitter thresholds (10-19 trades, 60%+ win, $5000+ PnL)
     const isBigHitter =
       profitability.totalTrades >= BIG_HITTER_THRESHOLDS.MIN_TRADES &&
       profitability.totalTrades < TRADER_THRESHOLDS.MIN_TRADES &&
