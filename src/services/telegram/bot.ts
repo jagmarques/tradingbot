@@ -19,7 +19,7 @@ import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
 import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
-import { getCopyStats, getOpenCopiedPositions, getOpenPositionsWithValues, closeAllOpenPositions, getTrackedTraders } from "../polytraders/index.js";
+import { getCopyStats, getOpenCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
 import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, clearAllTraders, type TraderSortBy, type TimeFilter } from "../traders/storage.js";
 import { Chain } from "../traders/types.js";
 import {
@@ -1119,26 +1119,12 @@ async function handleClearCopies(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   try {
-    const openCount = getOpenCopiedPositions().length;
-    let message = "";
-
-    // Close any open positions first
-    if (openCount > 0) {
-      const result = await closeAllOpenPositions();
-      const resolvedCount = result.results.filter(r => r.resolved).length;
-      if (resolvedCount > 0) {
-        const totalSign = result.totalPnl >= 0 ? "+" : "";
-        message += `Closed ${resolvedCount} resolved: ${totalSign}$${result.totalPnl.toFixed(2)}\n`;
-      }
-    }
-
-    // Delete all historical data
+    // Just delete all data silently - no closing, no notifications
     const { clearAllCopiedPositions } = await import("../polytraders/index.js");
     const deleted = clearAllCopiedPositions();
-    message += `\nDeleted ${deleted} total records.\nStats reset to zero.`;
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
+    await sendDataMessage(`Deleted ${deleted} records. Stats reset.`, backButton);
   } catch (err) {
     console.error("[Telegram] Clear copies error:", err);
     await sendDataMessage("Failed to clear copies. Check logs.");

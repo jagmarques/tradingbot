@@ -603,11 +603,16 @@ async function checkCopiedPositionExits(): Promise<void> {
   const openPositions = getOpenCopiedPositions();
 
   for (const pos of openPositions) {
+    // Skip if position was deleted while we were processing
+    if (!copiedPositions.has(pos.id)) continue;
+
     try {
       // First check if market resolved
       const resolution = await checkMarketResolution(pos.tokenId);
 
       if (resolution.resolved && resolution.finalPrice !== null) {
+        // Check again - position might have been deleted
+        if (!copiedPositions.has(pos.id)) continue;
         // Market resolved - calculate final P&L
         const exitPrice = resolution.finalPrice;
         const shares = pos.size / pos.entryPrice;
@@ -652,6 +657,9 @@ async function checkCopiedPositionExits(): Promise<void> {
 
         // If trader sold (negative size), close our position
         if (trade.size < 0 && trade.timestamp * 1000 > pos.entryTimestamp) {
+          // Check if position still exists (might have been deleted)
+          if (!copiedPositions.has(pos.id)) break;
+
           const exitPrice = trade.price;
           const shares = pos.size / pos.entryPrice;
           let pnl = (shares * exitPrice) - pos.size;
