@@ -294,7 +294,10 @@ export function getChatId(): string | null {
   return chatId;
 }
 
-// Send message to configured chat (alerts are cleaned up when returning to menu)
+// Track last alert with button
+let lastAlertWithButtonId: number | null = null;
+
+// Send message to configured chat (only last alert has Clear Chat button)
 export async function sendMessage(text: string): Promise<void> {
   if (!bot || !chatId) {
     console.warn("[Telegram] Bot not initialized, cannot send message");
@@ -302,8 +305,22 @@ export async function sendMessage(text: string): Promise<void> {
   }
 
   try {
-    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+    // Remove button from previous alert (fire and forget)
+    if (lastAlertWithButtonId) {
+      bot.api.editMessageReplyMarkup(chatId, lastAlertWithButtonId, {
+        reply_markup: { inline_keyboard: [] },
+      }).catch(() => {});
+    }
+
+    // Send new alert with button
+    const msg = await bot.api.sendMessage(chatId, text, {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "Clear", callback_data: "clear_chat" }]],
+      },
+    });
     alertMessageIds.push(msg.message_id);
+    lastAlertWithButtonId = msg.message_id;
   } catch (err) {
     console.error("[Telegram] Failed to send message:", err);
   }
@@ -335,6 +352,7 @@ export async function sendMainMenu(): Promise<void> {
     lastPromptMessageId = null;
     lastTimezonePromptId = null;
     alertMessageIds.length = 0;
+    lastAlertWithButtonId = null;
 
     const msg = await bot.api.sendMessage(chatId, "🤖", {
       parse_mode: "HTML",
