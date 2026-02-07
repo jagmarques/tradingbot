@@ -7,9 +7,11 @@ import type {
 } from "./types.js";
 import { hoursUntil } from "../../utils/dates.js";
 import { isPaperMode } from "../../config/env.js";
+import { fetchMarketByConditionId } from "./scanner.js";
+import { fetchNewsForMarket } from "./news.js";
+import { analyzeMarket } from "./analyzer.js";
 
-// Kelly criterion for optimal bet sizing
-// f* = (bp - q) / b where b = odds, p = win prob, q = lose prob
+// Kelly criterion: f* = (bp - q) / b
 function calculateKellyFraction(
   winProbability: number,
   odds: number
@@ -19,27 +21,125 @@ function calculateKellyFraction(
   return Math.max(0, kelly);
 }
 
+// Calculate expected value: YES = aiProb - price, NO = price - aiProb
+export function calculateEV(aiProbability: number, currentPrice: number, side: "YES" | "NO"): number {
+  if (side === "YES") {
+    return aiProbability - currentPrice;
+  } else {
+    return currentPrice - aiProbability;
+  }
+}
+
+// Calculate P&L percentage (token price: current vs entry)
+function calculatePnlPercent(entryPrice: number, currentPrice: number): number {
+  return (currentPrice - entryPrice) / entryPrice;
+}
+
 function calculateBetSize(
   aiProbability: number,
   marketPrice: number,
   side: "YES" | "NO",
   bankroll: number,
   maxBet: number,
-  kellyMultiplier: number = 0.25 // Conservative: use 1/4 Kelly
+  kellyMultiplier: number = 0.25 // 1/4 Kelly
 ): number {
   // Calculate odds (payout ratio)
-  // If betting YES at 0.40, you win 0.60 for every 0.40 risked = 1.5x odds
   const price = side === "YES" ? marketPrice : 1 - marketPrice;
   const odds = (1 - price) / price;
 
-  // Win probability from AI perspective
   const winProb = side === "YES" ? aiProbability : 1 - aiProbability;
 
   const kelly = calculateKellyFraction(winProb, odds);
   const rawSize = bankroll * kelly * kellyMultiplier;
 
-  // Cap at max bet
   return Math.min(rawSize, maxBet);
+}
+
+const MAX_BETS_PER_GROUP = 2;
+
+function extractSignificantWords(title: string): string[] {
+  const stopWords = new Set([
+    "will", "does", "is", "has", "can", "the", "and", "for", "are", "but",
+    "not", "you", "all", "was", "one", "our", "his", "her", "its", "they",
+    "been", "have", "some", "them", "than", "this", "that", "from", "with",
+    "more", "less", "about", "before", "after", "during", "between", "into",
+    "over", "such", "each", "make", "like", "any", "who", "what", "when",
+    "where", "how", "which", "too", "very", "just", "there", "would",
+    "could", "should", "their", "being", "other", "these", "those",
+  ]);
+
+  return title
+    .toLowerCase()
+    .replace(/[?!.,]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !stopWords.has(w));
+}
+
+function wordOverlapRatio(words1: string[], words2: string[]): number {
+  if (words1.length === 0 || words2.length === 0) return 0;
+  const set1 = new Set(words1);
+  const set2 = new Set(words2);
+  let overlap = 0;
+  for (const w of set1) {
+    if (set2.has(w)) overlap++;
+  }
+  const minSize = Math.min(set1.size, set2.size);
+  return minSize > 0 ? overlap / minSize : 0;
+}
+
+function limitCorrelatedBets(
+  decisions: BetDecision[],
+  markets: PolymarketEvent[]
+): BetDecision[] {
+  const titleMap = new Map<string, string>();
+  for (const m of markets) {
+    titleMap.set(m.conditionId, m.title);
+  }
+
+  const wordsMap = new Map<string, string[]>();
+  for (const d of decisions) {
+    wordsMap.set(d.marketId, extractSignificantWords(titleMap.get(d.marketId) || ""));
+  }
+
+  // Group correlated markets by word overlap
+  const groups: BetDecision[][] = [];
+  const assigned = new Set<string>();
+
+  for (const d of decisions) {
+    if (assigned.has(d.marketId)) continue;
+
+    const group = [d];
+    assigned.add(d.marketId);
+    const words1 = wordsMap.get(d.marketId)!;
+
+    for (const other of decisions) {
+      if (assigned.has(other.marketId)) continue;
+      const words2 = wordsMap.get(other.marketId)!;
+
+      if (wordOverlapRatio(words1, words2) > 0.5) {
+        group.push(other);
+        assigned.add(other.marketId);
+      }
+    }
+
+    groups.push(group);
+  }
+
+  // Keep top N by EV from each group (already sorted by caller)
+  const result: BetDecision[] = [];
+  for (const group of groups) {
+    const kept = group.slice(0, MAX_BETS_PER_GROUP);
+    const dropped = group.length - kept.length;
+    if (dropped > 0) {
+      const title = titleMap.get(group[0].marketId) || "unknown";
+      console.log(
+        `[Evaluator] Correlation guard: kept ${kept.length}/${group.length} from "${title.substring(0, 60)}"`
+      );
+    }
+    result.push(...kept);
+  }
+
+  return result;
 }
 
 export function evaluateBetOpportunity(
@@ -53,20 +153,13 @@ export function evaluateBetOpportunity(
   const marketPrice = yesOutcome?.price || 0.5;
   const tokenId = yesOutcome?.tokenId || "";
 
-  // Calculate edge (difference between AI estimate and market)
   const edge = analysis.probability - marketPrice;
   const absEdge = Math.abs(edge);
 
-  // Determine side: positive edge = bet YES, negative edge = bet NO
   const side: "YES" | "NO" = edge > 0 ? "YES" : "NO";
 
-  // Calculate expected value
-  // EV = (P_win * Profit) - (P_lose * Loss)
-  // For YES bet: EV = aiProb * (1 - marketPrice) - (1 - aiProb) * marketPrice
-  // Simplified: EV = aiProb - marketPrice = edge
-  const expectedValue = absEdge;
+  const expectedValue = calculateEV(analysis.probability, marketPrice, side);
 
-  // Calculate recommended bet size
   const availableBankroll = isPaperMode() ? bankroll : bankroll - currentExposure;
   const maxAllowedBet = isPaperMode() ? config.maxBetSize : Math.min(
     config.maxBetSize,
@@ -81,22 +174,25 @@ export function evaluateBetOpportunity(
     maxAllowedBet
   );
 
-  // Decision criteria
   const meetsConfidence = analysis.confidence >= config.minConfidence;
-  const meetsEdge = absEdge >= config.minEdge;
+  // Confidence-scaled edge: higher confidence allows lower edge requirement
+  const scaledMinEdge =
+    analysis.confidence >= 0.80 ? config.minEdge * 0.5
+    : analysis.confidence >= 0.65 ? config.minEdge * 0.75
+    : config.minEdge;
+  const meetsEdge = absEdge >= scaledMinEdge;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
 
   const shouldBet = meetsConfidence && meetsEdge && hasBudget && hasTokenId;
 
-  // Build reason string
   let reason: string;
   if (shouldBet) {
     reason = `Edge ${(absEdge * 100).toFixed(1)}%, Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
   } else if (!meetsConfidence) {
     reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
   } else if (!meetsEdge) {
-    reason = `Edge too small: ${(absEdge * 100).toFixed(1)}% < ${(config.minEdge * 100).toFixed(0)}%`;
+    reason = `Edge too small: ${(absEdge * 100).toFixed(1)}% < ${(scaledMinEdge * 100).toFixed(0)}%`;
   } else if (!hasBudget) {
     reason = "Insufficient bankroll or exposure limit reached";
   } else {
@@ -113,7 +209,7 @@ export function evaluateBetOpportunity(
     confidence: analysis.confidence,
     edge,
     expectedValue,
-    recommendedSize: Math.floor(recommendedSize * 100) / 100, // Round to cents
+    recommendedSize: Math.floor(recommendedSize * 100) / 100,
     reason,
   };
 }
@@ -127,12 +223,10 @@ export function evaluateAllOpportunities(
 ): BetDecision[] {
   const decisions: BetDecision[] = [];
 
-  // Calculate current exposure
   const currentExposure = currentPositions
     .filter((p) => p.status === "open")
     .reduce((sum, p) => sum + p.size, 0);
 
-  // Check position count
   const openPositionCount = currentPositions.filter(
     (p) => p.status === "open"
   ).length;
@@ -169,19 +263,24 @@ export function evaluateAllOpportunities(
     }
   }
 
-  // Sort by expected value, return only positive decisions
-  return decisions
+  // Sort by EV, return only positive decisions
+  const approved = decisions
     .filter((d) => d.shouldBet)
-    .sort((a, b) => b.expectedValue - a.expectedValue);
+    .sort((a, b) => Math.abs(b.expectedValue) - Math.abs(a.expectedValue));
+
+  // Limit correlated bets (max 2 per event group)
+  return limitCorrelatedBets(approved, markets);
 }
 
-export function shouldExitPosition(
+export async function shouldExitPosition(
   position: AIBettingPosition,
   currentPrice: number,
   newAnalysis: AIAnalysis | null
-): { shouldExit: boolean; reason: string } {
-  // Settlement risk: exit if <6h until market resolution
+): Promise<{ shouldExit: boolean; reason: string }> {
   const SETTLEMENT_RISK_HOURS = 6;
+  const STOP_LOSS_THRESHOLD = -0.25;
+
+  // Settlement risk: exit if <6h until resolution
   if (position.marketEndDate) {
     const hours = hoursUntil(position.marketEndDate);
 
@@ -193,42 +292,81 @@ export function shouldExitPosition(
     }
   }
 
-  // Check if price moved significantly against us
-  const priceDiff =
-    position.side === "YES"
-      ? currentPrice - position.entryPrice
-      : position.entryPrice - currentPrice;
+  // Stop-loss: hard floor before AI re-analysis
+  const pnlPercent = calculatePnlPercent(position.entryPrice, currentPrice);
 
+  if (pnlPercent < STOP_LOSS_THRESHOLD) {
+    return {
+      shouldExit: true,
+      reason: `Stop-loss: P&L ${(pnlPercent * 100).toFixed(1)}% exceeded -25% limit`,
+    };
+  }
+
+  // Convert token price to YES price for EV calculations
+  // currentPrice is the held token's price (NO price for NO positions)
+  const yesPrice = position.side === "YES" ? currentPrice : 1 - currentPrice;
+
+  // AI re-analysis on price move >15% against position
+  const priceDiff = currentPrice - position.entryPrice;
   const priceChangePercent = priceDiff / position.entryPrice;
 
-  // Stop loss: exit if price moved >25% against
-  if (priceChangePercent < -0.25) {
-    return {
-      shouldExit: true,
-      reason: `Stop loss triggered: ${(priceChangePercent * 100).toFixed(1)}% move against`,
-    };
-  }
+  if (priceChangePercent < -0.15) {
+    console.log(
+      `[Evaluator] Price moved ${(priceChangePercent * 100).toFixed(1)}% against ${position.marketTitle} - triggering AI re-analysis`
+    );
 
-  // Check if AI confidence dropped significantly
-  if (newAnalysis && newAnalysis.confidence < 0.4) {
-    return {
-      shouldExit: true,
-      reason: `Confidence dropped to ${(newAnalysis.confidence * 100).toFixed(0)}%`,
-    };
-  }
+    const market = await fetchMarketByConditionId(position.marketId, position.tokenId);
+    if (!market) {
+      console.log(`[Evaluator] Cannot fetch market data for re-analysis, keeping position`);
+      return { shouldExit: false, reason: "" };
+    }
 
-  // Check if AI changed its mind significantly
-  if (newAnalysis) {
-    const newEdge =
-      position.side === "YES"
-        ? newAnalysis.probability - currentPrice
-        : currentPrice - newAnalysis.probability;
+    const freshNews = await fetchNewsForMarket(market);
 
-    // If edge reversed significantly, exit
-    if (newEdge < -0.05) {
+    const freshAnalysis = await analyzeMarket(market, freshNews);
+
+    if (!freshAnalysis) {
+      console.log(`[Evaluator] AI re-analysis failed, keeping position`);
+      return { shouldExit: false, reason: "" };
+    }
+
+    const ev = calculateEV(freshAnalysis.probability, yesPrice, position.side);
+
+    if (ev <= 0) {
       return {
         shouldExit: true,
-        reason: `AI edge reversed: now ${(newEdge * 100).toFixed(1)}%`,
+        reason: `EV negative: AI ${(freshAnalysis.probability * 100).toFixed(0)}% vs market ${(yesPrice * 100).toFixed(0)}% = ${(ev * 100).toFixed(1)}% EV`,
+      };
+    }
+
+    // Conviction flip check
+    const aiNowFavorsOpposite =
+      (position.side === "YES" && freshAnalysis.probability < 0.40) ||
+      (position.side === "NO" && freshAnalysis.probability > 0.60);
+
+    if (aiNowFavorsOpposite) {
+      const oppositeSide = position.side === "YES" ? "NO" : "YES";
+      return {
+        shouldExit: true,
+        reason: `Conviction flip: AI now ${(freshAnalysis.probability * 100).toFixed(0)}% (favors ${oppositeSide})`,
+      };
+    }
+
+    // Hold - AI still supports position with +EV
+    console.log(
+      `[Evaluator] Holding: EV ${(ev * 100).toFixed(1)}%, AI ${(freshAnalysis.probability * 100).toFixed(0)}% vs market ${(yesPrice * 100).toFixed(0)}%`
+    );
+    return { shouldExit: false, reason: "" };
+  }
+
+  // Periodic check with existing analysis
+  if (newAnalysis) {
+    const ev = calculateEV(newAnalysis.probability, yesPrice, position.side);
+
+    if (ev <= 0 && newAnalysis.confidence >= 0.5) {
+      return {
+        shouldExit: true,
+        reason: `Edge reversed: EV ${(ev * 100).toFixed(1)}% (AI ${(newAnalysis.probability * 100).toFixed(0)}% vs market ${(yesPrice * 100).toFixed(0)}%)`,
       };
     }
   }

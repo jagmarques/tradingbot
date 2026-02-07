@@ -14,6 +14,7 @@ vi.mock("../polygon/polymarket.js", () => ({
 vi.mock("../database/aibetting.js", () => ({
   savePosition: vi.fn(),
   loadOpenPositions: vi.fn(() => []),
+  recordOutcome: vi.fn(),
 }));
 
 vi.mock("../telegram/notifications.js", () => ({

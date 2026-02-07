@@ -51,8 +51,6 @@ vi.mock("../risk/manager.js", () => ({
   }),
   activateKillSwitch: vi.fn(),
   deactivateKillSwitch: vi.fn(),
-  pauseTrading: vi.fn(),
-  resumeTrading: vi.fn(),
   getDailyPnl: vi.fn().mockReturnValue(5.5),
   getDailyPnlPercentage: vi.fn().mockReturnValue(5.5),
   getTodayTrades: vi.fn().mockReturnValue([]),
@@ -99,7 +97,6 @@ describe("Telegram Bot", () => {
       expect(mockCommand).toHaveBeenCalledWith("status", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("balance", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("stop", expect.any(Function));
-      expect(mockCommand).toHaveBeenCalledWith("kill", expect.any(Function));
     });
   });
 

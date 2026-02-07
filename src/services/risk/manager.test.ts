@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } 
 import {
   getDailyPnl,
   getDailyPnlPercentage,
+  getDailyPnlBreakdown,
   recordTrade,
   pauseTrading,
   resumeTrading,
@@ -12,7 +13,7 @@ import {
   getTodayTrades,
   isInPaperMode,
 } from "./manager.js";
-import { initDb, closeDb } from "../database/db.js";
+import { initDb, closeDb, getDb } from "../database/db.js";
 
 // Mock dependencies
 vi.mock("../../config/env.js", () => ({
@@ -94,6 +95,57 @@ describe("Risk Manager", () => {
     it("should calculate P&L percentage", () => {
       const percentage = getDailyPnlPercentage();
       expect(typeof percentage).toBe("number");
+    });
+
+    it("should aggregate P&L by source", () => {
+      const db = getDb();
+      const today = new Date().toISOString().split("T")[0] + "T00:00:00.000Z";
+
+      // Create polytrader_copies table if needed
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS polytrader_copies (
+          id TEXT PRIMARY KEY,
+          trader_wallet TEXT NOT NULL,
+          trader_name TEXT NOT NULL,
+          condition_id TEXT NOT NULL,
+          market_title TEXT NOT NULL,
+          token_id TEXT NOT NULL,
+          side TEXT NOT NULL,
+          entry_price REAL NOT NULL,
+          size REAL NOT NULL,
+          trader_size REAL NOT NULL,
+          status TEXT NOT NULL,
+          entry_timestamp INTEGER NOT NULL,
+          exit_timestamp INTEGER,
+          exit_price REAL,
+          pnl REAL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Clear tables for isolated test
+      db.prepare("DELETE FROM trades WHERE created_at >= ?").run(today);
+      db.prepare("DELETE FROM polytrader_copies WHERE updated_at >= ?").run(today);
+      db.prepare("DELETE FROM aibetting_positions WHERE exit_timestamp >= ?").run(new Date(today).getTime());
+
+      // Insert test positions
+      db.prepare(`INSERT INTO polytrader_copies (id, trader_wallet, trader_name, condition_id, market_title, token_id, side, entry_price, size, trader_size, status, entry_timestamp, pnl, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("copy1", "wallet1", "TestTrader", "cond1", "Test Market", "token1", "YES", 0.5, 10, 100, "closed", Date.now(), 5.5, today);
+
+      db.prepare(`INSERT INTO aibetting_positions (id, market_id, market_title, token_id, side, entry_price, size, ai_probability, confidence, expected_value, status, entry_timestamp, exit_timestamp, pnl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("ai1", "market1", "Test AI Market", "token2", "NO", 0.6, 15, 0.7, 0.8, 0.1, "closed", Date.now() - 1000, Date.now(), 3.2);
+
+      recordTrade({ strategy: "base", type: "SELL", amount: 20, price: 1.5, pnl: 2.1 });
+      recordTrade({ strategy: "pumpfun", type: "SELL", amount: 30, price: 0.01, pnl: 1.3 });
+
+      const breakdown = getDailyPnlBreakdown();
+
+      expect(breakdown.total).toBeCloseTo(12.1, 1);
+      expect(breakdown.cryptoCopy).toBeCloseTo(2.1, 1);
+      expect(breakdown.pumpfun).toBeCloseTo(1.3, 1);
+      expect(breakdown.polyCopy).toBeCloseTo(5.5, 1);
+      expect(breakdown.aiBetting).toBeCloseTo(3.2, 1);
     });
   });
 

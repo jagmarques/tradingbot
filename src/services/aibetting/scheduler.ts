@@ -1,7 +1,7 @@
-import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis } from "./types.js";
+import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, EnsembleResult } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
-import { analyzeMarket } from "./analyzer.js";
+import { analyzeMarketEnsemble } from "./ensemble.js";
 import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 import {
   enterPosition,
@@ -15,27 +15,35 @@ import {
 } from "./executor.js";
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { isPaperMode } from "../../config/env.js";
+import { updateCalibrationScores } from "../database/calibration.js";
+import cron from "node-cron";
 
 let isRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
+let calibrationCronJob: cron.ScheduledTask | null = null;
 
-// Cache AI analyses to avoid redundant API calls (4 hours)
-const analysisCache = new Map<string, { analysis: AIAnalysis; cachedAt: number }>();
 const CACHE_DURATION_MS = 4 * 60 * 60 * 1000;
 
-function getCachedAnalysis(marketId: string): AIAnalysis | null {
-  const cached = analysisCache.get(marketId);
+// Cache ensemble results for Telegram display and analysis reuse
+const ensembleCache = new Map<string, { result: EnsembleResult; cachedAt: number }>();
+
+function getCachedEnsemble(marketId: string): EnsembleResult | null {
+  const cached = ensembleCache.get(marketId);
   if (!cached) return null;
   if (Date.now() - cached.cachedAt > CACHE_DURATION_MS) {
-    analysisCache.delete(marketId);
+    ensembleCache.delete(marketId);
     return null;
   }
-  return cached.analysis;
+  return cached.result;
 }
 
-function cacheAnalysis(marketId: string, analysis: AIAnalysis): void {
-  analysisCache.set(marketId, { analysis, cachedAt: Date.now() });
+function cacheEnsemble(marketId: string, result: EnsembleResult): void {
+  ensembleCache.set(marketId, { result, cachedAt: Date.now() });
+}
+
+export function getEnsembleResult(marketId: string): EnsembleResult | null {
+  return getCachedEnsemble(marketId);
 }
 
 async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
@@ -73,22 +81,32 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     let cached = 0;
 
     for (const market of markets) {
-      // Check cache first
-      const cachedAnalysis = getCachedAnalysis(market.conditionId);
-      if (cachedAnalysis) {
-        analyses.set(market.conditionId, cachedAnalysis);
+      // Check ensemble cache first
+      const cachedEnsemble = getCachedEnsemble(market.conditionId);
+      if (cachedEnsemble) {
+        if (cachedEnsemble.highDisagreement) {
+          console.log(`[AIBetting] SKIP (cached high disagreement): ${market.title}`);
+          continue;
+        }
+        analyses.set(market.conditionId, cachedEnsemble.consensus);
         cached++;
         continue;
       }
 
-      // Fetch news for market (may be empty - that's OK)
       const news = await fetchNewsForMarket(market);
+      const ensembleResult = await analyzeMarketEnsemble(market, news);
+      if (ensembleResult) {
+        cacheEnsemble(market.conditionId, ensembleResult);
 
-      // NOW call AI - we have potential
-      const analysis = await analyzeMarket(market, news);
-      if (analysis) {
-        analyses.set(market.conditionId, analysis);
-        cacheAnalysis(market.conditionId, analysis);
+        if (ensembleResult.highDisagreement) {
+          console.log(
+            `[AIBetting] SKIP (high disagreement ${ensembleResult.disagreement.toFixed(3)}): ${market.title} ` +
+            `estimates=[${ensembleResult.individualEstimates.map(e => (e * 100).toFixed(0) + '%').join(', ')}]`
+          );
+          continue;
+        }
+
+        analyses.set(market.conditionId, ensembleResult.consensus);
         result.marketsAnalyzed++;
       }
 
@@ -167,7 +185,7 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
     if (currentPrice === null) continue;
 
     const analysis = analyses.get(position.marketId) || null;
-    const { shouldExit, reason } = shouldExitPosition(position, currentPrice, analysis);
+    const { shouldExit, reason } = await shouldExitPosition(position, currentPrice, analysis);
 
     if (shouldExit) {
       const { success, pnl } = await exitPosition(position, currentPrice, reason);
@@ -179,6 +197,16 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
   }
 }
 
+// Update calibration scores (runs daily at 3 AM)
+async function updateCalibrationScoresJob(): Promise<void> {
+  try {
+    const updated = updateCalibrationScores();
+    console.log(`[Calibration] Updated ${updated} category scores`);
+  } catch (error) {
+    console.error("[Calibration] Error updating scores:", error);
+  }
+}
+
 export function startAIBetting(cfg: AIBettingConfig): void {
   if (isRunning) return;
 
@@ -187,6 +215,18 @@ export function startAIBetting(cfg: AIBettingConfig): void {
 
   console.log("[AIBetting] Started");
   console.log(`[AIBetting] Max bet $${cfg.maxBetSize}, exposure $${cfg.maxTotalExposure}, edge ${(cfg.minEdge * 100).toFixed(0)}%`);
+
+  // Run calibration update on startup
+  updateCalibrationScoresJob().catch((err) =>
+    console.error("[Calibration] Startup update error:", err)
+  );
+
+  // Schedule calibration update every 10 minutes
+  calibrationCronJob = cron.schedule("*/10 * * * *", () => {
+    updateCalibrationScoresJob().catch((err) =>
+      console.error("[Calibration] Update error:", err)
+    );
+  });
 
   // Run first cycle in background (don't block startup)
   runAnalysisCycle().catch((err) => console.error("[AIBetting] First cycle error:", err));
@@ -205,6 +245,10 @@ export function stopAIBetting(): void {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
+  if (calibrationCronJob) {
+    calibrationCronJob.stop();
+    calibrationCronJob = null;
+  }
   console.log("[AIBetting] Stopped");
 }
 
@@ -217,12 +261,14 @@ export function getAIBettingStatus(): {
   openPositions: number;
   totalExposure: number;
   cacheSize: number;
+  ensembleCacheSize: number;
 } {
   return {
     running: isRunning,
     openPositions: getOpenPositions().length,
     totalExposure: getTotalExposure(),
-    cacheSize: analysisCache.size,
+    cacheSize: ensembleCache.size,
+    ensembleCacheSize: ensembleCache.size,
   };
 }
 
@@ -234,6 +280,6 @@ export async function runManualCycle(): Promise<AnalysisCycleResult> {
 }
 
 export function clearAnalysisCache(): void {
-  analysisCache.clear();
-  console.log("[Scheduler] Cleared analysis cache");
+  ensembleCache.clear();
+  console.log("[Scheduler] Cleared ensemble cache");
 }

@@ -5,10 +5,9 @@ import {
   getRiskStatus,
   activateKillSwitch,
   deactivateKillSwitch,
-  pauseTrading,
-  resumeTrading,
   getDailyPnl,
   getDailyPnlPercentage,
+  getDailyPnlBreakdown,
   getTodayTrades,
 } from "../risk/manager.js";
 import { getSolBalanceFormatted } from "../solana/wallet.js";
@@ -30,7 +29,7 @@ import {
 } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
+import { getAIBettingStatus, clearAnalysisCache, getEnsembleResult } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
@@ -77,10 +76,6 @@ const MAIN_MENU_BUTTONS = [
     { text: "⏸️ Stop", callback_data: "stop" },
     { text: "▶️ Resume", callback_data: "resume" },
   ],
-  [
-    { text: "⛔ Kill", callback_data: "kill" },
-    { text: "✅ Unkill", callback_data: "unkill" },
-  ],
   [{ text: "⏱️ Timezone", callback_data: "timezone" }],
 ];
 
@@ -100,8 +95,6 @@ export async function startBot(): Promise<void> {
   bot.command("timezone", handleTimezone);
   bot.command("stop", handleStop);
   bot.command("resume", handleResume);
-  bot.command("kill", handleKill);
-  bot.command("unkill", handleUnkill);
   bot.command("traderspdf", handleTradersPdf);
   bot.command("ai", handleAI);
   bot.command("clearcopies", handleClearCopies);
@@ -135,14 +128,6 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("resume", async (ctx) => {
     await handleResume(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("kill", async (ctx) => {
-    await handleKill(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("unkill", async (ctx) => {
-    await handleUnkill(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("traders", async (ctx) => {
@@ -566,16 +551,14 @@ async function handleStatus(ctx: Context): Promise<void> {
 
     const totalInvestedAI = openInvested + aiBettingStats.totalInvested;
     const realizedSign = aiBettingStats.totalPnl >= 0 ? "+" : "";
-    const realizedPct = aiBettingStats.totalInvested > 0 ? (aiBettingStats.totalPnl / aiBettingStats.totalInvested) * 100 : 0;
-    const realizedPctSign = realizedPct >= 0 ? "+" : "";
     const unrealizedSign = totalUnrealized >= 0 ? "+" : "";
-    const unrealizedPct = openInvested > 0 ? (totalUnrealized / openInvested) * 100 : 0;
-    const unrealizedPctSign = unrealizedPct >= 0 ? "+" : "";
 
+    const schedulerStatus = getAIBettingStatus();
     message += `<b>AI Betting</b>\n` +
       `Open: ${openAIBets.length} | Closed: ${aiBettingStats.totalBets} | Invested: $${totalInvestedAI.toFixed(0)}\n` +
-      `Realized: ${realizedSign}$${aiBettingStats.totalPnl.toFixed(2)} (${realizedPctSign}${realizedPct.toFixed(0)}%)\n` +
-      `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)} (${unrealizedPctSign}${unrealizedPct.toFixed(0)}%)\n\n`;
+      `Realized: ${realizedSign}$${aiBettingStats.totalPnl.toFixed(2)}\n` +
+      `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)}\n` +
+      `Ensemble cache: ${schedulerStatus.ensembleCacheSize} markets\n\n`;
 
     // Trader Tracker
     message += `<b>Trader Tracker</b>\n` +
@@ -642,30 +625,40 @@ async function handlePnl(ctx: Context): Promise<void> {
   }
 
   try {
-    const pnl = getDailyPnl();
+    const breakdown = getDailyPnlBreakdown();
     const pnlPct = getDailyPnlPercentage();
     const trades = getTodayTrades();
 
-    // Polymarket copy stats
-    const copyStats = getCopyStats();
-    const positionsWithValues = await getOpenPositionsWithValues();
-    const positionsWithPrices = positionsWithValues.filter(p => p.currentPrice !== null);
-    const totalInvested = positionsWithPrices.reduce((sum, p) => sum + p.size, 0);
-    const totalCurrentValue = positionsWithPrices.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
-    const unrealizedPnl = totalCurrentValue - totalInvested;
-
-    const emoji = pnl >= 0 ? "📈" : "📉";
+    const emoji = breakdown.total >= 0 ? "📈" : "📉";
 
     let message = `<b>Daily P&L</b>\n\n`;
-    message += `${emoji} $${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
+    message += `${emoji} Total: $${breakdown.total.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
     message += `Trades: ${trades.length} | Wins: ${trades.filter((t) => t.pnl > 0).length} | Losses: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
 
-    message += `<b>Polymarket Copy</b>\n`;
-    message += `Open: ${copyStats.openPositions} | Closed: ${copyStats.closedPositions}\n`;
-    message += `Realized: $${copyStats.totalPnl.toFixed(2)} | Win rate: ${copyStats.winRate.toFixed(0)}%\n`;
-    if (positionsWithPrices.length > 0) {
-      const unrealizedSign = unrealizedPnl >= 0 ? "+" : "";
-      message += `Unrealized: ${unrealizedSign}$${unrealizedPnl.toFixed(2)}\n`;
+    message += `<b>Breakdown by Source</b>\n`;
+
+    if (breakdown.cryptoCopy !== 0) {
+      const sign = breakdown.cryptoCopy >= 0 ? "+" : "";
+      message += `Crypto Copy: ${sign}$${breakdown.cryptoCopy.toFixed(2)}\n`;
+    }
+
+    if (breakdown.pumpfun !== 0) {
+      const sign = breakdown.pumpfun >= 0 ? "+" : "";
+      message += `Pump.fun: ${sign}$${breakdown.pumpfun.toFixed(2)}\n`;
+    }
+
+    if (breakdown.polyCopy !== 0) {
+      const sign = breakdown.polyCopy >= 0 ? "+" : "";
+      message += `Poly Copy: ${sign}$${breakdown.polyCopy.toFixed(2)}\n`;
+    }
+
+    if (breakdown.aiBetting !== 0) {
+      const sign = breakdown.aiBetting >= 0 ? "+" : "";
+      message += `AI Betting: ${sign}$${breakdown.aiBetting.toFixed(2)}\n`;
+    }
+
+    if (breakdown.cryptoCopy === 0 && breakdown.pumpfun === 0 && breakdown.polyCopy === 0 && breakdown.aiBetting === 0) {
+      message += `<i>No closed positions today</i>\n`;
     }
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
@@ -966,7 +959,16 @@ async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
           message += `\nP&L: ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
         }
 
-        message += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n\n`;
+        message += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n`;
+
+        const ensemble = getEnsembleResult(bet.marketId);
+        if (ensemble && ensemble.ensembleSize > 1) {
+          const estimates = ensemble.individualEstimates
+            .map(e => `${(e * 100).toFixed(0)}%`)
+            .join('/');
+          message += `Ens: ${estimates} (d=${ensemble.disagreement.toFixed(2)})\n`;
+        }
+        message += `\n`;
       }
 
     } else {
@@ -1048,10 +1050,10 @@ async function handleStop(ctx: Context): Promise<void> {
     return;
   }
 
-  pauseTrading("Manual pause via Telegram");
-  console.log("[Telegram] Trading paused by user");
+  activateKillSwitch();
+  console.log("[Telegram] All trading stopped by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Trading paused", backButton);
+  await sendDataMessage("All trading stopped", backButton);
 }
 
 async function handleResume(ctx: Context): Promise<void> {
@@ -1060,34 +1062,10 @@ async function handleResume(ctx: Context): Promise<void> {
     return;
   }
 
-  resumeTrading();
-  console.log("[Telegram] Trading resumed by user");
-  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Trading resumed", backButton);
-}
-
-async function handleKill(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /kill from user ${ctx.from?.id}`);
-    return;
-  }
-
-  activateKillSwitch();
-  console.log("[Telegram] Kill switch activated by user");
-  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Kill switch activated", backButton);
-}
-
-async function handleUnkill(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /unkill from user ${ctx.from?.id}`);
-    return;
-  }
-
   deactivateKillSwitch();
-  console.log("[Telegram] Kill switch deactivated by user");
+  console.log("[Telegram] All trading resumed by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Kill switch deactivated", backButton);
+  await sendDataMessage("All trading resumed", backButton);
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {

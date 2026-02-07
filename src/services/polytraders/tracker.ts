@@ -15,7 +15,7 @@ const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
 // Default copy size if no user settings
 const DEFAULT_COPY_SIZE_USD = 5;
-const MIN_TRADER_ROI = 0.10; // Only copy traders with 10%+ return (pnl/volume)
+const MIN_TRADER_ROI = 0.05; // Only copy traders with 5%+ return (pnl/volume)
 
 // Get copy size from user settings
 function getCopySizeUsd(): number {
@@ -422,7 +422,7 @@ async function checkForNewTrades(): Promise<void> {
           const traderRoi = info.vol > 0 ? info.pnl / info.vol : 0;
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} on ${trade.title || trade.conditionId}`);
 
-          // Only copy and alert if trader has enough ROI (5%+)
+          // Only copy if trader is profitable enough
           if (traderRoi >= MIN_TRADER_ROI) {
             const copied = await copyTrade(trade, info);
             if (copied) {
@@ -437,7 +437,7 @@ async function checkForNewTrades(): Promise<void> {
               });
             }
           } else {
-            console.log(`[PolyTraders] Skipping - ROI ${(traderRoi * 100).toFixed(1)}% < 10%`);
+            console.log(`[PolyTraders] Skipping - ROI ${(traderRoi * 100).toFixed(1)}% < 5%`);
           }
         }
 

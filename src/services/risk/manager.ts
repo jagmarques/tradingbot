@@ -10,6 +10,7 @@ import {
   insertTrade as dbInsertTrade,
   getTodayTrades as dbGetTodayTrades,
 } from "../database/trades.js";
+import { getDb } from "../database/db.js";
 
 export interface RiskStatus {
   tradingEnabled: boolean;
@@ -62,6 +63,64 @@ export function getDailyPnl(): number {
   checkDayReset();
   const trades = dbGetTodayTrades();
   return trades.reduce((sum, trade) => sum + trade.pnl, 0);
+}
+
+// Get daily P&L breakdown by source
+export function getDailyPnlBreakdown(): {
+  total: number;
+  cryptoCopy: number;
+  pumpfun: number;
+  polyCopy: number;
+  aiBetting: number;
+} {
+  checkDayReset();
+  const db = getDb();
+  const today = new Date().toISOString().split("T")[0];
+  const startOfDay = today + "T00:00:00.000Z";
+
+  // Crypto copy (base, bnb, arbitrum, avalanche from trades table)
+  const cryptoCopyResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM trades
+    WHERE strategy IN ('base', 'bnb', 'arbitrum', 'avalanche')
+      AND created_at >= ?
+  `).get(startOfDay) as { total: number | null };
+  const cryptoCopy = cryptoCopyResult.total || 0;
+
+  // Pump.fun (from trades table)
+  const pumpfunResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM trades
+    WHERE strategy = 'pumpfun'
+      AND created_at >= ?
+  `).get(startOfDay) as { total: number | null };
+  const pumpfun = pumpfunResult.total || 0;
+
+  // Polymarket copy (from polytrader_copies table)
+  const polyCopyResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM polytrader_copies
+    WHERE status = 'closed'
+      AND updated_at >= ?
+  `).get(startOfDay) as { total: number | null };
+  const polyCopy = polyCopyResult.total || 0;
+
+  // AI betting (from aibetting_positions table)
+  const aiBettingResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM aibetting_positions
+    WHERE status = 'closed'
+      AND exit_timestamp >= ?
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
+  const aiBetting = aiBettingResult.total || 0;
+
+  return {
+    total: cryptoCopy + pumpfun + polyCopy + aiBetting,
+    cryptoCopy,
+    pumpfun,
+    polyCopy,
+    aiBetting,
+  };
 }
 
 // Calculate daily P&L percentage

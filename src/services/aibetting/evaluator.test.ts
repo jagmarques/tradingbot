@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { evaluateBetOpportunity, evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { evaluateBetOpportunity, evaluateAllOpportunities, shouldExitPosition, calculateEV } from "./evaluator.js";
 import type { PolymarketEvent, AIAnalysis, AIBettingConfig, AIBettingPosition } from "./types.js";
 
 vi.mock("../../config/env.js", () => ({
@@ -9,6 +9,22 @@ vi.mock("../../config/env.js", () => ({
 vi.mock("../../utils/dates.js", () => ({
   hoursUntil: vi.fn(() => 48),
 }));
+
+vi.mock("./scanner.js", () => ({
+  fetchMarketByConditionId: vi.fn(),
+}));
+
+vi.mock("./news.js", () => ({
+  fetchNewsForMarket: vi.fn(() => []),
+}));
+
+vi.mock("./analyzer.js", () => ({
+  analyzeMarket: vi.fn(),
+}));
+
+import { fetchMarketByConditionId } from "./scanner.js";
+import { fetchNewsForMarket } from "./news.js";
+import { analyzeMarket } from "./analyzer.js";
 
 const mockConfig: AIBettingConfig = {
   maxBetSize: 10,
@@ -47,6 +63,10 @@ function makeAnalysis(overrides: Partial<AIAnalysis> = {}): AIAnalysis {
     reasoning: "Test reasoning",
     keyFactors: ["factor1"],
     timestamp: Date.now(),
+    evidenceCited: ["test evidence"],
+    consistencyNote: "first analysis",
+    citationAccuracy: 1.0,
+    timeline: null,
     ...overrides,
   };
 }
@@ -69,6 +89,28 @@ function makePosition(overrides: Partial<AIBettingPosition> = {}): AIBettingPosi
     ...overrides,
   };
 }
+
+describe("calculateEV", () => {
+  it("should return positive EV for YES bet with AI > market", () => {
+    const ev = calculateEV(0.7, 0.5, "YES");
+    expect(ev).toBeCloseTo(0.2);
+  });
+
+  it("should return negative EV for YES bet with AI < market", () => {
+    const ev = calculateEV(0.3, 0.5, "YES");
+    expect(ev).toBeCloseTo(-0.2);
+  });
+
+  it("should return positive EV for NO bet with market > AI", () => {
+    const ev = calculateEV(0.3, 0.5, "NO");
+    expect(ev).toBeCloseTo(0.2);
+  });
+
+  it("should return zero EV when AI equals market", () => {
+    const ev = calculateEV(0.5, 0.5, "YES");
+    expect(ev).toBeCloseTo(0);
+  });
+});
 
 describe("evaluateBetOpportunity", () => {
   it("should recommend YES bet when AI probability > market price", () => {
@@ -170,53 +212,173 @@ describe("evaluateAllOpportunities", () => {
 });
 
 describe("shouldExitPosition", () => {
-  it("should not exit a healthy position", () => {
+  beforeEach(() => {
+    vi.mocked(fetchMarketByConditionId).mockReset();
+    vi.mocked(fetchNewsForMarket).mockReset();
+    vi.mocked(analyzeMarket).mockReset();
+  });
+
+  it("should not exit a healthy position", async () => {
     const position = makePosition({ entryPrice: 0.5 });
-    const result = shouldExitPosition(position, 0.55, null);
+    const result = await shouldExitPosition(position, 0.55, null);
 
     expect(result.shouldExit).toBe(false);
   });
 
-  it("should trigger stop loss when price moves >25% against YES position", () => {
+  it("should exit when price drops >15% and fresh AI shows negative EV", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.40; // 20% drop against position
+
+    // Mock successful market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(makeMarket());
+
+    // Mock AI re-analysis: probability 0.35, market at 0.40 -> EV = 0.35 - 0.40 = -0.05 (negative)
+    vi.mocked(analyzeMarket).mockResolvedValue(
+      makeAnalysis({ probability: 0.35, confidence: 0.7 })
+    );
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(true);
+    expect(result.reason).toContain("EV negative");
+  });
+
+  it("should stay in when price drops >15% but AI still confident", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.40; // 20% drop against position
+
+    // Mock successful market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(makeMarket());
+
+    // Mock AI re-analysis: probability 0.68, market at 0.40 -> EV = 0.68 - 0.40 = +0.28 (positive)
+    vi.mocked(analyzeMarket).mockResolvedValue(
+      makeAnalysis({ probability: 0.68, confidence: 0.75 })
+    );
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(false);
+    expect(vi.mocked(fetchMarketByConditionId)).toHaveBeenCalled();
+    expect(vi.mocked(analyzeMarket)).toHaveBeenCalled();
+  });
+
+  it("should exit on stop-loss when P&L exceeds -25%", async () => {
     const position = makePosition({ side: "YES", entryPrice: 0.5 });
-    const result = shouldExitPosition(position, 0.3, null); // 40% drop
+    const currentPrice = 0.35; // 30% loss
+
+    const result = await shouldExitPosition(position, currentPrice, null);
 
     expect(result.shouldExit).toBe(true);
-    expect(result.reason).toContain("Stop loss");
+    expect(result.reason).toContain("Stop-loss");
+    // Should NOT call fetchMarketByConditionId (stop-loss fires before re-analysis)
+    expect(vi.mocked(fetchMarketByConditionId)).not.toHaveBeenCalled();
   });
 
-  it("should trigger stop loss when price moves >25% against NO position", () => {
-    const position = makePosition({ side: "NO", entryPrice: 0.5 });
-    const result = shouldExitPosition(position, 0.7, null); // Price went up 40% (bad for NO)
+  it("should exit on conviction flip when AI favors opposite side", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.40; // 20% drop
+
+    // Mock successful market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(makeMarket());
+
+    // Mock AI re-analysis: probability 0.30 (AI now favors NO strongly)
+    // EV = 0.30 - 0.40 = -0.10 (negative, will trigger "EV negative" before "Conviction flip")
+    vi.mocked(analyzeMarket).mockResolvedValue(
+      makeAnalysis({ probability: 0.30, confidence: 0.7 })
+    );
+
+    const result = await shouldExitPosition(position, currentPrice, null);
 
     expect(result.shouldExit).toBe(true);
-    expect(result.reason).toContain("Stop loss");
+    // Both "EV negative" and "Conviction flip" are valid exit reasons here - either can fire
+    expect(result.reason).toMatch(/EV negative|Conviction flip/);
   });
 
-  it("should exit when AI confidence drops below 0.4", () => {
-    const position = makePosition();
-    const analysis = makeAnalysis({ confidence: 0.3 });
-    const result = shouldExitPosition(position, 0.5, analysis);
-
-    expect(result.shouldExit).toBe(true);
-    expect(result.reason).toContain("Confidence dropped");
-  });
-
-  it("should exit when AI edge reverses significantly", () => {
+  it("should NOT exit when price drops exactly at stop-loss boundary", async () => {
     const position = makePosition({ side: "YES", entryPrice: 0.5 });
-    // AI now says probability is 0.4, but position is YES - edge reversed
+    const currentPrice = 0.375; // exactly -25%
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    // Stop-loss is < -0.25, so exactly -25% should NOT trigger
+    expect(result.shouldExit).toBe(false);
+  });
+
+  it("should stay in when price drops >15% but market data unavailable", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.40; // 20% drop
+
+    // Mock failed market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(null);
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(false);
+    expect(vi.mocked(fetchMarketByConditionId)).toHaveBeenCalled();
+    expect(vi.mocked(analyzeMarket)).not.toHaveBeenCalled();
+  });
+
+  it("should stay in when price drops >15% but AI re-analysis fails", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.40; // 20% drop
+
+    // Mock successful market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(makeMarket());
+
+    // Mock failed AI re-analysis
+    vi.mocked(analyzeMarket).mockResolvedValue(null);
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(false);
+    expect(vi.mocked(fetchMarketByConditionId)).toHaveBeenCalled();
+    expect(vi.mocked(analyzeMarket)).toHaveBeenCalled();
+  });
+
+  it("should NOT trigger re-analysis for small price moves", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5, aiProbability: 0.7 });
+    const currentPrice = 0.45; // 10% drop - below 15% threshold
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(false);
+    expect(vi.mocked(fetchMarketByConditionId)).not.toHaveBeenCalled();
+  });
+
+  it("should exit when price drops >15% against NO position and AI shows negative EV", async () => {
+    const position = makePosition({ side: "NO", entryPrice: 0.5, aiProbability: 0.30 });
+    const currentPrice = 0.40; // NO token price dropped 20% - bad for NO holder
+
+    // Mock successful market fetch
+    vi.mocked(fetchMarketByConditionId).mockResolvedValue(makeMarket());
+
+    // AI re-analysis: probability 0.65, yesPrice = 1 - 0.40 = 0.60
+    // NO EV = yesPrice - probability = 0.60 - 0.65 = -0.05 (negative -> exit)
+    vi.mocked(analyzeMarket).mockResolvedValue(
+      makeAnalysis({ probability: 0.65, confidence: 0.7 })
+    );
+
+    const result = await shouldExitPosition(position, currentPrice, null);
+
+    expect(result.shouldExit).toBe(true);
+    expect(result.reason).toContain("EV negative");
+  });
+
+  it("should exit when AI edge reverses significantly", async () => {
+    const position = makePosition({ side: "YES", entryPrice: 0.5 });
+    // AI now says probability is 0.4, current price 0.55 -> EV = 0.4 - 0.55 = -0.15 (negative)
     const analysis = makeAnalysis({ probability: 0.4, confidence: 0.8 });
-    const result = shouldExitPosition(position, 0.55, analysis);
+    const result = await shouldExitPosition(position, 0.55, analysis);
 
-    // newEdge = 0.4 - 0.55 = -0.15 (< -0.05 threshold)
     expect(result.shouldExit).toBe(true);
-    expect(result.reason).toContain("edge reversed");
+    expect(result.reason).toContain("Edge reversed");
+    expect(result.reason).toContain("EV");
   });
 
-  it("should not exit when AI edge is still positive", () => {
+  it("should not exit when AI edge is still positive", async () => {
     const position = makePosition({ side: "YES", entryPrice: 0.5 });
     const analysis = makeAnalysis({ probability: 0.65, confidence: 0.8 });
-    const result = shouldExitPosition(position, 0.55, analysis);
+    const result = await shouldExitPosition(position, 0.55, analysis);
 
     // newEdge = 0.65 - 0.55 = 0.10 (positive, keep position)
     expect(result.shouldExit).toBe(false);
