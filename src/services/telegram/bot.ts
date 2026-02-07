@@ -33,6 +33,8 @@ import { getAIBettingStatus, clearAnalysisCache, getEnsembleResult } from "../ai
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
+import { loadOpenTokenPositions, getTokenAIPaperStats } from "../database/tokenai.js";
+import { getTokenAIStatus } from "../tokenai/scheduler.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -100,6 +102,7 @@ export async function startBot(): Promise<void> {
   bot.command("clearcopies", handleClearCopies);
   bot.command("cleartraders", handleClearTraders);
   bot.command("resetpaper", handleReset);
+  bot.command("tokenai", handleTokenAI);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -560,6 +563,45 @@ async function handleStatus(ctx: Context): Promise<void> {
       `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)}\n` +
       `Ensemble cache: ${schedulerStatus.ensembleCacheSize} markets\n\n`;
 
+    // Token AI Section
+    const tokenAIPositions = loadOpenTokenPositions();
+    message += `<b>Token AI</b>\n` +
+      `Open: ${tokenAIPositions.length}\n`;
+    if (tokenAIPositions.length > 0) {
+      let tokenTotalInvested = 0;
+      let tokenTotalCurrentValue = 0;
+      let tokenHasPrices = false;
+
+      for (const pos of tokenAIPositions.slice(0, 3)) {
+        const label = pos.tokenSymbol || pos.tokenAddress.slice(0, 8);
+        message += `  - ${label} (${pos.chain}): $${pos.sizeUsd.toFixed(2)} @ $${pos.entryPrice.toFixed(6)} | Conf: ${(pos.confidence * 100).toFixed(0)}%\n`;
+        if (pos.currentPrice !== undefined) {
+          const posPnl = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsd;
+          const posPnlPct = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+          const posSign = posPnl >= 0 ? "+" : "";
+          message += `    Now: $${pos.currentPrice.toFixed(6)} | P&L: ${posSign}$${posPnl.toFixed(2)} (${posSign}${posPnlPct.toFixed(0)}%)\n`;
+        }
+      }
+      if (tokenAIPositions.length > 3) {
+        message += `  ...and ${tokenAIPositions.length - 3} more\n`;
+      }
+
+      for (const pos of tokenAIPositions) {
+        tokenTotalInvested += pos.sizeUsd;
+        if (pos.currentPrice !== undefined) {
+          tokenHasPrices = true;
+          const currentVal = (pos.currentPrice / pos.entryPrice) * pos.sizeUsd;
+          tokenTotalCurrentValue += currentVal;
+        }
+      }
+      if (tokenHasPrices) {
+        const tokenTotalPnlPct = tokenTotalInvested > 0 ? ((tokenTotalCurrentValue - tokenTotalInvested) / tokenTotalInvested) * 100 : 0;
+        const tokenSign = tokenTotalPnlPct >= 0 ? "+" : "";
+        message += `  Total: $${tokenTotalInvested.toFixed(0)} -> $${tokenTotalCurrentValue.toFixed(2)} (${tokenSign}${tokenTotalPnlPct.toFixed(0)}%)\n`;
+      }
+    }
+    message += `\n`;
+
     // Trader Tracker
     message += `<b>Trader Tracker</b>\n` +
       `${trackerEmoji} ${trackerActive ? "Running" : "Stopped"} | ${traderCount} wallets`;
@@ -657,7 +699,12 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `AI Betting: ${sign}$${breakdown.aiBetting.toFixed(2)}\n`;
     }
 
-    if (breakdown.cryptoCopy === 0 && breakdown.pumpfun === 0 && breakdown.polyCopy === 0 && breakdown.aiBetting === 0) {
+    if (breakdown.tokenAi !== 0) {
+      const sign = breakdown.tokenAi >= 0 ? "+" : "";
+      message += `Token AI: ${sign}$${breakdown.tokenAi.toFixed(2)}\n`;
+    }
+
+    if (breakdown.cryptoCopy === 0 && breakdown.pumpfun === 0 && breakdown.polyCopy === 0 && breakdown.aiBetting === 0 && breakdown.tokenAi === 0) {
       message += `<i>No closed positions today</i>\n`;
     }
 
@@ -1232,7 +1279,9 @@ Be concise. Answer based on the data above. If asked about something not in the 
     const response = await callDeepSeek(
       `${context}\n\nUSER QUESTION: ${question}`,
       "deepseek-chat",
-      "You are a helpful trading bot assistant. Answer questions concisely in plain text only. NO JSON, NO code blocks, NO markdown."
+      "You are a helpful trading bot assistant. Answer questions concisely in plain text only. NO JSON, NO code blocks, NO markdown.",
+      undefined,
+      "telegram"
     );
 
     // Stop thinking animation
@@ -1388,6 +1437,68 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     console.error("[ResetPaper] Failed:", err);
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Reset failed. Check logs.", backButton);
+  }
+}
+
+async function handleTokenAI(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /tokenai from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const aiStatus = getTokenAIStatus();
+    const stats = getTokenAIPaperStats();
+
+    let message = `<b>TOKEN AI STATUS</b>\n\n`;
+    message += `<b>Scheduler:</b> ${aiStatus.running ? "Running" : "Stopped"}\n`;
+    message += `Open Positions: ${aiStatus.openPositions}\n`;
+    message += `Total Exposure: $${aiStatus.totalExposure.toFixed(2)}\n`;
+    message += `Cache Size: ${aiStatus.cacheSize}\n\n`;
+
+    if (stats.totalTrades === 0) {
+      message += `No Token AI trades yet.\nEnsure TOKENAI_ENABLED=true in config.`;
+    } else {
+      message += `<b>PAPER TRADING RESULTS</b> (${stats.daysSinceFirstTrade} days)\n\n`;
+      message += `Total Trades: ${stats.totalTrades} (${stats.openPositions} open, ${stats.closedPositions} closed)\n`;
+      message += `Win Rate: ${(stats.winRate * 100).toFixed(0)}% (${stats.wins}W / ${stats.losses}L)\n`;
+
+      const pnlSign = stats.totalPnlUsd >= 0 ? "+" : "";
+      message += `Total P&L: ${pnlSign}$${stats.totalPnlUsd.toFixed(2)}\n`;
+      message += `Avg Return: ${stats.avgReturnPct >= 0 ? "+" : ""}${stats.avgReturnPct.toFixed(1)}%\n`;
+      message += `Avg Hold: ${stats.avgHoldTimeHours.toFixed(1)}h\n\n`;
+
+      if (stats.bestTrade) {
+        message += `Best: ${stats.bestTrade.symbol} +$${stats.bestTrade.pnl.toFixed(2)}\n`;
+      }
+      if (stats.worstTrade) {
+        message += `Worst: ${stats.worstTrade.symbol} $${stats.worstTrade.pnl.toFixed(2)}\n`;
+      }
+
+      message += `\n`;
+
+      // Go-live readiness check
+      const readyDays = stats.daysSinceFirstTrade >= 30;
+      const readyWinRate = stats.winRate > 0.5;
+      const readyReturn = stats.avgReturnPct > 10;
+
+      if (readyDays && readyWinRate && readyReturn) {
+        message += `<b>READY FOR LIVE</b>\nSet TRADING_MODE=live to enable real trading`;
+      } else {
+        const remaining = Math.max(0, 30 - stats.daysSinceFirstTrade);
+        message += `<b>PAPER MODE</b>\n`;
+        if (!readyDays) message += `${remaining} days remaining\n`;
+        if (!readyWinRate) message += `Need >50% win rate (current: ${(stats.winRate * 100).toFixed(0)}%)\n`;
+        if (!readyReturn) message += `Need >10% avg return (current: ${stats.avgReturnPct.toFixed(1)}%)\n`;
+      }
+    }
+
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
+  } catch (err) {
+    console.error("[Telegram] TokenAI error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to fetch Token AI status", backButton);
   }
 }
 

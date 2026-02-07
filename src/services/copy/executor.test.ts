@@ -70,6 +70,26 @@ vi.mock("../evm/oneinch.js", () => ({
   isChainSupported: vi.fn((chain: string) => ["ethereum", "polygon", "base"].includes(chain)),
 }));
 
+vi.mock("./filter.js", () => ({
+  filterCryptoCopy: vi.fn(async (trader: { score: number }) => {
+    if (trader.score < 60) {
+      return { shouldCopy: false, recommendedSizeUsd: 0, reason: "Score too low", traderQualityMultiplier: 0 };
+    }
+    return {
+      shouldCopy: true,
+      recommendedSizeUsd: 3.6,
+      reason: "Filter passed",
+      aiConfidence: "medium",
+      aiProbability: 0.3,
+      traderQualityMultiplier: 1.2,
+    };
+  }),
+  getApproxUsdValue: vi.fn((_amount: number, chain: string) => {
+    const prices: Record<string, number> = { solana: 150, ethereum: 3000, polygon: 0.5, base: 3000 };
+    return _amount * (prices[chain] || 1);
+  }),
+}));
+
 // Mock database
 const mockDb = {
   exec: vi.fn(),
@@ -127,7 +147,7 @@ describe("Copy Trade Executor", () => {
       expect(result?.success).toBe(true);
       expect(result?.isPaper).toBe(true);
       expect(result?.chain).toBe("solana");
-      expect(result?.amountNative).toBe(0.02); // From settings.copyAmountSol
+      expect(result?.amountNative).toBeCloseTo(0.024, 6); // $3.60 / $150 SOL price
       expect(result?.tokensReceived).toBe("1000000000");
     });
 
@@ -162,7 +182,7 @@ describe("Copy Trade Executor", () => {
       expect(result?.success).toBe(true);
       expect(result?.isPaper).toBe(true);
       expect(result?.chain).toBe("ethereum");
-      expect(result?.amountNative).toBe(0.001); // From settings.copyAmountEth
+      expect(result?.amountNative).toBeCloseTo(0.0012, 6); // $3.60 / $3000 ETH price
       expect(result?.tokensReceived).toBe("1000000000000000000");
     });
 

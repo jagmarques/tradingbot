@@ -190,6 +190,87 @@ describe("Calibration Scoring", () => {
     });
   });
 
+  describe("prediction type filtering", () => {
+    // Helper to insert prediction with explicit prediction_type
+    function insertTypedPrediction(
+      category: MarketCategory,
+      brierScore: number,
+      predictionType: "market" | "token",
+      resolvedAt: string | null = new Date().toISOString()
+    ): void {
+      const db = getDb();
+      const id = `test_${predictionType}_${Date.now()}_${Math.random()}`;
+      db.prepare(
+        `
+        INSERT INTO calibration_predictions (
+          id, market_id, market_title, token_id, side, predicted_probability,
+          confidence, category, brier_score, predicted_at, resolved_at, actual_outcome, prediction_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+      ).run(
+        id,
+        "market-1",
+        "Test Market",
+        "token-1",
+        "YES",
+        0.7,
+        0.8,
+        category,
+        brierScore,
+        new Date().toISOString(),
+        resolvedAt,
+        resolvedAt ? 1 : null,
+        predictionType
+      );
+    }
+
+    it("scores only token predictions when type is token", () => {
+      // Insert market predictions with low Brier (good)
+      insertTypedPrediction("crypto", 0.1, "market");
+      insertTypedPrediction("crypto", 0.1, "market");
+
+      // Insert token predictions with high Brier (bad)
+      insertTypedPrediction("crypto", 0.8, "token");
+      insertTypedPrediction("crypto", 0.8, "token");
+
+      // Score token predictions only
+      const result = updateCalibrationScores("token");
+      expect(result).toBe(1);
+
+      const db = getDb();
+      const score = db
+        .prepare("SELECT * FROM calibration_scores WHERE category = ?")
+        .get("crypto") as { avg_brier_score: number; total_predictions: number };
+
+      // Should only count the 2 token predictions (Brier 0.8)
+      expect(score.total_predictions).toBe(2);
+      expect(score.avg_brier_score).toBeCloseTo(0.8, 2);
+    });
+
+    it("scores only market predictions when type is market", () => {
+      // Insert market predictions with low Brier (good)
+      insertTypedPrediction("crypto", 0.1, "market");
+      insertTypedPrediction("crypto", 0.1, "market");
+
+      // Insert token predictions with high Brier (bad)
+      insertTypedPrediction("crypto", 0.8, "token");
+      insertTypedPrediction("crypto", 0.8, "token");
+
+      // Score market predictions only
+      const result = updateCalibrationScores("market");
+      expect(result).toBe(1);
+
+      const db = getDb();
+      const score = db
+        .prepare("SELECT * FROM calibration_scores WHERE category = ?")
+        .get("crypto") as { avg_brier_score: number; total_predictions: number };
+
+      // Should only count the 2 market predictions (Brier 0.1)
+      expect(score.total_predictions).toBe(2);
+      expect(score.avg_brier_score).toBeCloseTo(0.1, 2);
+    });
+  });
+
   describe("getCalibrationStats", () => {
     it("returns empty array when no scores", () => {
       const stats = getCalibrationStats();

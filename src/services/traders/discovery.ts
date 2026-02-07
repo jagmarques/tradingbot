@@ -415,3 +415,236 @@ export async function runManualDiscovery(): Promise<number> {
 export function isDiscoveryRunning(): boolean {
   return isRunning;
 }
+
+// ===== BIRDEYE-BASED TRADER DISCOVERY (Phase 21) =====
+
+export const DISCOVERY_CONFIG = {
+  // Birdeye API (Solana) - free tier
+  BIRDEYE_TOP_TRADERS_URL: "https://public-api.birdeye.so/defi/v2/tokens/top_traders",
+  // How often to run discovery (24 hours)
+  DISCOVERY_INTERVAL_MS: 24 * 60 * 60 * 1000,
+  // Max new traders to add per discovery run
+  MAX_NEW_TRADERS_PER_RUN: 10,
+  // Minimum requirements for discovered traders
+  MIN_TOTAL_TRADES: 20,
+  MIN_WIN_RATE: 0.55,
+  MIN_PNL_USD: 1000,
+  // Popular tokens to scan for top traders (Solana)
+  SOLANA_SCAN_TOKENS: [
+    "So11111111111111111111111111111111111111112", // SOL (wrapped)
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+  ],
+};
+
+export interface DiscoveryResult {
+  chain: Chain;
+  discovered: number;
+  qualified: number;
+  added: number;
+  skipped: number;
+  errors: string[];
+}
+
+const BIRDEYE_FETCH_TIMEOUT_MS = 10_000;
+const BIRDEYE_RATE_LIMIT_MS = 200;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function discoverSolanaTraders(): Promise<DiscoveryResult> {
+  const result: DiscoveryResult = {
+    chain: "solana",
+    discovered: 0,
+    qualified: 0,
+    added: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  const apiKey = process.env.BIRDEYE_API_KEY || "";
+  const allWallets: Array<{
+    address: string;
+    trades: number;
+    pnlUsd: number;
+    volume: number;
+    winRate?: number;
+  }> = [];
+
+  for (const tokenAddress of DISCOVERY_CONFIG.SOLANA_SCAN_TOKENS) {
+    try {
+      const url = `${DISCOVERY_CONFIG.BIRDEYE_TOP_TRADERS_URL}?address=${tokenAddress}&time_frame=7d&sort_type=PnL&sort_by=desc&limit=20`;
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            "x-chain": "solana",
+            "X-API-KEY": apiKey,
+          },
+        },
+        BIRDEYE_FETCH_TIMEOUT_MS,
+      );
+
+      if (!response.ok) {
+        result.errors.push(`Birdeye API error for ${tokenAddress.slice(0, 8)}...: ${response.status}`);
+        console.error(`[Discovery] Birdeye API returned ${response.status} for ${tokenAddress.slice(0, 8)}...`);
+        await delay(BIRDEYE_RATE_LIMIT_MS);
+        continue;
+      }
+
+      const data = (await response.json()) as {
+        success?: boolean;
+        data?: {
+          items?: Array<{
+            owner?: string;
+            address?: string;
+            trade_count?: number;
+            total_pnl?: number;
+            volume?: number;
+            win_rate?: number;
+          }>;
+        };
+      };
+
+      const items = data?.data?.items;
+      if (!items || !Array.isArray(items)) {
+        await delay(BIRDEYE_RATE_LIMIT_MS);
+        continue;
+      }
+
+      for (const item of items) {
+        const walletAddress = item.owner || item.address;
+        if (!walletAddress) continue;
+
+        result.discovered++;
+        allWallets.push({
+          address: walletAddress,
+          trades: item.trade_count || 0,
+          pnlUsd: item.total_pnl || 0,
+          volume: item.volume || 0,
+          winRate: item.win_rate,
+        });
+      }
+
+      await delay(BIRDEYE_RATE_LIMIT_MS);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("abort")) {
+        result.errors.push(`Birdeye API timeout for ${tokenAddress.slice(0, 8)}...`);
+        console.error(`[Discovery] Birdeye API timeout for ${tokenAddress.slice(0, 8)}...`);
+      } else {
+        result.errors.push(`Birdeye API error for ${tokenAddress.slice(0, 8)}...: ${message}`);
+        console.error(`[Discovery] Birdeye API error for ${tokenAddress.slice(0, 8)}...:`, message);
+      }
+    }
+  }
+
+  // Deduplicate wallets by address (may appear for multiple tokens)
+  const uniqueWallets = new Map<string, (typeof allWallets)[number]>();
+  for (const wallet of allWallets) {
+    const existing = uniqueWallets.get(wallet.address);
+    if (!existing || wallet.pnlUsd > existing.pnlUsd) {
+      uniqueWallets.set(wallet.address, wallet);
+    }
+  }
+
+  let addedCount = 0;
+
+  for (const wallet of uniqueWallets.values()) {
+    // Validate against thresholds
+    if (wallet.trades < DISCOVERY_CONFIG.MIN_TOTAL_TRADES) continue;
+    if (wallet.winRate !== undefined && wallet.winRate < DISCOVERY_CONFIG.MIN_WIN_RATE) continue;
+    if (wallet.pnlUsd < DISCOVERY_CONFIG.MIN_PNL_USD) continue;
+
+    result.qualified++;
+
+    // Check if already tracked
+    const existing = getTrader(wallet.address, "solana");
+    if (existing) {
+      result.skipped++;
+      continue;
+    }
+
+    // Respect max new traders per run
+    if (addedCount >= DISCOVERY_CONFIG.MAX_NEW_TRADERS_PER_RUN) continue;
+
+    // Calculate initial score from available data
+    const winRateScore = wallet.winRate !== undefined ? wallet.winRate * 100 * 0.4 : 50 * 0.4;
+    const pnlScore = Math.min(100, wallet.pnlUsd / 100) * 0.4;
+    const activityScore = Math.min(100, wallet.trades * 2) * 0.2;
+    const score = Math.min(100, Math.round(winRateScore + pnlScore + activityScore));
+
+    const winRate = wallet.winRate !== undefined ? wallet.winRate * 100 : 0;
+    const estimatedWins = wallet.winRate !== undefined
+      ? Math.round(wallet.trades * wallet.winRate)
+      : 0;
+
+    upsertTrader({
+      address: wallet.address,
+      chain: "solana",
+      score,
+      winRate,
+      profitFactor: 0,
+      consistency: 0,
+      totalTrades: wallet.trades,
+      winningTrades: estimatedWins,
+      losingTrades: wallet.trades - estimatedWins,
+      totalPnlUsd: wallet.pnlUsd,
+      avgHoldTimeMs: 0,
+      largestWinPct: 0,
+      discoveredAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    addedCount++;
+    result.added++;
+    console.log(
+      `[Discovery] +Birdeye ${wallet.address.slice(0, 8)}... (${wallet.trades} trades, $${wallet.pnlUsd.toFixed(0)} PnL)`,
+    );
+  }
+
+  return result;
+}
+
+async function discoverEvmTraders(chain: Chain): Promise<DiscoveryResult> {
+  console.log(`[Discovery] EVM chain ${chain} discovery is a stub - manual wallet addition recommended`);
+  return {
+    chain,
+    discovered: 0,
+    qualified: 0,
+    added: 0,
+    skipped: 0,
+    errors: [`EVM discovery not yet implemented for ${chain}`],
+  };
+}
+
+export async function discoverTraders(chain: Chain): Promise<DiscoveryResult> {
+  if (chain === "solana") {
+    return discoverSolanaTraders();
+  }
+  return discoverEvmTraders(chain);
+}
+
+export async function runDiscoveryAll(): Promise<DiscoveryResult[]> {
+  const results: DiscoveryResult[] = [];
+
+  // Run Solana discovery (only chain with good free API)
+  const solanaResult = await discoverSolanaTraders();
+  results.push(solanaResult);
+
+  const totalAdded = results.reduce((sum, r) => sum + r.added, 0);
+  console.log(`[Discovery] Discovered ${totalAdded} new traders across ${results.length} chains`);
+
+  return results;
+}
