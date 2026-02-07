@@ -235,10 +235,10 @@ describe("analyzeMarketEnsemble", () => {
     expect(result!.consensus.probability).toBeCloseTo(0.7);
     expect(vi.mocked(analyzeMarket)).toHaveBeenCalledTimes(3);
 
-    // Verify different temperatures and perspectives passed
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(1, market, [], 0.2, expect.stringContaining("structural"));
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(2, market, [], 0.4, expect.stringContaining("recent news"));
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(3, market, [], 0.6, expect.stringContaining("historical base rates"));
+    // Verify different temperatures, perspectives, and raw mode passed
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(1, market, [], 0.2, expect.stringContaining("structural"), true);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(2, market, [], 0.4, expect.stringContaining("recent news"), true);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(3, market, [], 0.6, expect.stringContaining("historical base rates"), true);
   });
 
   it("should return null when all analyses fail", async () => {
