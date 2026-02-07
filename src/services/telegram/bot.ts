@@ -35,6 +35,7 @@ import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { loadOpenTokenPositions, getTokenAIPaperStats } from "../database/tokenai.js";
 import { getTokenAIStatus } from "../tokenai/scheduler.js";
+import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -45,6 +46,7 @@ let lastStatusUpdateId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentTraderSort: TraderSortBy = "score";
 let currentTimeFilter: TimeFilter = 12; // Default: 1 year
+let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
 const alertMessageIds: number[] = []; // Track all alert messages for cleanup
 
 // Authorization check - strict security
@@ -114,6 +116,27 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl", async (ctx) => {
+    currentPnlPeriod = "today";
+    await handlePnl(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("pnl_today", async (ctx) => {
+    currentPnlPeriod = "today";
+    await handlePnl(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("pnl_7d", async (ctx) => {
+    currentPnlPeriod = "7d";
+    await handlePnl(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("pnl_30d", async (ctx) => {
+    currentPnlPeriod = "30d";
+    await handlePnl(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("pnl_all", async (ctx) => {
+    currentPnlPeriod = "all";
     await handlePnl(ctx);
     await ctx.answerCallbackQuery();
   });
@@ -667,52 +690,80 @@ async function handlePnl(ctx: Context): Promise<void> {
   }
 
   try {
-    const breakdown = getDailyPnlBreakdown();
-    const pnlPct = getDailyPnlPercentage();
-    const trades = getTodayTrades();
+    const period = currentPnlPeriod;
+    const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
 
-    const emoji = breakdown.total >= 0 ? "📈" : "📉";
+    let message = `<b>P&L - ${periodLabels[period]}</b>\n\n`;
 
-    let message = `<b>Daily P&L</b>\n\n`;
-    message += `${emoji} Total: $${breakdown.total.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
-    message += `Trades: ${trades.length} | Wins: ${trades.filter((t) => t.pnl > 0).length} | Losses: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
+    // Period tab buttons
+    const tabButtons = [[
+      { text: period === "today" ? "* Today" : "Today", callback_data: "pnl_today" },
+      { text: period === "7d" ? "* 7D" : "7D", callback_data: "pnl_7d" },
+      { text: period === "30d" ? "* 30D" : "30D", callback_data: "pnl_30d" },
+      { text: period === "all" ? "* All" : "All", callback_data: "pnl_all" },
+    ]];
 
-    message += `<b>Breakdown by Source</b>\n`;
+    if (period === "today") {
+      // Real-time today data
+      const breakdown = getDailyPnlBreakdown();
+      const pnlPct = getDailyPnlPercentage();
+      const trades = getTodayTrades();
 
-    if (breakdown.cryptoCopy !== 0) {
-      const sign = breakdown.cryptoCopy >= 0 ? "+" : "";
-      message += `Crypto Copy: ${sign}$${breakdown.cryptoCopy.toFixed(2)}\n`;
+      const emoji = breakdown.total >= 0 ? "+" : "";
+      message += `Total: ${emoji}$${breakdown.total.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
+      message += `Trades: ${trades.length} | W: ${trades.filter((t) => t.pnl > 0).length} | L: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
+
+      message += formatBreakdown(breakdown.cryptoCopy, breakdown.pumpfun, breakdown.polyCopy, breakdown.aiBetting, breakdown.tokenAi);
+    } else {
+      // Historical data from snapshots
+      const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
+      const data = getPnlForPeriod(days);
+
+      const sign = data.totalPnl >= 0 ? "+" : "";
+      message += `Total: ${sign}$${data.totalPnl.toFixed(2)}\n\n`;
+
+      message += formatBreakdown(data.cryptoCopyPnl, data.pumpfunPnl, data.polyCopyPnl, data.aiBettingPnl, data.tokenAiPnl);
+
+      // Chart
+      const history = getDailyPnlHistory(days);
+      if (history.length > 1) {
+        message += `\n<b>Cumulative P&L</b>\n`;
+        message += generatePnlChart(history);
+      }
     }
 
-    if (breakdown.pumpfun !== 0) {
-      const sign = breakdown.pumpfun >= 0 ? "+" : "";
-      message += `Pump.fun: ${sign}$${breakdown.pumpfun.toFixed(2)}\n`;
-    }
-
-    if (breakdown.polyCopy !== 0) {
-      const sign = breakdown.polyCopy >= 0 ? "+" : "";
-      message += `Poly Copy: ${sign}$${breakdown.polyCopy.toFixed(2)}\n`;
-    }
-
-    if (breakdown.aiBetting !== 0) {
-      const sign = breakdown.aiBetting >= 0 ? "+" : "";
-      message += `AI Betting: ${sign}$${breakdown.aiBetting.toFixed(2)}\n`;
-    }
-
-    if (breakdown.tokenAi !== 0) {
-      const sign = breakdown.tokenAi >= 0 ? "+" : "";
-      message += `Token AI: ${sign}$${breakdown.tokenAi.toFixed(2)}\n`;
-    }
-
-    if (breakdown.cryptoCopy === 0 && breakdown.pumpfun === 0 && breakdown.polyCopy === 0 && breakdown.aiBetting === 0 && breakdown.tokenAi === 0) {
-      message += `<i>No closed positions today</i>\n`;
-    }
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
+    const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, allButtons);
   } catch (err) {
     console.error("[Telegram] P&L error:", err);
   }
+}
+
+function formatBreakdown(cryptoCopy: number, pumpfun: number, polyCopy: number, aiBetting: number, tokenAi: number): string {
+  let msg = "<b>By Source</b>\n";
+  let hasAny = false;
+
+  const sources = [
+    { name: "Crypto Copy", value: cryptoCopy },
+    { name: "Pump.fun", value: pumpfun },
+    { name: "Poly Copy", value: polyCopy },
+    { name: "AI Betting", value: aiBetting },
+    { name: "Token AI", value: tokenAi },
+  ];
+
+  for (const source of sources) {
+    if (source.value !== 0) {
+      hasAny = true;
+      const sign = source.value >= 0 ? "+" : "";
+      msg += `${source.name}: ${sign}$${source.value.toFixed(2)}\n`;
+    }
+  }
+
+  if (!hasAny) {
+    msg += `<i>No closed positions</i>\n`;
+  }
+
+  return msg;
 }
 
 async function handleTrades(ctx: Context): Promise<void> {
