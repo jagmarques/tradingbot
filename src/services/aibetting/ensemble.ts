@@ -7,6 +7,13 @@ const ENSEMBLE_TEMPERATURES = [0.2, 0.4, 0.6];
 const DISAGREEMENT_VARIANCE_THRESHOLD = 0.025;
 const OUTLIER_THRESHOLD = 0.15; // Flag if any member diverges >15pp from mean
 
+// Different reasoning perspectives to create genuine ensemble diversity
+const ENSEMBLE_PERSPECTIVES = [
+  "You are an expert prediction market analyst. Focus on structural and institutional factors: regulatory frameworks, organizational incentives, political dynamics, economic structures, and systemic forces. Always respond with valid JSON only, no markdown or extra text.",
+  "You are an expert prediction market analyst. Focus on recent news and momentum: breaking developments, trend direction, sentiment shifts, and near-term catalysts. Always respond with valid JSON only, no markdown or extra text.",
+  "You are an expert prediction market analyst. Focus on historical base rates: how often similar events have occurred, statistical precedents, mean reversion patterns, and reference class forecasting. Always respond with valid JSON only, no markdown or extra text.",
+];
+
 // Load trust score with fallback if calibration unavailable
 function loadTrustScore(category: MarketCategory): number {
   try {
@@ -103,7 +110,7 @@ export async function analyzeMarketEnsemble(
   console.log(`[Ensemble] Running ${ENSEMBLE_SIZE} parallel analyses for: ${market.title}`);
 
   const promises = Array.from({ length: ENSEMBLE_SIZE }, (_, i) =>
-    analyzeMarket(market, news, ENSEMBLE_TEMPERATURES[i])
+    analyzeMarket(market, news, ENSEMBLE_TEMPERATURES[i], ENSEMBLE_PERSPECTIVES[i])
   );
   const settled = await Promise.allSettled(promises);
 

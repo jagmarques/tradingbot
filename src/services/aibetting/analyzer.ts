@@ -245,7 +245,8 @@ function parseAnalysisResponse(
 export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
-  temperature?: number
+  temperature?: number,
+  systemMessage?: string
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -257,7 +258,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats);
 
   try {
-    const response = await callDeepSeek(prompt, "deepseek-chat", undefined, temperature ?? 0.4, "aibetting");
+    const response = await callDeepSeek(prompt, "deepseek-chat", systemMessage, temperature ?? 0.4, "aibetting");
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {
