@@ -102,8 +102,8 @@ export function getDailyPnlBreakdown(): {
     SELECT SUM(pnl) as total
     FROM polytrader_copies
     WHERE status = 'closed'
-      AND updated_at >= ?
-  `).get(startOfDay) as { total: number | null };
+      AND exit_timestamp >= ?
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const polyCopy = polyCopyResult.total || 0;
 
   // AI betting (from aibetting_positions table)

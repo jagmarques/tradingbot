@@ -126,12 +126,12 @@ describe("Risk Manager", () => {
 
       // Clear tables for isolated test
       db.prepare("DELETE FROM trades WHERE created_at >= ?").run(today);
-      db.prepare("DELETE FROM polytrader_copies WHERE updated_at >= ?").run(today);
+      db.prepare("DELETE FROM polytrader_copies WHERE exit_timestamp >= ?").run(new Date(today).getTime());
       db.prepare("DELETE FROM aibetting_positions WHERE exit_timestamp >= ?").run(new Date(today).getTime());
 
       // Insert test positions
-      db.prepare(`INSERT INTO polytrader_copies (id, trader_wallet, trader_name, condition_id, market_title, token_id, side, entry_price, size, trader_size, status, entry_timestamp, pnl, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("copy1", "wallet1", "TestTrader", "cond1", "Test Market", "token1", "YES", 0.5, 10, 100, "closed", Date.now(), 5.5, today);
+      db.prepare(`INSERT INTO polytrader_copies (id, trader_wallet, trader_name, condition_id, market_title, token_id, side, entry_price, size, trader_size, status, entry_timestamp, exit_timestamp, pnl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("copy1", "wallet1", "TestTrader", "cond1", "Test Market", "token1", "YES", 0.5, 10, 100, "closed", Date.now(), Date.now(), 5.5);
 
       db.prepare(`INSERT INTO aibetting_positions (id, market_id, market_title, token_id, side, entry_price, size, ai_probability, confidence, expected_value, status, entry_timestamp, exit_timestamp, pnl)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("ai1", "market1", "Test AI Market", "token2", "NO", 0.6, 15, 0.7, 0.8, 0.1, "closed", Date.now() - 1000, Date.now(), 3.2);
