@@ -54,6 +54,9 @@ const trackedTraders = new Map<string, { name: string; lastSeen: number; pnl: nu
 let intervalHandle: NodeJS.Timeout | null = null;
 let isRunning = false;
 
+// Cache of resolved/closed condition IDs - skip these without API calls
+const resolvedMarketCache = new Set<string>();
+
 // Copied position tracking
 interface CopiedPosition {
   id: string;
@@ -242,8 +245,6 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number): Promise
 
     if (outcomeIndex < 0 || outcomeIndex >= tokenIds.length) return null;
 
-    // Only use acceptingOrders to determine if we can trade
-    // closed field is unreliable (sometimes true for active markets)
     const canTrade = market.acceptingOrders !== false;
 
     return {
@@ -261,35 +262,31 @@ async function copyTrade(
   traderInfo: { name: string; pnl: number },
   overrideSizeUsd?: number,
 ): Promise<CopiedPosition | null> {
-  // Skip trades with invalid outcome index
   if (trade.outcomeIndex < 0 || trade.outcomeIndex > 1) {
     console.log(`[PolyTraders] Invalid outcomeIndex ${trade.outcomeIndex} for ${trade.title}`);
     return null;
   }
 
-  // Get market info and token ID
   const marketInfo = await getMarketInfo(trade.conditionId, trade.outcomeIndex);
   if (!marketInfo) {
     console.log(`[PolyTraders] Could not get market info for ${trade.conditionId}`);
     return null;
   }
 
-  // Skip closed markets
   if (marketInfo.closed) {
+    resolvedMarketCache.add(trade.conditionId);
     console.log(`[PolyTraders] Skipping closed market: ${trade.title}`);
     return null;
   }
 
-  // Also check if market is already resolved (double-check with GAMMA API)
   const resolution = await checkMarketResolution(marketInfo.tokenId);
   if (resolution.resolved) {
-    console.log(`[PolyTraders] Skipping already resolved market: ${trade.title}`);
+    resolvedMarketCache.add(trade.conditionId);
+    console.log(`[PolyTraders] Skipping resolved market: ${trade.title}`);
     return null;
   }
 
-  // Skip markets ending very soon (only if endDate is in the future)
-  // Note: endDate can be in the past on Polymarket while acceptingOrders is still true
-  // So we only skip if endDate is in the future AND within MIN_MINUTES_BEFORE_END
+  // Skip markets ending very soon
   if (marketInfo.endDate) {
     const mins = minutesUntil(marketInfo.endDate);
     if (mins !== null && mins > 0 && mins < MIN_MINUTES_BEFORE_END) {
@@ -304,12 +301,10 @@ async function copyTrade(
 
   const copySizeUsd = overrideSizeUsd ?? getCopySizeUsd();
 
-  // In paper mode, just record the trade
   if (isPaperMode()) {
     console.log(`[PolyTraders] PAPER COPY: ${trade.outcome} ${trade.title} @ ${(trade.price * 100).toFixed(0)}c ($${copySizeUsd})`);
   } else {
-    // Live mode - place actual order
-    try {
+      try {
       const order = await placeFokOrder(
         tokenId,
         "BUY",
@@ -420,6 +415,11 @@ async function checkForNewTrades(): Promise<void> {
 
         // New trade found - must be a BUY trade and $100+
         if (trade.type === "TRADE" && trade.side === "BUY" && trade.usdcSize >= 100 && trade.size > 0) {
+          // Check resolved cache first (no API call)
+          if (resolvedMarketCache.has(trade.conditionId)) {
+            continue;
+          }
+
           const traderRoi = info.vol > 0 ? info.pnl / info.vol : 0;
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} on ${trade.title || trade.conditionId}`);
 

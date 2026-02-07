@@ -345,13 +345,11 @@ async function discoverTradersOnSolanaAllDexes(): Promise<number> {
       const solPrice = 150;
       const totalPnlUsd = analysis.totalPnlSol * solPrice;
 
-      // Check standard trader thresholds (20+ trades, 60%+ win rate, positive PnL)
       const isStandardTrader =
         analysis.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
         analysis.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
         totalPnlUsd > 0;
 
-      // Check big hitter thresholds (10-19 trades, 60%+ win rate, $5000+ PnL)
       const isBigHitter =
         analysis.totalTrades >= BIG_HITTER_THRESHOLDS.MIN_TRADES &&
         analysis.totalTrades < TRADER_THRESHOLDS.MIN_TRADES &&
