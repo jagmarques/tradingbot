@@ -16,8 +16,8 @@ Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses with d
 | `AIBETTING_MAX_BET` | `$10` | Max per position |
 | `AIBETTING_MAX_EXPOSURE` | `$50` | Total open exposure |
 | `AIBETTING_MAX_POSITIONS` | `5` | Concurrent positions |
-| `AIBETTING_MIN_CONFIDENCE` | `70%` | Min AI confidence to bet |
-| `AIBETTING_MIN_EDGE` | `15%` | Min edge vs market price |
+| `AIBETTING_MIN_CONFIDENCE` | `60%` | Min AI confidence to bet |
+| `AIBETTING_MIN_EDGE` | `12%` | Min edge vs market price |
 | `AIBETTING_SCAN_INTERVAL` | `30min` | Time between scan cycles |
 
 **Ensemble:** Each analysis uses a different reasoning perspective (structural/institutional, recent news/momentum, historical base rates) at temperatures 0.2/0.4/0.6 to create genuine diversity.
@@ -26,7 +26,7 @@ Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses with d
 - Pre-filter: skip ensemble if scanner price makes edge mathematically impossible
 - Market disagreement cap: 30pp (if AI disagrees with market by >30 percentage points, skip)
 - Correlated bet limit: 1 per event group (no 6 Super Bowl bets)
-- Ensemble disagreement: skip if variance > 0.025 or any single member >15pp from mean
+- Ensemble disagreement: skip if variance > 0.025, any member >15pp from mean, or ratio > 5x
 - 4-hour cache on analyses, auto-invalidated when new news matches open positions
 
 **Exit rules:**
@@ -66,7 +66,7 @@ Copy profitable wallets on Solana + EVM chains (Base, BNB, Arbitrum, Avalanche).
 
 ### Polymarket Tracker
 
-Monitor top Polymarket bettors (>10% ROI) and copy their positions automatically.
+Monitor top Polymarket bettors (>5% ROI) and copy their positions automatically. Resolved market cache prevents repeated attempts on closed markets.
 
 ## Telegram Commands
 

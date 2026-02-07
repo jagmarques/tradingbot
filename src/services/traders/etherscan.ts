@@ -77,16 +77,32 @@ const MIN_REQUEST_INTERVAL_MS = 220; // ~4.5 requests/sec per chain
 const fetchQueueByChain = new Map<string, Promise<void>>();
 
 async function rateLimitedFetch(url: string, chain: string): Promise<Response> {
-  // Get or create queue for this chain
   const currentQueue = fetchQueueByChain.get(chain) || Promise.resolve();
 
-  // Chain onto the queue to ensure sequential execution per chain
   const myTurn = currentQueue.then(async () => {
     await new Promise((r) => setTimeout(r, MIN_REQUEST_INTERVAL_MS));
   });
   fetchQueueByChain.set(chain, myTurn);
   await myTurn;
   return fetch(url);
+}
+
+// Retry with exponential backoff (handles socket drops from rate limiting)
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1000;
+
+async function fetchWithRetry(url: string, chain: string): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await rateLimitedFetch(url, chain);
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err;
+      const delay = BASE_BACKOFF_MS * Math.pow(2, attempt);
+      console.warn(`[Etherscan] Retry ${attempt + 1}/${MAX_RETRIES} for ${chain} (${delay}ms)`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error("fetchWithRetry: unreachable");
 }
 
 function getApiKey(): string | null {
@@ -161,7 +177,7 @@ async function getTokenTransfers(
   const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${wallet}&startblock=${startBlock}&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
 
   try {
-    const response = await rateLimitedFetch(url, chain);
+    const response = await fetchWithRetry(url, chain);
     const data = (await response.json()) as { status: string; result: Record<string, string>[] };
 
     if (data.status !== "1" || !Array.isArray(data.result)) {
@@ -375,13 +391,11 @@ export async function discoverTradersFromTokens(
 
     if (!profitability) continue;
 
-    // Check if meets standard trader thresholds (20+ trades, 60%+ win rate, positive PnL)
     const isStandardTrader =
       profitability.totalTrades >= TRADER_THRESHOLDS.MIN_TRADES &&
       profitability.winRate >= TRADER_THRESHOLDS.MIN_WIN_RATE * 100 &&
       profitability.totalPnlUsd > 0;
 
-    // Check if meets big hitter thresholds (10-19 trades, 60%+ win, $5000+ PnL)
     const isBigHitter =
       profitability.totalTrades >= BIG_HITTER_THRESHOLDS.MIN_TRADES &&
       profitability.totalTrades < TRADER_THRESHOLDS.MIN_TRADES &&
