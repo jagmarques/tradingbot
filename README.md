@@ -27,6 +27,8 @@ Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses with d
 - Market disagreement cap: 30pp (if AI disagrees with market by >30 percentage points, skip)
 - Correlated bet limit: 1 per event group (no 6 Super Bowl bets)
 - Ensemble disagreement: skip if variance > 0.025, any member >15pp from mean, or ratio > 5x
+- Auto-skip list: markets that trigger disagreement 3 times are permanently skipped
+- Dynamic confidence floor: edge >= 20% lowers confidence requirement to 50% (Telegram alert sent)
 - 4-hour cache on analyses, auto-invalidated when new news matches open positions
 
 **Exit rules:**
@@ -81,7 +83,8 @@ Monitor top Polymarket bettors (>5% ROI) and copy their positions automatically.
 | `/bettors` | Copied Polymarket bettors |
 | `/tokenai` | Token AI status |
 | `/settings` | Auto-snipe, auto-copy config |
-| `/stop` / `/resume` | Kill switch |
+| `/stop` / `/resume` | Kill switch (all strategies) |
+| `Manage` button | Close all bets, copy trades, or everything |
 | `/resetpaper` | Wipe paper trading data |
 | `/ai <question>` | Query bot data with DeepSeek |
 

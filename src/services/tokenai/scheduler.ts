@@ -8,6 +8,7 @@ import { analyzeToken } from "./analyzer.js";
 import { evaluateToken } from "./evaluator.js";
 import { limitCorrelatedTokenBets } from "./position-manager.js";
 import { notifyTokenAIEntry } from "../telegram/notifications.js";
+import { canTrade } from "../risk/manager.js";
 
 export interface TokenAISchedulerConfig extends TokenAIConfig {
   scanIntervalMs: number;
@@ -40,6 +41,11 @@ function cacheAnalysis(tokenAddress: string, result: TokenAnalysisResult): void 
 
 async function runTokenAICycle(): Promise<void> {
   if (!config) return;
+
+  if (!canTrade()) {
+    console.log("[TokenAI] Kill switch active, skipping cycle");
+    return;
+  }
 
   try {
     console.log("[TokenAI] Starting cycle...");

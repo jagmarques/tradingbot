@@ -80,6 +80,7 @@ const MAIN_MENU_BUTTONS = [
     { text: "⏸️ Stop", callback_data: "stop" },
     { text: "▶️ Resume", callback_data: "resume" },
   ],
+  [{ text: "Manage", callback_data: "manage" }],
   [{ text: "⏱️ Timezone", callback_data: "timezone" }],
 ];
 
@@ -287,6 +288,22 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("main_menu", async (ctx) => {
     await sendMainMenu();
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("manage", async (ctx) => {
+    await handleManage(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("manage_close_bets", async (ctx) => {
+    await handleCloseAllBets(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("manage_close_copies", async (ctx) => {
+    await handleCloseAllCopies(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("manage_close_all", async (ctx) => {
+    await handleCloseAll(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("confirm_resetpaper", async (ctx) => {
@@ -1112,6 +1129,97 @@ async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
   }
 }
 
+async function handleManage(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const openBets = loadOpenPositions();
+  const pumpPositions = getPumpfunPositions();
+  const cryptoCopy = getCryptoCopyPositions();
+  const polyStats = getCopyStats();
+
+  let message = `<b>Manage Positions</b>\n\n`;
+  message += `AI Bets: ${openBets.length} open\n`;
+  message += `Pump.fun: ${pumpPositions.size} open\n`;
+  message += `Crypto Copy: ${cryptoCopy.length} open\n`;
+  message += `Poly Copy: ${polyStats.openPositions} open\n\n`;
+  message += `Choose an action:`;
+
+  const buttons = [
+    [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
+    [{ text: "Close All Copy Trades", callback_data: "manage_close_copies" }],
+    [{ text: "Close Everything", callback_data: "manage_close_all" }],
+    [{ text: "Back", callback_data: "main_menu" }],
+  ];
+
+  await sendDataMessage(message, buttons);
+}
+
+async function handleCloseAllBets(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const openBets = loadOpenPositions();
+  if (openBets.length === 0) {
+    const buttons = [[{ text: "Back", callback_data: "manage" }]];
+    await sendDataMessage("No open AI bets to close.", buttons);
+    return;
+  }
+
+  let closed = 0;
+  for (const bet of openBets) {
+    const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+    if (currentPrice !== null) {
+      const { exitPosition } = await import("../aibetting/executor.js");
+      const { success } = await exitPosition(bet, currentPrice, "Manual close");
+      if (success) closed++;
+    }
+  }
+
+  const buttons = [[{ text: "Back", callback_data: "manage" }]];
+  await sendDataMessage(`Closed ${closed}/${openBets.length} AI bets.`, buttons);
+}
+
+async function handleCloseAllCopies(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+  const deleted = clearAllCopiedPositions();
+
+  const buttons = [[{ text: "Back", callback_data: "manage" }]];
+  await sendDataMessage(`Cleared ${deleted} copy trade records.`, buttons);
+}
+
+async function handleCloseAll(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  let message = "<b>Closing all positions...</b>\n\n";
+  let total = 0;
+
+  // AI Bets
+  const openBets = loadOpenPositions();
+  let betsClosed = 0;
+  for (const bet of openBets) {
+    const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+    if (currentPrice !== null) {
+      const { exitPosition } = await import("../aibetting/executor.js");
+      const { success } = await exitPosition(bet, currentPrice, "Manual close");
+      if (success) betsClosed++;
+    }
+  }
+  message += `AI Bets: ${betsClosed}/${openBets.length} closed\n`;
+  total += betsClosed;
+
+  // Poly copies
+  const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+  const polyDeleted = clearAllCopiedPositions();
+  message += `Poly Copy: ${polyDeleted} cleared\n`;
+  total += polyDeleted;
+
+  message += `\n<b>Total: ${total} positions closed</b>`;
+
+  const buttons = [[{ text: "Back", callback_data: "manage" }]];
+  await sendDataMessage(message, buttons);
+}
+
 async function handleTradersPdf(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /traderspdf from user ${ctx.from?.id}`);
@@ -1300,7 +1408,7 @@ ${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p 
 - Running: ${schedulerStatus.running}
 - Open positions: ${schedulerStatus.openPositions}
 - Total exposure: $${schedulerStatus.totalExposure.toFixed(2)}
-- Analysis cache: ${schedulerStatus.cacheSize} markets
+- Analysis cache: ${schedulerStatus.ensembleCacheSize} markets
 
 === BETTING STATS (all time) ===
 - Total bets: ${stats.totalBets}

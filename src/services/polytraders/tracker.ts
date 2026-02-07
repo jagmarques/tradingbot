@@ -10,6 +10,7 @@ import { getSettings } from "../settings/settings.js";
 import { getChatId } from "../telegram/bot.js";
 import { minutesUntil } from "../../utils/dates.js";
 import { filterPolyCopy } from "../copy/filter.js";
+import { canTrade } from "../risk/manager.js";
 
 const DATA_API_URL = "https://data-api.polymarket.com/v1";
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
@@ -383,6 +384,11 @@ export async function fetchTraderActivity(
 }
 
 async function checkForNewTrades(): Promise<void> {
+  if (!canTrade()) {
+    console.log("[PolyTraders] Kill switch active, skipping cycle");
+    return;
+  }
+
   if (trackedTraders.size === 0) {
     // First run - populate tracked traders
     const topTraders = await fetchTopTraders("OVERALL", "MONTH", 20);
