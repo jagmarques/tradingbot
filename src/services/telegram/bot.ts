@@ -31,6 +31,7 @@ import {
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, getRecentBetOutcomes } from "../database/aibetting.js";
 import { getAIBettingStatus } from "../aibetting/scheduler.js";
+import { getCurrentPrice as getAIBetCurrentPrice } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 
@@ -531,10 +532,21 @@ async function handleStatus(ctx: Context): Promise<void> {
 
     if (openAIBets.length > 0) {
       message += `Open bets:\n`;
-      for (const bet of openAIBets.slice(0, 3)) {
-        message += `  - ${bet.side} ${bet.marketTitle.slice(0, 25)}... $${bet.size.toFixed(0)}\n`;
+      for (const bet of openAIBets) {
+        const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+        let pnlStr = "";
+        if (currentPrice !== null) {
+          const priceDiff = bet.side === "YES"
+            ? currentPrice - bet.entryPrice
+            : bet.entryPrice - currentPrice;
+          const shares = bet.size / bet.entryPrice;
+          const pnl = shares * priceDiff;
+          const pnlPct = (pnl / bet.size) * 100;
+          const sign = pnl >= 0 ? "+" : "";
+          pnlStr = ` | ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+        }
+        message += `  ${bet.side} $${bet.size.toFixed(0)} - ${bet.marketTitle}${pnlStr}\n`;
       }
-      if (openAIBets.length > 3) message += `  ...and ${openAIBets.length - 3} more\n`;
     }
     message += `\n`;
 
@@ -799,12 +811,12 @@ async function handleTraderDetail(ctx: Context): Promise<void> {
       for (const trade of tokenTrades.slice(0, 10)) {
         const tradePnlSign = trade.pnlUsd >= 0 ? "+" : "";
         const pnlPctSign = trade.pnlPct >= 0 ? "+" : "";
-        const buyDate = new Date(trade.firstBuyTimestamp).toLocaleDateString();
-        const sellDate = new Date(trade.lastSellTimestamp).toLocaleDateString();
+        const firstDate = new Date(trade.firstBuyTimestamp).toLocaleDateString();
+        const lastDate = new Date(trade.lastSellTimestamp).toLocaleDateString();
 
         message += `<b>${trade.tokenSymbol}</b>\n`;
-        message += `Buy: $${trade.buyAmountUsd.toFixed(0)} (${buyDate})\n`;
-        message += `Sell: $${trade.sellAmountUsd.toFixed(0)} (${sellDate})\n`;
+        message += `Bought: $${trade.buyAmountUsd.toFixed(0)} | Sold: $${trade.sellAmountUsd.toFixed(0)}\n`;
+        message += `Period: ${firstDate} - ${lastDate}\n`;
         message += `PnL: ${tradePnlSign}$${trade.pnlUsd.toFixed(0)} (${pnlPctSign}${trade.pnlPct.toFixed(0)}%)\n\n`;
       }
 

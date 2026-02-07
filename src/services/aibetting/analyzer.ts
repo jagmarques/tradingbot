@@ -23,7 +23,7 @@ function buildAnalysisPrompt(
       ? news
           .map((n) => `- [${n.source}] ${n.title}`)
           .join("\n")
-      : "No recent news.";
+      : "No recent news. Use your background knowledge and the market context to estimate probability.";
 
   // Include previous analyses if available
   const historySection =
@@ -42,7 +42,7 @@ function buildAnalysisPrompt(
       ? `\nYour recent win rate: ${stats.winRate.toFixed(0)}% (${stats.totalBets} bets)`
       : "";
 
-  return `You are an expert prediction market analyst.${performanceNote}
+  return `You are an expert prediction market analyst who finds mispriced bets.${performanceNote}
 
 MARKET: ${market.title}
 Category: ${market.category}
@@ -52,7 +52,12 @@ ${contextSection}
 NEWS:
 ${newsSection}
 
-Estimate TRUE probability. Be specific (0.63 not "about 60%"). Lower confidence if uncertain.
+Your job: Find where the market is WRONG. Estimate TRUE probability based on evidence.
+- If news gives clear signal, confidence should be 0.70-0.90
+- If evidence is ambiguous, confidence 0.50-0.70
+- Only use confidence <0.50 if you truly have no information
+
+Be decisive. Markets are often wrong. Look for edge.
 
 OUTPUT JSON ONLY:
 {"probability": 0.XX, "confidence": 0.XX, "reasoning": "brief", "keyFactors": ["f1", "f2"]}`;

@@ -6,6 +6,7 @@ import type {
   AIBettingPosition,
 } from "./types.js";
 import { hoursUntil } from "../../utils/dates.js";
+import { isPaperMode } from "../../config/env.js";
 
 // Kelly criterion for optimal bet sizing
 // f* = (bp - q) / b where b = odds, p = win prob, q = lose prob
@@ -66,8 +67,8 @@ export function evaluateBetOpportunity(
   const expectedValue = absEdge;
 
   // Calculate recommended bet size
-  const availableBankroll = bankroll - currentExposure;
-  const maxAllowedBet = Math.min(
+  const availableBankroll = isPaperMode() ? bankroll : bankroll - currentExposure;
+  const maxAllowedBet = isPaperMode() ? config.maxBetSize : Math.min(
     config.maxBetSize,
     config.maxTotalExposure - currentExposure
   );
@@ -136,7 +137,7 @@ export function evaluateAllOpportunities(
     (p) => p.status === "open"
   ).length;
 
-  if (openPositionCount >= config.maxPositions) {
+  if (!isPaperMode() && openPositionCount >= config.maxPositions) {
     console.log(
       `[Evaluator] Max positions reached (${openPositionCount}/${config.maxPositions})`
     );
@@ -159,7 +160,11 @@ export function evaluateAllOpportunities(
 
     if (decision.shouldBet) {
       console.log(
-        `[Evaluator] Opportunity: ${market.title} - ${decision.side} @ ${decision.recommendedSize.toFixed(2)} (${decision.reason})`
+        `[Evaluator] BET: ${market.title} - ${decision.side} @ $${decision.recommendedSize.toFixed(2)} (${decision.reason})`
+      );
+    } else {
+      console.log(
+        `[Evaluator] SKIP: ${market.title} - AI=${(decision.aiProbability * 100).toFixed(0)}% Market=${(decision.marketPrice * 100).toFixed(0)}% Edge=${(Math.abs(decision.edge) * 100).toFixed(1)}% C=${(decision.confidence * 100).toFixed(0)}% | ${decision.reason}`
       );
     }
   }

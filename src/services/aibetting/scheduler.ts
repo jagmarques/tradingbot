@@ -6,11 +6,15 @@ import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 import {
   enterPosition,
   exitPosition,
+  resolvePosition,
+  checkMarketResolution,
   getOpenPositions,
   getCurrentPrice,
   getTotalExposure,
+  clearClosedPositions,
 } from "./executor.js";
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
+import { isPaperMode } from "../../config/env.js";
 
 let isRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
@@ -50,6 +54,10 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
   try {
     console.log("[AIBetting] Starting cycle...");
 
+    // Check resolutions/exits before new bets
+    await checkExits(new Map());
+    clearClosedPositions();
+
     const openPositions = getOpenPositions();
     const positionMarketIds = new Set(openPositions.map((p) => p.marketId));
 
@@ -60,11 +68,9 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       return result;
     }
 
-    // 2. Smart filtering - only call AI when needed
+    // 2. Analyze markets with AI (use cache when available)
     const analyses = new Map<string, AIAnalysis>();
     let cached = 0;
-    let skippedNoNews = 0;
-    let skippedPrice = 0;
 
     for (const market of markets) {
       // Check cache first
@@ -75,21 +81,8 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      // Pre-filter: skip extreme prices (no edge opportunity)
-      const yesPrice = market.outcomes.find((o) => o.name === "Yes")?.price || 0.5;
-      if (yesPrice < 0.15 || yesPrice > 0.85) {
-        skippedPrice++;
-        continue;
-      }
-
-      // Fetch news only for promising markets
+      // Fetch news for market (may be empty - that's OK)
       const news = await fetchNewsForMarket(market);
-
-      // No news = no information edge, skip AI
-      if (news.length === 0) {
-        skippedNoNews++;
-        continue;
-      }
 
       // NOW call AI - we have potential
       const analysis = await analyzeMarket(market, news);
@@ -103,15 +96,22 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       await new Promise((r) => setTimeout(r, 1000));
     }
 
-    console.log(
-      `[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached, ${skippedNoNews} no news, ${skippedPrice} extreme price`
-    );
+    console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
 
-    // 3. Get bankroll
-    const usdcBalance = parseFloat(await getUsdcBalanceFormatted());
-    if (usdcBalance < 1) {
-      result.errors.push("Insufficient balance");
-      return result;
+    // 3. Get bankroll (unlimited in paper mode)
+    let usdcBalance: number;
+    if (isPaperMode()) {
+      const currentExposure = getTotalExposure();
+      usdcBalance = 10000; // Unlimited paper bankroll
+      console.log(`[AIBetting] PAPER mode (exposure: $${currentExposure.toFixed(2)}, ${openPositions.length} positions)`);
+    } else {
+      usdcBalance = parseFloat(await getUsdcBalanceFormatted());
+      console.log(`[AIBetting] USDC balance: $${usdcBalance.toFixed(2)}`);
+      if (usdcBalance < 1) {
+        console.log("[AIBetting] Insufficient USDC balance (<$1), skipping bets");
+        result.errors.push("Insufficient balance");
+        return result;
+      }
     }
 
     // 4. Evaluate opportunities
@@ -125,7 +125,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     result.opportunitiesFound = decisions.length;
 
     // 5. Execute bets
-    const maxNewBets = config.maxPositions - openPositions.length;
+    const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
     for (const decision of decisions.slice(0, maxNewBets)) {
       const market = markets.find((m) => m.conditionId === decision.marketId);
       if (!market) continue;
@@ -137,12 +137,10 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       }
     }
 
-    // 6. Check exits
+    // 6. Check exits with fresh AI analyses
     await checkExits(analyses);
 
-    if (result.betsPlaced > 0 || result.opportunitiesFound > 0) {
-      console.log(`[AIBetting] ${result.opportunitiesFound} opportunities, ${result.betsPlaced} bets placed`);
-    }
+    console.log(`[AIBetting] Cycle done: ${result.opportunitiesFound} opportunities, ${result.betsPlaced} bets placed`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[AIBetting] Error:", msg);
@@ -154,6 +152,17 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
 
 async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
   for (const position of getOpenPositions()) {
+    // Check if market resolved
+    const resolution = await checkMarketResolution(position.tokenId);
+    if (resolution.resolved && resolution.finalPrice !== null) {
+      const { success, pnl } = await resolvePosition(position, resolution.finalPrice);
+      if (success) {
+        const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+        console.log(`[AIBetting] RESOLVED: ${position.marketTitle} ${pnlStr}`);
+      }
+      continue;
+    }
+
     const currentPrice = await getCurrentPrice(position.tokenId);
     if (currentPrice === null) continue;
 
