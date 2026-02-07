@@ -124,6 +124,55 @@ export function loadOpenPositions(): AIBettingPosition[] {
   }));
 }
 
+// Load closed positions (most recent first)
+export function loadClosedPositions(limit: number = 10): AIBettingPosition[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM aibetting_positions
+    WHERE status = 'closed'
+    ORDER BY exit_timestamp DESC
+    LIMIT ?
+  `).all(limit) as Array<{
+    id: string;
+    market_id: string;
+    market_title: string;
+    market_end_date: string | null;
+    token_id: string;
+    side: string;
+    entry_price: number;
+    size: number;
+    ai_probability: number;
+    confidence: number;
+    expected_value: number;
+    status: string;
+    entry_timestamp: number;
+    exit_timestamp: number | null;
+    exit_price: number | null;
+    pnl: number | null;
+    exit_reason: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    marketId: row.market_id,
+    marketTitle: row.market_title,
+    marketEndDate: row.market_end_date || "2099-12-31T23:59:59Z",
+    tokenId: row.token_id,
+    side: row.side as "YES" | "NO",
+    entryPrice: row.entry_price,
+    size: row.size,
+    aiProbability: row.ai_probability,
+    confidence: row.confidence,
+    expectedValue: row.expected_value,
+    status: row.status as "open" | "closed",
+    entryTimestamp: row.entry_timestamp,
+    exitTimestamp: row.exit_timestamp || undefined,
+    exitPrice: row.exit_price || undefined,
+    pnl: row.pnl || undefined,
+    exitReason: row.exit_reason || undefined,
+  }));
+}
+
 // Get betting performance stats (for AI learning context)
 export function getBettingStats(): {
   totalBets: number;
@@ -131,6 +180,7 @@ export function getBettingStats(): {
   losses: number;
   winRate: number;
   totalPnl: number;
+  totalInvested: number;
   avgEdge: number;
   bestCategories: string[];
 } {
@@ -142,6 +192,7 @@ export function getBettingStats(): {
       SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
       SUM(pnl) as total_pnl,
+      SUM(size) as total_invested,
       AVG(expected_value) as avg_ev
     FROM aibetting_positions
     WHERE status = 'closed'
@@ -150,6 +201,7 @@ export function getBettingStats(): {
     wins: number;
     losses: number;
     total_pnl: number;
+    total_invested: number;
     avg_ev: number;
   };
 
@@ -159,6 +211,7 @@ export function getBettingStats(): {
     losses: stats.losses || 0,
     winRate: stats.total > 0 ? (stats.wins / stats.total) * 100 : 0,
     totalPnl: stats.total_pnl || 0,
+    totalInvested: stats.total_invested || 0,
     avgEdge: stats.avg_ev || 0,
     bestCategories: [], // TODO: track by category
   };
@@ -193,4 +246,18 @@ export function getRecentBetOutcomes(limit: number = 20): Array<{
     actualOutcome: row.pnl > 0 ? "win" : "loss",
     pnl: row.pnl,
   }));
+}
+
+export function deleteAllPositions(): number {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM aibetting_positions").run();
+  console.log(`[Database] Deleted ${result.changes} AI betting positions`);
+  return result.changes;
+}
+
+export function deleteAllAnalyses(): number {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM aibetting_analyses").run();
+  console.log(`[Database] Deleted ${result.changes} AI betting analyses`);
+  return result.changes;
 }

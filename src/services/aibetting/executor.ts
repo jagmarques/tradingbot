@@ -347,3 +347,8 @@ export async function getCurrentPrice(tokenId: string): Promise<number | null> {
   const bestAsk = parseFloat(book.asks[0][0]);
   return (bestBid + bestAsk) / 2;
 }
+
+export function clearAllPositions(): void {
+  positions.clear();
+  console.log("[Executor] Cleared all in-memory positions");
+}

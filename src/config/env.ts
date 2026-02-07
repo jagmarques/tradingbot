@@ -49,8 +49,8 @@ const envSchema = z.object({
   AIBETTING_MAX_BET: numericString("10"),
   AIBETTING_MAX_EXPOSURE: numericString("50"),
   AIBETTING_MAX_POSITIONS: numericString("5"),
-  AIBETTING_MIN_EDGE: numericStringMax1("0.05"),
-  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.6"),
+  AIBETTING_MIN_EDGE: numericStringMax1("0.10"),
+  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.70"),
   AIBETTING_SCAN_INTERVAL: numericString("1800000"), // 30 min (markets resolve in days)
 
   // Risk Limits
