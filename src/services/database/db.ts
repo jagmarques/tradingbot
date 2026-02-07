@@ -209,6 +209,57 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_market ON calibration_predictions(market_id);
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_resolved ON calibration_predictions(resolved_at);
     CREATE INDEX IF NOT EXISTS idx_calibration_category ON calibration_scores(category);
+
+    CREATE TABLE IF NOT EXISTS tokenai_analyses (
+      id TEXT PRIMARY KEY,
+      token_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      token_symbol TEXT,
+      probability REAL NOT NULL,
+      confidence REAL NOT NULL,
+      reasoning TEXT NOT NULL,
+      key_factors TEXT,
+      security_score REAL,
+      analyzed_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tokenai_signals (
+      id TEXT PRIMARY KEY,
+      token_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      signal_type TEXT NOT NULL,
+      signal_data TEXT NOT NULL,
+      collected_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tokenai_positions (
+      id TEXT PRIMARY KEY,
+      token_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      token_symbol TEXT,
+      side TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      current_price REAL,
+      size_usd REAL NOT NULL,
+      amount_tokens REAL NOT NULL,
+      ai_probability REAL NOT NULL,
+      confidence REAL NOT NULL,
+      kelly_fraction REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      entry_timestamp INTEGER NOT NULL,
+      exit_timestamp INTEGER,
+      exit_price REAL,
+      pnl REAL,
+      exit_reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tokenai_analyses_token ON tokenai_analyses(token_address, chain);
+    CREATE INDEX IF NOT EXISTS idx_tokenai_analyses_at ON tokenai_analyses(analyzed_at);
+    CREATE INDEX IF NOT EXISTS idx_tokenai_signals_token ON tokenai_signals(token_address, chain);
+    CREATE INDEX IF NOT EXISTS idx_tokenai_positions_status ON tokenai_positions(status);
+    CREATE INDEX IF NOT EXISTS idx_tokenai_positions_chain ON tokenai_positions(chain);
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
@@ -236,6 +287,19 @@ export function initDb(dbPath?: string): Database.Database {
     `);
     console.log("[Database] Migrated calibration_predictions: added category column");
   }
+
+  // Migration: Add prediction_type column to calibration_predictions
+  if (!predictionColumnNames.includes("prediction_type")) {
+    db.exec(`
+      ALTER TABLE calibration_predictions ADD COLUMN prediction_type TEXT DEFAULT 'market';
+    `);
+    console.log("[Database] Migrated calibration_predictions: added prediction_type column");
+  }
+
+  // Index on prediction_type (created after migration ensures column exists)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_type ON calibration_predictions(prediction_type);
+  `);
 
   console.log("[Database] Initialized at", finalPath);
   return db;

@@ -336,6 +336,55 @@ export async function notifyTopTraderCopyClose(params: {
   await sendMessage(message);
 }
 
+// Token AI: Entry notification
+export async function notifyTokenAIEntry(params: {
+  tokenSymbol: string;
+  chain: string;
+  sizeUsd: number;
+  entryPrice: number;
+  confidence: number;
+  aiProbability: number;
+  kellyFraction: number;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "";
+  const confPct = (params.confidence * 100).toFixed(0);
+  const probPct = (params.aiProbability * 100).toFixed(0);
+  const kellyPct = (params.kellyFraction * 100).toFixed(1);
+  const message =
+    `${mode}<b>TOKEN AI ENTRY</b>\n\n` +
+    `<b>${escapeHtml(params.tokenSymbol)}</b> (${params.chain})\n\n` +
+    `Size: $${params.sizeUsd.toFixed(2)}\n` +
+    `Entry: $${params.entryPrice.toFixed(8)}\n` +
+    `AI Prob: ${probPct}%\n` +
+    `Confidence: ${confPct}%\n` +
+    `Kelly: ${kellyPct}%`;
+  await sendMessage(message);
+}
+
+// Token AI: Exit notification
+export async function notifyTokenAIExit(params: {
+  tokenSymbol: string;
+  chain: string;
+  sizeUsd: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  exitReason: string;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "";
+  const pnlPct = params.sizeUsd > 0 ? (params.pnl / params.sizeUsd) * 100 : 0;
+  const pnlSign = params.pnl >= 0 ? "+" : "";
+  const message =
+    `${mode}<b>TOKEN AI EXIT</b>\n\n` +
+    `<b>${escapeHtml(params.tokenSymbol)}</b> (${params.chain})\n\n` +
+    `Size: $${params.sizeUsd.toFixed(2)}\n` +
+    `Entry: $${params.entryPrice.toFixed(8)}\n` +
+    `Exit: $${params.exitPrice.toFixed(8)}\n` +
+    `P&L: ${pnlSign}$${params.pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)\n` +
+    `Reason: ${params.exitReason}`;
+  await sendMessage(message);
+}
+
 // Helper to escape HTML
 function escapeHtml(text: string): string {
   return text

@@ -72,6 +72,7 @@ export function getDailyPnlBreakdown(): {
   pumpfun: number;
   polyCopy: number;
   aiBetting: number;
+  tokenAi: number;
 } {
   checkDayReset();
   const db = getDb();
@@ -114,12 +115,22 @@ export function getDailyPnlBreakdown(): {
   `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const aiBetting = aiBettingResult.total || 0;
 
+  // Token AI (from tokenai_positions table)
+  const tokenAiResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM tokenai_positions
+    WHERE status = 'closed'
+      AND exit_timestamp >= ?
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
+  const tokenAi = tokenAiResult.total || 0;
+
   return {
-    total: cryptoCopy + pumpfun + polyCopy + aiBetting,
+    total: cryptoCopy + pumpfun + polyCopy + aiBetting + tokenAi,
     cryptoCopy,
     pumpfun,
     polyCopy,
     aiBetting,
+    tokenAi,
   };
 }
 

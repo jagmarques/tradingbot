@@ -9,13 +9,13 @@ import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET } from "../../co
 import { getSettings } from "../settings/settings.js";
 import { getChatId } from "../telegram/bot.js";
 import { minutesUntil } from "../../utils/dates.js";
+import { filterPolyCopy } from "../copy/filter.js";
 
 const DATA_API_URL = "https://data-api.polymarket.com/v1";
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
 // Default copy size if no user settings
 const DEFAULT_COPY_SIZE_USD = 5;
-const MIN_TRADER_ROI = 0.05; // Only copy traders with 5%+ return (pnl/volume)
 
 // Get copy size from user settings
 function getCopySizeUsd(): number {
@@ -258,7 +258,8 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number): Promise
 
 async function copyTrade(
   trade: TraderActivity,
-  traderInfo: { name: string; pnl: number }
+  traderInfo: { name: string; pnl: number },
+  overrideSizeUsd?: number,
 ): Promise<CopiedPosition | null> {
   // Skip trades with invalid outcome index
   if (trade.outcomeIndex < 0 || trade.outcomeIndex > 1) {
@@ -301,7 +302,7 @@ async function copyTrade(
 
   const positionId = `copy_${trade.conditionId}_${Date.now()}`;
 
-  const copySizeUsd = getCopySizeUsd();
+  const copySizeUsd = overrideSizeUsd ?? getCopySizeUsd();
 
   // In paper mode, just record the trade
   if (isPaperMode()) {
@@ -422,9 +423,15 @@ async function checkForNewTrades(): Promise<void> {
           const traderRoi = info.vol > 0 ? info.pnl / info.vol : 0;
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} on ${trade.title || trade.conditionId}`);
 
-          // Only copy if trader is profitable enough
-          if (traderRoi >= MIN_TRADER_ROI) {
-            const copied = await copyTrade(trade, info);
+          // AI filter (replaces simple ROI check + fixed amount)
+          const copySizeUsd = getCopySizeUsd();
+          const filterResult = filterPolyCopy(traderRoi, trade.usdcSize, trade.price, copySizeUsd);
+
+          if (!filterResult.shouldCopy) {
+            console.log(`[PolyTraders] Filter rejected: ${filterResult.reason}`);
+          } else {
+            console.log(`[PolyTraders] Copying with quality ${filterResult.traderQualityMultiplier.toFixed(1)}x, size $${filterResult.recommendedSizeUsd.toFixed(2)}`);
+            const copied = await copyTrade(trade, info, filterResult.recommendedSizeUsd);
             if (copied) {
               // Only alert when we actually copy successfully
               await notifyTopTraderCopy({
@@ -436,8 +443,6 @@ async function checkForNewTrades(): Promise<void> {
                 isPaper: isPaperMode(),
               });
             }
-          } else {
-            console.log(`[PolyTraders] Skipping - ROI ${(traderRoi * 100).toFixed(1)}% < 5%`);
           }
         }
 

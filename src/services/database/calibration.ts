@@ -10,7 +10,9 @@ export interface CalibrationScore {
 }
 
 // Update calibration scores for all categories based on 30-day window
-export function updateCalibrationScores(): number {
+export function updateCalibrationScores(
+  predictionType: "market" | "token" = "market"
+): number {
   const db = getDb();
 
   try {
@@ -30,11 +32,12 @@ export function updateCalibrationScores(): number {
       FROM calibration_predictions
       WHERE resolved_at IS NOT NULL
         AND resolved_at >= ?
+        AND prediction_type = ?
       GROUP BY category
       HAVING COUNT(*) > 0
     `
       )
-      .all(cutoffDate) as Array<{
+      .all(cutoffDate, predictionType) as Array<{
       category: string;
       total_predictions: number;
       avg_brier_score: number;
@@ -82,7 +85,10 @@ export function updateCalibrationScores(): number {
 }
 
 // Get trust score for a specific category (0.0-1.0, higher = better)
-export function getTrustScore(category: MarketCategory): number {
+export function getTrustScore(
+  category: MarketCategory,
+  predictionType: "market" | "token" = "market"
+): number {
   const db = getDb();
 
   try {
@@ -99,7 +105,9 @@ export function getTrustScore(category: MarketCategory): number {
     }
 
     // Default to neutral 0.5 if no historical data
-    console.log(`[Calibration] No data for ${category}, using default trust 0.5`);
+    console.log(
+      `[Calibration] No data for ${category} (${predictionType}), using default trust 0.5`
+    );
     return 0.5;
   } catch (error) {
     console.error("[Calibration] Error getting trust score:", error);

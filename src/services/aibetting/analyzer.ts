@@ -255,7 +255,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats);
 
   try {
-    const response = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.4);
+    const response = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.4, "aibetting");
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {

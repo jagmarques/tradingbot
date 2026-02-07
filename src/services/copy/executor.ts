@@ -12,7 +12,7 @@ import {
   ESTIMATED_GAS_FEE_EVM,
   ESTIMATED_SLIPPAGE_DEX,
 } from "../../config/constants.js";
-import type { BotSettings } from "../settings/settings.js";
+import { filterCryptoCopy, getApproxUsdValue, type CopyFilterResult } from "./filter.js";
 
 // Crypto copied position tracking
 export interface CryptoCopyPosition {
@@ -255,12 +255,6 @@ export async function executeCopyTrade(
     return null;
   }
 
-  // Check trader score threshold
-  if (trader.score < settings.minTraderScore) {
-    console.log(`[CopyTrade] Trader score ${trader.score} below threshold ${settings.minTraderScore}`);
-    return null;
-  }
-
   // Check daily copy limit
   if (!canCopyTrade(chatId)) {
     console.log("[CopyTrade] Daily copy limit reached");
@@ -273,15 +267,26 @@ export async function executeCopyTrade(
     return null;
   }
 
-  // Calculate copy amount from settings
-  const copyAmount = calculateCopyAmount(trade.chain, settings);
+  // AI pre-filter (replaces simple score check + fixed amount)
+  const filterResult = await filterCryptoCopy(trader, trade, settings);
+
+  if (!filterResult.shouldCopy) {
+    console.log(`[CopyTrade] AI filter rejected: ${filterResult.reason}`);
+    return null;
+  }
+
+  // Convert recommended USD size back to native amount
+  const nativePrice = getApproxUsdValue(1, trade.chain);
+  const copyAmount = nativePrice > 0 ? filterResult.recommendedSizeUsd / nativePrice : 0;
+
   if (copyAmount <= 0) {
     console.log(`[CopyTrade] Copy amount is 0 for ${trade.chain}`);
     return null;
   }
 
   console.log(`[CopyTrade] Copying ${trader.address.slice(0, 8)}... on ${trade.chain}`);
-  console.log(`[CopyTrade] Token: ${trade.tokenAddress}, Amount: ${copyAmount.toFixed(6)} native`);
+  console.log(`[CopyTrade] AI: ${filterResult.aiConfidence || "N/A"} P=${filterResult.aiProbability ? (filterResult.aiProbability * 100).toFixed(0) + "%" : "N/A"} Q=${filterResult.traderQualityMultiplier.toFixed(1)}x`);
+  console.log(`[CopyTrade] Token: ${trade.tokenAddress}, Amount: ${copyAmount.toFixed(6)} native ($${filterResult.recommendedSizeUsd.toFixed(2)})`);
 
   let result: CopyTradeResult;
 
@@ -316,25 +321,10 @@ export async function executeCopyTrade(
     saveCryptoCopyPosition(position);
     console.log(`[CopyTrade] Position saved: ${positionId}`);
 
-    await notifyCopyTrade(trader, trade, result);
+    await notifyCopyTrade(trader, trade, result, filterResult);
   }
 
   return result;
-}
-
-// Get fixed copy amount for a chain (in native token) from settings
-function getCopyAmountFromSettings(chain: Chain, settings: BotSettings): number {
-  const copyAmounts: Record<string, number> = {
-    solana: settings.copyAmountSol,
-    ethereum: settings.copyAmountEth,
-    polygon: settings.copyAmountMatic,
-  };
-  return copyAmounts[chain] || settings.copyAmountDefault;
-}
-
-function calculateCopyAmount(chain: Chain, settings: BotSettings): number {
-  // Use fixed amounts from user settings
-  return getCopyAmountFromSettings(chain, settings);
 }
 
 async function executeSolanaCopy(
@@ -377,7 +367,8 @@ async function executeEvmCopy(
 async function notifyCopyTrade(
   trader: Trader,
   trade: TraderTrade,
-  result: CopyTradeResult
+  result: CopyTradeResult,
+  filter: CopyFilterResult,
 ): Promise<void> {
   const chainLabel: Record<string, string> = {
     solana: "SOL",
@@ -395,6 +386,9 @@ async function notifyCopyTrade(
   const paperTag = result.isPaper ? " [PAPER]" : "";
   const shortTrader = `${trader.address.slice(0, 6)}...${trader.address.slice(-4)}`;
   const shortToken = trade.tokenAddress.slice(0, 10);
+  const aiInfo = filter.aiConfidence
+    ? `AI: ${filter.aiConfidence} (${filter.aiProbability ? (filter.aiProbability * 100).toFixed(0) + "%" : "N/A"})`
+    : "AI: N/A";
 
   const message = `
 COPY TRADE EXECUTED${paperTag}
@@ -407,6 +401,8 @@ ${result.signature ? `TX: ${result.signature.slice(0, 16)}...` : ""}
 ${result.txHash ? `TX: ${result.txHash.slice(0, 16)}...` : ""}
 
 Trader Score: ${trader.score.toFixed(0)}/100
+Quality: ${filter.traderQualityMultiplier.toFixed(1)}x
+${aiInfo}
   `.trim();
 
   try {

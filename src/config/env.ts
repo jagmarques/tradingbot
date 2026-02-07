@@ -41,8 +41,9 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
-  // AI (DeepSeek for Polymarket betting)
+  // AI (DeepSeek for Polymarket betting + Token AI)
   DEEPSEEK_API_KEY: z.string().min(1).optional(),
+  DEEPSEEK_DAILY_BUDGET: numericString("1.00"),
 
   // AI Betting Config
   AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
@@ -52,6 +53,17 @@ const envSchema = z.object({
   AIBETTING_MIN_EDGE: numericStringMax1("0.10"),
   AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.50"),
   AIBETTING_SCAN_INTERVAL: numericString("1800000"), // 30 min (markets resolve in days)
+
+  // Token AI Config
+  TOKENAI_ENABLED: z.enum(["true", "false"]).default("false"),
+  TOKENAI_MAX_BET: numericString("10"),
+  TOKENAI_MAX_EXPOSURE: numericString("50"),
+  TOKENAI_MAX_POSITIONS: numericString("5"),
+  TOKENAI_MIN_CONFIDENCE: z.enum(["low", "medium", "high"]).default("medium"),
+  TOKENAI_MIN_PROBABILITY: numericStringMax1("0.15"),
+  TOKENAI_DAILY_LOSS_LIMIT: numericString("25"),
+  TOKENAI_KELLY_MULTIPLIER: numericStringMax1("0.25"),
+  TOKENAI_SCAN_INTERVAL: numericString("900000"), // 15 min
 
   // Risk Limits
   MAX_SNIPE_AMOUNT_SOL: numericString("0.05"),

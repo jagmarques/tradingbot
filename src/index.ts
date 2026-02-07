@@ -25,6 +25,8 @@ import { validateCopyChains } from "./services/evm/index.js";
 import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions } from "./services/aibetting/index.js";
 import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
 import { initCryptoCopyTracking } from "./services/copy/executor.js";
+import { startTokenAIScheduler, stopTokenAIScheduler } from "./services/tokenai/scheduler.js";
+import { startTokenExitLoop, stopTokenExitLoop } from "./services/tokenai/exit-loop.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 let positionMonitorInterval: NodeJS.Timeout | null = null;
@@ -184,6 +186,25 @@ async function main(): Promise<void> {
       console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and DEEPSEEK_API_KEY to enable)");
     }
 
+    // Token AI trading
+    if (env.TOKENAI_ENABLED === "true" && env.DEEPSEEK_API_KEY) {
+      startTokenAIScheduler({
+        maxBetUsd: env.TOKENAI_MAX_BET,
+        minBetUsd: 5,
+        maxExposureUsd: env.TOKENAI_MAX_EXPOSURE,
+        maxPositions: env.TOKENAI_MAX_POSITIONS,
+        dailyLossLimitUsd: env.TOKENAI_DAILY_LOSS_LIMIT,
+        kellyMultiplier: env.TOKENAI_KELLY_MULTIPLIER,
+        minConfidence: env.TOKENAI_MIN_CONFIDENCE as "low" | "medium" | "high",
+        minSuccessProbability: env.TOKENAI_MIN_PROBABILITY,
+        scanIntervalMs: env.TOKENAI_SCAN_INTERVAL,
+      });
+      startTokenExitLoop();
+      console.log("[Bot] Token AI started");
+    } else {
+      console.log("[Bot] Token AI disabled (set TOKENAI_ENABLED=true and DEEPSEEK_API_KEY to enable)");
+    }
+
     // Start Polymarket top trader tracking
     startPolyTraderTracking(5000); // Check every 5 seconds
     console.log("[Bot] Polymarket trader tracking started");
@@ -218,6 +239,8 @@ async function shutdown(signal: string): Promise<void> {
     stopStatusReporter();
     stopPumpfunDetector();
     stopPolymarketMonitoring();
+    stopTokenAIScheduler();
+    stopTokenExitLoop();
     stopAIBetting();
     stopPolyTraderTracking();
     stopTraderAlerts();
