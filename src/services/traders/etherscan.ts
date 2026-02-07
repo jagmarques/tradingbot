@@ -247,12 +247,18 @@ export async function analyzeWalletPnl(
         // BUY: quote OUT, token IN
         if (quoteTx.from === walletLower && tokenTx.to === walletLower) {
           pnl.spent += usdAmount;
+          // Track first trade (buy) timestamp
           pnl.firstBuyTimestamp = Math.min(pnl.firstBuyTimestamp, tokenTx.timestamp);
+          // Also update lastSell to track overall activity range
+          pnl.lastSellTimestamp = Math.max(pnl.lastSellTimestamp, tokenTx.timestamp);
         }
         // SELL: token OUT, quote IN
         else if (quoteTx.to === walletLower && tokenTx.from === walletLower) {
           pnl.received += usdAmount;
+          // Track last trade (sell) timestamp
           pnl.lastSellTimestamp = Math.max(pnl.lastSellTimestamp, tokenTx.timestamp);
+          // Also update firstBuy to track overall activity range
+          pnl.firstBuyTimestamp = Math.min(pnl.firstBuyTimestamp, tokenTx.timestamp);
         }
       }
     }
