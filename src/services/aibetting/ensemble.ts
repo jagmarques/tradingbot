@@ -110,7 +110,7 @@ export async function analyzeMarketEnsemble(
   console.log(`[Ensemble] Running ${ENSEMBLE_SIZE} parallel analyses for: ${market.title}`);
 
   const promises = Array.from({ length: ENSEMBLE_SIZE }, (_, i) =>
-    analyzeMarket(market, news, ENSEMBLE_TEMPERATURES[i], ENSEMBLE_PERSPECTIVES[i])
+    analyzeMarket(market, news, ENSEMBLE_TEMPERATURES[i], ENSEMBLE_PERSPECTIVES[i], true)
   );
   const settled = await Promise.allSettled(promises);
 

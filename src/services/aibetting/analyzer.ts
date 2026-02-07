@@ -246,7 +246,8 @@ export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
   temperature?: number,
-  systemMessage?: string
+  systemMessage?: string,
+  raw?: boolean
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -262,12 +263,15 @@ export async function analyzeMarket(
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {
-      // Log citation accuracy as metric (warn-only, don't reject)
+      // Check citation accuracy and penalize confidence when low
       const articlesWithContent = news.filter(n => n.content);
       if (analysis.evidenceCited && analysis.evidenceCited.length > 0 && articlesWithContent.length >= 2) {
         analysis.citationAccuracy = verifyCitations(analysis.evidenceCited, news);
         if (analysis.citationAccuracy < 0.5) {
-          console.warn(`[Analyzer] Low citation accuracy: ${(analysis.citationAccuracy * 100).toFixed(0)}% for ${market.title}`);
+          const penalty = 0.15;
+          const before = analysis.confidence;
+          analysis.confidence = Math.max(0.1, analysis.confidence - penalty);
+          console.warn(`[Analyzer] Low citation accuracy: ${(analysis.citationAccuracy * 100).toFixed(0)}% for ${market.title} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`);
         }
       }
 
@@ -280,72 +284,80 @@ export async function analyzeMarket(
         // Log warning but do NOT reject
       }
 
-      const rawProbability = analysis.probability;
-
-      // Apply Bayesian weighting
-      if (history.length > 0) {
-        // Weighted prior from recent analyses
-        let prior: number;
-        if (history.length === 1) {
-          prior = history[0].probability;
-        } else if (history.length === 2) {
-          prior = history[0].probability * 0.6 + history[1].probability * 0.4;
-        } else {
-          prior = history[0].probability * 0.6 + history[1].probability * 0.3 + history[2].probability * 0.1;
-        }
-
-        // More history = stronger prior
-        const priorWeight = 0.3 * Math.min(history.length, 3);
-
-        // More news = stronger evidence
-        const evidenceStrength = Math.min(0.3 + news.length * 0.1, 1.0);
-
-        const { probability, uncertainty } = bayesianUpdate(prior, rawProbability, priorWeight, evidenceStrength);
-
-        analysis.probability = probability;
-        analysis.uncertainty = uncertainty;
-
+      // Raw mode: skip Bayesian smoothing, DB save, calibration (used by ensemble members)
+      if (raw) {
+        analysis.uncertainty = 0.5;
         console.log(
-          `[Analyzer] Bayesian update: raw=${(rawProbability * 100).toFixed(1)}% prior=${(prior * 100).toFixed(1)}% -> posterior=${(probability * 100).toFixed(1)}% (uncertainty=${(uncertainty * 100).toFixed(1)}%)`
+          `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}% (raw)`
         );
       } else {
-        // No history - max uncertainty
-        analysis.uncertainty = 0.5;
-      }
+        const rawProbability = analysis.probability;
 
-      saveAnalysis(analysis, market.title);
+        // Apply Bayesian weighting
+        if (history.length > 0) {
+          // Weighted prior from recent analyses
+          let prior: number;
+          if (history.length === 1) {
+            prior = history[0].probability;
+          } else if (history.length === 2) {
+            prior = history[0].probability * 0.6 + history[1].probability * 0.4;
+          } else {
+            prior = history[0].probability * 0.6 + history[1].probability * 0.3 + history[2].probability * 0.1;
+          }
 
-      // Save calibration prediction for both YES and NO sides
-      const yesOutcome = market.outcomes.find((o) => o.name === "Yes");
-      const noOutcome = market.outcomes.find((o) => o.name === "No");
+          // More history = stronger prior
+          const priorWeight = 0.3 * Math.min(history.length, 3);
 
-      if (yesOutcome) {
-        savePrediction(
-          market.conditionId,
-          market.title,
-          yesOutcome.tokenId,
-          "YES",
-          analysis.probability,
-          analysis.confidence,
-          market.category
+          // More news = stronger evidence
+          const evidenceStrength = Math.min(0.3 + news.length * 0.1, 1.0);
+
+          const { probability, uncertainty } = bayesianUpdate(prior, rawProbability, priorWeight, evidenceStrength);
+
+          analysis.probability = probability;
+          analysis.uncertainty = uncertainty;
+
+          console.log(
+            `[Analyzer] Bayesian update: raw=${(rawProbability * 100).toFixed(1)}% prior=${(prior * 100).toFixed(1)}% -> posterior=${(probability * 100).toFixed(1)}% (uncertainty=${(uncertainty * 100).toFixed(1)}%)`
+          );
+        } else {
+          // No history - max uncertainty
+          analysis.uncertainty = 0.5;
+        }
+
+        saveAnalysis(analysis, market.title);
+
+        // Save calibration prediction for both YES and NO sides
+        const yesOutcome = market.outcomes.find((o) => o.name === "Yes");
+        const noOutcome = market.outcomes.find((o) => o.name === "No");
+
+        if (yesOutcome) {
+          savePrediction(
+            market.conditionId,
+            market.title,
+            yesOutcome.tokenId,
+            "YES",
+            analysis.probability,
+            analysis.confidence,
+            market.category
+          );
+        }
+
+        if (noOutcome) {
+          savePrediction(
+            market.conditionId,
+            market.title,
+            noOutcome.tokenId,
+            "NO",
+            1 - analysis.probability,
+            analysis.confidence,
+            market.category
+          );
+        }
+
+        console.log(
+          `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}%`
         );
       }
-
-      if (noOutcome) {
-        savePrediction(
-          market.conditionId,
-          market.title,
-          noOutcome.tokenId,
-          "NO",
-          1 - analysis.probability,
-          analysis.confidence,
-          market.category
-        );
-      }
-
-      console.log(
-        `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}%`
-      );
     } else {
       console.warn(`[Analyzer] Could not parse AI response for ${market.title}`);
     }
