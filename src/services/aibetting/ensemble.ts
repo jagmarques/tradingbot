@@ -45,9 +45,15 @@ export function detectDisagreement(
     (p) => Math.abs(p - weightedMean) > OUTLIER_THRESHOLD
   );
 
+  // Ratio check: catches extreme relative disagreement near 0% or 100%
+  // e.g., [1%, 1%, 15%] has 15x ratio - clearly one member hallucinated
+  const minP = Math.min(...probabilities);
+  const maxP = Math.max(...probabilities);
+  const hasExtremeRatio = minP > 0 && maxP / minP > 5;
+
   return {
     disagreement: weightedVariance,
-    highDisagreement: weightedVariance > DISAGREEMENT_VARIANCE_THRESHOLD || hasOutlier,
+    highDisagreement: weightedVariance > DISAGREEMENT_VARIANCE_THRESHOLD || hasOutlier || hasExtremeRatio,
   };
 }
 
