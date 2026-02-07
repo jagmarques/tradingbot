@@ -95,6 +95,20 @@ describe("detectDisagreement", () => {
 
     expect(equal.disagreement).not.toEqual(weighted.disagreement);
   });
+
+  it("should flag extreme ratio disagreement near zero", () => {
+    // [1%, 1%, 15%] - 15x ratio, misses absolute thresholds but clearly disagrees
+    const result = detectDisagreement([0.01, 0.01, 0.15], [1, 1, 1]);
+
+    expect(result.highDisagreement).toBe(true);
+  });
+
+  it("should not flag moderate ratio differences", () => {
+    // [55%, 58%, 62%] - ratio 1.13x, normal agreement
+    const result = detectDisagreement([0.55, 0.58, 0.62], [1, 1, 1]);
+
+    expect(result.highDisagreement).toBe(false);
+  });
 });
 
 describe("calculateWeightedConsensus", () => {

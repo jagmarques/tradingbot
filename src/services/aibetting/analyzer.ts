@@ -213,6 +213,8 @@ function parseAnalysisResponse(
 
     if (parsed.changeReason) {
       console.log(`[Analyzer] Change reason: ${parsed.changeReason}`);
+    } else if (parsed.changeReason === null) {
+      console.warn(`[Analyzer] Null change reason for ${marketId}`);
     }
 
     // Parse new evidence fields
@@ -273,6 +275,14 @@ export async function analyzeMarket(
           analysis.confidence = Math.max(0.1, analysis.confidence - penalty);
           console.warn(`[Analyzer] Low citation accuracy: ${(analysis.citationAccuracy * 100).toFixed(0)}% for ${market.title} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`);
         }
+      }
+
+      // Penalize when model can't explain reasoning change (has history but null changeReason)
+      if (history.length > 0 && !analysis.consistencyNote) {
+        const penalty = 0.10;
+        const before = analysis.confidence;
+        analysis.confidence = Math.max(0.1, analysis.confidence - penalty);
+        console.warn(`[Analyzer] Missing reasoning for change in ${market.title} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`);
       }
 
       // Validate reasoning consistency
