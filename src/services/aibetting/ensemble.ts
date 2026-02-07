@@ -3,8 +3,9 @@ import { analyzeMarket } from "./analyzer.js";
 import { getTrustScore } from "../database/calibration.js";
 
 const ENSEMBLE_SIZE = 3;
-const ENSEMBLE_TEMPERATURES = [0.3, 0.7, 1.0];
-const DISAGREEMENT_VARIANCE_THRESHOLD = 0.04;
+const ENSEMBLE_TEMPERATURES = [0.2, 0.4, 0.6];
+const DISAGREEMENT_VARIANCE_THRESHOLD = 0.025;
+const OUTLIER_THRESHOLD = 0.15; // Flag if any member diverges >15pp from mean
 
 // Load trust score with fallback if calibration unavailable
 function loadTrustScore(category: MarketCategory): number {
@@ -32,9 +33,14 @@ export function detectDisagreement(
       0
     ) / totalWeight;
 
+  // Per-member outlier check: any single member >15pp from mean
+  const hasOutlier = probabilities.some(
+    (p) => Math.abs(p - weightedMean) > OUTLIER_THRESHOLD
+  );
+
   return {
     disagreement: weightedVariance,
-    highDisagreement: weightedVariance > DISAGREEMENT_VARIANCE_THRESHOLD,
+    highDisagreement: weightedVariance > DISAGREEMENT_VARIANCE_THRESHOLD || hasOutlier,
   };
 }
 
