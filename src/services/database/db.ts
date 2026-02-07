@@ -301,6 +301,20 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_type ON calibration_predictions(prediction_type);
   `);
 
+  // Migration: Add P&L breakdown columns to daily_stats
+  const dailyStatsColumns = db.pragma("table_info(daily_stats)") as Array<{ name: string }>;
+  const dailyStatsColumnNames = dailyStatsColumns.map((c) => c.name);
+
+  if (!dailyStatsColumnNames.includes("crypto_copy_pnl")) {
+    db.exec(`
+      ALTER TABLE daily_stats ADD COLUMN crypto_copy_pnl REAL DEFAULT 0;
+      ALTER TABLE daily_stats ADD COLUMN poly_copy_pnl REAL DEFAULT 0;
+      ALTER TABLE daily_stats ADD COLUMN ai_betting_pnl REAL DEFAULT 0;
+      ALTER TABLE daily_stats ADD COLUMN token_ai_pnl REAL DEFAULT 0;
+    `);
+    console.log("[Database] Migrated daily_stats: added P&L breakdown columns");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }

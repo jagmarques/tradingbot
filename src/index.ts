@@ -27,6 +27,7 @@ import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/poly
 import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startTokenAIScheduler, stopTokenAIScheduler } from "./services/tokenai/scheduler.js";
 import { startTokenExitLoop, stopTokenExitLoop } from "./services/tokenai/exit-loop.js";
+import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 let positionMonitorInterval: NodeJS.Timeout | null = null;
@@ -209,6 +210,9 @@ async function main(): Promise<void> {
     startPolyTraderTracking(5000); // Check every 5 seconds
     console.log("[Bot] Polymarket trader tracking started");
 
+    // Start P&L daily snapshot cron
+    startPnlCron();
+
     console.log("[Bot] All services started successfully");
     console.log("[Bot] Waiting for trading opportunities...");
 
@@ -240,6 +244,7 @@ async function shutdown(signal: string): Promise<void> {
     stopPumpfunDetector();
     stopPolymarketMonitoring();
     stopTokenAIScheduler();
+    stopPnlCron();
     stopTokenExitLoop();
     stopAIBetting();
     stopPolyTraderTracking();
