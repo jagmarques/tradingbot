@@ -175,7 +175,9 @@ export function evaluateBetOpportunity(
     maxAllowedBet
   );
 
-  const meetsConfidence = analysis.confidence >= config.minConfidence;
+  // Round to 2 decimals to avoid floating point precision issues (e.g. 0.6999... failing >= 0.70)
+  const roundedConfidence = Math.round(analysis.confidence * 100) / 100;
+  const meetsConfidence = roundedConfidence >= config.minConfidence;
   const meetsEdge = absEdge >= config.minEdge;
   const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet

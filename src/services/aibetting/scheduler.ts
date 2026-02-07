@@ -96,6 +96,15 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
+      // Pre-filter: skip expensive ensemble if scanner price makes edge impossible
+      const yesPrice = market.outcomes.find(o => o.name === "Yes")?.price ?? 0.5;
+      const maxYesEdge = 0.99 - yesPrice; // Best case: AI says 99%
+      const maxNoEdge = yesPrice - 0.01;   // Best case: AI says 1%
+      if (maxYesEdge < config.minEdge && maxNoEdge < config.minEdge) {
+        console.log(`[AIBetting] SKIP (edge impossible @ ${(yesPrice * 100).toFixed(0)}%): ${market.title}`);
+        continue;
+      }
+
       const news = await fetchNewsForMarket(market);
       const ensembleResult = await analyzeMarketEnsemble(market, news);
       if (ensembleResult) {

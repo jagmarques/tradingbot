@@ -144,6 +144,16 @@ describe("evaluateBetOpportunity", () => {
     expect(decision.reason).toContain("Confidence too low");
   });
 
+  it("should handle floating point confidence near threshold", () => {
+    const market = makeMarket();
+    // Simulate ensemble averaging producing 0.5999... instead of 0.60
+    const analysis = makeAnalysis({ probability: 0.7, confidence: 0.5999999999999999 });
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
+
+    // Should round to 0.60 and pass the 0.60 threshold
+    expect(decision.shouldBet).toBe(true);
+  });
+
   it("should reject when edge is too small", () => {
     const market = makeMarket();
     const analysis = makeAnalysis({ probability: 0.52 }); // Only 2% edge, below 5% min
