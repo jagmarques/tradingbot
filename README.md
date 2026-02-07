@@ -6,7 +6,7 @@ Multi-strategy crypto trading bot with Telegram controls. TypeScript, Docker, Co
 
 ### AI Betting (Polymarket)
 
-Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses at different temperatures (0.3/0.7/1.0), averages into consensus, evaluates edge with Kelly criterion, and places bets.
+Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses at different temperatures (0.2/0.4/0.6), averages into consensus, evaluates edge with Kelly criterion, and places bets.
 
 **Pipeline:** Scanner (GAMMA API) -> News (Google RSS) -> Analyzer (DeepSeek x3) -> Ensemble Consensus -> Evaluator (Kelly) -> Executor (CLOB/Paper)
 
@@ -23,8 +23,8 @@ Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses at dif
 **Filters:**
 - Market disagreement cap: 30pp (if AI disagrees with market by >30 percentage points, skip)
 - Correlated bet limit: 1 per event group (no 6 Super Bowl bets)
-- Ensemble disagreement: skip if 3 analyses disagree too much (variance > 0.04)
-- 4-hour cache on analyses to reduce DeepSeek costs (~$9/month with ensemble)
+- Ensemble disagreement: skip if variance > 0.025 or any single member >15pp from mean
+- 4-hour cache on analyses, auto-invalidated when new news matches open positions
 
 **Exit rules:**
 - Stop-loss at -25%

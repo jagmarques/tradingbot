@@ -1,4 +1,4 @@
-import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, EnsembleResult } from "./types.js";
+import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, EnsembleResult, PolymarketEvent } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarketEnsemble } from "./ensemble.js";
@@ -65,6 +65,9 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     // Check resolutions/exits before new bets
     await checkExits(new Map());
     clearClosedPositions();
+
+    // Bust cache for open positions with fresh news
+    await invalidateCacheOnNews();
 
     const openPositions = getOpenPositions();
     const positionMarketIds = new Set(openPositions.map((p) => p.marketId));
@@ -166,6 +169,41 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
   }
 
   return result;
+}
+
+// Bust cache for open positions with fresh news
+async function invalidateCacheOnNews(): Promise<void> {
+  const openPositions = getOpenPositions();
+  if (openPositions.length === 0) return;
+
+  for (const position of openPositions) {
+    const cached = ensembleCache.get(position.marketId);
+    if (!cached) continue;
+
+    const market: PolymarketEvent = {
+      conditionId: position.marketId,
+      questionId: "",
+      slug: "",
+      title: position.marketTitle,
+      description: "",
+      category: "other",
+      endDate: position.marketEndDate,
+      volume24h: 0,
+      liquidity: 0,
+      outcomes: [],
+    };
+
+    const news = await fetchNewsForMarket(market);
+    const hasNewArticles = news.some((n) => {
+      const pubTime = new Date(n.publishedAt).getTime();
+      return pubTime > cached.cachedAt;
+    });
+
+    if (hasNewArticles) {
+      ensembleCache.delete(position.marketId);
+      console.log(`[Scheduler] Cache busted for "${position.marketTitle}" (new articles found)`);
+    }
+  }
 }
 
 async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {

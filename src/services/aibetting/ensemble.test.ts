@@ -56,15 +56,29 @@ describe("detectDisagreement", () => {
   it("should return low disagreement when estimates agree", () => {
     const result = detectDisagreement([0.7, 0.72, 0.68], [1, 1, 1]);
 
-    expect(result.disagreement).toBeLessThan(0.04);
+    expect(result.disagreement).toBeLessThan(0.025);
     expect(result.highDisagreement).toBe(false);
   });
 
   it("should flag high disagreement when estimates diverge", () => {
     const result = detectDisagreement([0.3, 0.8, 0.5], [1, 1, 1]);
 
-    expect(result.disagreement).toBeGreaterThan(0.04);
+    expect(result.disagreement).toBeGreaterThan(0.025);
     expect(result.highDisagreement).toBe(true);
+  });
+
+  it("should flag outlier when single member diverges >15pp from mean", () => {
+    // Mean ~0.6, member at 0.8 is 20pp away -> outlier
+    const result = detectDisagreement([0.55, 0.58, 0.8], [1, 1, 1]);
+
+    expect(result.highDisagreement).toBe(true);
+  });
+
+  it("should not flag outlier when all members within 15pp of mean", () => {
+    // Mean ~0.7, all within 15pp
+    const result = detectDisagreement([0.65, 0.70, 0.75], [1, 1, 1]);
+
+    expect(result.highDisagreement).toBe(false);
   });
 
   it("should handle empty weights gracefully", () => {
@@ -155,7 +169,7 @@ describe("calculateWeightedConsensus", () => {
     const result = calculateWeightedConsensus(analyses, "politics");
 
     expect(result.highDisagreement).toBe(false);
-    expect(result.disagreement).toBeLessThan(0.04);
+    expect(result.disagreement).toBeLessThan(0.025);
   });
 
   it("should flag high disagreement when estimates diverge", () => {
@@ -167,7 +181,7 @@ describe("calculateWeightedConsensus", () => {
     const result = calculateWeightedConsensus(analyses, "politics");
 
     expect(result.highDisagreement).toBe(true);
-    expect(result.disagreement).toBeGreaterThan(0.04);
+    expect(result.disagreement).toBeGreaterThan(0.025);
   });
 
   it("should handle 2-estimate edge case", () => {
@@ -222,9 +236,9 @@ describe("analyzeMarketEnsemble", () => {
     expect(vi.mocked(analyzeMarket)).toHaveBeenCalledTimes(3);
 
     // Verify different temperatures passed
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(1, market, [], 0.3);
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(2, market, [], 0.7);
-    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(3, market, [], 1.0);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(1, market, [], 0.2);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(2, market, [], 0.4);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(3, market, [], 0.6);
   });
 
   it("should return null when all analyses fail", async () => {
