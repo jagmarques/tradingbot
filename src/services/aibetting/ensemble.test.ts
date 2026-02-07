@@ -220,6 +220,11 @@ describe("analyzeMarketEnsemble", () => {
     expect(result!.ensembleSize).toBe(3);
     expect(result!.consensus.probability).toBeCloseTo(0.7);
     expect(vi.mocked(analyzeMarket)).toHaveBeenCalledTimes(3);
+
+    // Verify different temperatures passed
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(1, market, [], 0.3);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(2, market, [], 0.7);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenNthCalledWith(3, market, [], 1.0);
   });
 
   it("should return null when all analyses fail", async () => {
