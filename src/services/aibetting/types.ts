@@ -70,6 +70,7 @@ export interface BetDecision {
   expectedValue: number;
   recommendedSize: number;
   reason: string;
+  dynamicThreshold?: boolean;
 }
 
 export type PositionStatus = "open" | "closed";
@@ -102,11 +103,6 @@ export interface AIBettingConfig {
   minConfidence: number;
   scanIntervalMs: number;
   categoriesEnabled: MarketCategory[];
-}
-
-export interface ScanResult {
-  markets: PolymarketEvent[];
-  scannedAt: number;
 }
 
 export interface AnalysisCycleResult {

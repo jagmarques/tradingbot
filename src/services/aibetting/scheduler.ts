@@ -16,6 +16,7 @@ import {
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { isPaperMode } from "../../config/env.js";
 import { updateCalibrationScores } from "../database/calibration.js";
+import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";
 
 let isRunning = false;
@@ -24,9 +25,10 @@ let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
 
 const CACHE_DURATION_MS = 4 * 60 * 60 * 1000;
+const DISAGREEMENT_STRIKE_LIMIT = 3;
 
-// Cache ensemble results for Telegram display and analysis reuse
 const ensembleCache = new Map<string, { result: EnsembleResult; cachedAt: number }>();
+const disagreementStrikes = new Map<string, number>();
 
 function getCachedEnsemble(marketId: string): EnsembleResult | null {
   const cached = ensembleCache.get(marketId);
@@ -59,32 +61,37 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     return result;
   }
 
+  if (!canTrade()) {
+    console.log("[AIBetting] Kill switch active, skipping cycle");
+    return result;
+  }
+
   try {
     console.log("[AIBetting] Starting cycle...");
 
-    // Check resolutions/exits before new bets
     await checkExits(new Map());
     clearClosedPositions();
-
-    // Bust cache for open positions with fresh news
     await invalidateCacheOnNews();
 
     const openPositions = getOpenPositions();
     const positionMarketIds = new Set(openPositions.map((p) => p.marketId));
 
-    // 1. Discover markets (automated, no AI)
     const markets = await discoverMarkets(config, positionMarketIds, 15);
     if (markets.length === 0) {
       console.log("[AIBetting] No candidate markets");
       return result;
     }
 
-    // 2. Analyze markets with AI (use cache when available)
     const analyses = new Map<string, AIAnalysis>();
     let cached = 0;
 
     for (const market of markets) {
-      // Check ensemble cache first
+      const strikes = disagreementStrikes.get(market.conditionId) ?? 0;
+      if (strikes >= DISAGREEMENT_STRIKE_LIMIT) {
+        console.log(`[AIBetting] SKIP (${strikes} disagreement strikes): ${market.title}`);
+        continue;
+      }
+
       const cachedEnsemble = getCachedEnsemble(market.conditionId);
       if (cachedEnsemble) {
         if (cachedEnsemble.highDisagreement) {
@@ -96,7 +103,6 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      // Pre-filter: skip expensive ensemble if scanner price makes edge impossible
       const yesPrice = market.outcomes.find(o => o.name === "Yes")?.price ?? 0.5;
       const maxYesEdge = 0.99 - yesPrice; // Best case: AI says 99%
       const maxNoEdge = yesPrice - 0.01;   // Best case: AI says 1%
@@ -111,8 +117,10 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         cacheEnsemble(market.conditionId, ensembleResult);
 
         if (ensembleResult.highDisagreement) {
+          const newStrikes = (disagreementStrikes.get(market.conditionId) ?? 0) + 1;
+          disagreementStrikes.set(market.conditionId, newStrikes);
           console.log(
-            `[AIBetting] SKIP (high disagreement ${ensembleResult.disagreement.toFixed(3)}): ${market.title} ` +
+            `[AIBetting] SKIP (high disagreement ${ensembleResult.disagreement.toFixed(3)}, strike ${newStrikes}/${DISAGREEMENT_STRIKE_LIMIT}): ${market.title} ` +
             `estimates=[${ensembleResult.individualEstimates.map(e => (e * 100).toFixed(0) + '%').join(', ')}]`
           );
           continue;
@@ -122,13 +130,11 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         result.marketsAnalyzed++;
       }
 
-      // Rate limit
       await new Promise((r) => setTimeout(r, 1000));
     }
 
     console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
 
-    // 3. Get bankroll (unlimited in paper mode)
     let usdcBalance: number;
     if (isPaperMode()) {
       const currentExposure = getTotalExposure();
@@ -144,7 +150,6 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       }
     }
 
-    // 4. Evaluate opportunities
     const decisions = evaluateAllOpportunities(
       markets,
       analyses,
@@ -154,7 +159,6 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     );
     result.opportunitiesFound = decisions.length;
 
-    // 5. Execute bets
     const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
     for (const decision of decisions.slice(0, maxNewBets)) {
       const market = markets.find((m) => m.conditionId === decision.marketId);
@@ -164,10 +168,19 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       if (position) {
         result.betsPlaced++;
         console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
+
+        // Notify when dynamic threshold triggers (informational)
+        if (decision.dynamicThreshold) {
+          const msg =
+            `[Dynamic Threshold] ${market.title}\n` +
+            `Edge ${(Math.abs(decision.edge) * 100).toFixed(1)}% -> confidence floor lowered to 50%\n` +
+            `Confidence: ${(decision.confidence * 100).toFixed(0)}% | AI: ${(decision.aiProbability * 100).toFixed(0)}% vs Market: ${(decision.marketPrice * 100).toFixed(0)}%\n` +
+            `Bet: ${decision.side} $${decision.recommendedSize.toFixed(2)}`;
+          import("../telegram/bot.js").then(({ sendMessage }) => sendMessage(msg)).catch(() => {});
+        }
       }
     }
 
-    // 6. Check exits with fresh AI analyses
     await checkExits(analyses);
 
     console.log(`[AIBetting] Cycle done: ${result.opportunitiesFound} opportunities, ${result.betsPlaced} bets placed`);
@@ -180,7 +193,6 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
   return result;
 }
 
-// Bust cache for open positions with fresh news
 async function invalidateCacheOnNews(): Promise<void> {
   const openPositions = getOpenPositions();
   if (openPositions.length === 0) return;
@@ -244,7 +256,6 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
   }
 }
 
-// Update calibration scores (runs daily at 3 AM)
 async function updateCalibrationScoresJob(): Promise<void> {
   try {
     const updated = updateCalibrationScores();
@@ -263,19 +274,16 @@ export function startAIBetting(cfg: AIBettingConfig): void {
   console.log("[AIBetting] Started");
   console.log(`[AIBetting] Max bet $${cfg.maxBetSize}, exposure $${cfg.maxTotalExposure}, edge ${(cfg.minEdge * 100).toFixed(0)}%`);
 
-  // Run calibration update on startup
   updateCalibrationScoresJob().catch((err) =>
     console.error("[Calibration] Startup update error:", err)
   );
 
-  // Schedule calibration update every 10 minutes
   calibrationCronJob = cron.schedule("*/10 * * * *", () => {
     updateCalibrationScoresJob().catch((err) =>
       console.error("[Calibration] Update error:", err)
     );
   });
 
-  // Run first cycle in background (don't block startup)
   runAnalysisCycle().catch((err) => console.error("[AIBetting] First cycle error:", err));
 
   intervalHandle = setInterval(async () => {
@@ -307,15 +315,16 @@ export function getAIBettingStatus(): {
   running: boolean;
   openPositions: number;
   totalExposure: number;
-  cacheSize: number;
   ensembleCacheSize: number;
+  skipListSize: number;
 } {
+  const skipped = [...disagreementStrikes.values()].filter(s => s >= DISAGREEMENT_STRIKE_LIMIT).length;
   return {
     running: isRunning,
     openPositions: getOpenPositions().length,
     totalExposure: getTotalExposure(),
-    cacheSize: ensembleCache.size,
     ensembleCacheSize: ensembleCache.size,
+    skipListSize: skipped,
   };
 }
 
@@ -328,5 +337,6 @@ export async function runManualCycle(): Promise<AnalysisCycleResult> {
 
 export function clearAnalysisCache(): void {
   ensembleCache.clear();
-  console.log("[Scheduler] Cleared ensemble cache");
+  disagreementStrikes.clear();
+  console.log("[Scheduler] Cleared ensemble cache and skip list");
 }

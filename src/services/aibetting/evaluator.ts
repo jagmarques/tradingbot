@@ -11,7 +11,6 @@ import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 
-// Kelly criterion: f* = (bp - q) / b
 function calculateKellyFraction(
   winProbability: number,
   odds: number
@@ -21,7 +20,6 @@ function calculateKellyFraction(
   return Math.max(0, kelly);
 }
 
-// Calculate expected value: YES = aiProb - price, NO = price - aiProb
 export function calculateEV(aiProbability: number, currentPrice: number, side: "YES" | "NO"): number {
   if (side === "YES") {
     return aiProbability - currentPrice;
@@ -30,7 +28,6 @@ export function calculateEV(aiProbability: number, currentPrice: number, side: "
   }
 }
 
-// Calculate P&L percentage (token price: current vs entry)
 function calculatePnlPercent(entryPrice: number, currentPrice: number): number {
   return (currentPrice - entryPrice) / entryPrice;
 }
@@ -43,7 +40,6 @@ function calculateBetSize(
   maxBet: number,
   kellyMultiplier: number = 0.25 // 1/4 Kelly
 ): number {
-  // Calculate odds (payout ratio)
   const price = side === "YES" ? marketPrice : 1 - marketPrice;
   const odds = (1 - price) / price;
 
@@ -56,7 +52,9 @@ function calculateBetSize(
 }
 
 const MAX_BETS_PER_GROUP = 1;
-const MAX_MARKET_DISAGREEMENT = 0.30; // Skip if AI disagrees with market by >30pp
+const MAX_MARKET_DISAGREEMENT = 0.30;
+const DYNAMIC_EDGE_THRESHOLD = 0.20;
+const DYNAMIC_CONFIDENCE_FLOOR = 0.50;
 
 function extractSignificantWords(title: string): string[] {
   const stopWords = new Set([
@@ -175,9 +173,10 @@ export function evaluateBetOpportunity(
     maxAllowedBet
   );
 
-  // Round to 2 decimals to avoid floating point precision issues (e.g. 0.6999... failing >= 0.70)
   const roundedConfidence = Math.round(analysis.confidence * 100) / 100;
-  const meetsConfidence = roundedConfidence >= config.minConfidence;
+  const effectiveMinConfidence = absEdge >= DYNAMIC_EDGE_THRESHOLD ? DYNAMIC_CONFIDENCE_FLOOR : config.minConfidence;
+  const isDynamicThreshold = absEdge >= DYNAMIC_EDGE_THRESHOLD && effectiveMinConfidence < config.minConfidence;
+  const meetsConfidence = roundedConfidence >= effectiveMinConfidence;
   const meetsEdge = absEdge >= config.minEdge;
   const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
@@ -188,8 +187,11 @@ export function evaluateBetOpportunity(
   let reason: string;
   if (shouldBet) {
     reason = `Edge ${(absEdge * 100).toFixed(1)}%, Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
+    if (isDynamicThreshold) {
+      reason += ` (dynamic: ${(effectiveMinConfidence * 100).toFixed(0)}% floor)`;
+    }
   } else if (!meetsConfidence) {
-    reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
+    reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(effectiveMinConfidence * 100).toFixed(0)}%`;
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
@@ -212,6 +214,7 @@ export function evaluateBetOpportunity(
     expectedValue,
     recommendedSize: Math.floor(recommendedSize * 100) / 100,
     reason,
+    dynamicThreshold: isDynamicThreshold && shouldBet,
   };
 }
 
@@ -281,7 +284,6 @@ export async function shouldExitPosition(
   const SETTLEMENT_RISK_HOURS = 6;
   const STOP_LOSS_THRESHOLD = -0.25;
 
-  // Settlement risk: exit if <6h until resolution
   if (position.marketEndDate) {
     const hours = hoursUntil(position.marketEndDate);
 
@@ -293,7 +295,6 @@ export async function shouldExitPosition(
     }
   }
 
-  // Stop-loss: hard floor before AI re-analysis
   const pnlPercent = calculatePnlPercent(position.entryPrice, currentPrice);
 
   if (pnlPercent < STOP_LOSS_THRESHOLD) {
@@ -303,11 +304,8 @@ export async function shouldExitPosition(
     };
   }
 
-  // Convert token price to YES price for EV calculations
-  // currentPrice is the held token's price (NO price for NO positions)
   const yesPrice = position.side === "YES" ? currentPrice : 1 - currentPrice;
 
-  // AI re-analysis on price move >15% against position
   const priceDiff = currentPrice - position.entryPrice;
   const priceChangePercent = priceDiff / position.entryPrice;
 
@@ -340,7 +338,6 @@ export async function shouldExitPosition(
       };
     }
 
-    // Conviction flip check
     const aiNowFavorsOpposite =
       (position.side === "YES" && freshAnalysis.probability < 0.40) ||
       (position.side === "NO" && freshAnalysis.probability > 0.60);
@@ -353,14 +350,12 @@ export async function shouldExitPosition(
       };
     }
 
-    // Hold - AI still supports position with +EV
     console.log(
       `[Evaluator] Holding: EV ${(ev * 100).toFixed(1)}%, AI ${(freshAnalysis.probability * 100).toFixed(0)}% vs market ${(yesPrice * 100).toFixed(0)}%`
     );
     return { shouldExit: false, reason: "" };
   }
 
-  // Periodic check with existing analysis
   if (newAnalysis) {
     const ev = calculateEV(newAnalysis.probability, yesPrice, position.side);
 
