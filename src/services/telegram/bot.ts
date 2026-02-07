@@ -1,5 +1,5 @@
 import { Bot, Context, InputFile } from "grammy";
-import { loadEnv } from "../../config/env.js";
+import { loadEnv, isPaperMode } from "../../config/env.js";
 import { exportTradersToPdf } from "./pdf-export.js";
 import {
   getRiskStatus,
@@ -29,9 +29,9 @@ import {
   updateSetting,
 } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
-import { getBettingStats, loadOpenPositions, getRecentBetOutcomes } from "../database/aibetting.js";
-import { getAIBettingStatus } from "../aibetting/scheduler.js";
-import { getCurrentPrice as getAIBetCurrentPrice } from "../aibetting/executor.js";
+import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
+import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
+import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 
@@ -64,7 +64,10 @@ const MAIN_MENU_BUTTONS = [
   [{ text: "📊 Status", callback_data: "status" }],
   [{ text: "💰 Balance", callback_data: "balance" }],
   [{ text: "📈 P&L", callback_data: "pnl" }],
-  [{ text: "🔄 Trades", callback_data: "trades" }],
+  [
+    { text: "🔄 Trades", callback_data: "trades" },
+    { text: "🎯 Bets", callback_data: "bets" },
+  ],
   [
     { text: "📋 Traders", callback_data: "traders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
@@ -103,6 +106,7 @@ export async function startBot(): Promise<void> {
   bot.command("ai", handleAI);
   bot.command("clearcopies", handleClearCopies);
   bot.command("cleartraders", handleClearTraders);
+  bot.command("resetpaper", handleReset);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -147,6 +151,18 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("bettors", async (ctx) => {
     await handleBettors(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("bets", async (ctx) => {
+    await handleBets(ctx, "open");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("bets_open", async (ctx) => {
+    await handleBets(ctx, "open");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("bets_closed", async (ctx) => {
+    await handleBets(ctx, "closed");
     await ctx.answerCallbackQuery();
   });
 
@@ -260,6 +276,15 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("main_menu", async (ctx) => {
     await sendMainMenu();
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("confirm_resetpaper", async (ctx) => {
+    await handleResetConfirm(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("cancel_resetpaper", async (ctx) => {
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Reset cancelled.", backButton);
     await ctx.answerCallbackQuery();
   });
 
@@ -441,7 +466,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
 
     // AI Betting data
-    const aiBettingStatus = getAIBettingStatus();
     const aiBettingStats = getBettingStats();
     const openAIBets = loadOpenPositions();
 
@@ -525,30 +549,33 @@ async function handleStatus(ctx: Context): Promise<void> {
     message += `\n`;
 
     // AI Betting Section
-    message += `<b>AI Betting</b>\n` +
-      `Status: ${aiBettingStatus.running ? "Running" : "Stopped"}\n` +
-      `Open: ${openAIBets.length} | Exposure: $${aiBettingStatus.totalExposure.toFixed(2)}\n` +
-      `All-time: ${aiBettingStats.totalBets} bets | ${aiBettingStats.winRate.toFixed(0)}% WR | $${aiBettingStats.totalPnl.toFixed(2)} PnL\n`;
+    let openInvested = 0;
+    let totalUnrealized = 0;
 
-    if (openAIBets.length > 0) {
-      message += `Open bets:\n`;
-      for (const bet of openAIBets) {
-        const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-        let pnlStr = "";
-        if (currentPrice !== null) {
-          const priceDiff = bet.side === "YES"
-            ? currentPrice - bet.entryPrice
-            : bet.entryPrice - currentPrice;
-          const shares = bet.size / bet.entryPrice;
-          const pnl = shares * priceDiff;
-          const pnlPct = (pnl / bet.size) * 100;
-          const sign = pnl >= 0 ? "+" : "";
-          pnlStr = ` | ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
-        }
-        message += `  ${bet.side} $${bet.size.toFixed(0)} - ${bet.marketTitle}${pnlStr}\n`;
+    for (const bet of openAIBets) {
+      openInvested += bet.size;
+      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+      if (currentPrice !== null) {
+        const priceDiff = bet.side === "YES"
+          ? currentPrice - bet.entryPrice
+          : bet.entryPrice - currentPrice;
+        const shares = bet.size / bet.entryPrice;
+        totalUnrealized += shares * priceDiff;
       }
     }
-    message += `\n`;
+
+    const totalInvestedAI = openInvested + aiBettingStats.totalInvested;
+    const realizedSign = aiBettingStats.totalPnl >= 0 ? "+" : "";
+    const realizedPct = aiBettingStats.totalInvested > 0 ? (aiBettingStats.totalPnl / aiBettingStats.totalInvested) * 100 : 0;
+    const realizedPctSign = realizedPct >= 0 ? "+" : "";
+    const unrealizedSign = totalUnrealized >= 0 ? "+" : "";
+    const unrealizedPct = openInvested > 0 ? (totalUnrealized / openInvested) * 100 : 0;
+    const unrealizedPctSign = unrealizedPct >= 0 ? "+" : "";
+
+    message += `<b>AI Betting</b>\n` +
+      `Open: ${openAIBets.length} | Closed: ${aiBettingStats.totalBets} | Invested: $${totalInvestedAI.toFixed(0)}\n` +
+      `Realized: ${realizedSign}$${aiBettingStats.totalPnl.toFixed(2)} (${realizedPctSign}${realizedPct.toFixed(0)}%)\n` +
+      `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)} (${unrealizedPctSign}${unrealizedPct.toFixed(0)}%)\n\n`;
 
     // Trader Tracker
     message += `<b>Trader Tracker</b>\n` +
@@ -872,6 +899,119 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
+async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /bets from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const openBets = loadOpenPositions();
+
+    // Compute unrealized P&L for header (and cache prices for open tab)
+    let openInvested = 0;
+    let totalUnrealized = 0;
+    const priceCache = new Map<string, { currentPrice: number | null; pnl: number }>();
+
+    for (const bet of openBets) {
+      openInvested += bet.size;
+      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+      let pnl = 0;
+
+      if (currentPrice !== null) {
+        const priceDiff = bet.side === "YES"
+          ? currentPrice - bet.entryPrice
+          : bet.entryPrice - currentPrice;
+        const shares = bet.size / bet.entryPrice;
+        pnl = shares * priceDiff;
+        totalUnrealized += pnl;
+      }
+
+      priceCache.set(bet.id, { currentPrice, pnl });
+    }
+
+    // Build message with just title
+    let message = `<b>AI Bets</b>\n\n`;
+
+    const tabButtons = [[
+      { text: tab === "open" ? "* Open" : "Open", callback_data: "bets_open" },
+      { text: tab === "closed" ? "* Closed" : "Closed", callback_data: "bets_closed" },
+    ]];
+
+    if (tab === "open") {
+      if (openBets.length === 0) {
+        message += "No open bets.";
+        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(message, allButtons);
+        return;
+      }
+
+      for (const bet of openBets) {
+        const cached = priceCache.get(bet.id);
+        const currentPrice = cached?.currentPrice ?? null;
+        const pnl = cached?.pnl ?? 0;
+
+        const entryDate = new Date(bet.entryTimestamp).toLocaleDateString();
+        const titleShort = bet.marketTitle.length > 35
+          ? bet.marketTitle.slice(0, 35) + "..."
+          : bet.marketTitle;
+
+        message += `<b>${titleShort}</b>\n`;
+        message += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
+
+        if (currentPrice !== null) {
+          const pnlPct = (pnl / bet.size) * 100;
+          const sign = pnl >= 0 ? "+" : "";
+          message += ` | Now: ${(currentPrice * 100).toFixed(0)}c`;
+          message += `\nP&L: ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+        }
+
+        message += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n\n`;
+      }
+
+    } else {
+      const closedBets = loadClosedPositions(10);
+
+      if (closedBets.length === 0) {
+        message += "No closed bets yet.";
+        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(message, allButtons);
+        return;
+      }
+
+      for (const bet of closedBets) {
+        const titleShort = bet.marketTitle.length > 35
+          ? bet.marketTitle.slice(0, 35) + "..."
+          : bet.marketTitle;
+        const pnl = bet.pnl ?? 0;
+        const pnlPct = bet.size > 0 ? (pnl / bet.size) * 100 : 0;
+        const pnlSign = pnl >= 0 ? "+" : "";
+        const exitDate = bet.exitTimestamp
+          ? new Date(bet.exitTimestamp).toLocaleDateString()
+          : "?";
+
+        message += `<b>${titleShort}</b>\n`;
+        message += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
+        if (bet.exitPrice !== undefined) {
+          message += ` -> ${(bet.exitPrice * 100).toFixed(0)}c`;
+        }
+        message += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
+        if (bet.exitReason) {
+          message += ` | ${bet.exitReason}`;
+        }
+        message += ` | ${exitDate}\n\n`;
+      }
+    }
+
+    const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, allButtons);
+  } catch (err) {
+    console.error("[Telegram] Bets error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to fetch bets", backButton);
+  }
+}
+
 async function handleTradersPdf(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /traderspdf from user ${ctx.from?.id}`);
@@ -1166,6 +1306,110 @@ async function handleClearTraders(ctx: Context): Promise<void> {
   } catch (err) {
     console.error("[Telegram] Clear traders error:", err);
     await sendDataMessage("Failed to clear traders. Check logs.");
+  }
+}
+
+async function handleReset(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /resetpaper from user ${ctx.from?.id}`);
+    return;
+  }
+
+  if (!isPaperMode()) {
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Reset is only available in paper mode.", backButton);
+    return;
+  }
+
+  // Count what will be deleted
+  const openAIBets = loadOpenPositions();
+  const closedStats = getBettingStats();
+  const pumpPositions = getPumpfunPositions();
+  const cryptoCopy = getCryptoCopyPositions();
+  const polyStats = getCopyStats();
+
+  let message = "<b>RESET - Paper Trading Data</b>\n\n";
+  message += "This will permanently delete:\n\n";
+  message += `  AI Bets: ${openAIBets.length} open + ${closedStats.totalBets} closed\n`;
+  message += `  Pump.fun: ${pumpPositions.size} positions\n`;
+  message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
+  message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
+  message += `  Trades + daily stats: all\n`;
+  message += `  AI analysis cache: all\n\n`;
+  message += "<b>This cannot be undone.</b>";
+
+  const buttons = [
+    [{ text: "Confirm Reset", callback_data: "confirm_resetpaper" }],
+    [{ text: "Cancel", callback_data: "cancel_resetpaper" }],
+  ];
+
+  await sendDataMessage(message, buttons);
+}
+
+async function handleResetConfirm(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  if (!isPaperMode()) {
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Reset is only available in paper mode.", backButton);
+    return;
+  }
+
+  try {
+    const db = (await import("../database/db.js")).getDb();
+
+    // 1. AI Betting - DB + memory
+    const aiBetsDeleted = deleteAllPositions();
+    const aiAnalysesDeleted = deleteAllAnalyses();
+    clearAllPositions();
+    clearAnalysisCache();
+
+    // 2. Pumpfun positions - DB
+    const pumpResult = db.prepare("DELETE FROM pumpfun_positions").run();
+
+    // 3. Polymarket copy trades - use existing clear function
+    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+    const polyCopiesDeleted = clearAllCopiedPositions();
+
+    // 4. Crypto copy positions - DB + memory
+    const cryptoResult = db.prepare("DELETE FROM crypto_copy_positions").run();
+
+    // 5. General trades table
+    const tradesResult = db.prepare("DELETE FROM trades").run();
+
+    // 6. General positions table
+    const positionsResult = db.prepare("DELETE FROM positions").run();
+
+    // 7. Daily stats
+    const dailyResult = db.prepare("DELETE FROM daily_stats").run();
+
+    // 8. Arbitrage positions
+    const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
+
+    const totalDeleted = aiBetsDeleted + aiAnalysesDeleted + pumpResult.changes
+      + polyCopiesDeleted + cryptoResult.changes + tradesResult.changes
+      + positionsResult.changes + dailyResult.changes + arbResult.changes;
+
+    console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
+
+    let message = "<b>Reset Complete</b>\n\n";
+    message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
+    message += `Pump.fun: ${pumpResult.changes} positions\n`;
+    message += `Poly copies: ${polyCopiesDeleted} records\n`;
+    message += `Crypto copies: ${cryptoResult.changes} records\n`;
+    message += `Trades: ${tradesResult.changes} records\n`;
+    message += `Positions: ${positionsResult.changes} records\n`;
+    message += `Daily stats: ${dailyResult.changes} records\n`;
+    message += `Arbitrage: ${arbResult.changes} records\n\n`;
+    message += `<b>Total: ${totalDeleted} records deleted</b>\n`;
+    message += "Paper trading is ready to start fresh.";
+
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
+  } catch (err) {
+    console.error("[ResetPaper] Failed:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Reset failed. Check logs.", backButton);
   }
 }
 

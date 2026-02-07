@@ -232,3 +232,8 @@ export async function runManualCycle(): Promise<AnalysisCycleResult> {
   }
   return runAnalysisCycle();
 }
+
+export function clearAnalysisCache(): void {
+  analysisCache.clear();
+  console.log("[Scheduler] Cleared analysis cache");
+}

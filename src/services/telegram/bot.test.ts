@@ -120,7 +120,7 @@ describe("Telegram Bot", () => {
       expect(mockSendMessage).toHaveBeenCalledWith("123456789", "Test message", {
         parse_mode: "HTML",
         reply_markup: {
-          inline_keyboard: [[{ text: "Clear Chat", callback_data: "clear_chat" }]],
+          inline_keyboard: [[{ text: "Clear", callback_data: "clear_chat" }]],
         },
       });
     });
