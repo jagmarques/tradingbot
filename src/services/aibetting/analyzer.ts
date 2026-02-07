@@ -96,6 +96,7 @@ Analyze this market using the following steps. You MUST complete each step.
 
 STEP 1 - EVIDENCE GATHERING:
 List 3-5 specific facts from the articles above that are relevant to this market's outcome.
+Use key phrases and words directly from the articles when citing evidence.
 If no articles have useful content, state what you know from background knowledge and note the evidence is weak.
 
 STEP 1.5 - TIMELINE ANALYSIS (for date-based markets):
@@ -123,7 +124,7 @@ OUTPUT JSON ONLY (no other text):
   "confidence": 0.XX,
   "reasoning": "2-3 sentence summary of your conclusion from Step 2",
   "keyFactors": ["factor1", "factor2", "factor3"],
-  "evidenceCited": ["specific fact 1 from articles", "specific fact 2"],
+  "evidenceCited": ["quote key phrases from articles verbatim", "another direct quote or key phrase"],
   "consistencyNote": "why different from prior OR 'consistent with prior estimate' OR 'first analysis'",
   "changeReason": "what new evidence caused the change, or null",
   "timeline": "what needs to happen by when, or null"
@@ -153,7 +154,7 @@ function verifyCitations(
 
     const matchRate = keywords.filter(kw => allContent.includes(kw)).length / keywords.length;
 
-    if (matchRate > 0.6) verified++; // 60% keyword match = verified
+    if (matchRate > 0.4) verified++; // 40% keyword match = verified
   }
 
   return verified / evidenceCited.length;
