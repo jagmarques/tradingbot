@@ -3,6 +3,7 @@ import { analyzeMarket } from "./analyzer.js";
 import { getTrustScore } from "../database/calibration.js";
 
 const ENSEMBLE_SIZE = 3;
+const ENSEMBLE_TEMPERATURES = [0.3, 0.7, 1.0];
 const DISAGREEMENT_VARIANCE_THRESHOLD = 0.04;
 
 // Load trust score with fallback if calibration unavailable
@@ -95,8 +96,8 @@ export async function analyzeMarketEnsemble(
 ): Promise<EnsembleResult | null> {
   console.log(`[Ensemble] Running ${ENSEMBLE_SIZE} parallel analyses for: ${market.title}`);
 
-  const promises = Array.from({ length: ENSEMBLE_SIZE }, () =>
-    analyzeMarket(market, news)
+  const promises = Array.from({ length: ENSEMBLE_SIZE }, (_, i) =>
+    analyzeMarket(market, news, ENSEMBLE_TEMPERATURES[i])
   );
   const settled = await Promise.allSettled(promises);
 
