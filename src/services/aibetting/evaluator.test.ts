@@ -162,6 +162,23 @@ describe("evaluateBetOpportunity", () => {
     expect(decision.reason).toContain("Insufficient bankroll");
   });
 
+  it("should reject when AI disagrees with market by more than 30pp", () => {
+    const market = makeMarket(); // market price 50%
+    const analysis = makeAnalysis({ probability: 0.85 }); // AI says 85% = 35pp disagreement
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
+
+    expect(decision.shouldBet).toBe(false);
+    expect(decision.reason).toContain("Market disagreement too high");
+  });
+
+  it("should accept when AI disagrees with market within 30pp", () => {
+    const market = makeMarket(); // market price 50%
+    const analysis = makeAnalysis({ probability: 0.75 }); // AI says 75% = 25pp disagreement
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
+
+    expect(decision.shouldBet).toBe(true);
+  });
+
   it("should cap bet size at maxBetSize", () => {
     const market = makeMarket();
     const analysis = makeAnalysis({ probability: 0.9, confidence: 0.95 }); // Very strong signal
@@ -183,21 +200,21 @@ describe("evaluateBetOpportunity", () => {
 describe("evaluateAllOpportunities", () => {
   it("should return only positive decisions sorted by EV", () => {
     const markets = [
-      makeMarket({ conditionId: "m1" }),
-      makeMarket({ conditionId: "m2" }),
-      makeMarket({ conditionId: "m3" }),
+      makeMarket({ conditionId: "m1", title: "Will Bitcoin reach 100k" }),
+      makeMarket({ conditionId: "m2", title: "Will Ethereum flip Bitcoin" }),
+      makeMarket({ conditionId: "m3", title: "Will Trump win election" }),
     ];
 
     const analyses = new Map<string, AIAnalysis>();
     analyses.set("m1", makeAnalysis({ marketId: "m1", probability: 0.7 })); // 20% edge
     analyses.set("m2", makeAnalysis({ marketId: "m2", probability: 0.52 })); // 2% edge (below min)
-    analyses.set("m3", makeAnalysis({ marketId: "m3", probability: 0.8 })); // 30% edge
+    analyses.set("m3", makeAnalysis({ marketId: "m3", probability: 0.75 })); // 25% edge
 
     const decisions = evaluateAllOpportunities(markets, analyses, mockConfig, [], 10000);
 
     // Only m1 and m3 should pass (m2 edge too small)
     expect(decisions.length).toBe(2);
-    // Sorted by EV descending - m3 (30%) first, m1 (20%) second
+    // Sorted by EV descending - m3 (25%) first, m1 (20%) second
     expect(decisions[0].marketId).toBe("m3");
     expect(decisions[1].marketId).toBe("m1");
   });

@@ -55,7 +55,8 @@ function calculateBetSize(
   return Math.min(rawSize, maxBet);
 }
 
-const MAX_BETS_PER_GROUP = 2;
+const MAX_BETS_PER_GROUP = 1;
+const MAX_MARKET_DISAGREEMENT = 0.30; // Skip if AI disagrees with market by >30pp
 
 function extractSignificantWords(title: string): string[] {
   const stopWords = new Set([
@@ -175,24 +176,22 @@ export function evaluateBetOpportunity(
   );
 
   const meetsConfidence = analysis.confidence >= config.minConfidence;
-  // Confidence-scaled edge: higher confidence allows lower edge requirement
-  const scaledMinEdge =
-    analysis.confidence >= 0.80 ? config.minEdge * 0.5
-    : analysis.confidence >= 0.65 ? config.minEdge * 0.75
-    : config.minEdge;
-  const meetsEdge = absEdge >= scaledMinEdge;
+  const meetsEdge = absEdge >= config.minEdge;
+  const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
 
-  const shouldBet = meetsConfidence && meetsEdge && hasBudget && hasTokenId;
+  const shouldBet = meetsConfidence && meetsEdge && withinDisagreement && hasBudget && hasTokenId;
 
   let reason: string;
   if (shouldBet) {
     reason = `Edge ${(absEdge * 100).toFixed(1)}%, Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
   } else if (!meetsConfidence) {
     reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
+  } else if (!withinDisagreement) {
+    reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
-    reason = `Edge too small: ${(absEdge * 100).toFixed(1)}% < ${(scaledMinEdge * 100).toFixed(0)}%`;
+    reason = `Edge too small: ${(absEdge * 100).toFixed(1)}% < ${(config.minEdge * 100).toFixed(0)}%`;
   } else if (!hasBudget) {
     reason = "Insufficient bankroll or exposure limit reached";
   } else {
