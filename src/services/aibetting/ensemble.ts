@@ -2,7 +2,7 @@ import type { PolymarketEvent, NewsItem, AIAnalysis, EnsembleResult, MarketCateg
 import { analyzeMarket } from "./analyzer.js";
 import { getTrustScore } from "../database/calibration.js";
 
-const ENSEMBLE_SIZE = 1;
+const ENSEMBLE_SIZE = 3;
 const DISAGREEMENT_VARIANCE_THRESHOLD = 0.04;
 
 // Load trust score with fallback if calibration unavailable

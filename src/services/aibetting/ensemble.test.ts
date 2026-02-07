@@ -207,21 +207,25 @@ describe("analyzeMarketEnsemble", () => {
     vi.mocked(getTrustScore).mockReturnValue(1.0);
   });
 
-  it("should run single analysis and return result", async () => {
+  it("should run 3 analyses and return consensus", async () => {
     vi.mocked(analyzeMarket)
-      .mockResolvedValueOnce(makeAnalysis({ probability: 0.7 }));
+      .mockResolvedValueOnce(makeAnalysis({ probability: 0.7 }))
+      .mockResolvedValueOnce(makeAnalysis({ probability: 0.72 }))
+      .mockResolvedValueOnce(makeAnalysis({ probability: 0.68 }));
 
     const market = makeMarket();
     const result = await analyzeMarketEnsemble(market, []);
 
     expect(result).not.toBeNull();
-    expect(result!.ensembleSize).toBe(1);
+    expect(result!.ensembleSize).toBe(3);
     expect(result!.consensus.probability).toBeCloseTo(0.7);
-    expect(vi.mocked(analyzeMarket)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(analyzeMarket)).toHaveBeenCalledTimes(3);
   });
 
-  it("should return null when analysis fails", async () => {
+  it("should return null when all analyses fail", async () => {
     vi.mocked(analyzeMarket)
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
       .mockRejectedValueOnce(new Error("fail"));
 
     const market = makeMarket();
@@ -230,13 +234,28 @@ describe("analyzeMarketEnsemble", () => {
     expect(result).toBeNull();
   });
 
-  it("should return null when analysis returns null", async () => {
+  it("should return null when all analyses return null", async () => {
     vi.mocked(analyzeMarket)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
 
     const market = makeMarket();
     const result = await analyzeMarketEnsemble(market, []);
 
     expect(result).toBeNull();
+  });
+
+  it("should handle partial failures gracefully", async () => {
+    vi.mocked(analyzeMarket)
+      .mockResolvedValueOnce(makeAnalysis({ probability: 0.7 }))
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValueOnce(null);
+
+    const market = makeMarket();
+    const result = await analyzeMarketEnsemble(market, []);
+
+    expect(result).not.toBeNull();
+    expect(result!.ensembleSize).toBe(1);
   });
 });
