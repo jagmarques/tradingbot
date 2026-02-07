@@ -20,4 +20,6 @@ export {
   isAIBettingActive,
   getAIBettingStatus,
   runManualCycle,
+  getEnsembleResult,
 } from "./scheduler.js";
+export { analyzeMarketEnsemble } from "./ensemble.js";

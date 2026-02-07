@@ -5,7 +5,7 @@ import type {
 } from "./types.js";
 import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
 import { isPaperMode } from "../../config/env.js";
-import { savePosition, loadOpenPositions } from "../database/aibetting.js";
+import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
 import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET } from "../../config/constants.js";
 
@@ -158,14 +158,9 @@ export async function exitPosition(
 ): Promise<{ success: boolean; pnl: number }> {
   console.log(`[Executor] Exiting position: ${position.marketTitle} - ${reason}`);
 
-  // Calculate P&L
-  const priceDiff =
-    position.side === "YES"
-      ? currentPrice - position.entryPrice
-      : position.entryPrice - currentPrice;
-
+  // Calculate P&L (token price: current vs entry, same for YES and NO)
   const shares = position.size / position.entryPrice;
-  let pnl = shares * priceDiff;
+  let pnl = shares * (currentPrice - position.entryPrice);
 
   // Deduct estimated fees in paper mode (gas + slippage on entry and exit)
   if (isPaperMode()) {
@@ -282,6 +277,10 @@ export async function resolvePosition(
   position.pnl = pnl;
   position.exitReason = reason;
   savePosition(position);
+
+  // Record calibration outcome: 1 if price resolved to 1.0, 0 if to 0.0
+  const actualOutcome = finalPrice > 0.5 ? 1 : 0;
+  recordOutcome(position.marketId, position.tokenId, actualOutcome as 0 | 1);
 
   const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
   console.log(`[Executor] RESOLVED: ${position.marketTitle} ${outcome} ${pnlStr}`);

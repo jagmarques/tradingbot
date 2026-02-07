@@ -38,7 +38,8 @@ async function sleep(ms: number): Promise<void> {
 export async function callDeepSeek(
   prompt: string,
   model: DeepSeekModel = "deepseek-chat",
-  systemMessage?: string
+  systemMessage?: string,
+  temperature?: number
 ): Promise<string> {
   const env = loadEnv();
 
@@ -74,7 +75,7 @@ export async function callDeepSeek(
         body: JSON.stringify({
           model,
           messages,
-          temperature: 0.3,
+          temperature: temperature ?? 0.3,
           max_tokens: 1000,
         }),
         signal: controller.signal,

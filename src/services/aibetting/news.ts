@@ -35,45 +35,66 @@ function parseRssItems(xml: string): NewsItem[] {
   return items;
 }
 
-function extractKeywords(market: PolymarketEvent): string[] {
-  // Focus on TITLE only - description often has noise
-  const title = market.title;
-
-  // Extract proper nouns (capitalized words) and numbers/years
-  const properNouns = title.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g) || [];
-  const numbers = title.match(/\b\d{4}\b|\b\d+(?:st|nd|rd|th)?\b/g) || [];
-
-  // Common stop words to filter
-  const stopWords = new Set([
-    "will", "the", "be", "to", "of", "and", "or", "in", "on", "at", "by",
-    "for", "with", "this", "that", "it", "as", "from", "has", "have", "had",
-    "do", "does", "did", "what", "when", "where", "who", "which", "how",
-    "if", "than", "then", "so", "but", "not", "no", "yes", "can", "could",
-    "would", "should", "may", "might", "before", "after", "during", "between",
-  ]);
-
-  // Filter proper nouns
-  const filtered = properNouns.filter(
-    (w) => w.length > 2 && !stopWords.has(w.toLowerCase())
-  );
-
-  // Combine proper nouns + years
-  return [...filtered, ...numbers].slice(0, 5);
+function buildSearchQuery(market: PolymarketEvent): string {
+  // Clean title: remove question framing, keep substance
+  return market.title
+    .replace(/^Will\s+/i, "")
+    .replace(/^Is\s+/i, "")
+    .replace(/^Does\s+/i, "")
+    .replace(/^Has\s+/i, "")
+    .replace(/\?$/, "")
+    .replace(/\bby\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{4}\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
 }
 
-function buildSearchQuery(market: PolymarketEvent): string {
-  const keywords = extractKeywords(market);
+// Fetch article content from URL and extract text
+async function fetchArticleContent(url: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
-  // If no good keywords found, use title directly (cleaned)
-  if (keywords.length === 0) {
-    // Fall back to cleaned title
-    return market.title
-      .replace(/^Will\s+/i, "")
-      .replace(/\?$/, "")
-      .slice(0, 60);
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+
+    // Strip script and style tags with their content
+    let text = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+    text = text.replace(/<style[\s\S]*?<\/style>/gi, "");
+
+    // Remove all HTML tags
+    text = text.replace(/<[^>]+>/g, " ");
+
+    // Decode HTML entities
+    text = text.replace(/&amp;/g, "&");
+    text = text.replace(/&lt;/g, "<");
+    text = text.replace(/&gt;/g, ">");
+    text = text.replace(/&quot;/g, '"');
+    text = text.replace(/&#39;/g, "'");
+    text = text.replace(/&nbsp;/g, " ");
+
+    // Collapse whitespace
+    text = text.replace(/\s+/g, " ").trim();
+
+    // Truncate to 5000 chars per article
+    return text.slice(0, 5000);
+  } catch (error) {
+    // Silent failure on timeout or network errors
+    return null;
   }
-
-  return keywords.slice(0, 3).join(" ");
 }
 
 export async function fetchNewsForMarket(
@@ -103,16 +124,33 @@ export async function fetchNewsForMarket(
     const xml = await response.text();
     const items = parseRssItems(xml);
 
-    // Filter to last 24 hours
-    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    // Filter to last 7 days
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const recentItems = items.filter((item) => {
       const pubTime = new Date(item.publishedAt).getTime();
-      return pubTime > oneDayAgo;
+      return pubTime > sevenDaysAgo;
+    });
+
+    // Fetch article content for top 3 items in parallel
+    const top3 = recentItems.slice(0, 3);
+    const contentResults = await Promise.allSettled(
+      top3.map((item) => fetchArticleContent(item.url))
+    );
+
+    let contentFetched = 0;
+    contentResults.forEach((result, index) => {
+      if (result.status === "fulfilled" && result.value) {
+        top3[index].content = result.value;
+        contentFetched++;
+      }
     });
 
     console.log(
       `[News] Found ${recentItems.length} recent articles for "${query}"`
     );
+    if (contentFetched > 0) {
+      console.log(`[News] Fetched content for ${contentFetched}/3 articles for "${query}"`);
+    }
 
     return recentItems;
   } catch (error) {

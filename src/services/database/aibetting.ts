@@ -261,3 +261,126 @@ export function deleteAllAnalyses(): number {
   console.log(`[Database] Deleted ${result.changes} AI betting analyses`);
   return result.changes;
 }
+
+// Save calibration prediction when analysis is performed
+export function savePrediction(
+  marketId: string,
+  marketTitle: string,
+  tokenId: string,
+  side: "YES" | "NO",
+  predictedProbability: number,
+  confidence: number,
+  category: string = "other"
+): void {
+  const db = getDb();
+  const id = `${marketId}_${tokenId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  db.prepare(`
+    INSERT INTO calibration_predictions (
+      id, market_id, market_title, token_id, side, predicted_probability, confidence, predicted_at, category
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    marketId,
+    marketTitle,
+    tokenId,
+    side,
+    predictedProbability,
+    confidence,
+    new Date().toISOString(),
+    category
+  );
+}
+
+// Calculate Brier score: (prediction - outcome)^2
+// outcome is 0 (wrong) or 1 (correct)
+function calculateBrierScore(prediction: number, outcome: number): number {
+  return Math.pow(prediction - outcome, 2);
+}
+
+// Record actual outcome when market resolves
+export function recordOutcome(
+  marketId: string,
+  tokenId: string,
+  actualOutcome: 0 | 1
+): void {
+  const db = getDb();
+
+  // Find the most recent prediction for this market/token
+  const prediction = db.prepare(`
+    SELECT id, predicted_probability
+    FROM calibration_predictions
+    WHERE market_id = ? AND token_id = ? AND actual_outcome IS NULL
+    ORDER BY predicted_at DESC
+    LIMIT 1
+  `).get(marketId, tokenId) as { id: string; predicted_probability: number } | undefined;
+
+  if (!prediction) {
+    console.log(`[Calibration] No prediction found for ${marketId}/${tokenId}`);
+    return;
+  }
+
+  const brierScore = calculateBrierScore(prediction.predicted_probability, actualOutcome);
+
+  db.prepare(`
+    UPDATE calibration_predictions
+    SET actual_outcome = ?, brier_score = ?, resolved_at = ?
+    WHERE id = ?
+  `).run(actualOutcome, brierScore, new Date().toISOString(), prediction.id);
+
+  console.log(
+    `[Calibration] Recorded outcome for ${marketId}: predicted=${(prediction.predicted_probability * 100).toFixed(1)}%, actual=${actualOutcome}, Brier=${brierScore.toFixed(4)}`
+  );
+}
+
+// Get calibration statistics
+export function getCalibrationStats(): {
+  totalPredictions: number;
+  resolvedPredictions: number;
+  averageBrierScore: number;
+  calibrationByConfidence: Array<{
+    confidenceRange: string;
+    count: number;
+    avgBrier: number;
+  }>;
+} {
+  const db = getDb();
+
+  const total = db.prepare(`
+    SELECT COUNT(*) as count FROM calibration_predictions
+  `).get() as { count: number };
+
+  const resolved = db.prepare(`
+    SELECT COUNT(*) as count, AVG(brier_score) as avg_brier
+    FROM calibration_predictions
+    WHERE actual_outcome IS NOT NULL
+  `).get() as { count: number; avg_brier: number | null };
+
+  // Calibration by confidence buckets
+  const byConfidence = db.prepare(`
+    SELECT
+      CASE
+        WHEN confidence < 0.6 THEN '<60%'
+        WHEN confidence < 0.7 THEN '60-70%'
+        WHEN confidence < 0.8 THEN '70-80%'
+        WHEN confidence < 0.9 THEN '80-90%'
+        ELSE '90%+'
+      END as confidence_range,
+      COUNT(*) as count,
+      AVG(brier_score) as avg_brier
+    FROM calibration_predictions
+    WHERE actual_outcome IS NOT NULL
+    GROUP BY confidence_range
+    ORDER BY confidence_range
+  `).all() as Array<{ confidence_range: string; count: number; avg_brier: number }>;
+
+  return {
+    totalPredictions: total.count,
+    resolvedPredictions: resolved.count,
+    averageBrierScore: resolved.avg_brier || 0,
+    calibrationByConfidence: byConfidence.map((row) => ({
+      confidenceRange: row.confidence_range,
+      count: row.count,
+      avgBrier: row.avg_brier,
+    })),
+  };
+}

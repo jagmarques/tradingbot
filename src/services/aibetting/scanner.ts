@@ -183,6 +183,32 @@ export function scoreMarket(market: PolymarketEvent): number {
   return score;
 }
 
+export async function fetchMarketByConditionId(conditionId: string, tokenId?: string): Promise<PolymarketEvent | null> {
+  try {
+    // Use clob_token_ids if available (reliable), fall back to condition_id
+    const query = tokenId
+      ? `clob_token_ids=${tokenId}`
+      : `condition_id=${conditionId}`;
+    const response = await fetch(
+      `${GAMMA_API_URL}/markets?${query}&limit=1`
+    );
+    if (!response.ok) return null;
+    const markets = (await response.json()) as GammaMarket[];
+    if (markets.length === 0) return null;
+
+    // Verify the returned market matches the expected conditionId
+    if (markets[0].conditionId !== conditionId) {
+      console.warn(`[Scanner] Market mismatch: expected ${conditionId}, got ${markets[0].conditionId} (${markets[0].question})`);
+      return null;
+    }
+
+    return mapToPolymarketEvent(markets[0]);
+  } catch (error) {
+    console.error(`[Scanner] Failed to fetch market ${conditionId}:`, error);
+    return null;
+  }
+}
+
 export async function discoverMarkets(
   config: AIBettingConfig,
   existingPositionMarketIds: Set<string>,

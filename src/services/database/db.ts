@@ -174,6 +174,30 @@ export function initDb(dbPath?: string): Database.Database {
       analyzed_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS calibration_predictions (
+      id TEXT PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      market_title TEXT NOT NULL,
+      token_id TEXT NOT NULL,
+      side TEXT NOT NULL,
+      predicted_probability REAL NOT NULL,
+      confidence REAL NOT NULL,
+      actual_outcome INTEGER,
+      brier_score REAL,
+      predicted_at TEXT NOT NULL,
+      resolved_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS calibration_scores (
+      category TEXT PRIMARY KEY,
+      total_predictions INTEGER NOT NULL,
+      avg_brier_score REAL NOT NULL,
+      trust_score REAL NOT NULL,
+      last_updated TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
     CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
@@ -182,13 +206,16 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_pumpfun_positions_created ON pumpfun_positions(created_at);
     CREATE INDEX IF NOT EXISTS idx_aibetting_positions_status ON aibetting_positions(status);
     CREATE INDEX IF NOT EXISTS idx_aibetting_positions_market ON aibetting_positions(market_id);
+    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_market ON calibration_predictions(market_id);
+    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_resolved ON calibration_predictions(resolved_at);
+    CREATE INDEX IF NOT EXISTS idx_calibration_category ON calibration_scores(category);
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
-  const columns = db.pragma("table_info(bot_settings)") as Array<{ name: string }>;
-  const columnNames = columns.map((c) => c.name);
+  const botSettingsColumns = db.pragma("table_info(bot_settings)") as Array<{ name: string }>;
+  const botSettingsColumnNames = botSettingsColumns.map((c) => c.name);
 
-  if (!columnNames.includes("copy_amount_sol")) {
+  if (!botSettingsColumnNames.includes("copy_amount_sol")) {
     db.exec(`
       ALTER TABLE bot_settings ADD COLUMN copy_amount_sol REAL DEFAULT 0.02;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_eth REAL DEFAULT 0.001;
@@ -197,6 +224,17 @@ export function initDb(dbPath?: string): Database.Database {
       ALTER TABLE bot_settings ADD COLUMN polymarket_copy_usd REAL DEFAULT 5;
     `);
     console.log("[Database] Migrated bot_settings: added copy amount columns");
+  }
+
+  // Migration: Add category column to calibration_predictions
+  const predictionColumns = db.pragma("table_info(calibration_predictions)") as Array<{ name: string }>;
+  const predictionColumnNames = predictionColumns.map((c) => c.name);
+
+  if (!predictionColumnNames.includes("category")) {
+    db.exec(`
+      ALTER TABLE calibration_predictions ADD COLUMN category TEXT DEFAULT 'other';
+    `);
+    console.log("[Database] Migrated calibration_predictions: added category column");
   }
 
   console.log("[Database] Initialized at", finalPath);
