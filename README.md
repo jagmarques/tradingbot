@@ -22,6 +22,8 @@ Scans Polymarket markets, fetches news via Google RSS, extracts article content 
 
 **Blind probability:** Market prices are not shown to the AI. R1 estimates probability independently from news evidence only. This prevents anchoring on market consensus.
 
+**Round-number debiasing:** Prompt instructs R1 to avoid round numbers (40%, 35%, 50%) and use precise estimates (37%, 43%, 52%). Multi-candidate races include sibling market context to differentiate between similar markets.
+
 **Edge modifiers:**
 - Extremization (1.3x): pushes AI estimates away from center
 - Category bonuses: entertainment +3%, other +2%, politics +1%, crypto -3%
@@ -73,7 +75,7 @@ Copy profitable wallets on Solana + EVM chains (Base, BNB, Arbitrum, Avalanche).
 
 ### Polymarket Tracker
 
-Monitor top Polymarket bettors and copy their positions. 30-minute buffer before market end, 90-second trade age window. Resolved market cache prevents repeated attempts on closed markets.
+Monitor top Polymarket bettors and copy their positions. 30-minute buffer before market end, 90-second trade age window. Resolved market cache prevents repeated attempts on closed markets. Filters out penny-collector traders (average entry price >90c or <10c) to track only actionable signals.
 
 ## Telegram Commands
 

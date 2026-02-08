@@ -235,7 +235,6 @@ function loadOpenCopiedPositions(): CopiedPosition[] {
   }));
 }
 
-// Clear all copied positions (for resetting after fixing bugs)
 export function clearAllCopiedPositions(): number {
   const db = getDb();
   const result = db.prepare(`DELETE FROM polytrader_copies`).run();
@@ -489,7 +488,6 @@ async function checkForNewTrades(): Promise<void> {
           const traderRoi = info.vol > 0 ? info.pnl / info.vol : 0;
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} on ${trade.title || trade.conditionId}`);
 
-          // AI filter (replaces simple ROI check + fixed amount)
           const copySizeUsd = getCopySizeUsd();
           const filterResult = filterPolyCopy(traderRoi, trade.usdcSize, trade.price, copySizeUsd);
 
@@ -562,9 +560,32 @@ async function refreshTopTraders(): Promise<void> {
     .sort((a, b) => b.pnl / b.vol - a.pnl / a.vol)
     .slice(0, 20);
 
-  console.log(`[PolyTraders] Refreshed: ${sorted.length} traders from ${COPY_CATEGORIES.join(",")} (ROI-ranked)`);
-
+  // Filter penny-collectors by sampling recent trades
+  const qualified: typeof sorted = [];
   for (const trader of sorted) {
+    const wallet = trader.proxyWallet.toLowerCase();
+    const recentTrades = await fetchTraderActivity(wallet, 5);
+    const buyTrades = recentTrades.filter(t => t.side === "BUY" && t.price > 0);
+
+    if (buyTrades.length === 0) {
+      qualified.push(trader); // No data, give benefit of doubt
+      continue;
+    }
+
+    const avgPrice = buyTrades.reduce((sum, t) => sum + t.price, 0) / buyTrades.length;
+
+    if (avgPrice > 0.90 || avgPrice < 0.10) {
+      console.log(`[PolyTraders] Filtered penny-collector: ${trader.userName || wallet} (avg entry: ${(avgPrice * 100).toFixed(0)}c)`);
+      continue;
+    }
+
+    qualified.push(trader);
+    await new Promise(r => setTimeout(r, 300)); // Rate limit
+  }
+
+  console.log(`[PolyTraders] Refreshed: ${qualified.length} traders from ${COPY_CATEGORIES.join(",")} (ROI-ranked)`);
+
+  for (const trader of qualified) {
     const wallet = trader.proxyWallet.toLowerCase();
     const roi = trader.vol > 0 ? (trader.pnl / trader.vol * 100).toFixed(1) : "0";
     if (!trackedTraders.has(wallet)) {

@@ -19,6 +19,38 @@ import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";
 
+function detectSiblingMarkets(markets: PolymarketEvent[]): Map<string, string[]> {
+  const siblingMap = new Map<string, string[]>();
+  const byEndDate = new Map<string, PolymarketEvent[]>();
+
+  for (const market of markets) {
+    const existing = byEndDate.get(market.endDate) || [];
+    existing.push(market);
+    byEndDate.set(market.endDate, existing);
+  }
+
+  for (const group of byEndDate.values()) {
+    if (group.length < 2) continue;
+
+    for (let i = 0; i < group.length; i++) {
+      const wordsA = group[i].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      const siblings: string[] = [];
+
+      for (let j = 0; j < group.length; j++) {
+        if (i === j) continue;
+        const wordsB = group[j].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const shared = wordsA.filter(w => wordsB.includes(w)).length;
+        const minLen = Math.min(wordsA.length, wordsB.length);
+        if (minLen > 0 && shared / minLen > 0.3) siblings.push(group[j].title);
+      }
+
+      if (siblings.length > 0) siblingMap.set(group[i].conditionId, siblings);
+    }
+  }
+
+  return siblingMap;
+}
+
 let isRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
@@ -81,6 +113,9 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     const analyses = new Map<string, AIAnalysis>();
     let cached = 0;
 
+    // Detect sibling markets for multi-candidate context
+    const siblingMap = detectSiblingMarkets(markets);
+
     for (const market of markets) {
       const cachedAnalysis = getCachedAnalysis(market.conditionId);
       if (cachedAnalysis) {
@@ -103,7 +138,12 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      const analysis = await analyzeMarket(market, news, "deepseek-reasoner");
+      const siblingTitles = siblingMap.get(market.conditionId);
+      if (siblingTitles?.length) {
+        console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
+      }
+
+      const analysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles);
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);
         analyses.set(market.conditionId, analysis);

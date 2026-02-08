@@ -148,7 +148,7 @@ describe("evaluateBetOpportunity", () => {
 
   it("should handle floating point confidence near threshold", () => {
     const market = makeMarket();
-    // Simulate ensemble averaging producing 0.5999... instead of 0.60
+    // Floating point edge case: 0.5999... should round to 0.60
     const analysis = makeAnalysis({ probability: 0.7, confidence: 0.5999999999999999 });
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 

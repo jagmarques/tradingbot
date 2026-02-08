@@ -207,19 +207,3 @@ export async function fetchNewsForMarket(
   }
 }
 
-export async function fetchNewsForMarkets(
-  markets: PolymarketEvent[]
-): Promise<Map<string, NewsItem[]>> {
-  const newsMap = new Map<string, NewsItem[]>();
-
-  // Fetch in parallel with small delay to avoid rate limits
-  for (const market of markets) {
-    const news = await fetchNewsForMarket(market);
-    newsMap.set(market.conditionId, news);
-
-    // Small delay between requests
-    await new Promise((r) => setTimeout(r, 500));
-  }
-
-  return newsMap;
-}

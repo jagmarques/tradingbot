@@ -17,9 +17,19 @@ function buildAnalysisPrompt(
   market: PolymarketEvent,
   news: NewsItem[],
   history: AIAnalysis[],
-  stats: { winRate: number; totalBets: number }
+  stats: { winRate: number; totalBets: number },
+  siblingTitles?: string[]
 ): string {
   const resolveDate = new Date(market.endDate).toLocaleDateString();
+
+  // Multi-candidate context section
+  const siblingSection = siblingTitles && siblingTitles.length > 0
+    ? `MULTI-CANDIDATE CONTEXT:
+This is a multi-candidate race. Other candidates: ${siblingTitles.join(', ')}.
+Consider each candidate's specific advantages, endorsements, polling data, and unique factors rather than splitting probability evenly among candidates.
+
+`
+    : "";
 
   // Build news section with article content for top 3
   let newsSection = "";
@@ -67,7 +77,7 @@ ${performanceNote}MARKET: ${market.title}
 Category: ${market.category}
 Resolves: ${resolveDate}
 
-${contextSection}NEWS AND EVIDENCE:
+${siblingSection}${contextSection}NEWS AND EVIDENCE:
 ${newsSection}
 
 INSTRUCTIONS:
@@ -84,6 +94,8 @@ ${market.title.match(/by|before|in (202\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oc
 STEP 2 - PROBABILITY REASONING:
 Based ONLY on the evidence from Step 1, reason through the likelihood of each outcome.
 Consider base rates, historical precedent, and current trajectory.
+
+Avoid round numbers like 40%, 35%, 50%, 60%. Use precise estimates like 37%, 43%, 52%, 67%. Round numbers indicate insufficient analysis - always commit to a specific value based on your evidence.
 
 PROBABILITY CALIBRATION - use the full 0-100% range:
 - 90-99%: Near certain. Would happen 9+ times out of 10. Example: "Will the sun rise tomorrow?"
@@ -235,7 +247,8 @@ function parseAnalysisResponse(
 export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
-  model?: "deepseek-chat" | "deepseek-reasoner"
+  model?: "deepseek-chat" | "deepseek-reasoner",
+  siblingTitles?: string[]
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -244,7 +257,7 @@ export async function analyzeMarket(
   const dbStats = getBettingStats();
   const stats = { winRate: dbStats.winRate, totalBets: dbStats.totalBets };
 
-  const prompt = buildAnalysisPrompt(market, news, history, stats);
+  const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
     const response = await callDeepSeek(prompt, model ?? "deepseek-chat", undefined, undefined, "aibetting");
@@ -324,22 +337,3 @@ export async function analyzeMarket(
   }
 }
 
-export async function analyzeMarkets(
-  markets: PolymarketEvent[],
-  newsMap: Map<string, NewsItem[]>
-): Promise<Map<string, AIAnalysis>> {
-  const analyses = new Map<string, AIAnalysis>();
-
-  for (const market of markets) {
-    const news = newsMap.get(market.conditionId) || [];
-    const analysis = await analyzeMarket(market, news);
-
-    if (analysis) {
-      analyses.set(market.conditionId, analysis);
-    }
-
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  return analyses;
-}
