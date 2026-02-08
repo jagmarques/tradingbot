@@ -110,10 +110,10 @@ async function decodeGoogleNewsUrl(sourceUrl: string): Promise<string> {
 
     const articleId = pathSegments[articlesIdx + 1];
 
-    // Fast path: older format has URL embedded in base64 payload
+    // Fast path: older format has real URL embedded in base64 payload
     const decoded = Buffer.from(articleId.replace(/-/g, "+").replace(/_/g, "/"), "base64");
     const urlMatch = decoded.toString("latin1").match(/https?:\/\/[^\s\x00-\x1f"]+/);
-    if (urlMatch) return urlMatch[0];
+    if (urlMatch && !urlMatch[0].includes("news.google.com")) return urlMatch[0];
 
     // Newer AU_yqL format: resolve via Google's batchexecute API
     return await fetchDecodedBatchExecute(articleId);
@@ -134,8 +134,11 @@ async function fetchDecodedBatchExecute(articleId: string): Promise<string> {
     const pageResp = await fetch(pageUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cookie": "CONSENT=PENDING+987",
       },
       signal: controller1.signal,
+      redirect: "follow",
     });
     clearTimeout(timeout1);
     const html = await pageResp.text();
@@ -143,7 +146,7 @@ async function fetchDecodedBatchExecute(articleId: string): Promise<string> {
     const sgMatch = html.match(/data-n-a-sg="([^"]+)"/);
     const tsMatch = html.match(/data-n-a-ts="([^"]+)"/);
     if (!sgMatch?.[1] || !tsMatch?.[1]) {
-      console.warn(`[News] No signature/timestamp in Google News page`);
+      console.warn(`[News] No signature/timestamp (${html.length} bytes, status ${pageResp.status})`);
       return fallbackUrl;
     }
 
