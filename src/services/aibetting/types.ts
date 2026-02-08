@@ -49,14 +49,6 @@ export interface AIAnalysis {
   timeline?: string | null; // What needs to happen by when (for date-based markets), or null
 }
 
-export interface EnsembleResult {
-  consensus: AIAnalysis;
-  individualEstimates: number[];
-  weights: number[];
-  disagreement: number;
-  highDisagreement: boolean;
-  ensembleSize: number;
-}
 
 export interface BetDecision {
   shouldBet: boolean;

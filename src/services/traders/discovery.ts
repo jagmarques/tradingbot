@@ -1,11 +1,6 @@
 import { Chain, TRADER_THRESHOLDS, BIG_HITTER_THRESHOLDS } from "./types.js";
 import { upsertTrader, getTrader } from "./storage.js";
-import {
-  isEtherscanConfigured,
-  discoverTradersFromTokens,
-  initProfitabilityCache,
-  cleanupCache,
-} from "./etherscan.js";
+import { initProfitabilityCache, cleanupCache } from "./etherscan.js";
 import { getAllActiveTokens } from "./dexscreener.js";
 import {
   isHeliusConfigured,
@@ -42,19 +37,16 @@ function cleanupSolanaCache(): void {
   }
 }
 
-// EVM chains - free tier only (paid: base, bsc, optimism, avalanche)
-const EVM_CHAINS: Chain[] = ["ethereum", "polygon", "arbitrum", "sonic"];
-
 let isRunning = false;
 let isDiscovering = false;
 let cycleCount = 0;
 
 export function startDiscovery(): void {
-  const hasEtherscan = isEtherscanConfigured();
   const hasHelius = isHeliusConfigured();
+  const hasBirdeye = !!process.env.BIRDEYE_API_KEY;
 
-  if (!hasEtherscan && !hasHelius) {
-    console.log("[Discovery] No APIs configured - skipping");
+  if (!hasHelius || !hasBirdeye) {
+    console.log(`[Discovery] Disabled (Helius=${hasHelius}, Birdeye=${hasBirdeye}) - both required`);
     return;
   }
 
@@ -67,8 +59,7 @@ export function startDiscovery(): void {
   initProfitabilityCache();
 
   isRunning = true;
-  console.log("[Discovery] Starting continuous discovery");
-  console.log(`[Discovery] APIs: Etherscan=${hasEtherscan}, Helius=${hasHelius}`);
+  console.log("[Discovery] Starting continuous discovery (Solana only)");
 
   runContinuousDiscovery();
 }
@@ -115,19 +106,8 @@ async function runDiscovery(): Promise<void> {
     // Each API has separate rate limits, no reason to wait
     const tasks: Promise<{ chain: string; discovered: number }>[] = [];
 
-    // EVM chains via Etherscan (free tier: ethereum, polygon, arbitrum, sonic)
-    if (isEtherscanConfigured()) {
-      for (const chain of EVM_CHAINS) {
-        tasks.push(
-          discoverTradersOnEvmChain(chain)
-            .then((discovered) => ({ chain, discovered }))
-            .catch((err) => {
-              console.error(`[Discovery] Error on ${chain}:`, err);
-              return { chain, discovered: 0 };
-            })
-        );
-      }
-    }
+    // EVM discovery disabled - Etherscan transfer analysis can't reliably detect
+    // round-trip trades through DEX aggregators (0 traders found in 40+ cycles)
 
     // Solana via Helius - both Pump.fun and all DEXes (DexScreener tokens)
     if (isHeliusConfigured()) {
@@ -163,22 +143,6 @@ async function runDiscovery(): Promise<void> {
   } finally {
     isDiscovering = false;
   }
-}
-
-async function discoverTradersOnEvmChain(chain: Chain): Promise<number> {
-  // Get ALL active tokens: trending + new launches + high volume
-  const activeTokens = await getAllActiveTokens(chain, 50);
-  if (activeTokens.length === 0) {
-    console.log(`[Discovery] No active tokens found on ${chain}`);
-    return 0;
-  }
-
-  console.log(`[Discovery] Checking ${activeTokens.length} tokens on ${chain} (trending + new + high-vol)`);
-
-  // Etherscan now saves traders immediately to DB as they're discovered
-  const profitableTraders = await discoverTradersFromTokens(chain, activeTokens);
-
-  return profitableTraders.size;
 }
 
 async function discoverTradersOnSolanaPumpfun(): Promise<number> {
@@ -424,9 +388,9 @@ export const DISCOVERY_CONFIG = {
   // Max new traders to add per discovery run
   MAX_NEW_TRADERS_PER_RUN: 10,
   // Minimum requirements for discovered traders
-  MIN_TOTAL_TRADES: 20,
-  MIN_WIN_RATE: 0.55,
-  MIN_PNL_USD: 1000,
+  MIN_TOTAL_TRADES: 10,
+  MIN_WIN_RATE: 0.50,
+  MIN_PNL_USD: 200,
   // Popular tokens to scan for top traders (Solana)
   SOLANA_SCAN_TOKENS: [
     "So11111111111111111111111111111111111111112", // SOL (wrapped)
@@ -615,23 +579,11 @@ async function discoverSolanaTraders(): Promise<DiscoveryResult> {
   return result;
 }
 
-async function discoverEvmTraders(chain: Chain): Promise<DiscoveryResult> {
-  console.log(`[Discovery] EVM chain ${chain} discovery is a stub - manual wallet addition recommended`);
-  return {
-    chain,
-    discovered: 0,
-    qualified: 0,
-    added: 0,
-    skipped: 0,
-    errors: [`EVM discovery not yet implemented for ${chain}`],
-  };
-}
-
 export async function discoverTraders(chain: Chain): Promise<DiscoveryResult> {
   if (chain === "solana") {
     return discoverSolanaTraders();
   }
-  return discoverEvmTraders(chain);
+  return { chain, discovered: 0, qualified: 0, added: 0, skipped: 0, errors: ["EVM discovery disabled"] };
 }
 
 export async function runDiscoveryAll(): Promise<DiscoveryResult[]> {

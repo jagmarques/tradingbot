@@ -6,9 +6,9 @@ Multi-strategy crypto trading bot with Telegram controls. TypeScript, Docker, Co
 
 ### AI Betting (Polymarket)
 
-Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses with different reasoning perspectives and temperatures, averages into consensus, evaluates edge with Kelly criterion, and places bets.
+Scans Polymarket markets, fetches news via GDELT, extracts article content with Mozilla Readability, runs blind probability estimation with DeepSeek R1 (chain-of-thought reasoning), applies edge modifiers, evaluates with Kelly criterion, and places bets.
 
-**Pipeline:** Scanner (GAMMA API) -> Pre-filter -> News (Google RSS) -> Analyzer (DeepSeek x3 perspectives) -> Ensemble Consensus -> Evaluator (Kelly) -> Executor (CLOB/Paper)
+**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1) -> Evaluator (Kelly + edge modifiers) -> Executor (CLOB/Paper)
 
 | Config | Default | Description |
 |--------|---------|-------------|
@@ -20,22 +20,29 @@ Scans Polymarket markets, fetches news, runs 3 parallel DeepSeek analyses with d
 | `AIBETTING_MIN_EDGE` | `12%` | Min edge vs market price |
 | `AIBETTING_SCAN_INTERVAL` | `30min` | Time between scan cycles |
 
-**Ensemble:** Each analysis uses a different reasoning perspective (structural/institutional, recent news/momentum, historical base rates) at temperatures 0.2/0.4/0.6 to create genuine diversity.
+**Blind probability:** Market prices are not shown to the AI. R1 estimates probability independently from news evidence only. This prevents anchoring on market consensus.
+
+**Round-number debiasing:** Prompt instructs R1 to avoid round numbers (40%, 35%, 50%) and use precise estimates (37%, 43%, 52%). Multi-candidate races include sibling market context to differentiate between similar markets.
+
+**Edge modifiers:**
+- Extremization (1.3x): pushes AI estimates away from center
+- Category bonuses: entertainment +3%, other +2%, politics +1%, crypto -3%
+- NO-side bias (+1.5%): corrects for retail YES overpricing
 
 **Filters:**
-- Pre-filter: skip ensemble if scanner price makes edge mathematically impossible
-- Market disagreement cap: 30pp (if AI disagrees with market by >30 percentage points, skip)
-- Correlated bet limit: 1 per event group (no 6 Super Bowl bets)
-- Ensemble disagreement: skip if variance > 0.025, any member >15pp from mean, or ratio > 5x
-- Auto-skip list: markets that trigger disagreement 3 times are permanently skipped
-- Dynamic confidence floor: edge >= 20% lowers confidence requirement to 50% (Telegram alert sent)
-- 4-hour cache on analyses, auto-invalidated when new news matches open positions
+- Pre-filter: skip if scanner price makes edge mathematically impossible
+- Market disagreement cap: 30pp (if AI disagrees with market by >30pp, skip)
+- Correlated bet limit: 1 per event group
+- Dynamic confidence floor: edge >= 20% lowers confidence requirement to 50%
+- 8-hour cache on analyses, auto-invalidated when new news matches open positions
+- Prediction market article filter: drops articles about Polymarket/Kalshi odds to prevent circular contamination
 
 **Exit rules:**
 - Stop-loss at -25%
 - AI re-analysis when price moves >15% against position
 - Exit on negative EV or conviction flip
 - Settlement risk exit <6h before resolution
+- Auto-resolve on market settlement
 
 ### Token AI (DexScreener)
 
@@ -68,7 +75,7 @@ Copy profitable wallets on Solana + EVM chains (Base, BNB, Arbitrum, Avalanche).
 
 ### Polymarket Tracker
 
-Monitor top Polymarket bettors (>5% ROI) and copy their positions automatically. Resolved market cache prevents repeated attempts on closed markets.
+Monitor top Polymarket bettors and copy their positions. 30-minute buffer before market end, 90-second trade age window. Resolved market cache prevents repeated attempts on closed markets. Filters out penny-collector traders (average entry price >90c or <10c) to track only actionable signals.
 
 ## Telegram Commands
 
@@ -84,7 +91,7 @@ Monitor top Polymarket bettors (>5% ROI) and copy their positions automatically.
 | `/tokenai` | Token AI status |
 | `/settings` | Auto-snipe, auto-copy config |
 | `/stop` / `/resume` | Kill switch (all strategies) |
-| `Manage` button | Close all bets, copy trades, or everything |
+| `Manage` button | Close bets, copy bets, or reset paper data |
 | `/resetpaper` | Wipe paper trading data |
 | `/ai <question>` | Query bot data with DeepSeek |
 

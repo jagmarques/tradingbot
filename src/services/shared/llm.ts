@@ -22,6 +22,7 @@ interface DeepSeekResponse {
     message: {
       role: string;
       content: string;
+      reasoning_content?: string;
     };
     finish_reason: string;
   }[];
@@ -49,24 +50,47 @@ export async function callDeepSeek(
     throw new Error("DEEPSEEK_API_KEY not configured");
   }
 
-  const messages: DeepSeekMessage[] = [
-    {
-      role: "system",
-      content: systemMessage ||
-        "You are an expert prediction market analyst. Always respond with valid JSON only, no markdown or extra text.",
-    },
-    {
-      role: "user",
-      content: prompt,
-    },
-  ];
+  const isReasoner = model === "deepseek-reasoner";
+
+  // R1 doesn't support system messages - merge into user prompt
+  const messages: DeepSeekMessage[] = isReasoner
+    ? [
+        {
+          role: "user",
+          content: systemMessage
+            ? `${systemMessage}\n\n${prompt}`
+            : prompt,
+        },
+      ]
+    : [
+        {
+          role: "system",
+          content: systemMessage ||
+            "You are an expert prediction market analyst. Always respond with valid JSON only, no markdown or extra text.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ];
+
+  // R1 doesn't support temperature (ignored but skip for cleanliness)
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    max_tokens: isReasoner ? 4000 : 1000,
+  };
+  if (!isReasoner) {
+    body.temperature = temperature ?? 0.3;
+  }
 
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      // R1 chain-of-thought takes longer
+      const timeout = setTimeout(() => controller.abort(), isReasoner ? 60000 : 30000);
 
       const response = await fetch(DEEPSEEK_API_URL, {
         method: "POST",
@@ -74,12 +98,7 @@ export async function callDeepSeek(
           "Content-Type": "application/json",
           Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: temperature ?? 0.3,
-          max_tokens: 1000,
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
@@ -106,7 +125,21 @@ export async function callDeepSeek(
         continue;
       }
 
-      const content = data.choices[0].message.content;
+      let content = data.choices[0].message.content;
+      const reasoning = data.choices[0].message.reasoning_content;
+
+      // R1: if content is empty, try to extract JSON from reasoning_content
+      if (isReasoner && (!content || content.trim().length === 0) && reasoning) {
+        const jsonMatch = reasoning.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          content = jsonMatch[0];
+          console.log(`[DeepSeek] R1: extracted JSON from reasoning_content`);
+        }
+      }
+
+      if (reasoning) {
+        console.log(`[DeepSeek] R1 reasoning (${reasoning.length} chars): ${reasoning.slice(0, 500).replace(/\n/g, " ")}`);
+      }
 
       if (!content || content.trim().length === 0) {
         lastError = new Error("DeepSeek returned empty content");

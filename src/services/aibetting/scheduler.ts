@@ -1,7 +1,7 @@
-import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, EnsembleResult, PolymarketEvent } from "./types.js";
+import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, PolymarketEvent } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
-import { analyzeMarketEnsemble } from "./ensemble.js";
+import { analyzeMarket } from "./analyzer.js";
 import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 import {
   enterPosition,
@@ -19,34 +19,62 @@ import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";
 
+function detectSiblingMarkets(markets: PolymarketEvent[]): Map<string, string[]> {
+  const siblingMap = new Map<string, string[]>();
+  const byEndDate = new Map<string, PolymarketEvent[]>();
+
+  for (const market of markets) {
+    const existing = byEndDate.get(market.endDate) || [];
+    existing.push(market);
+    byEndDate.set(market.endDate, existing);
+  }
+
+  for (const group of byEndDate.values()) {
+    if (group.length < 2) continue;
+
+    for (let i = 0; i < group.length; i++) {
+      const wordsA = group[i].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      const siblings: string[] = [];
+
+      for (let j = 0; j < group.length; j++) {
+        if (i === j) continue;
+        const wordsB = group[j].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const shared = wordsA.filter(w => wordsB.includes(w)).length;
+        const minLen = Math.min(wordsA.length, wordsB.length);
+        if (minLen > 0 && shared / minLen > 0.3) siblings.push(group[j].title);
+      }
+
+      if (siblings.length > 0) siblingMap.set(group[i].conditionId, siblings);
+    }
+  }
+
+  return siblingMap;
+}
+
 let isRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
+let logOnlyMode = true; // Shadow mode: analyze but don't place bets
 
-const CACHE_DURATION_MS = 4 * 60 * 60 * 1000;
-const DISAGREEMENT_STRIKE_LIMIT = 3;
+const CACHE_DURATION_MS = 8 * 60 * 60 * 1000;
 
-const ensembleCache = new Map<string, { result: EnsembleResult; cachedAt: number }>();
-const disagreementStrikes = new Map<string, number>();
+const analysisCache = new Map<string, { analysis: AIAnalysis; cachedAt: number }>();
 
-function getCachedEnsemble(marketId: string): EnsembleResult | null {
-  const cached = ensembleCache.get(marketId);
+function getCachedAnalysis(marketId: string): AIAnalysis | null {
+  const cached = analysisCache.get(marketId);
   if (!cached) return null;
   if (Date.now() - cached.cachedAt > CACHE_DURATION_MS) {
-    ensembleCache.delete(marketId);
+    analysisCache.delete(marketId);
     return null;
   }
-  return cached.result;
+  return cached.analysis;
 }
 
-function cacheEnsemble(marketId: string, result: EnsembleResult): void {
-  ensembleCache.set(marketId, { result, cachedAt: Date.now() });
+function cacheAnalysis(marketId: string, analysis: AIAnalysis): void {
+  analysisCache.set(marketId, { analysis, cachedAt: Date.now() });
 }
 
-export function getEnsembleResult(marketId: string): EnsembleResult | null {
-  return getCachedEnsemble(marketId);
-}
 
 async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
   const result: AnalysisCycleResult = {
@@ -85,48 +113,41 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     const analyses = new Map<string, AIAnalysis>();
     let cached = 0;
 
-    for (const market of markets) {
-      const strikes = disagreementStrikes.get(market.conditionId) ?? 0;
-      if (strikes >= DISAGREEMENT_STRIKE_LIMIT) {
-        console.log(`[AIBetting] SKIP (${strikes} disagreement strikes): ${market.title}`);
-        continue;
-      }
+    // Detect sibling markets for multi-candidate context
+    const siblingMap = detectSiblingMarkets(markets);
 
-      const cachedEnsemble = getCachedEnsemble(market.conditionId);
-      if (cachedEnsemble) {
-        if (cachedEnsemble.highDisagreement) {
-          console.log(`[AIBetting] SKIP (cached high disagreement): ${market.title}`);
-          continue;
-        }
-        analyses.set(market.conditionId, cachedEnsemble.consensus);
+    for (const market of markets) {
+      const cachedAnalysis = getCachedAnalysis(market.conditionId);
+      if (cachedAnalysis) {
+        analyses.set(market.conditionId, cachedAnalysis);
         cached++;
         continue;
       }
 
       const yesPrice = market.outcomes.find(o => o.name === "Yes")?.price ?? 0.5;
-      const maxYesEdge = 0.99 - yesPrice; // Best case: AI says 99%
-      const maxNoEdge = yesPrice - 0.01;   // Best case: AI says 1%
+      const maxYesEdge = 0.99 - yesPrice;
+      const maxNoEdge = yesPrice - 0.01;
       if (maxYesEdge < config.minEdge && maxNoEdge < config.minEdge) {
         console.log(`[AIBetting] SKIP (edge impossible @ ${(yesPrice * 100).toFixed(0)}%): ${market.title}`);
         continue;
       }
 
       const news = await fetchNewsForMarket(market);
-      const ensembleResult = await analyzeMarketEnsemble(market, news);
-      if (ensembleResult) {
-        cacheEnsemble(market.conditionId, ensembleResult);
+      await new Promise((r) => setTimeout(r, 2000)); // GDELT rate limit spacing
+      if (news.length < 1) {
+        console.log(`[AIBetting] SKIP (0 news articles): ${market.title}`);
+        continue;
+      }
 
-        if (ensembleResult.highDisagreement) {
-          const newStrikes = (disagreementStrikes.get(market.conditionId) ?? 0) + 1;
-          disagreementStrikes.set(market.conditionId, newStrikes);
-          console.log(
-            `[AIBetting] SKIP (high disagreement ${ensembleResult.disagreement.toFixed(3)}, strike ${newStrikes}/${DISAGREEMENT_STRIKE_LIMIT}): ${market.title} ` +
-            `estimates=[${ensembleResult.individualEstimates.map(e => (e * 100).toFixed(0) + '%').join(', ')}]`
-          );
-          continue;
-        }
+      const siblingTitles = siblingMap.get(market.conditionId);
+      if (siblingTitles?.length) {
+        console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
+      }
 
-        analyses.set(market.conditionId, ensembleResult.consensus);
+      const analysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles);
+      if (analysis) {
+        cacheAnalysis(market.conditionId, analysis);
+        analyses.set(market.conditionId, analysis);
         result.marketsAnalyzed++;
       }
 
@@ -134,6 +155,33 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     }
 
     console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
+
+    // Normalize sibling probabilities so they sum to ~100%
+    const normalizedIds = new Set<string>();
+    for (const [conditionId, siblingTitles] of siblingMap) {
+      if (normalizedIds.has(conditionId)) continue;
+
+      const siblingIds = [conditionId, ...markets
+        .filter(m => siblingTitles.includes(m.title))
+        .map(m => m.conditionId)];
+      const siblingAnalyses = siblingIds
+        .map(id => ({ id, analysis: analyses.get(id) }))
+        .filter((s): s is { id: string; analysis: AIAnalysis } => !!s.analysis);
+
+      if (siblingAnalyses.length < 2) continue;
+      const sum = siblingAnalyses.reduce((s, a) => s + a.analysis.probability, 0);
+      if (sum > 1.05) {
+        for (const s of siblingAnalyses) {
+          const old = s.analysis.probability;
+          s.analysis.probability = old / sum;
+          cacheAnalysis(s.id, s.analysis);
+        }
+        const normalized = siblingAnalyses.map(s => `${(s.analysis.probability * 100).toFixed(0)}%`).join("+");
+        console.log(`[AIBetting] Normalized siblings (was ${(sum * 100).toFixed(0)}%): ${normalized}`);
+      }
+
+      for (const id of siblingIds) normalizedIds.add(id);
+    }
 
     let usdcBalance: number;
     if (isPaperMode()) {
@@ -159,31 +207,38 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     );
     result.opportunitiesFound = decisions.length;
 
-    const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
-    for (const decision of decisions.slice(0, maxNewBets)) {
-      const market = markets.find((m) => m.conditionId === decision.marketId);
-      if (!market) continue;
+    if (logOnlyMode) {
+      for (const decision of decisions) {
+        const market = markets.find((m) => m.conditionId === decision.marketId);
+        console.log(`[AIBetting] LOG-ONLY: ${decision.side} ${market?.title} $${decision.recommendedSize.toFixed(2)} (edge=${(Math.abs(decision.edge) * 100).toFixed(1)}%)`);
+      }
+    } else {
+      const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
+      for (const decision of decisions.slice(0, maxNewBets)) {
+        const market = markets.find((m) => m.conditionId === decision.marketId);
+        if (!market) continue;
 
-      const position = await enterPosition(decision, market);
-      if (position) {
-        result.betsPlaced++;
-        console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
+        const position = await enterPosition(decision, market);
+        if (position) {
+          result.betsPlaced++;
+          console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
 
-        // Notify when dynamic threshold triggers (informational)
-        if (decision.dynamicThreshold) {
-          const msg =
-            `[Dynamic Threshold] ${market.title}\n` +
-            `Edge ${(Math.abs(decision.edge) * 100).toFixed(1)}% -> confidence floor lowered to 50%\n` +
-            `Confidence: ${(decision.confidence * 100).toFixed(0)}% | AI: ${(decision.aiProbability * 100).toFixed(0)}% vs Market: ${(decision.marketPrice * 100).toFixed(0)}%\n` +
-            `Bet: ${decision.side} $${decision.recommendedSize.toFixed(2)}`;
-          import("../telegram/bot.js").then(({ sendMessage }) => sendMessage(msg)).catch(() => {});
+          if (decision.dynamicThreshold) {
+            const msg =
+              `[Dynamic Threshold] ${market.title}\n` +
+              `Edge ${(Math.abs(decision.edge) * 100).toFixed(1)}% -> confidence floor lowered to 50%\n` +
+              `Confidence: ${(decision.confidence * 100).toFixed(0)}% | AI: ${(decision.aiProbability * 100).toFixed(0)}% vs Market: ${(decision.marketPrice * 100).toFixed(0)}%\n` +
+              `Bet: ${decision.side} $${decision.recommendedSize.toFixed(2)}`;
+            import("../telegram/bot.js").then(({ sendMessage }) => sendMessage(msg)).catch(() => {});
+          }
         }
       }
     }
 
     await checkExits(analyses);
 
-    console.log(`[AIBetting] Cycle done: ${result.opportunitiesFound} opportunities, ${result.betsPlaced} bets placed`);
+    const modeTag = logOnlyMode ? " [LOG-ONLY]" : "";
+    console.log(`[AIBetting] Cycle done${modeTag}: ${result.opportunitiesFound} opportunities, ${result.betsPlaced} bets placed`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[AIBetting] Error:", msg);
@@ -198,7 +253,7 @@ async function invalidateCacheOnNews(): Promise<void> {
   if (openPositions.length === 0) return;
 
   for (const position of openPositions) {
-    const cached = ensembleCache.get(position.marketId);
+    const cached = analysisCache.get(position.marketId);
     if (!cached) continue;
 
     const market: PolymarketEvent = {
@@ -221,7 +276,7 @@ async function invalidateCacheOnNews(): Promise<void> {
     });
 
     if (hasNewArticles) {
-      ensembleCache.delete(position.marketId);
+      analysisCache.delete(position.marketId);
       console.log(`[Scheduler] Cache busted for "${position.marketTitle}" (new articles found)`);
     }
   }
@@ -311,20 +366,28 @@ export function isAIBettingActive(): boolean {
   return isRunning;
 }
 
+export function setLogOnlyMode(enabled: boolean): void {
+  logOnlyMode = enabled;
+  console.log(`[AIBetting] Log-only mode: ${enabled ? "ON" : "OFF"}`);
+}
+
+export function isLogOnlyMode(): boolean {
+  return logOnlyMode;
+}
+
 export function getAIBettingStatus(): {
   running: boolean;
+  logOnly: boolean;
   openPositions: number;
   totalExposure: number;
-  ensembleCacheSize: number;
-  skipListSize: number;
+  analysisCacheSize: number;
 } {
-  const skipped = [...disagreementStrikes.values()].filter(s => s >= DISAGREEMENT_STRIKE_LIMIT).length;
   return {
     running: isRunning,
+    logOnly: logOnlyMode,
     openPositions: getOpenPositions().length,
     totalExposure: getTotalExposure(),
-    ensembleCacheSize: ensembleCache.size,
-    skipListSize: skipped,
+    analysisCacheSize: analysisCache.size,
   };
 }
 
@@ -336,7 +399,6 @@ export async function runManualCycle(): Promise<AnalysisCycleResult> {
 }
 
 export function clearAnalysisCache(): void {
-  ensembleCache.clear();
-  disagreementStrikes.clear();
-  console.log("[Scheduler] Cleared ensemble cache and skip list");
+  analysisCache.clear();
+  console.log("[Scheduler] Cleared analysis cache");
 }

@@ -105,8 +105,8 @@ describe("Birdeye Trader Discovery", () => {
     it("should skip wallets below MIN_TOTAL_TRADES", async () => {
       mockFetch.mockResolvedValueOnce(
         makeBirdeyeResponse([
-          { owner: "low_trades_wallet_aaa", trade_count: 5, total_pnl: 5000, volume: 10000, win_rate: 0.9 },
-          { owner: "low_trades_wallet_bbb", trade_count: 10, total_pnl: 3000, volume: 8000, win_rate: 0.8 },
+          { owner: "low_trades_wallet_aaa", trade_count: 3, total_pnl: 5000, volume: 10000, win_rate: 0.9 },
+          { owner: "low_trades_wallet_bbb", trade_count: 5, total_pnl: 3000, volume: 8000, win_rate: 0.8 },
         ]),
       );
       mockFetch.mockResolvedValueOnce(makeBirdeyeResponse([]));
@@ -248,8 +248,7 @@ describe("Birdeye Trader Discovery", () => {
       expect(result.discovered).toBe(0);
       expect(result.added).toBe(0);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("not yet implemented");
-      expect(result.errors[0]).toContain("ethereum");
+      expect(result.errors[0]).toContain("disabled");
     });
 
     it("should return stub for any EVM chain", async () => {
@@ -278,7 +277,7 @@ describe("Birdeye Trader Discovery", () => {
       const result = await discoverTraders("polygon");
 
       expect(result.chain).toBe("polygon");
-      expect(result.errors[0]).toContain("not yet implemented");
+      expect(result.errors[0]).toContain("disabled");
       // No fetch calls for EVM stub
       expect(mockFetch).not.toHaveBeenCalled();
     });

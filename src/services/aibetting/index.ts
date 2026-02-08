@@ -1,8 +1,8 @@
 export * from "./types.js";
 export { callDeepSeek, validateDeepSeekConnection } from "./deepseek.js";
 export { fetchActiveMarkets, discoverMarkets } from "./scanner.js";
-export { fetchNewsForMarket, fetchNewsForMarkets } from "./news.js";
-export { analyzeMarket, analyzeMarkets } from "./analyzer.js";
+export { fetchNewsForMarket } from "./news.js";
+export { analyzeMarket } from "./analyzer.js";
 export { evaluateBetOpportunity, evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 export {
   enterPosition,
@@ -20,6 +20,5 @@ export {
   isAIBettingActive,
   getAIBettingStatus,
   runManualCycle,
-  getEnsembleResult,
+  clearAnalysisCache,
 } from "./scheduler.js";
-export { analyzeMarketEnsemble } from "./ensemble.js";
