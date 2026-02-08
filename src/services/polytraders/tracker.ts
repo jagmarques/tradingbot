@@ -602,32 +602,27 @@ async function refreshTopTraders(): Promise<void> {
       continue;
     }
 
-    // Check time-to-expiry: skip traders who mostly trade near-expiry markets
+    // Check time-to-expiry: skip traders where >50% of trades are within 24h of expiry
     const uniqueConditions = [...new Set(buyTrades.map(t => t.conditionId))];
-    let totalHoursToExpiry = 0;
+    let shortDated = 0;
     let expiryChecked = 0;
 
-    for (const conditionId of uniqueConditions.slice(0, 3)) {
+    for (const conditionId of uniqueConditions.slice(0, 4)) {
       const trade = buyTrades.find(t => t.conditionId === conditionId)!;
       const marketInfo = await getMarketInfo(conditionId, trade.outcomeIndex);
       if (marketInfo?.endDate) {
         const tradeTime = trade.timestamp * 1000;
         const endTime = new Date(marketInfo.endDate).getTime();
         const hoursToExpiry = (endTime - tradeTime) / (1000 * 60 * 60);
-        if (hoursToExpiry > 0) {
-          totalHoursToExpiry += hoursToExpiry;
-          expiryChecked++;
-        }
+        expiryChecked++;
+        if (hoursToExpiry > 0 && hoursToExpiry < 24) shortDated++;
       }
       await new Promise(r => setTimeout(r, 200));
     }
 
-    if (expiryChecked > 0) {
-      const avgHours = totalHoursToExpiry / expiryChecked;
-      if (avgHours < 24) {
-        console.log(`[PolyTraders] Filtered day-trader: ${trader.userName || wallet} (avg ${avgHours.toFixed(0)}h to expiry)`);
-        continue;
-      }
+    if (expiryChecked >= 2 && shortDated / expiryChecked > 0.5) {
+      console.log(`[PolyTraders] Filtered day-trader: ${trader.userName || wallet} (${shortDated}/${expiryChecked} trades <24h to expiry)`);
+      continue;
     }
 
     qualified.push(trader);

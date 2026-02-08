@@ -29,7 +29,7 @@ function parseRssItems(xml: string): NewsItem[] {
         source,
         title: cleanTitle,
         summary: cleanTitle,
-        url: sourceUrl || link,
+        url: link || sourceUrl,
         publishedAt: pubDate,
       });
     }
@@ -115,11 +115,21 @@ async function fetchArticleContent(url: string): Promise<string | null> {
 
     clearTimeout(timeout);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.warn(`[News] Fetch failed (${response.status}): ${response.url}`);
+      return null;
+    }
 
     const html = await response.text();
-    return extractArticleText(html, url);
-  } catch {
+    const finalUrl = response.url;
+    const text = extractArticleText(html, finalUrl);
+    if (!text) {
+      console.warn(`[News] Readability extracted nothing from: ${finalUrl}`);
+    }
+    return text;
+  } catch (error) {
+    const reason = error instanceof Error ? error.name : "unknown";
+    console.warn(`[News] Fetch error (${reason}): ${url.slice(0, 80)}`);
     return null;
   }
 }

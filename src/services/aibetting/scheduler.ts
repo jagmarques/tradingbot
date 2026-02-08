@@ -155,6 +155,28 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
 
     console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
 
+    // Normalize sibling probabilities so they sum to ~100%
+    for (const [conditionId, siblingTitles] of siblingMap) {
+      const siblingIds = [conditionId, ...markets
+        .filter(m => siblingTitles.includes(m.title))
+        .map(m => m.conditionId)];
+      const siblingAnalyses = siblingIds
+        .map(id => ({ id, analysis: analyses.get(id) }))
+        .filter((s): s is { id: string; analysis: AIAnalysis } => !!s.analysis);
+
+      if (siblingAnalyses.length < 2) continue;
+      const sum = siblingAnalyses.reduce((s, a) => s + a.analysis.probability, 0);
+      if (sum > 1.0) {
+        for (const s of siblingAnalyses) {
+          const old = s.analysis.probability;
+          s.analysis.probability = old / sum;
+          cacheAnalysis(s.id, s.analysis);
+        }
+        const normalized = siblingAnalyses.map(s => `${(s.analysis.probability * 100).toFixed(0)}%`).join("+");
+        console.log(`[AIBetting] Normalized siblings (was ${(sum * 100).toFixed(0)}%): ${normalized}`);
+      }
+    }
+
     let usdcBalance: number;
     if (isPaperMode()) {
       const currentExposure = getTotalExposure();
