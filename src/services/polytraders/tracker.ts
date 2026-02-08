@@ -623,7 +623,7 @@ async function refreshTopTraders(): Promise<void> {
     const sortedPrices = buyTrades.map(t => t.price).sort((a, b) => a - b);
     const medianPrice = sortedPrices[Math.floor(sortedPrices.length / 2)];
 
-    if (medianPrice > 0.90 || medianPrice < 0.10) {
+    if (medianPrice > 0.95 || medianPrice < 0.05) {
       console.log(`[PolyTraders] Filtered penny-collector: ${trader.userName || wallet} (median entry: ${(medianPrice * 100).toFixed(0)}c)`);
       continue;
     }
