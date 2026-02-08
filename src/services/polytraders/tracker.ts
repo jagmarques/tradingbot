@@ -548,6 +548,7 @@ async function checkForNewTrades(): Promise<void> {
 
           if (!marketInfo) {
             skip("market_not_found");
+            console.log(`[PolyTraders] Market not found: ${info.name} on ${trade.conditionId} (${trade.title})`);
             continue;
           }
           if (marketInfo.closed) {
