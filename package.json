@@ -1,7 +1,7 @@
 {
   "name": "tradingbot",
   "version": "1.0.0",
-  "description": "Hybrid crypto trading bot: Pump.fun sniper + Polymarket latency arbitrage",
+  "description": "Crypto trading bot: Polymarket betting + copy trading",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

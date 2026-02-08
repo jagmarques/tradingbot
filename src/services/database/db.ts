@@ -75,7 +75,6 @@ export function initDb(dbPath?: string): Database.Database {
       winning_trades INTEGER DEFAULT 0,
       losing_trades INTEGER DEFAULT 0,
       total_pnl REAL DEFAULT 0,
-      pumpfun_pnl REAL DEFAULT 0,
       polymarket_pnl REAL DEFAULT 0,
       total_fees REAL DEFAULT 0,
       starting_balance REAL,
@@ -108,25 +107,8 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS pumpfun_positions (
-      mint TEXT PRIMARY KEY,
-      symbol TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      total_tokens TEXT NOT NULL,
-      total_cost_lamports TEXT NOT NULL,
-      buy_phase INTEGER NOT NULL,
-      peak_price REAL NOT NULL,
-      trailing_stop_active INTEGER NOT NULL,
-      sold_first INTEGER NOT NULL,
-      sold_second INTEGER NOT NULL,
-      sold_third INTEGER NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
     CREATE TABLE IF NOT EXISTS bot_settings (
       telegram_user_id TEXT PRIMARY KEY,
-      auto_snipe_enabled INTEGER DEFAULT 1,
       auto_copy_enabled INTEGER DEFAULT 0,
       copy_percentage REAL DEFAULT 1.0,
       min_trader_score INTEGER DEFAULT 70,
@@ -232,7 +214,6 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
     CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
     CREATE INDEX IF NOT EXISTS idx_arbitrage_positions_status ON arbitrage_positions(status);
-    CREATE INDEX IF NOT EXISTS idx_pumpfun_positions_created ON pumpfun_positions(created_at);
     CREATE INDEX IF NOT EXISTS idx_aibetting_positions_status ON aibetting_positions(status);
     CREATE INDEX IF NOT EXISTS idx_aibetting_positions_market ON aibetting_positions(market_id);
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_market ON calibration_predictions(market_id);
@@ -244,56 +225,6 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_whale_trades_market ON whale_trades(market_id);
     CREATE INDEX IF NOT EXISTS idx_whale_trades_traded ON whale_trades(traded_at);
 
-    CREATE TABLE IF NOT EXISTS tokenai_analyses (
-      id TEXT PRIMARY KEY,
-      token_address TEXT NOT NULL,
-      chain TEXT NOT NULL,
-      token_symbol TEXT,
-      probability REAL NOT NULL,
-      confidence REAL NOT NULL,
-      reasoning TEXT NOT NULL,
-      key_factors TEXT,
-      security_score REAL,
-      analyzed_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS tokenai_signals (
-      id TEXT PRIMARY KEY,
-      token_address TEXT NOT NULL,
-      chain TEXT NOT NULL,
-      signal_type TEXT NOT NULL,
-      signal_data TEXT NOT NULL,
-      collected_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS tokenai_positions (
-      id TEXT PRIMARY KEY,
-      token_address TEXT NOT NULL,
-      chain TEXT NOT NULL,
-      token_symbol TEXT,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      current_price REAL,
-      size_usd REAL NOT NULL,
-      amount_tokens REAL NOT NULL,
-      ai_probability REAL NOT NULL,
-      confidence REAL NOT NULL,
-      kelly_fraction REAL NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open',
-      entry_timestamp INTEGER NOT NULL,
-      exit_timestamp INTEGER,
-      exit_price REAL,
-      pnl REAL,
-      exit_reason TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_tokenai_analyses_token ON tokenai_analyses(token_address, chain);
-    CREATE INDEX IF NOT EXISTS idx_tokenai_analyses_at ON tokenai_analyses(analyzed_at);
-    CREATE INDEX IF NOT EXISTS idx_tokenai_signals_token ON tokenai_signals(token_address, chain);
-    CREATE INDEX IF NOT EXISTS idx_tokenai_positions_status ON tokenai_positions(status);
-    CREATE INDEX IF NOT EXISTS idx_tokenai_positions_chain ON tokenai_positions(chain);
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
@@ -344,7 +275,6 @@ export function initDb(dbPath?: string): Database.Database {
       ALTER TABLE daily_stats ADD COLUMN crypto_copy_pnl REAL DEFAULT 0;
       ALTER TABLE daily_stats ADD COLUMN poly_copy_pnl REAL DEFAULT 0;
       ALTER TABLE daily_stats ADD COLUMN ai_betting_pnl REAL DEFAULT 0;
-      ALTER TABLE daily_stats ADD COLUMN token_ai_pnl REAL DEFAULT 0;
     `);
     console.log("[Database] Migrated daily_stats: added P&L breakdown columns");
   }

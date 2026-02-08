@@ -14,7 +14,6 @@ vi.mock("../../config/env.js", () => ({
 
 vi.mock("../settings/settings.js", () => ({
   getSettings: vi.fn(() => ({
-    autoSnipeEnabled: true,
     autoCopyEnabled: true,
     copyPercentage: 1.0,
     minTraderScore: 50,

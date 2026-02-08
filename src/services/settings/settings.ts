@@ -1,8 +1,8 @@
 // Bot settings storage
 import { getDb } from "../database/db.js";
+import { isPaperMode } from "../../config/env.js";
 
 export interface BotSettings {
-  autoSnipeEnabled: boolean;
   autoCopyEnabled: boolean;
   minTraderScore: number;
   maxCopyPerDay: number;
@@ -17,7 +17,6 @@ export interface BotSettings {
 }
 
 const DEFAULT_SETTINGS: BotSettings = {
-  autoSnipeEnabled: true,
   autoCopyEnabled: false,
   minTraderScore: 70,
   maxCopyPerDay: 10,
@@ -35,7 +34,6 @@ export function getSettings(telegramUserId: string): BotSettings {
   const row = db
     .prepare("SELECT * FROM bot_settings WHERE telegram_user_id = ?")
     .get(telegramUserId) as {
-      auto_snipe_enabled: number;
       auto_copy_enabled: number;
       min_trader_score: number;
       max_copy_per_day: number;
@@ -67,7 +65,6 @@ export function getSettings(telegramUserId: string): BotSettings {
   }
 
   return {
-    autoSnipeEnabled: row.auto_snipe_enabled === 1,
     autoCopyEnabled: row.auto_copy_enabled === 1,
     minTraderScore: row.min_trader_score,
     maxCopyPerDay: row.max_copy_per_day,
@@ -86,13 +83,12 @@ function createDefaultSettings(telegramUserId: string): void {
 
   db.prepare(`
     INSERT INTO bot_settings (
-      telegram_user_id, auto_snipe_enabled, auto_copy_enabled,
+      telegram_user_id, auto_copy_enabled,
       min_trader_score, max_copy_per_day,
       daily_copy_count, daily_copy_reset, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     telegramUserId,
-    DEFAULT_SETTINGS.autoSnipeEnabled ? 1 : 0,
     DEFAULT_SETTINGS.autoCopyEnabled ? 1 : 0,
     DEFAULT_SETTINGS.minTraderScore,
     DEFAULT_SETTINGS.maxCopyPerDay,
@@ -113,7 +109,6 @@ export function updateSetting<K extends keyof BotSettings>(
   getSettings(telegramUserId);
 
   const columnMap: Record<keyof BotSettings, string> = {
-    autoSnipeEnabled: "auto_snipe_enabled",
     autoCopyEnabled: "auto_copy_enabled",
     minTraderScore: "min_trader_score",
     maxCopyPerDay: "max_copy_per_day",
@@ -131,13 +126,6 @@ export function updateSetting<K extends keyof BotSettings>(
   db.prepare(
     `UPDATE bot_settings SET ${column} = ?, updated_at = ? WHERE telegram_user_id = ?`
   ).run(dbValue, new Date().toISOString(), telegramUserId);
-}
-
-export function toggleAutoSnipe(telegramUserId: string): boolean {
-  const settings = getSettings(telegramUserId);
-  const newValue = !settings.autoSnipeEnabled;
-  updateSetting(telegramUserId, "autoSnipeEnabled", newValue);
-  return newValue;
 }
 
 export function toggleAutoCopy(telegramUserId: string): boolean {
@@ -161,5 +149,8 @@ export function incrementDailyCopyCount(telegramUserId: string): number {
 
 export function canCopyTrade(telegramUserId: string): boolean {
   const settings = getSettings(telegramUserId);
+  if (isPaperMode()) {
+    return settings.autoCopyEnabled;
+  }
   return settings.autoCopyEnabled && settings.dailyCopyCount < settings.maxCopyPerDay;
 }
