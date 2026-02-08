@@ -46,7 +46,7 @@ describe("Database", () => {
   describe("Trade operations", () => {
     it("should insert a trade", () => {
       const trade = insertTrade({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         type: "BUY",
         tokenSymbol: "TEST",
         tokenAddress: "abc123",
@@ -60,7 +60,7 @@ describe("Database", () => {
       });
 
       expect(trade.id).toBeDefined();
-      expect(trade.strategy).toBe("pumpfun");
+      expect(trade.strategy).toBe("polymarket");
       expect(trade.type).toBe("BUY");
       expect(trade.amountUsd).toBe(10);
     });
@@ -86,7 +86,7 @@ describe("Database", () => {
     it("should get trades with filters", () => {
       // Insert some test trades
       insertTrade({
-        strategy: "pumpfun",
+        strategy: "base",
         type: "BUY",
         amountUsd: 5,
         price: 0.001,
@@ -96,14 +96,14 @@ describe("Database", () => {
         status: "completed",
       });
 
-      const pumpfunTrades = getTrades({ strategy: "pumpfun" });
-      expect(pumpfunTrades.length).toBeGreaterThan(0);
-      expect(pumpfunTrades.every((t) => t.strategy === "pumpfun")).toBe(true);
+      const baseTrades = getTrades({ strategy: "base" });
+      expect(baseTrades.length).toBeGreaterThan(0);
+      expect(baseTrades.every((t) => t.strategy === "base")).toBe(true);
     });
 
     it("should update trade", () => {
       const trade = insertTrade({
-        strategy: "pumpfun",
+        strategy: "base",
         type: "BUY",
         amountUsd: 10,
         price: 0.01,
@@ -122,7 +122,7 @@ describe("Database", () => {
   describe("Position operations", () => {
     it("should insert a position", () => {
       const position = insertPosition({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         tokenAddress: "xyz789",
         tokenSymbol: "POS",
         entryPrice: 0.01,
@@ -184,7 +184,7 @@ describe("Database", () => {
     beforeEach(() => {
       // Insert a few trades for export tests
       insertTrade({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         type: "BUY",
         tokenSymbol: "EXPORT1",
         amountUsd: 10,
@@ -199,7 +199,7 @@ describe("Database", () => {
     it("should export trades to CSV", () => {
       const csv = exportTradesToCsv({});
       expect(csv).toContain("Date,Time,Strategy");
-      expect(csv).toContain("pumpfun");
+      expect(csv).toContain("polymarket");
     });
 
     it("should export stats to CSV", () => {
@@ -215,9 +215,9 @@ describe("Database", () => {
     });
 
     it("should filter trades by strategy", () => {
-      const csv = exportTradesToCsv({ strategy: "pumpfun" });
-      expect(csv).toContain("pumpfun");
-      expect(csv).not.toContain("polymarket,SELL"); // Should only have pumpfun
+      const csv = exportTradesToCsv({ strategy: "base" });
+      expect(csv).toContain("base");
+      expect(csv).not.toContain("polymarket,SELL"); // Should only have base
     });
   });
 });

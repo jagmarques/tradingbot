@@ -23,7 +23,6 @@ import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, clearAll
 import { Chain } from "../traders/types.js";
 import {
   getSettings,
-  toggleAutoSnipe,
   toggleAutoCopy,
   updateSetting,
 } from "../settings/settings.js";
@@ -31,10 +30,7 @@ import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
-import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
-import { loadOpenTokenPositions, getTokenAIPaperStats } from "../database/tokenai.js";
-import { getTokenAIStatus } from "../tokenai/scheduler.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 
 let bot: Bot | null = null;
@@ -105,7 +101,6 @@ export async function startBot(): Promise<void> {
   bot.command("clearcopies", handleClearCopies);
   bot.command("cleartraders", handleClearTraders);
   bot.command("resetpaper", handleReset);
-  bot.command("tokenai", handleTokenAI);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -256,10 +251,6 @@ export async function startBot(): Promise<void> {
   // Settings callbacks
   bot.callbackQuery("settings", async (ctx) => {
     await handleSettings(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("toggle_autosnipe", async (ctx) => {
-    await handleToggleAutoSnipe(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("toggle_autocopy", async (ctx) => {
@@ -501,8 +492,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const schedulerStatus = getAIBettingStatus();
     const polyStats = getCopyStats();
     const cryptoCopyPositions = getCryptoCopyPositions();
-    const pumpfunPositions = getPumpfunPositions();
-    const tokenAIPositions = loadOpenTokenPositions();
     const traderCount = getTrackedTraderCount();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
@@ -540,8 +529,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
     message += `Poly Copy: ${polyStats.openPositions} open${copyPnlStr} | $${polyStats.totalPnl.toFixed(2)} realized\n`;
     message += `Crypto Copy: ${cryptoCopyPositions.length} open\n`;
-    message += `Pump.fun: ${pumpfunPositions.size} open\n`;
-    message += `Token AI: ${tokenAIPositions.length} open\n`;
     message += `Tracker: ${traderCount} wallets`;
 
     if (status.pauseReason) {
@@ -628,7 +615,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `Total: ${emoji}$${breakdown.total.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
       message += `Trades: ${trades.length} | W: ${trades.filter((t) => t.pnl > 0).length} | L: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
 
-      message += formatBreakdown(breakdown.cryptoCopy, breakdown.pumpfun, breakdown.polyCopy, breakdown.aiBetting, breakdown.tokenAi);
+      message += formatBreakdown(breakdown.cryptoCopy, breakdown.polyCopy, breakdown.aiBetting);
     } else {
       // Historical data from snapshots
       const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
@@ -637,7 +624,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       const sign = data.totalPnl >= 0 ? "+" : "";
       message += `Total: ${sign}$${data.totalPnl.toFixed(2)}\n\n`;
 
-      message += formatBreakdown(data.cryptoCopyPnl, data.pumpfunPnl, data.polyCopyPnl, data.aiBettingPnl, data.tokenAiPnl);
+      message += formatBreakdown(data.cryptoCopyPnl, data.polyCopyPnl, data.aiBettingPnl);
 
       // Chart
       const history = getDailyPnlHistory(days);
@@ -654,16 +641,14 @@ async function handlePnl(ctx: Context): Promise<void> {
   }
 }
 
-function formatBreakdown(cryptoCopy: number, pumpfun: number, polyCopy: number, aiBetting: number, tokenAi: number): string {
+function formatBreakdown(cryptoCopy: number, polyCopy: number, aiBetting: number): string {
   let msg = "<b>By Source</b>\n";
   let hasAny = false;
 
   const sources = [
     { name: "Crypto Copy", value: cryptoCopy },
-    { name: "Pump.fun", value: pumpfun },
     { name: "Poly Copy", value: polyCopy },
     { name: "AI Betting", value: aiBetting },
-    { name: "Token AI", value: tokenAi },
   ];
 
   for (const source of sources) {
@@ -690,20 +675,8 @@ async function handleTrades(ctx: Context): Promise<void> {
   try {
     const trades = getTodayTrades();
     const cryptoCopyPositions = getCryptoCopyPositions();
-    const pumpfunPositions = getPumpfunPositions();
 
     let message = `<b>Trades</b>\n\n`;
-
-    // Pump.fun positions
-    if (pumpfunPositions.size > 0) {
-      message += `<b>Pump.fun</b> (${pumpfunPositions.size} open)\n`;
-      for (const [, pos] of Array.from(pumpfunPositions).slice(0, 5)) {
-        const mult = pos.peakPrice / pos.entryPrice;
-        message += `  ${pos.symbol}: ${mult.toFixed(1)}x from entry\n`;
-      }
-      if (pumpfunPositions.size > 5) message += `  ...and ${pumpfunPositions.size - 5} more\n`;
-      message += `\n`;
-    }
 
     // Crypto copy positions
     if (cryptoCopyPositions.length > 0) {
@@ -724,7 +697,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString();
         message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
       }
-    } else if (pumpfunPositions.size === 0 && cryptoCopyPositions.length === 0) {
+    } else if (cryptoCopyPositions.length === 0) {
       message += "No trades or positions.";
     }
 
@@ -1154,13 +1127,11 @@ async function handleManage(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   const openBets = loadOpenPositions();
-  const pumpPositions = getPumpfunPositions();
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
 
   let message = `<b>Manage Positions</b>\n\n`;
   message += `AI Bets: ${openBets.length} open\n`;
-  message += `Pump.fun: ${pumpPositions.size} open\n`;
   message += `Crypto Copy: ${cryptoCopy.length} open\n`;
   message += `Poly Copy: ${polyStats.openPositions} open\n\n`;
   message += `Choose an action:`;
@@ -1373,7 +1344,6 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - USDC balance: ${usdcBalance}
 
 === USER SETTINGS ===
-- Auto-snipe (Pump.fun): ${settings.autoSnipeEnabled ? "ON" : "OFF"}
 - Auto-copy (wallets): ${settings.autoCopyEnabled ? "ON" : "OFF"}
 - Min trader score: ${settings.minTraderScore}
 - Max copies/day: ${settings.maxCopyPerDay}
@@ -1499,14 +1469,12 @@ async function handleReset(ctx: Context): Promise<void> {
   // Count what will be deleted
   const openAIBets = loadOpenPositions();
   const closedStats = getBettingStats();
-  const pumpPositions = getPumpfunPositions();
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
   message += `  AI Bets: ${openAIBets.length} open + ${closedStats.totalBets} closed\n`;
-  message += `  Pump.fun: ${pumpPositions.size} positions\n`;
   message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
   message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
   message += `  Trades + daily stats: all\n`;
@@ -1539,29 +1507,26 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     clearAllPositions();
     clearAnalysisCache();
 
-    // 2. Pumpfun positions - DB
-    const pumpResult = db.prepare("DELETE FROM pumpfun_positions").run();
-
-    // 3. Polymarket copy trades - use existing clear function
+    // 2. Polymarket copy trades - use existing clear function
     const { clearAllCopiedPositions } = await import("../polytraders/index.js");
     const polyCopiesDeleted = clearAllCopiedPositions();
 
-    // 4. Crypto copy positions - DB + memory
+    // 3. Crypto copy positions - DB + memory
     const cryptoResult = db.prepare("DELETE FROM crypto_copy_positions").run();
 
-    // 5. General trades table
+    // 4. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
 
-    // 6. General positions table
+    // 5. General positions table
     const positionsResult = db.prepare("DELETE FROM positions").run();
 
-    // 7. Daily stats
+    // 6. Daily stats
     const dailyResult = db.prepare("DELETE FROM daily_stats").run();
 
-    // 8. Arbitrage positions
+    // 7. Arbitrage positions
     const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
 
-    const totalDeleted = aiBetsDeleted + aiAnalysesDeleted + pumpResult.changes
+    const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
       + polyCopiesDeleted + cryptoResult.changes + tradesResult.changes
       + positionsResult.changes + dailyResult.changes + arbResult.changes;
 
@@ -1569,7 +1534,6 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
 
     let message = "<b>Reset Complete</b>\n\n";
     message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
-    message += `Pump.fun: ${pumpResult.changes} positions\n`;
     message += `Poly copies: ${polyCopiesDeleted} records\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
     message += `Trades: ${tradesResult.changes} records\n`;
@@ -1585,68 +1549,6 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     console.error("[ResetPaper] Failed:", err);
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Reset failed. Check logs.", backButton);
-  }
-}
-
-async function handleTokenAI(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /tokenai from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const aiStatus = getTokenAIStatus();
-    const stats = getTokenAIPaperStats();
-
-    let message = `<b>TOKEN AI STATUS</b>\n\n`;
-    message += `<b>Scheduler:</b> ${aiStatus.running ? "Running" : "Stopped"}\n`;
-    message += `Open Positions: ${aiStatus.openPositions}\n`;
-    message += `Total Exposure: $${aiStatus.totalExposure.toFixed(2)}\n`;
-    message += `Cache Size: ${aiStatus.cacheSize}\n\n`;
-
-    if (stats.totalTrades === 0) {
-      message += `No Token AI trades yet.\nEnsure TOKENAI_ENABLED=true in config.`;
-    } else {
-      message += `<b>PAPER TRADING RESULTS</b> (${stats.daysSinceFirstTrade} days)\n\n`;
-      message += `Total Trades: ${stats.totalTrades} (${stats.openPositions} open, ${stats.closedPositions} closed)\n`;
-      message += `Win Rate: ${(stats.winRate * 100).toFixed(0)}% (${stats.wins}W / ${stats.losses}L)\n`;
-
-      const pnlSign = stats.totalPnlUsd >= 0 ? "+" : "";
-      message += `Total P&L: ${pnlSign}$${stats.totalPnlUsd.toFixed(2)}\n`;
-      message += `Avg Return: ${stats.avgReturnPct >= 0 ? "+" : ""}${stats.avgReturnPct.toFixed(1)}%\n`;
-      message += `Avg Hold: ${stats.avgHoldTimeHours.toFixed(1)}h\n\n`;
-
-      if (stats.bestTrade) {
-        message += `Best: ${stats.bestTrade.symbol} +$${stats.bestTrade.pnl.toFixed(2)}\n`;
-      }
-      if (stats.worstTrade) {
-        message += `Worst: ${stats.worstTrade.symbol} $${stats.worstTrade.pnl.toFixed(2)}\n`;
-      }
-
-      message += `\n`;
-
-      // Go-live readiness check
-      const readyDays = stats.daysSinceFirstTrade >= 30;
-      const readyWinRate = stats.winRate > 0.5;
-      const readyReturn = stats.avgReturnPct > 10;
-
-      if (readyDays && readyWinRate && readyReturn) {
-        message += `<b>READY FOR LIVE</b>\nSet TRADING_MODE=live to enable real trading`;
-      } else {
-        const remaining = Math.max(0, 30 - stats.daysSinceFirstTrade);
-        message += `<b>PAPER MODE</b>\n`;
-        if (!readyDays) message += `${remaining} days remaining\n`;
-        if (!readyWinRate) message += `Need >50% win rate (current: ${(stats.winRate * 100).toFixed(0)}%)\n`;
-        if (!readyReturn) message += `Need >10% avg return (current: ${stats.avgReturnPct.toFixed(1)}%)\n`;
-      }
-    }
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
-  } catch (err) {
-    console.error("[Telegram] TokenAI error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to fetch Token AI status", backButton);
   }
 }
 
@@ -1735,13 +1637,10 @@ async function handleTextInput(ctx: Context): Promise<void> {
 
     // Create a mock context for handleSettings
     const settings = getSettings(userId);
-    const snipeStatus = settings.autoSnipeEnabled ? "ON" : "OFF";
     const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
 
     const message =
       `<b>Settings</b>\n\n` +
-      `<b>AUTO-SNIPE [${snipeStatus}]</b>\n` +
-      `Buy new Pump.fun launches automatically\n\n` +
       `<b>AUTO-COPY [${copyStatus}]</b>\n` +
       `Copy trades from profitable wallets (all chains)\n\n` +
       `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
@@ -1752,7 +1651,6 @@ async function handleTextInput(ctx: Context): Promise<void> {
       `Polymarket: $${settings.polymarketCopyUsd}`;
 
     const keyboard = [
-      [{ text: `Auto-Snipe: ${snipeStatus}`, callback_data: "toggle_autosnipe" }],
       [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
       [
         { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
@@ -1843,13 +1741,10 @@ async function handleSettings(ctx: Context): Promise<void> {
 
   const settings = getSettings(userId);
 
-  const snipeStatus = settings.autoSnipeEnabled ? "ON" : "OFF";
   const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
 
   const message =
     `<b>Settings</b>\n\n` +
-    `<b>AUTO-SNIPE [${snipeStatus}]</b>\n` +
-    `Buy new Pump.fun launches automatically\n\n` +
     `<b>AUTO-COPY [${copyStatus}]</b>\n` +
     `Copy trades from profitable wallets (all chains)\n\n` +
     `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
@@ -1860,7 +1755,6 @@ async function handleSettings(ctx: Context): Promise<void> {
     `Polymarket: $${settings.polymarketCopyUsd}`;
 
   const keyboard = [
-    [{ text: `Auto-Snipe: ${snipeStatus}`, callback_data: "toggle_autosnipe" }],
     [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
     [
       { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
@@ -1879,18 +1773,6 @@ async function handleSettings(ctx: Context): Promise<void> {
   ];
 
   await sendDataMessage(message, keyboard);
-}
-
-async function handleToggleAutoSnipe(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  const userId = ctx.from?.id?.toString();
-  if (!userId) return;
-
-  const newValue = toggleAutoSnipe(userId);
-  console.log(`[Telegram] Auto-snipe toggled to ${newValue} by user ${userId}`);
-
-  await handleSettings(ctx);
 }
 
 async function handleToggleAutoCopy(ctx: Context): Promise<void> {

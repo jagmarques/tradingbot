@@ -1,36 +1,10 @@
-// Pump.fun program ID on Solana
-export const PUMPFUN_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
-
-// Auto-sell profit targets (multipliers)
-export const SELL_TARGETS = {
-  FIRST: 10,
-  SECOND: 50,
-  THIRD: 100,
-} as const;
-
-// Trailing stop-loss activates after this multiplier
-export const TRAILING_STOP_ACTIVATION = 5;
-export const TRAILING_STOP_PERCENTAGE = 0.15; // 15% drop from peak triggers sell
-
 // Stagnation timeout - exit at break-even if stuck too long
 export const STAGNATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Split buy percentages for pump.fun snipes
-export const SPLIT_BUY = {
-  INITIAL: 0.3, // 30% at launch
-  SECOND: 0.3, // 30% after 30s if no dump
-  THIRD: 0.4, // 40% if trend holds
-} as const;
-
 // Timing
-export const SPLIT_BUY_DELAY_MS = 30_000; // 30 seconds between split buys
 export const WEBSOCKET_PING_INTERVAL_MS = 10_000; // 10 seconds
 export const WEBSOCKET_RECONNECT_BASE_MS = 1_000; // 1 second base for exponential backoff
 export const WEBSOCKET_RECONNECT_MAX_MS = 60_000; // 60 seconds max backoff
-
-// Token filter thresholds
-export const MIN_LIQUIDITY_SOL = 1;
-export const MAX_DEV_SUPPLY_PERCENTAGE = 20;
 
 // Polymarket confidence threshold (85%)
 export const MIN_CONFIDENCE_PERCENTAGE = 85;
@@ -64,7 +38,6 @@ export const JITO_RETRY_MAX_MS = 4000;
 // Realistic fee estimation for paper trading
 export const ESTIMATED_GAS_FEE_SOL = 0.003; // 3000 lamports typical Solana gas
 export const ESTIMATED_GAS_FEE_MATIC = 0.001; // ~0.001 MATIC (~$0.00011) for Polygon gas
-export const ESTIMATED_SLIPPAGE_PUMPFUN = 0.01; // 1% estimated slippage on Pump.fun
 export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% estimated slippage on Polymarket
 
 // EVM chain gas fees (in native token)
