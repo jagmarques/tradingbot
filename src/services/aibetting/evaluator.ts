@@ -11,8 +11,6 @@ import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 
-const EXTREMIZATION_FACTOR = 1.3;
-
 const CATEGORY_EDGE_BONUS: Record<string, number> = {
   entertainment: 0.03,
   other: 0.02,
@@ -174,9 +172,8 @@ export function evaluateBetOpportunity(
   const marketPrice = yesOutcome?.price || 0.5;
   const tokenId = yesOutcome?.tokenId || "";
 
-  const rawProb = analysis.probability;
-  const extremized = 0.5 + (rawProb - 0.5) * EXTREMIZATION_FACTOR;
-  const aiProbability = Math.max(0.01, Math.min(0.99, extremized));
+  // analysis.probability is already Bayesian-weighted (0.67*market + 0.33*R1)
+  const aiProbability = analysis.probability;
 
   const edge = aiProbability - marketPrice;
   const absEdge = Math.abs(edge);
@@ -191,7 +188,7 @@ export function evaluateBetOpportunity(
   const adjustedMinEdge = config.minEdge * priceZoneMultiplier;
 
   console.log(
-    `[Evaluator] SHADOW: ${market.title} | market=${(marketPrice * 100).toFixed(0)}c blind=${(rawProb * 100).toFixed(0)}% ext=${(aiProbability * 100).toFixed(0)}% ` +
+    `[Evaluator] SHADOW: ${market.title} | market=${(marketPrice * 100).toFixed(0)}c ai=${(aiProbability * 100).toFixed(0)}% ` +
     `edge=${(absEdge * 100).toFixed(1)}% cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% effective=${(effectiveEdge * 100).toFixed(1)}% zone=${priceZoneMultiplier}x minEdge=${(adjustedMinEdge * 100).toFixed(1)}%`
   );
 

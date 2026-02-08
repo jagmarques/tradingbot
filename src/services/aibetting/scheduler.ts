@@ -189,7 +189,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         const singleAnalysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles, yesPrice);
         if (singleAnalysis) {
           ensembleResults.push(singleAnalysis);
-          console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: P=${(singleAnalysis.probability * 100).toFixed(1)}%`);
+          console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: R1=${(singleAnalysis.probability * 100).toFixed(1)}%`);
         }
         if (i < ENSEMBLE_SIZE - 1) {
           await new Promise((r) => setTimeout(r, 1000)); // Rate limit between calls
@@ -202,20 +202,21 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      // Take median probability
+      // Take median of RAW R1 probabilities (no weighting applied yet)
       const sortedProbs = ensembleResults.map(a => a.probability).sort((a, b) => a - b);
-      const medianProb = sortedProbs[Math.floor(sortedProbs.length / 2)];
+      const medianRawProb = sortedProbs[Math.floor(sortedProbs.length / 2)];
 
       // Check spread for supervisor trigger
       const spread = sortedProbs[sortedProbs.length - 1] - sortedProbs[0];
 
-      // Use the analysis closest to median as base, override probability
+      // Use the analysis closest to median as base
       const closestToMedian = ensembleResults.reduce((best, curr) =>
-        Math.abs(curr.probability - medianProb) < Math.abs(best.probability - medianProb) ? curr : best
+        Math.abs(curr.probability - medianRawProb) < Math.abs(best.probability - medianRawProb) ? curr : best
       );
-      let analysis = { ...closestToMedian, probability: medianProb };
+      let r1FinalRaw = medianRawProb;
+      let analysis = { ...closestToMedian, probability: medianRawProb };
 
-      // Supervisor agent: if spread > 20pp, make extra R1 call with all reasoning
+      // Supervisor agent: if spread > 20pp, make extra R1 call with all RAW reasoning
       if (spread > 0.20) {
         console.log(`[AIBetting] Supervisor triggered (spread ${(spread * 100).toFixed(0)}pp): ${market.title}`);
         const allReasoning = ensembleResults.map((a, i) =>
@@ -248,21 +249,22 @@ OUTPUT JSON ONLY:
           const supervisorResponse = await callDeepSeek(supervisorPrompt, "deepseek-reasoner", undefined, undefined, "supervisor");
           const supervisorAnalysis = parseAnalysisResponse(supervisorResponse, market.conditionId);
           if (supervisorAnalysis) {
-            // Supervisor replaces R1 probability, then Bayesian weighting still applies
-            const supervisorRaw = supervisorAnalysis.probability;
-            // Apply Bayesian prior on supervisor output
-            analysis.probability = 0.67 * yesPrice + 0.33 * supervisorRaw;
-            analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
-            analysis.r1RawProbability = supervisorRaw;
+            r1FinalRaw = supervisorAnalysis.probability;
             analysis.reasoning = `[Supervisor] ${supervisorAnalysis.reasoning}`;
-            console.log(`[AIBetting] Supervisor: raw=${(supervisorRaw * 100).toFixed(1)}% -> Bayesian=${(analysis.probability * 100).toFixed(1)}%`);
+            analysis.confidence = supervisorAnalysis.confidence;
+            console.log(`[AIBetting] Supervisor: ${(r1FinalRaw * 100).toFixed(1)}% (was median ${(medianRawProb * 100).toFixed(1)}%)`);
           }
         } catch (error) {
           console.warn(`[AIBetting] Supervisor call failed, using median:`, error);
         }
       }
 
-      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): median=${(medianProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp -> final=${(analysis.probability * 100).toFixed(1)}%`);
+      // Apply Bayesian prior ONCE: 67% market price + 33% R1 (Bridgewater AIA)
+      analysis.r1RawProbability = r1FinalRaw;
+      analysis.probability = 0.67 * yesPrice + 0.33 * r1FinalRaw;
+      analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
+
+      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: 0.67*${(yesPrice * 100).toFixed(0)}% + 0.33*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
 
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);

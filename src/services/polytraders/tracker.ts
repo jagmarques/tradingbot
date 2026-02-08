@@ -126,7 +126,7 @@ function initCopyTradesTable(): void {
   `);
 }
 
-function logWhaleTrade(trade: TraderActivity, traderInfo: { name: string; pnl: number; vol: number }, marketInfo: MarketInfo | null): void {
+function logWhaleTrade(trade: TraderActivity, _traderInfo: { name: string; pnl: number; vol: number }, marketInfo: MarketInfo | null): void {
   try {
     const db = getDb();
     const hoursToRes = marketInfo?.endDate ? hoursUntil(marketInfo.endDate) : null;

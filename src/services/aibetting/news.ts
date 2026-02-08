@@ -99,7 +99,7 @@ async function rateArticleRelevance(
   try {
     const excerpt = articleText.slice(0, 500);
     const prompt = `Rate 1-5 how relevant this article is to the question: "${marketQuestion}". Article excerpt: ${excerpt}. Reply with just the number.`;
-    const response = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.1, "relevance-filter");
+    const response = await callDeepSeek(prompt, "deepseek-chat", "Reply with just a single number.", 0.1, "relevance-filter");
     const score = parseInt(response.trim(), 10);
     return (score >= 1 && score <= 5) ? score : 3; // default 3 if parse fails
   } catch {
@@ -114,7 +114,7 @@ My original search query "${originalQuery}" didn't find relevant articles.
 Generate 2 alternative search queries that might find relevant news. Each query should be 3-6 words, using different keywords or angles.
 Reply with ONLY the two queries, one per line, no numbering or bullets.`;
 
-    const response = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.3, "query-gen");
+    const response = await callDeepSeek(prompt, "deepseek-chat", "Reply with plain text, two queries one per line.", 0.3, "query-gen");
     const queries = response.trim().split("\n").filter(q => q.trim().length > 0).slice(0, 2);
     return queries.map(q => q.replace(/^\d+[\.\)]\s*/, "").replace(/^["'-]|["'-]$/g, "").trim());
   } catch {
