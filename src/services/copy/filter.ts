@@ -200,9 +200,18 @@ export async function filterCryptoCopy(
 export function filterPolyCopy(
   traderRoi: number,
   _tradeUsdcSize: number,
-  _tradePrice: number,
+  tradePrice: number,
   copySizeUsd: number,
 ): CopyFilterResult {
+  if (tradePrice > 0.95 || tradePrice < 0.05) {
+    return {
+      shouldCopy: false,
+      recommendedSizeUsd: 0,
+      reason: `Price ${(tradePrice * 100).toFixed(0)}c too extreme (5-95c range)`,
+      traderQualityMultiplier: 0,
+    };
+  }
+
   const traderQualityMultiplier = getRoiQualityMultiplier(traderRoi);
 
   if (traderQualityMultiplier === 0) {

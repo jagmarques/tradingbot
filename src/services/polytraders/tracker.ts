@@ -15,6 +15,10 @@ import { canTrade } from "../risk/manager.js";
 const DATA_API_URL = "https://data-api.polymarket.com/v1";
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
+// Categories with long-dated markets (weeks/months, not hours like sports)
+const COPY_CATEGORIES = ["POLITICS", "CRYPTO", "ECONOMICS", "CULTURE"];
+const TRADERS_PER_CATEGORY = 10;
+
 // Default copy size if no user settings
 const DEFAULT_COPY_SIZE_USD = 5;
 
@@ -55,8 +59,9 @@ const trackedTraders = new Map<string, { name: string; lastSeen: number; pnl: nu
 let intervalHandle: NodeJS.Timeout | null = null;
 let isRunning = false;
 
-// Cache of resolved/closed condition IDs - skip these without API calls
 const resolvedMarketCache = new Set<string>();
+
+const LEARNING_THRESHOLD = 30;
 
 // Copied position tracking
 interface CopiedPosition {
@@ -103,7 +108,78 @@ function initCopyTradesTable(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_polytrader_copies_status ON polytrader_copies(status);
     CREATE INDEX IF NOT EXISTS idx_polytrader_copies_trader ON polytrader_copies(trader_wallet);
+    CREATE TABLE IF NOT EXISTS copy_outcomes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trader_name TEXT NOT NULL,
+      market_title TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      size REAL NOT NULL,
+      pnl REAL NOT NULL,
+      won INTEGER NOT NULL,
+      resolution_ms INTEGER NOT NULL,
+      trader_roi REAL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_copy_outcomes_trader ON copy_outcomes(trader_name);
   `);
+}
+
+function saveCopyOutcome(pos: CopiedPosition, pnl: number): void {
+  const db = getDb();
+  const won = pnl > 0 ? 1 : 0;
+  const resolutionMs = (pos.exitTimestamp ?? Date.now()) - pos.entryTimestamp;
+  const traderInfo = Array.from(trackedTraders.values()).find(t => t.name === pos.traderName);
+  const traderRoi = traderInfo && traderInfo.vol > 0 ? traderInfo.pnl / traderInfo.vol : null;
+
+  db.prepare(`
+    INSERT INTO copy_outcomes (trader_name, market_title, entry_price, size, pnl, won, resolution_ms, trader_roi)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(pos.traderName, pos.marketTitle, pos.entryPrice, pos.size, pnl, won, resolutionMs, traderRoi);
+}
+
+interface CopyLearningStats {
+  totalTrades: number;
+  wins: number;
+  netPnl: number;
+  traderStats: Map<string, { wins: number; total: number; pnl: number }>;
+}
+
+function getCopyLearningStats(): CopyLearningStats {
+  const db = getDb();
+  const rows = db.prepare(`SELECT trader_name, won, pnl FROM copy_outcomes`).all() as Array<{
+    trader_name: string; won: number; pnl: number;
+  }>;
+
+  const stats: CopyLearningStats = {
+    totalTrades: rows.length,
+    wins: rows.filter(r => r.won).length,
+    netPnl: rows.reduce((sum, r) => sum + r.pnl, 0),
+    traderStats: new Map(),
+  };
+
+  for (const row of rows) {
+    const existing = stats.traderStats.get(row.trader_name) ?? { wins: 0, total: 0, pnl: 0 };
+    existing.total++;
+    if (row.won) existing.wins++;
+    existing.pnl += row.pnl;
+    stats.traderStats.set(row.trader_name, existing);
+  }
+
+  return stats;
+}
+
+function getTraderMultiplierFromHistory(traderName: string): number | null {
+  const stats = getCopyLearningStats();
+  if (stats.totalTrades < LEARNING_THRESHOLD) return null;
+
+  const traderData = stats.traderStats.get(traderName);
+  if (!traderData || traderData.total < 3) return null;
+
+  const winRate = traderData.wins / traderData.total;
+  if (winRate >= 0.60) return 1.5;
+  if (winRate >= 0.45) return 1.0;
+  if (winRate >= 0.30) return 0.5;
+  return 0;
 }
 
 function saveCopiedPosition(pos: CopiedPosition): void {
@@ -220,11 +296,10 @@ interface MarketInfo {
   endDate: string | null;
 }
 
-// Skip markets ending in <5 min
-const MIN_MINUTES_BEFORE_END = 5;
+const MIN_MINUTES_BEFORE_END = 30;
 
 // Maximum age of trades to process (ignore trades older than this)
-const MAX_TRADE_AGE_MS = 15 * 1000; // 15 seconds (matches 5s check interval + buffer)
+const MAX_TRADE_AGE_MS = 90 * 1000;
 
 async function getMarketInfo(conditionId: string, outcomeIndex: number): Promise<MarketInfo | null> {
   try {
@@ -261,42 +336,19 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number): Promise
 async function copyTrade(
   trade: TraderActivity,
   traderInfo: { name: string; pnl: number },
+  preValidatedMarket: MarketInfo,
   overrideSizeUsd?: number,
 ): Promise<CopiedPosition | null> {
-  if (trade.outcomeIndex < 0 || trade.outcomeIndex > 1) {
-    console.log(`[PolyTraders] Invalid outcomeIndex ${trade.outcomeIndex} for ${trade.title}`);
-    return null;
-  }
-
-  const marketInfo = await getMarketInfo(trade.conditionId, trade.outcomeIndex);
-  if (!marketInfo) {
-    console.log(`[PolyTraders] Could not get market info for ${trade.conditionId}`);
-    return null;
-  }
-
-  if (marketInfo.closed) {
-    resolvedMarketCache.add(trade.conditionId);
-    console.log(`[PolyTraders] Skipping closed market: ${trade.title}`);
-    return null;
-  }
-
-  const resolution = await checkMarketResolution(marketInfo.tokenId);
-  if (resolution.resolved) {
-    resolvedMarketCache.add(trade.conditionId);
-    console.log(`[PolyTraders] Skipping resolved market: ${trade.title}`);
-    return null;
-  }
-
   // Skip markets ending very soon
-  if (marketInfo.endDate) {
-    const mins = minutesUntil(marketInfo.endDate);
-    if (mins !== null && mins > 0 && mins < MIN_MINUTES_BEFORE_END) {
-      console.log(`[PolyTraders] Skipping market ending in ${mins.toFixed(0)}min: ${trade.title}`);
+  if (preValidatedMarket.endDate) {
+    const mins = minutesUntil(preValidatedMarket.endDate);
+    if (mins !== null && mins < MIN_MINUTES_BEFORE_END) {
+      console.log(`[PolyTraders] Skipping market ${mins < 0 ? "ended" : `ending in ${mins.toFixed(0)}min`}: ${trade.title}`);
       return null;
     }
   }
 
-  const tokenId = marketInfo.tokenId;
+  const tokenId = preValidatedMarket.tokenId;
 
   const positionId = `copy_${trade.conditionId}_${Date.now()}`;
 
@@ -389,17 +441,10 @@ async function checkForNewTrades(): Promise<void> {
     return;
   }
 
+
   if (trackedTraders.size === 0) {
-    // First run - populate tracked traders
-    const topTraders = await fetchTopTraders("OVERALL", "MONTH", 20);
-    for (const trader of topTraders) {
-      trackedTraders.set(trader.proxyWallet.toLowerCase(), {
-        name: trader.userName || trader.proxyWallet.substring(0, 10),
-        lastSeen: Date.now(),
-        pnl: trader.pnl,
-        vol: trader.vol,
-      });
-    }
+    // First run - populate from long-dated market categories
+    await refreshTopTraders();
     console.log(`[PolyTraders] Tracking ${trackedTraders.size} top traders`);
     return;
   }
@@ -426,6 +471,21 @@ async function checkForNewTrades(): Promise<void> {
             continue;
           }
 
+          // Dedup: skip if we already have an open or recent copy on this market
+          const alreadyCopied = Array.from(copiedPositions.values()).some(
+            p => p.conditionId === trade.conditionId,
+          );
+          if (alreadyCopied) {
+            continue;
+          }
+
+          // Check market status before any copy decision
+          const marketInfo = await getMarketInfo(trade.conditionId, trade.outcomeIndex);
+          if (!marketInfo || marketInfo.closed) {
+            if (marketInfo?.closed) resolvedMarketCache.add(trade.conditionId);
+            continue;
+          }
+
           const traderRoi = info.vol > 0 ? info.pnl / info.vol : 0;
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} on ${trade.title || trade.conditionId}`);
 
@@ -436,8 +496,20 @@ async function checkForNewTrades(): Promise<void> {
           if (!filterResult.shouldCopy) {
             console.log(`[PolyTraders] Filter rejected: ${filterResult.reason}`);
           } else {
-            console.log(`[PolyTraders] Copying with quality ${filterResult.traderQualityMultiplier.toFixed(1)}x, size $${filterResult.recommendedSizeUsd.toFixed(2)}`);
-            const copied = await copyTrade(trade, info, filterResult.recommendedSizeUsd);
+            // Override with learned multiplier after enough data
+            const learnedMultiplier = getTraderMultiplierFromHistory(info.name);
+            let finalSize = filterResult.recommendedSizeUsd;
+            if (learnedMultiplier !== null) {
+              if (learnedMultiplier === 0) {
+                console.log(`[PolyTraders] Learning rejected: ${info.name} has poor copy history`);
+                continue;
+              }
+              finalSize = getCopySizeUsd() * learnedMultiplier;
+              console.log(`[PolyTraders] Copying (learned ${learnedMultiplier}x): $${finalSize.toFixed(2)}`);
+            } else {
+              console.log(`[PolyTraders] Copying with quality ${filterResult.traderQualityMultiplier.toFixed(1)}x, size $${finalSize.toFixed(2)}`);
+            }
+            const copied = await copyTrade(trade, info, marketInfo, finalSize);
             if (copied) {
               // Only alert when we actually copy successfully
               await notifyTopTraderCopy({
@@ -465,11 +537,36 @@ async function checkForNewTrades(): Promise<void> {
 }
 
 async function refreshTopTraders(): Promise<void> {
-  const topTraders = await fetchTopTraders("OVERALL", "MONTH", 20);
+  // Fetch from each long-dated category in parallel
+  const results = await Promise.all(
+    COPY_CATEGORIES.map((cat) => fetchTopTraders(cat, "MONTH", TRADERS_PER_CATEGORY))
+  );
 
-  // Add any new top traders
-  for (const trader of topTraders) {
+  // Dedup by wallet, keep best ROI entry
+  const best = new Map<string, LeaderboardEntry>();
+  for (const traders of results) {
+    for (const trader of traders) {
+      const wallet = trader.proxyWallet.toLowerCase();
+      const roi = trader.vol > 0 ? trader.pnl / trader.vol : 0;
+      const existing = best.get(wallet);
+      const existingRoi = existing && existing.vol > 0 ? existing.pnl / existing.vol : 0;
+      if (!existing || roi > existingRoi) {
+        best.set(wallet, trader);
+      }
+    }
+  }
+
+  // Sort by ROI descending, take top 20
+  const sorted = [...best.values()]
+    .filter((t) => t.vol > 0 && t.pnl / t.vol > 0.05)
+    .sort((a, b) => b.pnl / b.vol - a.pnl / a.vol)
+    .slice(0, 20);
+
+  console.log(`[PolyTraders] Refreshed: ${sorted.length} traders from ${COPY_CATEGORIES.join(",")} (ROI-ranked)`);
+
+  for (const trader of sorted) {
     const wallet = trader.proxyWallet.toLowerCase();
+    const roi = trader.vol > 0 ? (trader.pnl / trader.vol * 100).toFixed(1) : "0";
     if (!trackedTraders.has(wallet)) {
       trackedTraders.set(wallet, {
         name: trader.userName || trader.proxyWallet.substring(0, 10),
@@ -477,9 +574,8 @@ async function refreshTopTraders(): Promise<void> {
         pnl: trader.pnl,
         vol: trader.vol,
       });
-      console.log(`[PolyTraders] Now tracking: ${trader.userName || wallet}`);
+      console.log(`[PolyTraders] Now tracking: ${trader.userName || wallet} (ROI: ${roi}%)`);
     } else {
-      // Update PnL and volume
       const info = trackedTraders.get(wallet);
       if (info) {
         info.pnl = trader.pnl;
@@ -653,7 +749,9 @@ async function checkCopiedPositionExits(): Promise<void> {
         saveCopiedPosition(pos);
         copiedPositions.delete(pos.id);
 
-        console.log(`[PolyTraders] Market resolved ${outcome}: ${pos.marketTitle} PnL: $${pnl.toFixed(2)}`);
+        saveCopyOutcome(pos, pnl);
+        const stats = getCopyLearningStats();
+        console.log(`[PolyTraders] Market resolved ${outcome}: ${pos.marketTitle} PnL: $${pnl.toFixed(2)} (${stats.totalTrades} trades, net: $${stats.netPnl.toFixed(2)})`);
 
         await notifyTopTraderCopyClose({
           traderName: pos.traderName,
