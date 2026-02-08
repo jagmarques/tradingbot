@@ -235,16 +235,16 @@ export async function analyzeWalletPnl(walletAddress: string): Promise<WalletPnl
   };
 }
 
-// Get recent Pump.fun token launches to find early buyers
-export async function getRecentPumpfunTokens(limit: number = 20): Promise<string[]> {
-  // Pump.fun program ID
+// Get recent Solana token launches to find early buyers
+export async function getRecentSolanaTokens(limit: number = 20): Promise<string[]> {
+  // Pump.fun program ID (used to find new token launches)
   const PUMPFUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
   const apiKey = getApiKey();
 
   const url = `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
 
   try {
-    // Get recent signatures for Pump.fun program
+    // Get recent signatures for token launches
     const response = await rateLimitedFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -300,7 +300,7 @@ export async function getRecentPumpfunTokens(limit: number = 20): Promise<string
 
     return Array.from(mints);
   } catch (err) {
-    console.error("[Helius] Pump.fun tokens error:", err);
+    console.error("[Helius] Token discovery error:", err);
     return [];
   }
 }
