@@ -198,6 +198,35 @@ export function initDb(dbPath?: string): Database.Database {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS calibration_log (
+      id TEXT PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      market_title TEXT NOT NULL,
+      r1_raw_probability REAL NOT NULL,
+      final_probability REAL NOT NULL,
+      market_price_at_prediction REAL NOT NULL,
+      actual_outcome INTEGER,
+      resolved_at TEXT,
+      predicted_at TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS whale_trades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wallet_address TEXT NOT NULL,
+      market_id TEXT NOT NULL,
+      market_title TEXT,
+      market_category TEXT,
+      side TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      bet_size REAL NOT NULL,
+      time_to_resolution_hours REAL,
+      outcome INTEGER,
+      profit_loss REAL,
+      traded_at INTEGER NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
     CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
@@ -209,6 +238,11 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_market ON calibration_predictions(market_id);
     CREATE INDEX IF NOT EXISTS idx_calibration_predictions_resolved ON calibration_predictions(resolved_at);
     CREATE INDEX IF NOT EXISTS idx_calibration_category ON calibration_scores(category);
+    CREATE INDEX IF NOT EXISTS idx_calibration_log_market ON calibration_log(market_id);
+    CREATE INDEX IF NOT EXISTS idx_calibration_log_outcome ON calibration_log(actual_outcome);
+    CREATE INDEX IF NOT EXISTS idx_whale_trades_wallet ON whale_trades(wallet_address);
+    CREATE INDEX IF NOT EXISTS idx_whale_trades_market ON whale_trades(market_id);
+    CREATE INDEX IF NOT EXISTS idx_whale_trades_traded ON whale_trades(traded_at);
 
     CREATE TABLE IF NOT EXISTS tokenai_analyses (
       id TEXT PRIMARY KEY,

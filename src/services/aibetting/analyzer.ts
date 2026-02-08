@@ -18,7 +18,8 @@ function buildAnalysisPrompt(
   news: NewsItem[],
   history: AIAnalysis[],
   stats: { winRate: number; totalBets: number },
-  siblingTitles?: string[]
+  siblingTitles?: string[],
+  marketPrice?: number
 ): string {
   const resolveDate = new Date(market.endDate).toLocaleDateString();
 
@@ -76,7 +77,7 @@ Consider each candidate's specific advantages, endorsements, polling data, and u
 ${performanceNote}MARKET: ${market.title}
 ${market.description ? `Description: ${market.description.slice(0, 500)}\n` : ""}Category: ${market.category}
 Resolves: ${resolveDate}
-
+${marketPrice !== undefined ? `Current market price: ${(marketPrice * 100).toFixed(0)}c (the market's implied probability)\n\nCONSIDER: The market price reflects collective wisdom. Your job is to find where this price is WRONG. Is the true probability higher, lower, or roughly the same as ${(marketPrice * 100).toFixed(0)}%? Explain WHY you disagree with the market if you do.\n` : ""}
 ${siblingSection}${contextSection}NEWS AND EVIDENCE:
 ${newsSection}
 
@@ -186,7 +187,7 @@ function validateReasoning(
   return { valid: issues.length === 0, issues };
 }
 
-function parseAnalysisResponse(
+export function parseAnalysisResponse(
   response: string,
   marketId: string
 ): AIAnalysis | null {
@@ -248,7 +249,8 @@ export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
   model?: "deepseek-chat" | "deepseek-reasoner",
-  siblingTitles?: string[]
+  siblingTitles?: string[],
+  marketPrice?: number
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -257,13 +259,24 @@ export async function analyzeMarket(
   const dbStats = getBettingStats();
   const stats = { winRate: dbStats.winRate, totalBets: dbStats.totalBets };
 
-  const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
+  const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles, marketPrice);
 
   try {
     const response = await callDeepSeek(prompt, model ?? "deepseek-chat", undefined, undefined, "aibetting");
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {
+      // Apply Bayesian prior: 67% market price + 33% R1 estimate (Bridgewater AIA approach)
+      const r1RawProbability = analysis.probability;
+      if (marketPrice !== undefined) {
+        analysis.probability = 0.67 * marketPrice + 0.33 * r1RawProbability;
+        analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
+        console.log(`[Analyzer] Bayesian prior: R1=${(r1RawProbability * 100).toFixed(1)}% + Market=${(marketPrice * 100).toFixed(0)}% -> Final=${(analysis.probability * 100).toFixed(1)}%`);
+      }
+
+      // Store raw R1 probability for calibration logging
+      analysis.r1RawProbability = r1RawProbability;
+
       // Check citation accuracy and penalize confidence when low
       const articlesWithContent = news.filter(n => n.content);
       if (analysis.evidenceCited && analysis.evidenceCited.length > 0 && articlesWithContent.length >= 2) {
