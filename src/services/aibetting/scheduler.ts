@@ -19,8 +19,7 @@ import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";
 
-function detectSiblingMarkets(markets: PolymarketEvent[]): Map<string, string[]> {
-  const siblingMap = new Map<string, string[]>();
+function detectSiblingMarkets(markets: PolymarketEvent[]): string[][] {
   const byEndDate = new Map<string, PolymarketEvent[]>();
 
   for (const market of markets) {
@@ -29,26 +28,57 @@ function detectSiblingMarkets(markets: PolymarketEvent[]): Map<string, string[]>
     byEndDate.set(market.endDate, existing);
   }
 
+  const allClusters: string[][] = [];
+
   for (const group of byEndDate.values()) {
     if (group.length < 2) continue;
 
+    // Build adjacency list for transitive closure
+    const adjacency = new Map<string, Set<string>>();
+    for (const market of group) {
+      adjacency.set(market.conditionId, new Set());
+    }
+
+    // Detect overlaps
     for (let i = 0; i < group.length; i++) {
       const wordsA = group[i].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      const siblings: string[] = [];
 
-      for (let j = 0; j < group.length; j++) {
-        if (i === j) continue;
+      for (let j = i + 1; j < group.length; j++) {
         const wordsB = group[j].title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
         const shared = wordsA.filter(w => wordsB.includes(w)).length;
         const minLen = Math.min(wordsA.length, wordsB.length);
-        if (minLen > 0 && shared / minLen > 0.3) siblings.push(group[j].title);
+
+        if (minLen > 0 && shared / minLen > 0.3) {
+          adjacency.get(group[i].conditionId)?.add(group[j].conditionId);
+          adjacency.get(group[j].conditionId)?.add(group[i].conditionId);
+        }
+      }
+    }
+
+    // Find connected components via DFS
+    const visited = new Set<string>();
+    for (const startId of adjacency.keys()) {
+      if (visited.has(startId)) continue;
+
+      const cluster: string[] = [];
+      const stack = [startId];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (!id) break;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        cluster.push(id);
+
+        for (const neighbor of adjacency.get(id) || []) {
+          if (!visited.has(neighbor)) stack.push(neighbor);
+        }
       }
 
-      if (siblings.length > 0) siblingMap.set(group[i].conditionId, siblings);
+      if (cluster.length >= 2) allClusters.push(cluster);
     }
   }
 
-  return siblingMap;
+  return allClusters;
 }
 
 let isRunning = false;
@@ -114,7 +144,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     let cached = 0;
 
     // Detect sibling markets for multi-candidate context
-    const siblingMap = detectSiblingMarkets(markets);
+    const siblingClusters = detectSiblingMarkets(markets);
 
     for (const market of markets) {
       const cachedAnalysis = getCachedAnalysis(market.conditionId);
@@ -139,7 +169,12 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      const siblingTitles = siblingMap.get(market.conditionId);
+      const siblingTitles = siblingClusters
+        .find(c => c.includes(market.conditionId))
+        ?.filter(id => id !== market.conditionId)
+        .map(id => markets.find(m => m.conditionId === id)?.title)
+        .filter((t): t is string => !!t);
+
       if (siblingTitles?.length) {
         console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
       }
@@ -157,30 +192,23 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
 
     // Normalize sibling probabilities so they sum to ~100%
-    const normalizedIds = new Set<string>();
-    for (const [conditionId, siblingTitles] of siblingMap) {
-      if (normalizedIds.has(conditionId)) continue;
-
-      const siblingIds = [conditionId, ...markets
-        .filter(m => siblingTitles.includes(m.title))
-        .map(m => m.conditionId)];
-      const siblingAnalyses = siblingIds
+    for (const cluster of siblingClusters) {
+      const clusterAnalyses = cluster
         .map(id => ({ id, analysis: analyses.get(id) }))
         .filter((s): s is { id: string; analysis: AIAnalysis } => !!s.analysis);
 
-      if (siblingAnalyses.length < 2) continue;
-      const sum = siblingAnalyses.reduce((s, a) => s + a.analysis.probability, 0);
+      if (clusterAnalyses.length < 2) continue;
+      const sum = clusterAnalyses.reduce((s, a) => s + a.analysis.probability, 0);
       if (sum > 1.05) {
-        for (const s of siblingAnalyses) {
+        for (const s of clusterAnalyses) {
           const old = s.analysis.probability;
           s.analysis.probability = old / sum;
           cacheAnalysis(s.id, s.analysis);
         }
-        const normalized = siblingAnalyses.map(s => `${(s.analysis.probability * 100).toFixed(0)}%`).join("+");
-        console.log(`[AIBetting] Normalized siblings (was ${(sum * 100).toFixed(0)}%): ${normalized}`);
+        const normalized = clusterAnalyses.map(s =>
+          `${(s.analysis.probability * 100).toFixed(0)}%`).join("+");
+        console.log(`[AIBetting] Normalized ${clusterAnalyses.length} siblings (was ${(sum * 100).toFixed(0)}%): ${normalized}`);
       }
-
-      for (const id of siblingIds) normalizedIds.add(id);
     }
 
     let usdcBalance: number;
