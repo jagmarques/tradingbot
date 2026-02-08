@@ -29,7 +29,7 @@ vi.mock("./dexscreener.js", () => ({
 vi.mock("./helius.js", () => ({
   isHeliusConfigured: vi.fn().mockReturnValue(false),
   analyzeWalletPnl: vi.fn(),
-  getRecentPumpfunTokens: vi.fn().mockResolvedValue([]),
+  getRecentSolanaTokens: vi.fn().mockResolvedValue([]),
   findEarlyBuyers: vi.fn().mockResolvedValue([]),
 }));
 

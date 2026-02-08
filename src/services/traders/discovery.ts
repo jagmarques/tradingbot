@@ -5,7 +5,7 @@ import { getAllActiveTokens } from "./dexscreener.js";
 import {
   isHeliusConfigured,
   analyzeWalletPnl,
-  getRecentPumpfunTokens,
+  getRecentSolanaTokens,
   findEarlyBuyers,
 } from "./helius.js";
 
@@ -109,15 +109,15 @@ async function runDiscovery(): Promise<void> {
     // EVM discovery disabled - Etherscan transfer analysis can't reliably detect
     // round-trip trades through DEX aggregators (0 traders found in 40+ cycles)
 
-    // Solana via Helius - both Pump.fun and all DEXes (DexScreener tokens)
+    // Solana via Helius - token launches and all DEXes
     if (isHeliusConfigured()) {
-      // Pump.fun specific discovery
+      // Token launch discovery (via Pump.fun program)
       tasks.push(
-        discoverTradersOnSolanaPumpfun()
-          .then((discovered) => ({ chain: "solana-pumpfun", discovered }))
+        discoverTradersOnSolanaTokenLaunches()
+          .then((discovered) => ({ chain: "solana-launches", discovered }))
           .catch((err) => {
-            console.error("[Discovery] Error on Solana Pump.fun:", err);
-            return { chain: "solana-pumpfun", discovered: 0 };
+            console.error("[Discovery] Error on Solana token launches:", err);
+            return { chain: "solana-launches", discovered: 0 };
           })
       );
 
@@ -145,12 +145,12 @@ async function runDiscovery(): Promise<void> {
   }
 }
 
-async function discoverTradersOnSolanaPumpfun(): Promise<number> {
+async function discoverTradersOnSolanaTokenLaunches(): Promise<number> {
   cleanupSolanaCache();
-  console.log("[Discovery] Scanning Solana Pump.fun traders...");
+  console.log("[Discovery] Scanning Solana token launch traders...");
 
-  const recentTokens = await getRecentPumpfunTokens(30);
-  console.log(`[Discovery] Found ${recentTokens.length} recent Pump.fun tokens`);
+  const recentTokens = await getRecentSolanaTokens(30);
+  console.log(`[Discovery] Found ${recentTokens.length} recent Solana token launches`);
 
   if (recentTokens.length === 0) return 0;
 
