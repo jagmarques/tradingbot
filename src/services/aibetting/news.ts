@@ -155,34 +155,65 @@ async function decodeGoogleNewsUrl(sourceUrl: string): Promise<string> {
 }
 
 async function fetchDecodedBatchExecute(articleId: string): Promise<string> {
+  const fallbackUrl = "https://news.google.com/rss/articles/" + articleId;
   try {
-    const reqUrl = "https://news.google.com/rss/articles/" + articleId;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    // Step 1: Fetch Google News article page to get signature + timestamp
+    const pageUrl = `https://news.google.com/articles/${articleId}?hl=en-US&gl=US&ceid=US:en`;
+    const controller1 = new AbortController();
+    const timeout1 = setTimeout(() => controller1.abort(), 8000);
 
-    const resp = await fetch(reqUrl, {
+    const pageResp = await fetch(pageUrl, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
-      signal: controller.signal,
+      signal: controller1.signal,
     });
-    clearTimeout(timeout);
+    clearTimeout(timeout1);
+    const html = await pageResp.text();
 
-    const html = await resp.text();
+    const sgMatch = html.match(/data-n-a-sg="([^"]+)"/);
+    const tsMatch = html.match(/data-n-a-ts="([^"]+)"/);
+    if (!sgMatch?.[1] || !tsMatch?.[1]) {
+      console.warn(`[News] No signature/timestamp in Google News page`);
+      return fallbackUrl;
+    }
 
-    // Extract data-n-au attribute which contains the real URL
-    const auMatch = html.match(/data-n-au="([^"]+)"/);
-    if (auMatch) return auMatch[1];
+    // Step 2: Call batchexecute with signature + timestamp to decode URL
+    const payload = [
+      "Fbv4je",
+      `["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"${articleId}",${tsMatch[1]},"${sgMatch[1]}"]`,
+    ];
 
-    // Fallback: look for canonical link
-    const canonicalMatch = html.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/);
-    if (canonicalMatch) return canonicalMatch[1];
+    const controller2 = new AbortController();
+    const timeout2 = setTimeout(() => controller2.abort(), 5000);
 
-    return reqUrl;
+    const batchResp = await fetch(
+      "https://news.google.com/_/DotsSplashUi/data/batchexecute",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: controller2.signal,
+        body: `f.req=${encodeURIComponent(JSON.stringify([[payload]]))}`,
+      }
+    );
+    clearTimeout(timeout2);
+
+    const batchText = await batchResp.text();
+    const jsonLine = batchText.split("\n\n")[1];
+    if (jsonLine) {
+      const parsed = JSON.parse(JSON.parse(jsonLine)[0][2]);
+      if (parsed[1] && typeof parsed[1] === "string" && parsed[1].startsWith("http")) {
+        return parsed[1];
+      }
+    }
+
+    return fallbackUrl;
   } catch {
     console.warn(`[News] batchexecute decode failed for article`);
-    return "https://news.google.com/rss/articles/" + articleId;
+    return fallbackUrl;
   }
 }
 
