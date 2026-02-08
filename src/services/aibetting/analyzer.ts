@@ -266,16 +266,8 @@ export async function analyzeMarket(
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {
-      // Apply Bayesian prior: 67% market price + 33% R1 estimate (Bridgewater AIA approach)
-      const r1RawProbability = analysis.probability;
-      if (marketPrice !== undefined) {
-        analysis.probability = 0.67 * marketPrice + 0.33 * r1RawProbability;
-        analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
-        console.log(`[Analyzer] Bayesian prior: R1=${(r1RawProbability * 100).toFixed(1)}% + Market=${(marketPrice * 100).toFixed(0)}% -> Final=${(analysis.probability * 100).toFixed(1)}%`);
-      }
-
-      // Store raw R1 probability for calibration logging
-      analysis.r1RawProbability = r1RawProbability;
+      // Store raw R1 probability (Bayesian weighting applied once in scheduler after ensemble)
+      analysis.r1RawProbability = analysis.probability;
 
       // Check citation accuracy and penalize confidence when low
       const articlesWithContent = news.filter(n => n.content);
