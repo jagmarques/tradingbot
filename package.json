@@ -19,6 +19,7 @@
   "license": "MIT",
   "private": true,
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@solana/web3.js": "^1.98.4",
     "@types/node": "^25.0.10",
     "@types/pdfkit": "^0.17.4",
@@ -28,6 +29,7 @@
     "ethers": "^6.16.0",
     "googleapis": "^170.1.0",
     "grammy": "^1.39.3",
+    "linkedom": "^0.18.12",
     "node-cron": "^4.2.1",
     "pdfkit": "^0.17.2",
     "typescript": "^5.9.3",
@@ -38,6 +40,7 @@
     "@eslint/js": "^9.39.2",
     "@polymarket/clob-client": "^5.2.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/mozilla__readability": "^0.4.2",
     "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.18.1",
     "eslint": "^9.39.2",

@@ -29,7 +29,7 @@ import {
 } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache, getEnsembleResult } from "../aibetting/scheduler.js";
+import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
@@ -302,8 +302,8 @@ export async function startBot(): Promise<void> {
     await handleCloseAllCopies(ctx);
     await ctx.answerCallbackQuery();
   });
-  bot.callbackQuery("manage_close_all", async (ctx) => {
-    await handleCloseAll(ctx);
+  bot.callbackQuery("manage_resetpaper", async (ctx) => {
+    await handleReset(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("confirm_resetpaper", async (ctx) => {
@@ -601,7 +601,7 @@ async function handleStatus(ctx: Context): Promise<void> {
       `Open: ${openAIBets.length} | Closed: ${aiBettingStats.totalBets} | Invested: $${totalInvestedAI.toFixed(0)}\n` +
       `Realized: ${realizedSign}$${aiBettingStats.totalPnl.toFixed(2)}\n` +
       `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)}\n` +
-      `Ensemble cache: ${schedulerStatus.ensembleCacheSize} markets\n\n`;
+      `Cache: ${schedulerStatus.analysisCacheSize} markets\n\n`;
 
     // Token AI Section
     const tokenAIPositions = loadOpenTokenPositions();
@@ -1076,13 +1076,6 @@ async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
 
         message += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n`;
 
-        const ensemble = getEnsembleResult(bet.marketId);
-        if (ensemble && ensemble.ensembleSize > 1) {
-          const estimates = ensemble.individualEstimates
-            .map(e => `${(e * 100).toFixed(0)}%`)
-            .join('/');
-          message += `Ens: ${estimates} (d=${ensemble.disagreement.toFixed(2)})\n`;
-        }
         message += `\n`;
       }
 
@@ -1146,8 +1139,8 @@ async function handleManage(ctx: Context): Promise<void> {
 
   const buttons = [
     [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
-    [{ text: "Close All Copy Trades", callback_data: "manage_close_copies" }],
-    [{ text: "Close Everything", callback_data: "manage_close_all" }],
+    [{ text: "Close All Copy Bets", callback_data: "manage_close_copies" }],
+    [{ text: "Reset Paper Trading", callback_data: "manage_resetpaper" }],
     [{ text: "Back", callback_data: "main_menu" }],
   ];
 
@@ -1185,39 +1178,7 @@ async function handleCloseAllCopies(ctx: Context): Promise<void> {
   const deleted = clearAllCopiedPositions();
 
   const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(`Cleared ${deleted} copy trade records.`, buttons);
-}
-
-async function handleCloseAll(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  let message = "<b>Closing all positions...</b>\n\n";
-  let total = 0;
-
-  // AI Bets
-  const openBets = loadOpenPositions();
-  let betsClosed = 0;
-  for (const bet of openBets) {
-    const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-    if (currentPrice !== null) {
-      const { exitPosition } = await import("../aibetting/executor.js");
-      const { success } = await exitPosition(bet, currentPrice, "Manual close");
-      if (success) betsClosed++;
-    }
-  }
-  message += `AI Bets: ${betsClosed}/${openBets.length} closed\n`;
-  total += betsClosed;
-
-  // Poly copies
-  const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-  const polyDeleted = clearAllCopiedPositions();
-  message += `Poly Copy: ${polyDeleted} cleared\n`;
-  total += polyDeleted;
-
-  message += `\n<b>Total: ${total} positions closed</b>`;
-
-  const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(message, buttons);
+  await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
 }
 
 async function handleTradersPdf(ctx: Context): Promise<void> {
@@ -1408,7 +1369,7 @@ ${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p 
 - Running: ${schedulerStatus.running}
 - Open positions: ${schedulerStatus.openPositions}
 - Total exposure: $${schedulerStatus.totalExposure.toFixed(2)}
-- Analysis cache: ${schedulerStatus.ensembleCacheSize} markets
+- Analysis cache: ${schedulerStatus.analysisCacheSize} markets
 
 === BETTING STATS (all time) ===
 - Total bets: ${stats.totalBets}

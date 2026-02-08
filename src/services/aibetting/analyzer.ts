@@ -13,32 +13,12 @@ interface DeepSeekAnalysisResponse {
   timeline: string | null;
 }
 
-// Bayesian update: weight prior + new evidence -> posterior
-function bayesianUpdate(
-  prior: number,
-  newEstimate: number,
-  priorWeight: number,
-  evidenceStrength: number
-): { probability: number; uncertainty: number } {
-  const totalWeight = priorWeight + evidenceStrength;
-  const posterior = (prior * priorWeight + newEstimate * evidenceStrength) / totalWeight;
-  const uncertainty = 1 - (evidenceStrength / totalWeight);
-
-  // Clamp values
-  return {
-    probability: Math.max(0.01, Math.min(0.99, posterior)),
-    uncertainty: Math.max(0.05, Math.min(0.95, uncertainty)),
-  };
-}
-
 function buildAnalysisPrompt(
   market: PolymarketEvent,
   news: NewsItem[],
   history: AIAnalysis[],
   stats: { winRate: number; totalBets: number }
 ): string {
-  const yesPrice = market.outcomes.find((o) => o.name === "Yes")?.price || 0.5;
-  const noPrice = market.outcomes.find((o) => o.name === "No")?.price || 0.5;
   const resolveDate = new Date(market.endDate).toLocaleDateString();
 
   // Build news section with article content for top 3
@@ -86,7 +66,6 @@ function buildAnalysisPrompt(
 ${performanceNote}MARKET: ${market.title}
 Category: ${market.category}
 Resolves: ${resolveDate}
-Current odds: YES ${(yesPrice * 100).toFixed(0)}c / NO ${(noPrice * 100).toFixed(0)}c
 
 ${contextSection}NEWS AND EVIDENCE:
 ${newsSection}
@@ -105,6 +84,17 @@ ${market.title.match(/by|before|in (202\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oc
 STEP 2 - PROBABILITY REASONING:
 Based ONLY on the evidence from Step 1, reason through the likelihood of each outcome.
 Consider base rates, historical precedent, and current trajectory.
+
+PROBABILITY CALIBRATION - use the full 0-100% range:
+- 90-99%: Near certain. Would happen 9+ times out of 10. Example: "Will the sun rise tomorrow?"
+- 75-90%: Very likely. Strong evidence, few realistic scenarios where it doesn't happen.
+- 60-75%: Likely. More evidence for than against, but meaningful uncertainty remains.
+- 40-60%: Uncertain. Evidence is genuinely mixed or insufficient. This is NOT a default.
+- 25-40%: Unlikely. More evidence against than for.
+- 10-25%: Very unlikely. Would require something surprising to happen.
+- 1-10%: Near impossible. Almost no realistic scenario where this happens.
+
+IMPORTANT: Do NOT default to 30-50% when unsure. If evidence clearly favors one side, commit to an extreme estimate. The value of your analysis comes from distinguishing likely from unlikely events.
 
 STEP 3 - CONSISTENCY CHECK:
 ${historySection ? `Your previous estimate was ${(history[0].probability * 100).toFixed(0)}%. If your new estimate differs by more than 10 percentage points, you MUST identify the specific NEW evidence that justifies the change. Changing estimates without new evidence is a reasoning error.` : "This is your first analysis of this market. State your confidence level honestly."}
@@ -211,10 +201,8 @@ function parseAnalysisResponse(
     const probability = Math.max(0, Math.min(1, parsed.probability));
     const confidence = Math.max(0, Math.min(1, parsed.confidence));
 
-    if (parsed.changeReason) {
+    if (parsed.changeReason && parsed.changeReason !== "null") {
       console.log(`[Analyzer] Change reason: ${parsed.changeReason}`);
-    } else if (parsed.changeReason === null) {
-      console.warn(`[Analyzer] Null change reason for ${marketId}`);
     }
 
     // Parse new evidence fields
@@ -247,9 +235,7 @@ function parseAnalysisResponse(
 export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
-  temperature?: number,
-  systemMessage?: string,
-  raw?: boolean
+  model?: "deepseek-chat" | "deepseek-reasoner"
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -261,7 +247,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats);
 
   try {
-    const response = await callDeepSeek(prompt, "deepseek-chat", systemMessage, temperature ?? 0.4, "aibetting");
+    const response = await callDeepSeek(prompt, model ?? "deepseek-chat", undefined, undefined, "aibetting");
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {
@@ -294,80 +280,39 @@ export async function analyzeMarket(
         // Log warning but do NOT reject
       }
 
-      // Raw mode: skip Bayesian smoothing, DB save, calibration (used by ensemble members)
-      if (raw) {
-        analysis.uncertainty = 0.5;
-        console.log(
-          `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}% (raw)`
-        );
-      } else {
-        const rawProbability = analysis.probability;
+      analysis.uncertainty = 0.5;
+      saveAnalysis(analysis, market.title);
 
-        // Apply Bayesian weighting
-        if (history.length > 0) {
-          // Weighted prior from recent analyses
-          let prior: number;
-          if (history.length === 1) {
-            prior = history[0].probability;
-          } else if (history.length === 2) {
-            prior = history[0].probability * 0.6 + history[1].probability * 0.4;
-          } else {
-            prior = history[0].probability * 0.6 + history[1].probability * 0.3 + history[2].probability * 0.1;
-          }
+      const yesOutcome = market.outcomes.find((o) => o.name === "Yes");
+      const noOutcome = market.outcomes.find((o) => o.name === "No");
 
-          // More history = stronger prior
-          const priorWeight = 0.3 * Math.min(history.length, 3);
-
-          // More news = stronger evidence
-          const evidenceStrength = Math.min(0.3 + news.length * 0.1, 1.0);
-
-          const { probability, uncertainty } = bayesianUpdate(prior, rawProbability, priorWeight, evidenceStrength);
-
-          analysis.probability = probability;
-          analysis.uncertainty = uncertainty;
-
-          console.log(
-            `[Analyzer] Bayesian update: raw=${(rawProbability * 100).toFixed(1)}% prior=${(prior * 100).toFixed(1)}% -> posterior=${(probability * 100).toFixed(1)}% (uncertainty=${(uncertainty * 100).toFixed(1)}%)`
-          );
-        } else {
-          // No history - max uncertainty
-          analysis.uncertainty = 0.5;
-        }
-
-        saveAnalysis(analysis, market.title);
-
-        // Save calibration prediction for both YES and NO sides
-        const yesOutcome = market.outcomes.find((o) => o.name === "Yes");
-        const noOutcome = market.outcomes.find((o) => o.name === "No");
-
-        if (yesOutcome) {
-          savePrediction(
-            market.conditionId,
-            market.title,
-            yesOutcome.tokenId,
-            "YES",
-            analysis.probability,
-            analysis.confidence,
-            market.category
-          );
-        }
-
-        if (noOutcome) {
-          savePrediction(
-            market.conditionId,
-            market.title,
-            noOutcome.tokenId,
-            "NO",
-            1 - analysis.probability,
-            analysis.confidence,
-            market.category
-          );
-        }
-
-        console.log(
-          `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}%`
+      if (yesOutcome) {
+        savePrediction(
+          market.conditionId,
+          market.title,
+          yesOutcome.tokenId,
+          "YES",
+          analysis.probability,
+          analysis.confidence,
+          market.category
         );
       }
+
+      if (noOutcome) {
+        savePrediction(
+          market.conditionId,
+          market.title,
+          noOutcome.tokenId,
+          "NO",
+          1 - analysis.probability,
+          analysis.confidence,
+          market.category
+        );
+      }
+
+      console.log(
+        `[Analyzer] ${market.title}: P=${(analysis.probability * 100).toFixed(1)}% C=${(analysis.confidence * 100).toFixed(0)}%`
+      );
     } else {
       console.warn(`[Analyzer] Could not parse AI response for ${market.title}`);
     }
