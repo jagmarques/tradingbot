@@ -29,7 +29,7 @@ import {
 } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache, getEnsembleResult } from "../aibetting/scheduler.js";
+import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getPositions as getPumpfunPositions } from "../pumpfun/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
@@ -177,6 +177,10 @@ export async function startBot(): Promise<void> {
     await handleBets(ctx, "closed");
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("bets_copy", async (ctx) => {
+    await handleBets(ctx, "copy");
+    await ctx.answerCallbackQuery();
+  });
 
   // Handle trader detail button clicks (format: trader_ADDRESS_CHAIN)
   bot.callbackQuery(/^trader_(.+)_(.+)$/, async (ctx) => {
@@ -302,8 +306,8 @@ export async function startBot(): Promise<void> {
     await handleCloseAllCopies(ctx);
     await ctx.answerCallbackQuery();
   });
-  bot.callbackQuery("manage_close_all", async (ctx) => {
-    await handleCloseAll(ctx);
+  bot.callbackQuery("manage_resetpaper", async (ctx) => {
+    await handleReset(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("confirm_resetpaper", async (ctx) => {
@@ -489,165 +493,55 @@ async function handleStatus(ctx: Context): Promise<void> {
 
   try {
     const status = await getRiskStatus();
-    const traderCount = getTrackedTraderCount();
-    const trackerActive = isTrackerRunning();
     const todayTrades = getTodayTrades();
-
-    // AI Betting data
-    const aiBettingStats = getBettingStats();
-    const openAIBets = loadOpenPositions();
-
-    // Pumpfun positions
-    const pumpfunPositions = getPumpfunPositions();
-
-    // Crypto copy positions
+    const schedulerStatus = getAIBettingStatus();
+    const polyStats = getCopyStats();
     const cryptoCopyPositions = getCryptoCopyPositions();
-
-    // Polymarket copy positions
-    const polymarketCopyStats = getCopyStats();
+    const pumpfunPositions = getPumpfunPositions();
+    const tokenAIPositions = loadOpenTokenPositions();
+    const traderCount = getTrackedTraderCount();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
-    const modeEmoji = status.isPaperMode ? "📝" : "💰";
-    const killEmoji = status.killSwitchActive ? "⛔" : "✅";
-    const trackerEmoji = trackerActive ? "🟢" : "🔴";
+    const modeTag = status.isPaperMode ? "Paper" : "Live";
+    const killTag = status.killSwitchActive ? "Kill: ON" : "";
+    const pnlSign = status.dailyPnl >= 0 ? "+" : "";
 
-    let message =
-      `<b>Bot Status</b>\n\n` +
-      `${statusEmoji} Trading: ${status.tradingEnabled ? "Enabled" : "Disabled"}\n` +
-      `${modeEmoji} Mode: ${status.isPaperMode ? "Paper" : "Live"}\n` +
-      `${killEmoji} Kill Switch: ${status.killSwitchActive ? "ACTIVE" : "Off"}\n\n`;
-
-    // Daily P&L
-    const pnlEmoji = status.dailyPnl >= 0 ? "📈" : "📉";
-    message += `<b>Daily P&L</b>\n` +
-      `${pnlEmoji} $${status.dailyPnl.toFixed(2)} (${status.dailyPnlPercentage >= 0 ? "+" : ""}${status.dailyPnlPercentage.toFixed(1)}%)\n` +
-      `Trades: ${todayTrades.length} | Wins: ${todayTrades.filter(t => t.pnl > 0).length} | Losses: ${todayTrades.filter(t => t.pnl < 0).length}\n\n`;
-
-    // Crypto Copy Trading Section
-    message += `<b>Crypto Copy</b>\n` +
-      `Open: ${cryptoCopyPositions.length}\n`;
-    if (cryptoCopyPositions.length > 0) {
-      for (const pos of cryptoCopyPositions.slice(0, 3)) {
-        message += `  - ${pos.tokenSymbol} (${pos.chain}): ${pos.entryAmountNative.toFixed(4)} native\n`;
-      }
-      if (cryptoCopyPositions.length > 3) message += `  ...and ${cryptoCopyPositions.length - 3} more\n`;
-    }
-    message += `\n`;
-
-    // Pumpfun Section
-    message += `<b>Pump.fun</b>\n` +
-      `Open positions: ${pumpfunPositions.size}\n`;
-    if (pumpfunPositions.size > 0) {
-      for (const [, pos] of Array.from(pumpfunPositions).slice(0, 3)) {
-        const mult = pos.peakPrice / pos.entryPrice;
-        message += `  - ${pos.symbol}: ${mult.toFixed(1)}x from entry\n`;
-      }
-      if (pumpfunPositions.size > 3) message += `  ...and ${pumpfunPositions.size - 3} more\n`;
-    }
-    message += `\n`;
-
-    // Polymarket Copy Section
-    const positionsWithValues = await getOpenPositionsWithValues();
-    const positionsWithPrices = positionsWithValues.filter(p => p.currentPrice !== null);
-    const totalInvested = positionsWithPrices.reduce((sum, p) => sum + p.size, 0);
-    const totalCurrentValue = positionsWithPrices.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
-    const totalPnl = totalCurrentValue - totalInvested;
-    const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-
-    message += `<b>Polymarket Copy</b>\n` +
-      `Open: ${polymarketCopyStats.openPositions} | Total: ${polymarketCopyStats.totalCopies}\n` +
-      `Win rate: ${polymarketCopyStats.winRate.toFixed(0)}% | Realized PnL: $${polymarketCopyStats.totalPnl.toFixed(2)}\n`;
-
-    if (positionsWithValues.length > 0) {
-      for (const pos of positionsWithValues) {
-        if (pos.currentPrice !== null) {
-          const currentVal = pos.currentValue ?? 0;
-          const pnlPct = pos.unrealizedPnlPct ?? 0;
-          const sign = pnlPct >= 0 ? "+" : "";
-          message += `  - ${pos.marketTitle.slice(0, 22)}...: $${pos.size.toFixed(0)} -> $${currentVal.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)\n`;
-        } else {
-          message += `  - ${pos.marketTitle.slice(0, 22)}...: $${pos.size.toFixed(0)} (?)\n`;
-        }
-      }
-      if (positionsWithPrices.length > 0) {
-        const totalSign = totalPnlPct >= 0 ? "+" : "";
-        message += `  <b>Total: $${totalInvested.toFixed(0)} -> $${totalCurrentValue.toFixed(2)} (${totalSign}${totalPnlPct.toFixed(0)}%)</b>\n`;
-      }
-    }
-    message += `\n`;
-
-    // AI Betting Section
-    let openInvested = 0;
-    let totalUnrealized = 0;
-
-    for (const bet of openAIBets) {
-      openInvested += bet.size;
-      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-      if (currentPrice !== null) {
-        const priceDiff = bet.side === "YES"
-          ? currentPrice - bet.entryPrice
-          : bet.entryPrice - currentPrice;
-        const shares = bet.size / bet.entryPrice;
-        totalUnrealized += shares * priceDiff;
+    // Compute unrealized P&L for AI bets
+    const openBets = loadOpenPositions();
+    let aiBetUnrealized = 0;
+    for (const bet of openBets) {
+      const price = await getAIBetCurrentPrice(bet.tokenId);
+      if (price !== null) {
+        const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
+        aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
       }
     }
 
-    const totalInvestedAI = openInvested + aiBettingStats.totalInvested;
-    const realizedSign = aiBettingStats.totalPnl >= 0 ? "+" : "";
-    const unrealizedSign = totalUnrealized >= 0 ? "+" : "";
-
-    const schedulerStatus = getAIBettingStatus();
-    message += `<b>AI Betting</b>\n` +
-      `Open: ${openAIBets.length} | Closed: ${aiBettingStats.totalBets} | Invested: $${totalInvestedAI.toFixed(0)}\n` +
-      `Realized: ${realizedSign}$${aiBettingStats.totalPnl.toFixed(2)}\n` +
-      `Unrealized: ${unrealizedSign}$${totalUnrealized.toFixed(2)}\n` +
-      `Ensemble cache: ${schedulerStatus.ensembleCacheSize} markets\n\n`;
-
-    // Token AI Section
-    const tokenAIPositions = loadOpenTokenPositions();
-    message += `<b>Token AI</b>\n` +
-      `Open: ${tokenAIPositions.length}\n`;
-    if (tokenAIPositions.length > 0) {
-      let tokenTotalInvested = 0;
-      let tokenTotalCurrentValue = 0;
-      let tokenHasPrices = false;
-
-      for (const pos of tokenAIPositions.slice(0, 3)) {
-        const label = pos.tokenSymbol || pos.tokenAddress.slice(0, 8);
-        message += `  - ${label} (${pos.chain}): $${pos.sizeUsd.toFixed(2)} @ $${pos.entryPrice.toFixed(6)} | Conf: ${(pos.confidence * 100).toFixed(0)}%\n`;
-        if (pos.currentPrice !== undefined) {
-          const posPnl = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * pos.sizeUsd;
-          const posPnlPct = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-          const posSign = posPnl >= 0 ? "+" : "";
-          message += `    Now: $${pos.currentPrice.toFixed(6)} | P&L: ${posSign}$${posPnl.toFixed(2)} (${posSign}${posPnlPct.toFixed(0)}%)\n`;
-        }
-      }
-      if (tokenAIPositions.length > 3) {
-        message += `  ...and ${tokenAIPositions.length - 3} more\n`;
-      }
-
-      for (const pos of tokenAIPositions) {
-        tokenTotalInvested += pos.sizeUsd;
-        if (pos.currentPrice !== undefined) {
-          tokenHasPrices = true;
-          const currentVal = (pos.currentPrice / pos.entryPrice) * pos.sizeUsd;
-          tokenTotalCurrentValue += currentVal;
-        }
-      }
-      if (tokenHasPrices) {
-        const tokenTotalPnlPct = tokenTotalInvested > 0 ? ((tokenTotalCurrentValue - tokenTotalInvested) / tokenTotalInvested) * 100 : 0;
-        const tokenSign = tokenTotalPnlPct >= 0 ? "+" : "";
-        message += `  Total: $${tokenTotalInvested.toFixed(0)} -> $${tokenTotalCurrentValue.toFixed(2)} (${tokenSign}${tokenTotalPnlPct.toFixed(0)}%)\n`;
+    // Compute unrealized P&L for copy positions
+    const copyPositions = await getOpenPositionsWithValues();
+    let copyUnrealized = 0;
+    for (const pos of copyPositions) {
+      if (pos.currentValue !== null) {
+        copyUnrealized += (pos.currentValue ?? 0) - pos.size;
       }
     }
-    message += `\n`;
 
-    // Trader Tracker
-    message += `<b>Trader Tracker</b>\n` +
-      `${trackerEmoji} ${trackerActive ? "Running" : "Stopped"} | ${traderCount} wallets`;
+    let message = `<b>Status</b>\n\n`;
+    message += `${statusEmoji} ${modeTag}${killTag ? " | " + killTag : ""}\n`;
+    message += `P&L: ${pnlSign}$${status.dailyPnl.toFixed(2)} (${todayTrades.length} trades)\n\n`;
+
+    const logOnly = schedulerStatus.logOnly ? " | Log-only" : "";
+    const aiPnlStr = openBets.length > 0 ? ` | ${aiBetUnrealized >= 0 ? "+" : ""}$${aiBetUnrealized.toFixed(2)}` : "";
+    message += `AI Betting: ${schedulerStatus.analysisCacheSize} cached | ${openBets.length} open${aiPnlStr}${logOnly}\n`;
+    const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
+    message += `Poly Copy: ${polyStats.openPositions} open${copyPnlStr} | $${polyStats.totalPnl.toFixed(2)} realized\n`;
+    message += `Crypto Copy: ${cryptoCopyPositions.length} open\n`;
+    message += `Pump.fun: ${pumpfunPositions.size} open\n`;
+    message += `Token AI: ${tokenAIPositions.length} open\n`;
+    message += `Tracker: ${traderCount} wallets`;
 
     if (status.pauseReason) {
-      message += `\n\n⚠️ Pause: ${status.pauseReason}`;
+      message += `\n\n⚠️ ${status.pauseReason}`;
     }
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
@@ -791,24 +685,43 @@ async function handleTrades(ctx: Context): Promise<void> {
 
   try {
     const trades = getTodayTrades();
+    const cryptoCopyPositions = getCryptoCopyPositions();
+    const pumpfunPositions = getPumpfunPositions();
 
-    if (trades.length === 0) {
-      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage("No trades today", backButton);
-      return;
+    let message = `<b>Trades</b>\n\n`;
+
+    // Pump.fun positions
+    if (pumpfunPositions.size > 0) {
+      message += `<b>Pump.fun</b> (${pumpfunPositions.size} open)\n`;
+      for (const [, pos] of Array.from(pumpfunPositions).slice(0, 5)) {
+        const mult = pos.peakPrice / pos.entryPrice;
+        message += `  ${pos.symbol}: ${mult.toFixed(1)}x from entry\n`;
+      }
+      if (pumpfunPositions.size > 5) message += `  ...and ${pumpfunPositions.size - 5} more\n`;
+      message += `\n`;
     }
 
-    const recentTrades = trades.slice(-10); // Last 10 trades
+    // Crypto copy positions
+    if (cryptoCopyPositions.length > 0) {
+      message += `<b>Crypto Copy</b> (${cryptoCopyPositions.length} open)\n`;
+      for (const pos of cryptoCopyPositions.slice(0, 5)) {
+        message += `  ${pos.tokenSymbol} (${pos.chain}): ${pos.entryAmountNative.toFixed(4)} native\n`;
+      }
+      if (cryptoCopyPositions.length > 5) message += `  ...and ${cryptoCopyPositions.length - 5} more\n`;
+      message += `\n`;
+    }
 
-    let message = `<b>Recent Trades</b> (${trades.length} total)\n\n`;
-
-    for (const trade of recentTrades) {
-      const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
-      const time = new Date(trade.timestamp).toLocaleTimeString();
-      message +=
-        `${emoji} ${trade.type} ${trade.strategy}\n` +
-        `   $${trade.amount.toFixed(2)} @ ${trade.price.toFixed(6)}\n` +
-        `   P&L: $${trade.pnl.toFixed(2)} | ${time}\n\n`;
+    // Recent trades
+    if (trades.length > 0) {
+      const recentTrades = trades.slice(-10);
+      message += `<b>Today</b> (${trades.length} trades)\n`;
+      for (const trade of recentTrades) {
+        const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
+        const time = new Date(trade.timestamp).toLocaleTimeString();
+        message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
+      }
+    } else if (pumpfunPositions.size === 0 && cryptoCopyPositions.length === 0) {
+      message += "No trades or positions.";
     }
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
@@ -1007,94 +920,91 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
+async function handleBets(ctx: Context, tab: "open" | "closed" | "copy"): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /bets from user ${ctx.from?.id}`);
     return;
   }
 
   try {
-    const openBets = loadOpenPositions();
-
-    // Compute unrealized P&L for header (and cache prices for open tab)
-    let openInvested = 0;
-    let totalUnrealized = 0;
-    const priceCache = new Map<string, { currentPrice: number | null; pnl: number }>();
-
-    for (const bet of openBets) {
-      openInvested += bet.size;
-      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-      let pnl = 0;
-
-      if (currentPrice !== null) {
-        const priceDiff = bet.side === "YES"
-          ? currentPrice - bet.entryPrice
-          : bet.entryPrice - currentPrice;
-        const shares = bet.size / bet.entryPrice;
-        pnl = shares * priceDiff;
-        totalUnrealized += pnl;
-      }
-
-      priceCache.set(bet.id, { currentPrice, pnl });
-    }
-
-    // Build message with just title
-    let message = `<b>AI Bets</b>\n\n`;
+    let message = `<b>Bets</b>\n\n`;
 
     const tabButtons = [[
-      { text: tab === "open" ? "* Open" : "Open", callback_data: "bets_open" },
-      { text: tab === "closed" ? "* Closed" : "Closed", callback_data: "bets_closed" },
+      { text: tab === "open" ? "* AI Open" : "AI Open", callback_data: "bets_open" },
+      { text: tab === "closed" ? "* AI Closed" : "AI Closed", callback_data: "bets_closed" },
+      { text: tab === "copy" ? "* Copy" : "Copy", callback_data: "bets_copy" },
     ]];
 
     if (tab === "open") {
+      const openBets = loadOpenPositions();
+      const aiStats = getBettingStats();
+
       if (openBets.length === 0) {
-        message += "No open bets.";
+        const rSign = aiStats.totalPnl >= 0 ? "+" : "";
+        message += `<b>Unrealized: $0.00 | Realized: ${rSign}$${aiStats.totalPnl.toFixed(2)}</b>\n`;
+        message += `0 open | $0 invested | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+        message += "No open AI bets.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
         await sendDataMessage(message, allButtons);
         return;
       }
 
-      for (const bet of openBets) {
-        const cached = priceCache.get(bet.id);
-        const currentPrice = cached?.currentPrice ?? null;
-        const pnl = cached?.pnl ?? 0;
+      let totalInvested = 0;
+      let totalPnl = 0;
+      let positionLines = "";
 
-        const entryDate = new Date(bet.entryTimestamp).toLocaleDateString();
+      for (const bet of openBets) {
+        const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+        let pnl = 0;
+        if (currentPrice !== null) {
+          const priceDiff = bet.side === "YES"
+            ? currentPrice - bet.entryPrice
+            : bet.entryPrice - currentPrice;
+          pnl = (bet.size / bet.entryPrice) * priceDiff;
+          totalInvested += bet.size;
+          totalPnl += pnl;
+        }
+
         const titleShort = bet.marketTitle.length > 35
           ? bet.marketTitle.slice(0, 35) + "..."
           : bet.marketTitle;
 
-        message += `<b>${titleShort}</b>\n`;
-        message += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
+        positionLines += `<b>${titleShort}</b>\n`;
+        positionLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
 
         if (currentPrice !== null) {
           const pnlPct = (pnl / bet.size) * 100;
           const sign = pnl >= 0 ? "+" : "";
-          message += ` | Now: ${(currentPrice * 100).toFixed(0)}c`;
-          message += `\nP&L: ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+          positionLines += ` | Now: ${(currentPrice * 100).toFixed(0)}c`;
+          positionLines += `\nP&L: ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
         }
 
-        message += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n`;
-
-        const ensemble = getEnsembleResult(bet.marketId);
-        if (ensemble && ensemble.ensembleSize > 1) {
-          const estimates = ensemble.individualEstimates
-            .map(e => `${(e * 100).toFixed(0)}%`)
-            .join('/');
-          message += `Ens: ${estimates} (d=${ensemble.disagreement.toFixed(2)})\n`;
-        }
-        message += `\n`;
+        const entryDate = new Date(bet.entryTimestamp).toLocaleDateString();
+        positionLines += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n\n`;
       }
 
-    } else {
+      const uSign = totalPnl >= 0 ? "+" : "";
+      const rSign = aiStats.totalPnl >= 0 ? "+" : "";
+      message += `<b>Unrealized: ${uSign}$${totalPnl.toFixed(2)} | Realized: ${rSign}$${aiStats.totalPnl.toFixed(2)}</b>\n`;
+      message += `${openBets.length} open | $${totalInvested.toFixed(0)} invested | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += positionLines;
+
+    } else if (tab === "closed") {
       const closedBets = loadClosedPositions(10);
+      const aiStats = getBettingStats();
 
       if (closedBets.length === 0) {
-        message += "No closed bets yet.";
+        message += `<b>Realized: $0.00</b>\n`;
+        message += `0 closed\n\n`;
+        message += "No closed AI bets yet.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
         await sendDataMessage(message, allButtons);
         return;
       }
+
+      let closedTotalInvested = 0;
+      let closedTotalPnl = 0;
+      let closedLines = "";
 
       for (const bet of closedBets) {
         const titleShort = bet.marketTitle.length > 35
@@ -1107,17 +1017,72 @@ async function handleBets(ctx: Context, tab: "open" | "closed"): Promise<void> {
           ? new Date(bet.exitTimestamp).toLocaleDateString()
           : "?";
 
-        message += `<b>${titleShort}</b>\n`;
-        message += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
+        closedTotalInvested += bet.size;
+        closedTotalPnl += pnl;
+
+        closedLines += `<b>${titleShort}</b>\n`;
+        closedLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
         if (bet.exitPrice !== undefined) {
-          message += ` -> ${(bet.exitPrice * 100).toFixed(0)}c`;
+          closedLines += ` -> ${(bet.exitPrice * 100).toFixed(0)}c`;
         }
-        message += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
+        closedLines += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
         if (bet.exitReason) {
-          message += ` | ${bet.exitReason}`;
+          closedLines += ` | ${bet.exitReason}`;
         }
-        message += ` | ${exitDate}\n\n`;
+        closedLines += ` | ${exitDate}\n\n`;
       }
+
+      const rSign = closedTotalPnl >= 0 ? "+" : "";
+      message += `<b>Realized: ${rSign}$${closedTotalPnl.toFixed(2)}</b>\n`;
+      message += `${aiStats.totalBets} closed | $${closedTotalInvested.toFixed(0)} invested | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += closedLines;
+
+    } else {
+      // Copy tab - Polymarket copy positions
+      const positionsWithValues = await getOpenPositionsWithValues();
+      const polyStats = getCopyStats();
+
+      if (positionsWithValues.length === 0) {
+        const rSign = polyStats.totalPnl >= 0 ? "+" : "";
+        message += `<b>Unrealized: $0.00 | Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
+        message += `0 open | $0 invested | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+        message += "No open copy positions.";
+        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(message, allButtons);
+        return;
+      }
+
+      let totalInvested = 0;
+      let totalCurrentValue = 0;
+      let copyLines = "";
+
+      for (const pos of positionsWithValues) {
+        const titleShort = pos.marketTitle.length > 35
+          ? pos.marketTitle.slice(0, 35) + "..."
+          : pos.marketTitle;
+
+        copyLines += `<b>${titleShort}</b>\n`;
+        copyLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
+
+        if (pos.currentPrice !== null) {
+          const currentVal = pos.currentValue ?? 0;
+          const pnlPct = pos.unrealizedPnlPct ?? 0;
+          const sign = pnlPct >= 0 ? "+" : "";
+          copyLines += ` | Now: ${(pos.currentPrice * 100).toFixed(0)}c`;
+          copyLines += `\nP&L: ${sign}$${((pos.currentValue ?? 0) - pos.size).toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+          totalInvested += pos.size;
+          totalCurrentValue += currentVal;
+        }
+
+        copyLines += `\n\n`;
+      }
+
+      const unrealizedPnl = totalCurrentValue - totalInvested;
+      const uSign = unrealizedPnl >= 0 ? "+" : "";
+      const rSign = polyStats.totalPnl >= 0 ? "+" : "";
+      message += `<b>Unrealized: ${uSign}$${unrealizedPnl.toFixed(2)} | Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
+      message += `${positionsWithValues.length} open | $${totalInvested.toFixed(0)} invested | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += copyLines;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1146,8 +1111,8 @@ async function handleManage(ctx: Context): Promise<void> {
 
   const buttons = [
     [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
-    [{ text: "Close All Copy Trades", callback_data: "manage_close_copies" }],
-    [{ text: "Close Everything", callback_data: "manage_close_all" }],
+    [{ text: "Close All Copy Bets", callback_data: "manage_close_copies" }],
+    [{ text: "Reset Paper Trading", callback_data: "manage_resetpaper" }],
     [{ text: "Back", callback_data: "main_menu" }],
   ];
 
@@ -1185,39 +1150,7 @@ async function handleCloseAllCopies(ctx: Context): Promise<void> {
   const deleted = clearAllCopiedPositions();
 
   const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(`Cleared ${deleted} copy trade records.`, buttons);
-}
-
-async function handleCloseAll(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  let message = "<b>Closing all positions...</b>\n\n";
-  let total = 0;
-
-  // AI Bets
-  const openBets = loadOpenPositions();
-  let betsClosed = 0;
-  for (const bet of openBets) {
-    const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-    if (currentPrice !== null) {
-      const { exitPosition } = await import("../aibetting/executor.js");
-      const { success } = await exitPosition(bet, currentPrice, "Manual close");
-      if (success) betsClosed++;
-    }
-  }
-  message += `AI Bets: ${betsClosed}/${openBets.length} closed\n`;
-  total += betsClosed;
-
-  // Poly copies
-  const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-  const polyDeleted = clearAllCopiedPositions();
-  message += `Poly Copy: ${polyDeleted} cleared\n`;
-  total += polyDeleted;
-
-  message += `\n<b>Total: ${total} positions closed</b>`;
-
-  const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(message, buttons);
+  await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
 }
 
 async function handleTradersPdf(ctx: Context): Promise<void> {
@@ -1408,7 +1341,7 @@ ${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p 
 - Running: ${schedulerStatus.running}
 - Open positions: ${schedulerStatus.openPositions}
 - Total exposure: $${schedulerStatus.totalExposure.toFixed(2)}
-- Analysis cache: ${schedulerStatus.ensembleCacheSize} markets
+- Analysis cache: ${schedulerStatus.analysisCacheSize} markets
 
 === BETTING STATS (all time) ===
 - Total bets: ${stats.totalBets}

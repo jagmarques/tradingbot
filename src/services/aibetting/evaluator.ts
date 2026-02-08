@@ -11,6 +11,20 @@ import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 
+const EXTREMIZATION_FACTOR = 1.3;
+
+const CATEGORY_EDGE_BONUS: Record<string, number> = {
+  entertainment: 0.03,
+  other: 0.02,
+  politics: 0.01,
+  sports: 0,
+  business: 0,
+  crypto: -0.03,
+  science: 0,
+};
+
+const NO_SIDE_EDGE_BONUS = 0.015;
+
 function calculateKellyFraction(
   winProbability: number,
   odds: number
@@ -152,21 +166,34 @@ export function evaluateBetOpportunity(
   const marketPrice = yesOutcome?.price || 0.5;
   const tokenId = yesOutcome?.tokenId || "";
 
-  const edge = analysis.probability - marketPrice;
+  const rawProb = analysis.probability;
+  const extremized = 0.5 + (rawProb - 0.5) * EXTREMIZATION_FACTOR;
+  const aiProbability = Math.max(0.01, Math.min(0.99, extremized));
+
+  const edge = aiProbability - marketPrice;
   const absEdge = Math.abs(edge);
 
   const side: "YES" | "NO" = edge > 0 ? "YES" : "NO";
 
-  const expectedValue = calculateEV(analysis.probability, marketPrice, side);
+  const categoryBonus = CATEGORY_EDGE_BONUS[market.category] ?? 0;
+  const sideBonus = side === "NO" ? NO_SIDE_EDGE_BONUS : -NO_SIDE_EDGE_BONUS;
+  const effectiveEdge = absEdge + categoryBonus + sideBonus;
+
+  console.log(
+    `[Evaluator] SHADOW: ${market.title} | market=${(marketPrice * 100).toFixed(0)}c blind=${(rawProb * 100).toFixed(0)}% ext=${(aiProbability * 100).toFixed(0)}% ` +
+    `edge=${(absEdge * 100).toFixed(1)}% cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% effective=${(effectiveEdge * 100).toFixed(1)}%`
+  );
+
+  const expectedValue = calculateEV(aiProbability, marketPrice, side);
 
   const availableBankroll = isPaperMode() ? bankroll : bankroll - currentExposure;
-  const maxAllowedBet = isPaperMode() ? config.maxBetSize : Math.min(
+  const maxAllowedBet = Math.min(
     config.maxBetSize,
     config.maxTotalExposure - currentExposure
   );
 
   const recommendedSize = calculateBetSize(
-    analysis.probability,
+    aiProbability,
     marketPrice,
     side,
     availableBankroll,
@@ -177,7 +204,7 @@ export function evaluateBetOpportunity(
   const effectiveMinConfidence = absEdge >= DYNAMIC_EDGE_THRESHOLD ? DYNAMIC_CONFIDENCE_FLOOR : config.minConfidence;
   const isDynamicThreshold = absEdge >= DYNAMIC_EDGE_THRESHOLD && effectiveMinConfidence < config.minConfidence;
   const meetsConfidence = roundedConfidence >= effectiveMinConfidence;
-  const meetsEdge = absEdge >= config.minEdge;
+  const meetsEdge = effectiveEdge >= config.minEdge;
   const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
@@ -186,7 +213,7 @@ export function evaluateBetOpportunity(
 
   let reason: string;
   if (shouldBet) {
-    reason = `Edge ${(absEdge * 100).toFixed(1)}%, Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
+    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}% cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}% ${side}), Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
     if (isDynamicThreshold) {
       reason += ` (dynamic: ${(effectiveMinConfidence * 100).toFixed(0)}% floor)`;
     }
@@ -195,7 +222,7 @@ export function evaluateBetOpportunity(
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
-    reason = `Edge too small: ${(absEdge * 100).toFixed(1)}% < ${(config.minEdge * 100).toFixed(0)}%`;
+    reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(config.minEdge * 100).toFixed(0)}%`;
   } else if (!hasBudget) {
     reason = "Insufficient bankroll or exposure limit reached";
   } else {
@@ -208,7 +235,7 @@ export function evaluateBetOpportunity(
     tokenId: side === "YES" ? tokenId : market.outcomes.find((o) => o.name === "No")?.tokenId || "",
     side,
     marketPrice,
-    aiProbability: analysis.probability,
+    aiProbability: aiProbability,
     confidence: analysis.confidence,
     edge,
     expectedValue,

@@ -197,12 +197,25 @@ export async function filterCryptoCopy(
   };
 }
 
+// Conviction-based copy sizing
+const COPY_RATIO = 0.005; // 0.5% of trader's bet size
+const MAX_COPY_BET = 10; // $10 cap
+const MIN_COPY_SIZE = 2; // skip below $2
+
 export function filterPolyCopy(
   traderRoi: number,
-  _tradeUsdcSize: number,
-  _tradePrice: number,
-  copySizeUsd: number,
+  tradeUsdcSize: number,
+  tradePrice: number,
 ): CopyFilterResult {
+  if (tradePrice > 0.95 || tradePrice < 0.05) {
+    return {
+      shouldCopy: false,
+      recommendedSizeUsd: 0,
+      reason: `Price ${(tradePrice * 100).toFixed(0)}c too extreme (5-95c range)`,
+      traderQualityMultiplier: 0,
+    };
+  }
+
   const traderQualityMultiplier = getRoiQualityMultiplier(traderRoi);
 
   if (traderQualityMultiplier === 0) {
@@ -214,13 +227,21 @@ export function filterPolyCopy(
     };
   }
 
-  const rawSize = copySizeUsd * traderQualityMultiplier;
-  const size = clampSize(rawSize, copySizeUsd);
+  const rawSize = Math.min(MAX_COPY_BET, tradeUsdcSize * COPY_RATIO * traderQualityMultiplier);
+
+  if (rawSize < MIN_COPY_SIZE) {
+    return {
+      shouldCopy: false,
+      recommendedSizeUsd: 0,
+      reason: `Conviction too low: $${tradeUsdcSize.toFixed(0)} trade -> $${rawSize.toFixed(2)} copy (min $${MIN_COPY_SIZE})`,
+      traderQualityMultiplier,
+    };
+  }
 
   return {
     shouldCopy: true,
-    recommendedSizeUsd: Math.round(size * 100) / 100,
-    reason: `ROI ${(traderRoi * 100).toFixed(1)}%, multiplier ${traderQualityMultiplier}x`,
+    recommendedSizeUsd: Math.round(rawSize * 100) / 100,
+    reason: `ROI ${(traderRoi * 100).toFixed(1)}%, $${tradeUsdcSize.toFixed(0)} conviction, ${traderQualityMultiplier}x quality`,
     traderQualityMultiplier,
   };
 }

@@ -90,17 +90,17 @@ export const SCORING_WEIGHTS = {
 };
 
 export const TRADER_THRESHOLDS = {
-  MIN_TRADES: 10,
-  MIN_WIN_RATE: 0.60,
-  MIN_PROFIT_FACTOR: 1.5,
-  MIN_SCORE: 70,
+  MIN_TRADES: 5,
+  MIN_WIN_RATE: 0.50,
+  MIN_PROFIT_FACTOR: 1.2,
+  MIN_SCORE: 60,
 };
 
 export const BIG_HITTER_THRESHOLDS = {
-  MIN_TRADES: 5,
-  MAX_TRADES: 9,
-  MIN_TOTAL_PNL_USD: 1000,
-  MIN_WIN_RATE: 0.60,
+  MIN_TRADES: 3,
+  MAX_TRADES: 4,
+  MIN_TOTAL_PNL_USD: 500,
+  MIN_WIN_RATE: 0.50,
 };
 
 export const KNOWN_EXCHANGES: Record<Chain, string[]> = {

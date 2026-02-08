@@ -180,7 +180,7 @@ async function main(): Promise<void> {
         minEdge: env.AIBETTING_MIN_EDGE,
         minConfidence: env.AIBETTING_MIN_CONFIDENCE,
         scanIntervalMs: env.AIBETTING_SCAN_INTERVAL,
-        categoriesEnabled: ["politics", "crypto", "sports", "business", "other"],
+        categoriesEnabled: ["politics", "crypto", "sports", "business", "entertainment", "other"],
       });
       console.log("[Bot] AI Betting started");
     } else {

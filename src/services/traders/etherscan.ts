@@ -6,7 +6,6 @@ import { upsertTrader, getTrader, upsertTokenTrade } from "./storage.js";
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
 
 // Chain IDs for Etherscan V2 API (free tier only)
-// Paid chains removed: base (8453), bsc (56), optimism (10), avalanche (43114)
 const CHAIN_IDS: Record<string, number> = {
   ethereum: 1,
   polygon: 137,

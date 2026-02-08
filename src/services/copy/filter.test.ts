@@ -254,45 +254,54 @@ describe("Copy Filter", () => {
   });
 
   describe("filterPolyCopy", () => {
-    it("high-ROI trader (30%+) gets 1.5x multiplier", () => {
-      const result = filterPolyCopy(0.35, 500, 0.60, 5);
+    it("high conviction + high ROI: Melody626 $2741 Darnold", () => {
+      // ROI 41.8% -> 1.5x, $2741 * 0.005 * 1.5 = $20.56 -> capped at $10
+      const result = filterPolyCopy(0.418, 2741, 0.54);
 
       expect(result.shouldCopy).toBe(true);
       expect(result.traderQualityMultiplier).toBe(1.5);
-      expect(result.recommendedSizeUsd).toBe(7.5); // 5 * 1.5
+      expect(result.recommendedSizeUsd).toBe(10); // capped at MAX_COPY_BET
     });
 
-    it("standard ROI (10%) gets 1.0x multiplier", () => {
-      const result = filterPolyCopy(0.10, 200, 0.55, 5);
+    it("medium conviction + high ROI: Melody626 $1080 Olympics", () => {
+      // ROI 41.8% -> 1.5x, $1080 * 0.005 * 1.5 = $8.10
+      const result = filterPolyCopy(0.418, 1080, 0.54);
+
+      expect(result.shouldCopy).toBe(true);
+      expect(result.traderQualityMultiplier).toBe(1.5);
+      expect(result.recommendedSizeUsd).toBe(8.1);
+    });
+
+    it("low conviction: ScottyNooo $43 tariffs -> skip", () => {
+      // ROI 19.9% -> 1.0x, $43 * 0.005 * 1.0 = $0.22 -> below $2 min
+      const result = filterPolyCopy(0.199, 43, 0.50);
+
+      expect(result.shouldCopy).toBe(false);
+      expect(result.reason).toContain("Conviction too low");
+    });
+
+    it("standard ROI (10%) with decent conviction", () => {
+      // ROI 10% -> 1.0x, $800 * 0.005 * 1.0 = $4.00
+      const result = filterPolyCopy(0.10, 800, 0.55);
 
       expect(result.shouldCopy).toBe(true);
       expect(result.traderQualityMultiplier).toBe(1.0);
-      expect(result.recommendedSizeUsd).toBe(5.0); // 5 * 1.0
+      expect(result.recommendedSizeUsd).toBe(4);
     });
 
     it("low ROI (< 5%) gets rejected", () => {
-      const result = filterPolyCopy(0.03, 100, 0.50, 5);
+      const result = filterPolyCopy(0.03, 1000, 0.50);
 
       expect(result.shouldCopy).toBe(false);
       expect(result.traderQualityMultiplier).toBe(0);
       expect(result.reason).toContain("too low");
     });
 
-    it("size capped at 3x base", () => {
-      // 1.5x multiplier on $5 = $7.50 (within cap of $15)
-      // Test with a very high multiplier scenario by using ROI just at 30%
-      const result = filterPolyCopy(0.30, 1000, 0.70, 5);
+    it("extreme price rejected", () => {
+      const result = filterPolyCopy(0.30, 1000, 0.97);
 
-      expect(result.recommendedSizeUsd).toBeLessThanOrEqual(15); // 5 * 3
-    });
-
-    it("size floored at 0.3x base", () => {
-      // ROI 5% gives 0.7x -> 5 * 0.7 = 3.5 which is above floor 1.5
-      // ROI 5% gives 0.7x, so result is $3.5
-      const result = filterPolyCopy(0.05, 100, 0.50, 5);
-
-      expect(result.shouldCopy).toBe(true);
-      expect(result.recommendedSizeUsd).toBeGreaterThanOrEqual(1.5); // 5 * 0.3
+      expect(result.shouldCopy).toBe(false);
+      expect(result.reason).toContain("too extreme");
     });
   });
 
