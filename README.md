@@ -1,6 +1,6 @@
 # Trading Bot
 
-Multi-strategy crypto trading bot with Telegram controls. TypeScript, Docker, Coolify.
+Polymarket trading bot with AI betting, copy trading, and Telegram controls. TypeScript, Docker, Coolify.
 
 ## Strategies
 
@@ -44,31 +44,6 @@ Scans Polymarket markets, fetches news via GDELT, extracts article content with 
 - Settlement risk exit <6h before resolution
 - Auto-resolve on market settlement
 
-### Token AI (DexScreener)
-
-Discovers high-momentum tokens from DexScreener, analyzes with DeepSeek, sizes with Kelly criterion.
-
-| Config | Default | Description |
-|--------|---------|-------------|
-| `TOKENAI_ENABLED` | `false` | Enable/disable |
-| `TOKENAI_MAX_BET` | `$10` | Max per position |
-| `TOKENAI_MAX_EXPOSURE` | `$50` | Total open exposure |
-| `TOKENAI_MAX_POSITIONS` | `5` | Concurrent positions |
-| `TOKENAI_MIN_CONFIDENCE` | `medium` | low/medium/high |
-| `TOKENAI_DAILY_LOSS_LIMIT` | `$25` | Daily loss cap |
-| `TOKENAI_KELLY_MULTIPLIER` | `0.25` | Fractional Kelly (1/4) |
-| `TOKENAI_SCAN_INTERVAL` | `15min` | Time between scans |
-
-### Pump.fun Sniper (Solana)
-
-Auto-buy new Solana tokens with Jito MEV protection, split buys (3 txs over 10s), auto-sell at 2x/5x/10x.
-
-| Config | Default | Description |
-|--------|---------|-------------|
-| `MAX_SNIPE_AMOUNT_SOL` | `0.05` | SOL per snipe |
-| `MAX_SLIPPAGE_PUMPFUN` | `1%` | Max slippage |
-| `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss cap |
-
 ### Copy Trading
 
 Copy profitable wallets on Solana + EVM chains (Base, BNB, Arbitrum, Avalanche). Includes wash trade detection.
@@ -88,8 +63,7 @@ Monitor top Polymarket bettors and copy their positions. 30-minute buffer before
 | `/trades` | Recent trades |
 | `/traders` | Top tracked wallets |
 | `/bettors` | Copied Polymarket bettors |
-| `/tokenai` | Token AI status |
-| `/settings` | Auto-snipe, auto-copy config |
+| `/settings` | Auto-copy config |
 | `/stop` / `/resume` | Kill switch (all strategies) |
 | `Manage` button | Close bets, copy bets, or reset paper data |
 | `/resetpaper` | Wipe paper trading data |
@@ -100,8 +74,9 @@ Monitor top Polymarket bettors and copy their positions. 30-minute buffer before
 | | Paper | Live |
 |---|-------|------|
 | Bankroll | Virtual $10k | Real USDC balance |
-| Position limits | None | 5 per strategy |
-| Exposure limit | None | $50 per strategy |
+| Position limits | None | 5 |
+| Exposure limit | None | $50 |
+| Copy limit | None | 10/day |
 | Orders | Midpoint prices | Real CLOB orderbook |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 

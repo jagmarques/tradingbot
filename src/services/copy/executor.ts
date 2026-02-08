@@ -285,7 +285,7 @@ export async function executeCopyTrade(
   }
 
   console.log(`[CopyTrade] Copying ${trader.address.slice(0, 8)}... on ${trade.chain}`);
-  console.log(`[CopyTrade] AI: ${filterResult.aiConfidence || "N/A"} P=${filterResult.aiProbability ? (filterResult.aiProbability * 100).toFixed(0) + "%" : "N/A"} Q=${filterResult.traderQualityMultiplier.toFixed(1)}x`);
+  console.log(`[CopyTrade] Q=${filterResult.traderQualityMultiplier.toFixed(1)}x`);
   console.log(`[CopyTrade] Token: ${trade.tokenAddress}, Amount: ${copyAmount.toFixed(6)} native ($${filterResult.recommendedSizeUsd.toFixed(2)})`);
 
   let result: CopyTradeResult;
@@ -386,9 +386,7 @@ async function notifyCopyTrade(
   const paperTag = result.isPaper ? " [PAPER]" : "";
   const shortTrader = `${trader.address.slice(0, 6)}...${trader.address.slice(-4)}`;
   const shortToken = trade.tokenAddress.slice(0, 10);
-  const aiInfo = filter.aiConfidence
-    ? `AI: ${filter.aiConfidence} (${filter.aiProbability ? (filter.aiProbability * 100).toFixed(0) + "%" : "N/A"})`
-    : "AI: N/A";
+  const aiInfo = `Q: ${filter.traderQualityMultiplier.toFixed(1)}x`;
 
   const message = `
 COPY TRADE EXECUTED${paperTag}

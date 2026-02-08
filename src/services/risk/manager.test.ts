@@ -19,7 +19,6 @@ import { initDb, closeDb, getDb } from "../database/db.js";
 vi.mock("../../config/env.js", () => ({
   loadEnv: (): Record<string, unknown> => ({
     DAILY_LOSS_LIMIT_USD: 10,
-    MAX_SLIPPAGE_PUMPFUN: 0.15,
     MAX_SLIPPAGE_POLYMARKET: 0.02,
     MIN_SOL_RESERVE: 0.05,
   }),
@@ -65,7 +64,7 @@ describe("Risk Manager", () => {
       const initialTradeCount = getTodayTrades().length;
 
       recordTrade({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         type: "BUY",
         amount: 10,
         price: 0.001,
@@ -74,7 +73,7 @@ describe("Risk Manager", () => {
 
       const trades = getTodayTrades();
       expect(trades.length).toBe(initialTradeCount + 1);
-      expect(trades[trades.length - 1].strategy).toBe("pumpfun");
+      expect(trades[trades.length - 1].strategy).toBe("polymarket");
       expect(trades[trades.length - 1].type).toBe("BUY");
     });
 
@@ -82,7 +81,7 @@ describe("Risk Manager", () => {
       const initialPnl = getDailyPnl();
 
       recordTrade({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         type: "SELL",
         amount: 10,
         price: 0.002,
@@ -137,13 +136,11 @@ describe("Risk Manager", () => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run("ai1", "market1", "Test AI Market", "token2", "NO", 0.6, 15, 0.7, 0.8, 0.1, "closed", Date.now() - 1000, Date.now(), 3.2);
 
       recordTrade({ strategy: "base", type: "SELL", amount: 20, price: 1.5, pnl: 2.1 });
-      recordTrade({ strategy: "pumpfun", type: "SELL", amount: 30, price: 0.01, pnl: 1.3 });
 
       const breakdown = getDailyPnlBreakdown();
 
-      expect(breakdown.total).toBeCloseTo(12.1, 1);
+      expect(breakdown.total).toBeCloseTo(10.8, 1);
       expect(breakdown.cryptoCopy).toBeCloseTo(2.1, 1);
-      expect(breakdown.pumpfun).toBeCloseTo(1.3, 1);
       expect(breakdown.polyCopy).toBeCloseTo(5.5, 1);
       expect(breakdown.aiBetting).toBeCloseTo(3.2, 1);
     });

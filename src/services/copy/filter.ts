@@ -1,27 +1,13 @@
-// AI copy filter - evaluates copy trade opportunities before execution
+// Copy filter - evaluates copy trade opportunities before execution
 import type { Chain, Trader, TraderTrade } from "../traders/types.js";
 import type { BotSettings } from "../settings/settings.js";
-import type { SupportedChain } from "../tokenai/types.js";
-import { analyzeToken } from "../tokenai/analyzer.js";
 
 export interface CopyFilterResult {
   shouldCopy: boolean;
   recommendedSizeUsd: number;
   reason: string;
-  aiConfidence?: "low" | "medium" | "high";
-  aiProbability?: number;
   traderQualityMultiplier: number; // 0.0-1.5 based on trader score
 }
-
-// Map Chain (traders/types) to SupportedChain (tokenai/types)
-const CHAIN_MAP: Partial<Record<Chain, SupportedChain>> = {
-  solana: "solana",
-  ethereum: "ethereum",
-  base: "base",
-  arbitrum: "arbitrum",
-  bsc: "bnb",
-  avalanche: "avalanche",
-};
 
 // Approximate native token prices in USD (for copy amount estimation)
 const APPROX_NATIVE_PRICES: Record<string, number> = {
@@ -35,17 +21,6 @@ const APPROX_NATIVE_PRICES: Record<string, number> = {
   avalanche: 35,
   sonic: 0.50,
 };
-
-// Confidence scaling for position sizing
-const CONFIDENCE_SCALE: Record<string, number> = {
-  high: 1.0,
-  medium: 0.7,
-  low: 0.4,
-};
-
-export function mapChainToSupported(chain: Chain): SupportedChain | null {
-  return CHAIN_MAP[chain] ?? null;
-}
 
 export function getApproxUsdValue(amountNative: number, chain: Chain): number {
   const price = APPROX_NATIVE_PRICES[chain] ?? 1;
@@ -84,11 +59,11 @@ function clampSize(size: number, baseUsd: number): number {
   return Math.max(floor, Math.min(cap, size));
 }
 
-export async function filterCryptoCopy(
+export function filterCryptoCopy(
   trader: Trader,
   trade: TraderTrade,
   settings: BotSettings,
-): Promise<CopyFilterResult> {
+): CopyFilterResult {
   // Check trader score threshold
   if (trader.score < settings.minTraderScore) {
     return {
@@ -112,87 +87,12 @@ export async function filterCryptoCopy(
   }
 
   const baseUsd = getCopyAmountUsd(trade.chain, settings);
-  const supportedChain = mapChainToSupported(trade.chain);
-
-  // If chain not supported for AI analysis, use trader-quality-only sizing
-  if (!supportedChain) {
-    const size = clampSize(baseUsd * traderQualityMultiplier, baseUsd);
-    return {
-      shouldCopy: true,
-      recommendedSizeUsd: Math.round(size * 100) / 100,
-      reason: `Chain ${trade.chain} not supported for AI analysis, trader-quality sizing only`,
-      traderQualityMultiplier,
-    };
-  }
-
-  // Run AI analysis
-  let analysis;
-  try {
-    analysis = await analyzeToken(trade.tokenAddress, supportedChain, trade.tokenSymbol);
-  } catch (error) {
-    console.warn(`[CopyFilter] AI analysis failed for ${trade.tokenAddress}: ${error}`);
-    analysis = null;
-  }
-
-  // AI analysis failure: fall back to trader-quality-only sizing
-  if (!analysis) {
-    console.warn(`[CopyFilter] AI analysis unavailable, using trader-quality sizing for ${trade.tokenAddress}`);
-    const size = clampSize(baseUsd * traderQualityMultiplier, baseUsd);
-    return {
-      shouldCopy: true,
-      recommendedSizeUsd: Math.round(size * 100) / 100,
-      reason: "AI analysis unavailable, trader-quality sizing only",
-      traderQualityMultiplier,
-    };
-  }
-
-  // AI rejection: high security risk
-  if (analysis.securityScore !== undefined && analysis.securityScore >= 70) {
-    return {
-      shouldCopy: false,
-      recommendedSizeUsd: 0,
-      reason: `AI rejected: security score ${analysis.securityScore}/100 too high`,
-      aiConfidence: analysis.confidence,
-      aiProbability: analysis.successProbability,
-      traderQualityMultiplier,
-    };
-  }
-
-  // AI rejection: low probability
-  if (analysis.successProbability < 0.15) {
-    return {
-      shouldCopy: false,
-      recommendedSizeUsd: 0,
-      reason: `AI rejected: success probability ${(analysis.successProbability * 100).toFixed(1)}% too low`,
-      aiConfidence: analysis.confidence,
-      aiProbability: analysis.successProbability,
-      traderQualityMultiplier,
-    };
-  }
-
-  // AI rejection: low confidence
-  if (analysis.confidence === "low") {
-    return {
-      shouldCopy: false,
-      recommendedSizeUsd: 0,
-      reason: "AI rejected: low confidence",
-      aiConfidence: analysis.confidence,
-      aiProbability: analysis.successProbability,
-      traderQualityMultiplier,
-    };
-  }
-
-  // Calculate size: base * traderQuality * confidenceScale
-  const confScale = CONFIDENCE_SCALE[analysis.confidence] ?? 0.4;
-  const rawSize = baseUsd * traderQualityMultiplier * confScale;
-  const size = clampSize(rawSize, baseUsd);
+  const size = clampSize(baseUsd * traderQualityMultiplier, baseUsd);
 
   return {
     shouldCopy: true,
     recommendedSizeUsd: Math.round(size * 100) / 100,
-    reason: `AI approved: P=${(analysis.successProbability * 100).toFixed(1)}% C=${analysis.confidence}`,
-    aiConfidence: analysis.confidence,
-    aiProbability: analysis.successProbability,
+    reason: `Trader quality ${traderQualityMultiplier}x, score ${trader.score}`,
     traderQualityMultiplier,
   };
 }
