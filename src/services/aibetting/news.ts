@@ -123,9 +123,16 @@ async function decodeGoogleNewsUrl(sourceUrl: string): Promise<string> {
   }
 }
 
+let lastGoogleDecode = 0;
+
 async function fetchDecodedBatchExecute(articleId: string): Promise<string> {
   const fallbackUrl = "https://news.google.com/rss/articles/" + articleId;
   try {
+    // Rate limit: wait at least 1s between Google News page fetches
+    const wait = Math.max(0, lastGoogleDecode + 1000 - Date.now());
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastGoogleDecode = Date.now();
+
     // Step 1: Fetch Google News article page to get signature + timestamp
     const pageUrl = `https://news.google.com/articles/${articleId}?hl=en-US&gl=US&ceid=US:en`;
     const controller1 = new AbortController();
@@ -273,27 +280,27 @@ export async function fetchNewsForMarket(
       return true;
     });
 
-    // Fetch article content for top 3 items in parallel
+    // Fetch article content for top 3 items sequentially (avoid Google 429 rate limit)
     const top3 = cleanItems.slice(0, 3);
-    const contentResults = await Promise.allSettled(
-      top3.map((item) => fetchArticleContent(item.url))
-    );
-
     let contentFetched = 0;
-    contentResults.forEach((result, index) => {
-      if (result.status === "fulfilled" && result.value) {
-        // Check first 500 chars for prediction market content (circular contamination)
-        if (isPredictionMarketContent(result.value.slice(0, 500))) {
-          console.log(`[News] Dropped prediction market content (${top3[index].source}): ${top3[index].title.slice(0, 80)}`);
-        } else if (isArticleRelevant(result.value, market.title)) {
-          top3[index].content = result.value;
-          contentFetched++;
-          console.log(`[News] Content preview (${top3[index].source}): ${result.value.slice(0, 200).replace(/\n/g, " ")}`);
-        } else {
-          console.log(`[News] Dropped irrelevant article (${top3[index].source}): ${top3[index].title.slice(0, 80)}`);
+    for (let i = 0; i < top3.length; i++) {
+      try {
+        const content = await fetchArticleContent(top3[i].url);
+        if (content) {
+          if (isPredictionMarketContent(content.slice(0, 500))) {
+            console.log(`[News] Dropped prediction market content (${top3[i].source}): ${top3[i].title.slice(0, 80)}`);
+          } else if (isArticleRelevant(content, market.title)) {
+            top3[i].content = content;
+            contentFetched++;
+            console.log(`[News] Content preview (${top3[i].source}): ${content.slice(0, 200).replace(/\n/g, " ")}`);
+          } else {
+            console.log(`[News] Dropped irrelevant article (${top3[i].source}): ${top3[i].title.slice(0, 80)}`);
+          }
         }
+      } catch {
+        // continue to next article
       }
-    });
+    }
 
     const dropped = recentItems.length - cleanItems.length;
     console.log(
