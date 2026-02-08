@@ -345,7 +345,6 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number, slug?: s
 
     // Neither worked - cache to avoid repeated lookups
     gammaNotFoundCache.add(conditionId);
-    console.log(`[PolyTraders] Market not in GAMMA: ${slug || conditionId.slice(0, 20)}`);
     return null;
   } catch {
     return null;
@@ -737,6 +736,47 @@ export function getTrackedTraders(): Array<{ wallet: string; name: string; pnl: 
 
 export function getOpenCopiedPositions(): CopiedPosition[] {
   return Array.from(copiedPositions.values()).filter(p => p.status === "open");
+}
+
+export function getClosedCopiedPositions(limit = 10): CopiedPosition[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM polytrader_copies WHERE status = 'closed' ORDER BY exit_timestamp DESC LIMIT ?`
+  ).all(limit) as Array<{
+    id: string;
+    trader_wallet: string;
+    trader_name: string;
+    condition_id: string;
+    market_title: string;
+    token_id: string;
+    side: string;
+    entry_price: number;
+    size: number;
+    trader_size: number;
+    status: string;
+    entry_timestamp: number;
+    exit_timestamp: number | null;
+    exit_price: number | null;
+    pnl: number | null;
+  }>;
+
+  return rows.map(r => ({
+    id: r.id,
+    traderWallet: r.trader_wallet,
+    traderName: r.trader_name,
+    conditionId: r.condition_id,
+    marketTitle: r.market_title,
+    tokenId: r.token_id,
+    side: r.side as "BUY" | "SELL",
+    entryPrice: r.entry_price,
+    size: r.size,
+    traderSize: r.trader_size,
+    status: r.status as "open" | "closed",
+    entryTimestamp: r.entry_timestamp,
+    exitTimestamp: r.exit_timestamp || undefined,
+    exitPrice: r.exit_price || undefined,
+    pnl: r.pnl || undefined,
+  }));
 }
 
 export function getCopyStats(): {

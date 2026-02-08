@@ -216,7 +216,7 @@ export async function fetchNewsForMarket(
         if (content) {
           if (isPredictionMarketContent(content.slice(0, 500))) {
             console.log(`[News] Dropped prediction market content (${top3[i].source}): ${top3[i].title.slice(0, 80)}`);
-          } else if (isArticleRelevant(content, market.title)) {
+          } else if (isArticleRelevant(top3[i].title + " " + content, market.title)) {
             top3[i].content = content;
             contentFetched++;
             console.log(`[News] Content (${top3[i].source}): ${content.slice(0, 150).replace(/\n/g, " ")}`);
