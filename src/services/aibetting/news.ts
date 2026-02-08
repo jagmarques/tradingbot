@@ -108,46 +108,15 @@ async function decodeGoogleNewsUrl(sourceUrl: string): Promise<string> {
     const articlesIdx = pathSegments.indexOf("articles");
     if (articlesIdx === -1 || articlesIdx >= pathSegments.length - 1) return sourceUrl;
 
-    const base64Part = pathSegments[articlesIdx + 1];
+    const articleId = pathSegments[articlesIdx + 1];
 
-    // URL-safe base64 to standard base64
-    const standardBase64 = base64Part.replace(/-/g, "+").replace(/_/g, "/");
-    const decoded = Buffer.from(standardBase64, "base64");
-    const binaryStr = decoded.toString("binary");
-
-    // Check for protobuf prefix 0x08, 0x13, 0x22
-    const prefix = String.fromCharCode(0x08, 0x13, 0x22);
-    let str = binaryStr;
-    if (str.startsWith(prefix)) {
-      str = str.substring(prefix.length);
-    }
-
-    // Read length byte(s) and extract URL
-    const bytes = Uint8Array.from(str, (c) => c.charCodeAt(0));
-    const len = bytes[0];
-    if (len === undefined) return sourceUrl;
-
-    // Variable-length encoding: if high bit set, 2-byte length
-    const urlStr =
-      len >= 0x80
-        ? str.substring(2, 2 + ((len & 0x7f) | ((bytes[1] ?? 0) << 7)))
-        : str.substring(1, 1 + len);
-
-    if (urlStr.startsWith("http")) {
-      return urlStr;
-    }
-
-    // Newer AU_yqL format - try batchexecute endpoint
-    if (urlStr.startsWith("AU_yqL") || base64Part.startsWith("AU_yqL")) {
-      return await fetchDecodedBatchExecute(base64Part);
-    }
-
-    // Regex fallback - search decoded bytes for URL
-    const decodedUtf8 = decoded.toString("utf-8");
-    const urlMatch = decodedUtf8.match(/https?:\/\/[^\s"\x00-\x1f]+/);
+    // Fast path: older format has URL embedded in base64 payload
+    const decoded = Buffer.from(articleId.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    const urlMatch = decoded.toString("latin1").match(/https?:\/\/[^\s\x00-\x1f"]+/);
     if (urlMatch) return urlMatch[0];
 
-    return sourceUrl;
+    // Newer AU_yqL format: resolve via Google's batchexecute API
+    return await fetchDecodedBatchExecute(articleId);
   } catch {
     console.warn(`[News] Failed to decode Google News URL: ${sourceUrl.slice(0, 80)}`);
     return sourceUrl;
@@ -308,19 +277,16 @@ export async function fetchNewsForMarket(
     );
 
     let contentFetched = 0;
-    let contentDropped = 0;
     contentResults.forEach((result, index) => {
       if (result.status === "fulfilled" && result.value) {
         // Check first 500 chars for prediction market content (circular contamination)
         if (isPredictionMarketContent(result.value.slice(0, 500))) {
-          contentDropped++;
           console.log(`[News] Dropped prediction market content (${top3[index].source}): ${top3[index].title.slice(0, 80)}`);
         } else if (isArticleRelevant(result.value, market.title)) {
           top3[index].content = result.value;
           contentFetched++;
           console.log(`[News] Content preview (${top3[index].source}): ${result.value.slice(0, 200).replace(/\n/g, " ")}`);
         } else {
-          contentDropped++;
           console.log(`[News] Dropped irrelevant article (${top3[index].source}): ${top3[index].title.slice(0, 80)}`);
         }
       }
