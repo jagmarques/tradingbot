@@ -583,7 +583,7 @@ async function refreshTopTraders(): Promise<void> {
     .sort((a, b) => b.pnl / b.vol - a.pnl / a.vol)
     .slice(0, 20);
 
-  // Filter penny-collectors by sampling recent trades
+  // Filter penny-collectors and day-traders by sampling recent trades
   const qualified: typeof sorted = [];
   for (const trader of sorted) {
     const wallet = trader.proxyWallet.toLowerCase();
@@ -591,7 +591,7 @@ async function refreshTopTraders(): Promise<void> {
     const buyTrades = recentTrades.filter(t => t.side === "BUY" && t.price > 0);
 
     if (buyTrades.length === 0) {
-      qualified.push(trader); // No data, give benefit of doubt
+      qualified.push(trader);
       continue;
     }
 
@@ -602,8 +602,36 @@ async function refreshTopTraders(): Promise<void> {
       continue;
     }
 
+    // Check time-to-expiry: skip traders who mostly trade near-expiry markets
+    const uniqueConditions = [...new Set(buyTrades.map(t => t.conditionId))];
+    let totalHoursToExpiry = 0;
+    let expiryChecked = 0;
+
+    for (const conditionId of uniqueConditions.slice(0, 3)) {
+      const trade = buyTrades.find(t => t.conditionId === conditionId)!;
+      const marketInfo = await getMarketInfo(conditionId, trade.outcomeIndex);
+      if (marketInfo?.endDate) {
+        const tradeTime = trade.timestamp * 1000;
+        const endTime = new Date(marketInfo.endDate).getTime();
+        const hoursToExpiry = (endTime - tradeTime) / (1000 * 60 * 60);
+        if (hoursToExpiry > 0) {
+          totalHoursToExpiry += hoursToExpiry;
+          expiryChecked++;
+        }
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    if (expiryChecked > 0) {
+      const avgHours = totalHoursToExpiry / expiryChecked;
+      if (avgHours < 24) {
+        console.log(`[PolyTraders] Filtered day-trader: ${trader.userName || wallet} (avg ${avgHours.toFixed(0)}h to expiry)`);
+        continue;
+      }
+    }
+
     qualified.push(trader);
-    await new Promise(r => setTimeout(r, 300)); // Rate limit
+    await new Promise(r => setTimeout(r, 300));
   }
 
   console.log(`[PolyTraders] Refreshed: ${qualified.length} traders from ${COPY_CATEGORIES.join(",")} (ROI-ranked)`);
