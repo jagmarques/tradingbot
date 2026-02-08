@@ -34,6 +34,14 @@ function calculateKellyFraction(
   return Math.max(0, kelly);
 }
 
+function getPriceZoneMultiplier(marketPrice: number): number {
+  // Markets near 50% are hardest to find edge - require full edge
+  // Markets near extremes have structural edge compression
+  if (marketPrice >= 0.30 && marketPrice <= 0.70) return 1.0;   // No change
+  if (marketPrice >= 0.10 && marketPrice <= 0.90) return 0.7;   // 10-30% or 70-90%
+  return 0.4;                                                     // <10% or >90%
+}
+
 export function calculateEV(aiProbability: number, currentPrice: number, side: "YES" | "NO"): number {
   if (side === "YES") {
     return aiProbability - currentPrice;
@@ -179,9 +187,12 @@ export function evaluateBetOpportunity(
   const sideBonus = side === "NO" ? NO_SIDE_EDGE_BONUS : -NO_SIDE_EDGE_BONUS;
   const effectiveEdge = absEdge + categoryBonus + sideBonus;
 
+  const priceZoneMultiplier = getPriceZoneMultiplier(marketPrice);
+  const adjustedMinEdge = config.minEdge * priceZoneMultiplier;
+
   console.log(
     `[Evaluator] SHADOW: ${market.title} | market=${(marketPrice * 100).toFixed(0)}c blind=${(rawProb * 100).toFixed(0)}% ext=${(aiProbability * 100).toFixed(0)}% ` +
-    `edge=${(absEdge * 100).toFixed(1)}% cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% effective=${(effectiveEdge * 100).toFixed(1)}%`
+    `edge=${(absEdge * 100).toFixed(1)}% cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% effective=${(effectiveEdge * 100).toFixed(1)}% zone=${priceZoneMultiplier}x minEdge=${(adjustedMinEdge * 100).toFixed(1)}%`
   );
 
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
@@ -204,7 +215,7 @@ export function evaluateBetOpportunity(
   const effectiveMinConfidence = absEdge >= DYNAMIC_EDGE_THRESHOLD ? DYNAMIC_CONFIDENCE_FLOOR : config.minConfidence;
   const isDynamicThreshold = absEdge >= DYNAMIC_EDGE_THRESHOLD && effectiveMinConfidence < config.minConfidence;
   const meetsConfidence = roundedConfidence >= effectiveMinConfidence;
-  const meetsEdge = effectiveEdge >= config.minEdge;
+  const meetsEdge = effectiveEdge >= adjustedMinEdge;
   const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
@@ -222,7 +233,7 @@ export function evaluateBetOpportunity(
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
-    reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(config.minEdge * 100).toFixed(0)}%`;
+    reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(adjustedMinEdge * 100).toFixed(1)}% (${priceZoneMultiplier}x zone)`;
   } else if (!hasBudget) {
     reason = "Insufficient bankroll or exposure limit reached";
   } else {
@@ -349,7 +360,7 @@ export async function shouldExitPosition(
 
     const freshNews = await fetchNewsForMarket(market);
 
-    const freshAnalysis = await analyzeMarket(market, freshNews);
+    const freshAnalysis = await analyzeMarket(market, freshNews, undefined, undefined, yesPrice);
 
     if (!freshAnalysis) {
       console.log(`[Evaluator] AI re-analysis failed, keeping position`);

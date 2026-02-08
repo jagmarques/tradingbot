@@ -47,6 +47,7 @@ export interface AIAnalysis {
   consistencyNote?: string; // Why estimate differs from prior, or "consistent" if unchanged
   citationAccuracy?: number; // 0.0-1.0, fraction of cited evidence verified in article text
   timeline?: string | null; // What needs to happen by when (for date-based markets), or null
+  r1RawProbability?: number; // Raw R1 output before Bayesian market price weighting
 }
 
 

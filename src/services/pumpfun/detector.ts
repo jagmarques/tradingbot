@@ -26,6 +26,31 @@ const PUMPFUN_PUBKEY = new PublicKey(PUMPFUN_PROGRAM_ID);
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 500;
 
+// RPC rate limiting - serialize calls with minimum spacing to avoid 429s
+const MIN_RPC_INTERVAL_MS = 200; // 5 req/sec max, well under Helius free tier
+const MAX_PENDING_RPC = 10; // Drop excess if queue gets too deep
+let rpcQueue: Promise<void> = Promise.resolve();
+let pendingRpcCount = 0;
+
+async function throttledRpc<T>(fn: () => Promise<T>): Promise<T | null> {
+  if (pendingRpcCount >= MAX_PENDING_RPC) {
+    return null; // Backpressure: drop to prevent unbounded queue growth
+  }
+
+  pendingRpcCount++;
+  const myTurn = rpcQueue.then(() =>
+    new Promise<void>((r) => setTimeout(r, MIN_RPC_INTERVAL_MS))
+  );
+  rpcQueue = myTurn;
+
+  try {
+    await myTurn;
+    return await fn();
+  } finally {
+    pendingRpcCount--;
+  }
+}
+
 // Pump.fun instruction discriminators
 const CREATE_INSTRUCTION = Buffer.from([0x18, 0x1e, 0xc8, 0x28, 0x05, 0x1c, 0x07, 0x77]);
 
@@ -98,7 +123,7 @@ function notifyCallbacks(launch: TokenLaunch): void {
 
 function isTransientError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("503") || msg.includes("Service unavailable") || msg.includes("timeout");
+  return msg.includes("503") || msg.includes("429") || msg.includes("Service unavailable") || msg.includes("timeout") || msg.includes("Too Many Requests");
 }
 
 async function fetchWithRetry<T>(
@@ -136,11 +161,13 @@ async function setupSubscription(): Promise<void> {
       }
 
       try {
-        // Fetch with retry for transient 503 errors
-        const tx = await fetchWithRetry(() =>
-          connection.getParsedTransaction(logs.signature, {
-            maxSupportedTransactionVersion: 0,
-          })
+        // Throttle + retry for RPC calls to avoid 429 rate limits
+        const tx = await throttledRpc(() =>
+          fetchWithRetry(() =>
+            connection.getParsedTransaction(logs.signature, {
+              maxSupportedTransactionVersion: 0,
+            })
+          )
         );
 
         if (!tx?.meta || tx.meta.err) return;

@@ -126,6 +126,30 @@ function initCopyTradesTable(): void {
   `);
 }
 
+function logWhaleTrade(trade: TraderActivity, traderInfo: { name: string; pnl: number; vol: number }, marketInfo: MarketInfo | null): void {
+  try {
+    const db = getDb();
+    const hoursToRes = marketInfo?.endDate ? hoursUntil(marketInfo.endDate) : null;
+    db.prepare(`
+      INSERT INTO whale_trades (
+        wallet_address, market_id, market_title, market_category, side, entry_price, bet_size, time_to_resolution_hours, traded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      trade.proxyWallet,
+      trade.conditionId,
+      trade.title || "Unknown",
+      null, // category not available from activity API
+      trade.outcome,
+      trade.price,
+      trade.usdcSize,
+      hoursToRes,
+      trade.timestamp * 1000
+    );
+  } catch (error) {
+    console.error("[PolyTraders] Error logging whale trade:", error);
+  }
+}
+
 function saveCopyOutcome(pos: CopiedPosition, pnl: number): void {
   const db = getDb();
   const won = pnl > 0 ? 1 : 0;
@@ -501,6 +525,14 @@ async function checkForNewTrades(): Promise<void> {
 
           newTrades++;
 
+          // Fetch market info once (used for whale logging and copy decision)
+          const marketInfo = resolvedMarketCache.has(trade.conditionId)
+            ? null
+            : await getMarketInfo(trade.conditionId, trade.outcomeIndex, trade.slug);
+
+          // Log every whale trade for category profiling
+          logWhaleTrade(trade, info, marketInfo);
+
           if (resolvedMarketCache.has(trade.conditionId)) {
             skip("resolved");
             continue;
@@ -514,7 +546,6 @@ async function checkForNewTrades(): Promise<void> {
             continue;
           }
 
-          const marketInfo = await getMarketInfo(trade.conditionId, trade.outcomeIndex, trade.slug);
           if (!marketInfo) {
             skip("market_not_found");
             continue;

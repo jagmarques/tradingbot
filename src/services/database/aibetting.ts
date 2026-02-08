@@ -333,6 +333,26 @@ export function recordOutcome(
 }
 
 // Get calibration statistics
+export function logCalibrationEntry(
+  marketId: string,
+  marketTitle: string,
+  r1RawProbability: number,
+  finalProbability: number,
+  marketPriceAtPrediction: number
+): void {
+  try {
+    const db = getDb();
+    const id = `cal_${marketId}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    db.prepare(`
+      INSERT INTO calibration_log (
+        id, market_id, market_title, r1_raw_probability, final_probability, market_price_at_prediction, predicted_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, marketId, marketTitle, r1RawProbability, finalProbability, marketPriceAtPrediction, new Date().toISOString());
+  } catch (error) {
+    console.error("[Database] Error logging calibration entry:", error);
+  }
+}
+
 export function getCalibrationStats(): {
   totalPredictions: number;
   resolvedPredictions: number;

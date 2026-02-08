@@ -1,8 +1,9 @@
 import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, PolymarketEvent } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
-import { analyzeMarket } from "./analyzer.js";
+import { analyzeMarket, parseAnalysisResponse } from "./analyzer.js";
 import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
+import { callDeepSeek } from "./deepseek.js";
 import {
   enterPosition,
   exitPosition,
@@ -13,6 +14,7 @@ import {
   getTotalExposure,
   clearClosedPositions,
 } from "./executor.js";
+import { logCalibrationEntry } from "../database/aibetting.js";
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { isPaperMode } from "../../config/env.js";
 import { updateCalibrationScores } from "../database/calibration.js";
@@ -179,11 +181,104 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
       }
 
-      const analysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles);
+      // Ensemble: 5 R1 calls, take median probability
+      const ENSEMBLE_SIZE = 5;
+      const ensembleResults: AIAnalysis[] = [];
+
+      for (let i = 0; i < ENSEMBLE_SIZE; i++) {
+        const singleAnalysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles, yesPrice);
+        if (singleAnalysis) {
+          ensembleResults.push(singleAnalysis);
+          console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: P=${(singleAnalysis.probability * 100).toFixed(1)}%`);
+        }
+        if (i < ENSEMBLE_SIZE - 1) {
+          await new Promise((r) => setTimeout(r, 1000)); // Rate limit between calls
+        }
+      }
+
+      if (ensembleResults.length === 0) {
+        console.warn(`[AIBetting] All ensemble calls failed for: ${market.title}`);
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+
+      // Take median probability
+      const sortedProbs = ensembleResults.map(a => a.probability).sort((a, b) => a - b);
+      const medianProb = sortedProbs[Math.floor(sortedProbs.length / 2)];
+
+      // Check spread for supervisor trigger
+      const spread = sortedProbs[sortedProbs.length - 1] - sortedProbs[0];
+
+      // Use the analysis closest to median as base, override probability
+      const closestToMedian = ensembleResults.reduce((best, curr) =>
+        Math.abs(curr.probability - medianProb) < Math.abs(best.probability - medianProb) ? curr : best
+      );
+      let analysis = { ...closestToMedian, probability: medianProb };
+
+      // Supervisor agent: if spread > 20pp, make extra R1 call with all reasoning
+      if (spread > 0.20) {
+        console.log(`[AIBetting] Supervisor triggered (spread ${(spread * 100).toFixed(0)}pp): ${market.title}`);
+        const allReasoning = ensembleResults.map((a, i) =>
+          `Analyst ${i + 1}: P=${(a.probability * 100).toFixed(1)}% - ${a.reasoning}`
+        ).join("\n\n");
+
+        const supervisorPrompt = `You are a senior prediction market analyst reviewing junior analysts' estimates.
+
+MARKET: ${market.title}
+Market price: ${(yesPrice * 100).toFixed(0)}c
+
+ANALYST ESTIMATES (spread: ${(spread * 100).toFixed(0)} percentage points):
+${allReasoning}
+
+The analysts disagree significantly. Review their reasoning, identify which analyst(s) have the strongest evidence, and provide your own probability estimate.
+
+OUTPUT JSON ONLY:
+{
+  "probability": 0.XX,
+  "confidence": 0.XX,
+  "reasoning": "your synthesis",
+  "keyFactors": ["factor1", "factor2"],
+  "evidenceCited": [],
+  "consistencyNote": "supervisor synthesis",
+  "changeReason": null,
+  "timeline": null
+}`;
+
+        try {
+          const supervisorResponse = await callDeepSeek(supervisorPrompt, "deepseek-reasoner", undefined, undefined, "supervisor");
+          const supervisorAnalysis = parseAnalysisResponse(supervisorResponse, market.conditionId);
+          if (supervisorAnalysis) {
+            // Supervisor replaces R1 probability, then Bayesian weighting still applies
+            const supervisorRaw = supervisorAnalysis.probability;
+            // Apply Bayesian prior on supervisor output
+            analysis.probability = 0.67 * yesPrice + 0.33 * supervisorRaw;
+            analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
+            analysis.r1RawProbability = supervisorRaw;
+            analysis.reasoning = `[Supervisor] ${supervisorAnalysis.reasoning}`;
+            console.log(`[AIBetting] Supervisor: raw=${(supervisorRaw * 100).toFixed(1)}% -> Bayesian=${(analysis.probability * 100).toFixed(1)}%`);
+          }
+        } catch (error) {
+          console.warn(`[AIBetting] Supervisor call failed, using median:`, error);
+        }
+      }
+
+      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): median=${(medianProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp -> final=${(analysis.probability * 100).toFixed(1)}%`);
+
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);
         analyses.set(market.conditionId, analysis);
         result.marketsAnalyzed++;
+
+        // Log to calibration table
+        if (analysis.r1RawProbability !== undefined) {
+          logCalibrationEntry(
+            market.conditionId,
+            market.title,
+            analysis.r1RawProbability,
+            analysis.probability,
+            yesPrice
+          );
+        }
       }
 
       await new Promise((r) => setTimeout(r, 1000));
