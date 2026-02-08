@@ -78,7 +78,7 @@ export async function callDeepSeek(
   const body: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: isReasoner ? 4000 : 1000,
+    max_tokens: isReasoner ? 8000 : 1000,
   };
   if (!isReasoner) {
     body.temperature = temperature ?? 0.3;
