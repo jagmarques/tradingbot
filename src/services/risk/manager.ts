@@ -26,7 +26,7 @@ export interface RiskStatus {
 
 export interface Trade {
   id: string;
-  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amount: number;
   price: number;
@@ -69,10 +69,8 @@ export function getDailyPnl(): number {
 export function getDailyPnlBreakdown(): {
   total: number;
   cryptoCopy: number;
-  pumpfun: number;
   polyCopy: number;
   aiBetting: number;
-  tokenAi: number;
 } {
   checkDayReset();
   const db = getDb();
@@ -87,15 +85,6 @@ export function getDailyPnlBreakdown(): {
       AND created_at >= ?
   `).get(startOfDay) as { total: number | null };
   const cryptoCopy = cryptoCopyResult.total || 0;
-
-  // Pump.fun (from trades table)
-  const pumpfunResult = db.prepare(`
-    SELECT SUM(pnl) as total
-    FROM trades
-    WHERE strategy = 'pumpfun'
-      AND created_at >= ?
-  `).get(startOfDay) as { total: number | null };
-  const pumpfun = pumpfunResult.total || 0;
 
   // Polymarket copy (from polytrader_copies table)
   const polyCopyResult = db.prepare(`
@@ -115,22 +104,11 @@ export function getDailyPnlBreakdown(): {
   `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const aiBetting = aiBettingResult.total || 0;
 
-  // Token AI (from tokenai_positions table)
-  const tokenAiResult = db.prepare(`
-    SELECT SUM(pnl) as total
-    FROM tokenai_positions
-    WHERE status = 'closed'
-      AND exit_timestamp >= ?
-  `).get(new Date(startOfDay).getTime()) as { total: number | null };
-  const tokenAi = tokenAiResult.total || 0;
-
   return {
-    total: cryptoCopy + pumpfun + polyCopy + aiBetting + tokenAi,
+    total: cryptoCopy + polyCopy + aiBetting,
     cryptoCopy,
-    pumpfun,
     polyCopy,
     aiBetting,
-    tokenAi,
   };
 }
 
@@ -275,7 +253,7 @@ export async function getRiskStatus(): Promise<RiskStatus> {
 
 // Pre-trade validation
 export async function validateTrade(params: {
-  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amountUsd: number;
   expectedPrice: number;
@@ -300,9 +278,7 @@ export async function validateTrade(params: {
     return { allowed: false, reason: "Would exceed daily loss limit" };
   }
 
-  // Check slippage - use pumpfun slippage for Solana, polymarket for EVM chains
-  const maxSlippage =
-    params.strategy === "pumpfun" ? env.MAX_SLIPPAGE_PUMPFUN : env.MAX_SLIPPAGE_POLYMARKET;
+  const maxSlippage = env.MAX_SLIPPAGE_POLYMARKET;
   const slippageCheck = checkSlippage(params.expectedPrice, params.actualPrice, maxSlippage);
   if (!slippageCheck.allowed) {
     return {
@@ -311,11 +287,7 @@ export async function validateTrade(params: {
     };
   }
 
-  // Check gas balances for Solana strategies
   const gasBalances = await verifyGasBalances();
-  if (params.strategy === "pumpfun" && !gasBalances.sol.sufficient) {
-    return { allowed: false, reason: `Insufficient SOL: ${gasBalances.sol.balance.toFixed(4)}` };
-  }
   if (params.strategy === "polymarket" && !gasBalances.matic.sufficient) {
     return {
       allowed: false,

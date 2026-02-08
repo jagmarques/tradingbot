@@ -195,10 +195,9 @@ export function evaluateBetOpportunity(
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
 
   const availableBankroll = isPaperMode() ? bankroll : bankroll - currentExposure;
-  const maxAllowedBet = Math.min(
-    config.maxBetSize,
-    config.maxTotalExposure - currentExposure
-  );
+  const maxAllowedBet = isPaperMode()
+    ? config.maxBetSize
+    : Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
 
   const recommendedSize = calculateBetSize(
     aiProbability,

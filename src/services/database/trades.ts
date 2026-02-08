@@ -3,7 +3,7 @@ import { isPaperMode } from "../../config/env.js";
 
 export interface TradeRecord {
   id: string;
-  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   tokenAddress?: string;
   tokenSymbol?: string;
@@ -26,7 +26,7 @@ export interface TradeRecord {
 
 export interface PositionRecord {
   id: string;
-  strategy: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   tokenAddress: string;
   tokenSymbol?: string;
   entryPrice: number;
@@ -47,7 +47,6 @@ export interface DailyStats {
   winningTrades: number;
   losingTrades: number;
   totalPnl: number;
-  pumpfunPnl: number;
   polymarketPnl: number;
   totalFees: number;
   startingBalance?: number;
@@ -123,7 +122,7 @@ export function getTrade(id: string): TradeRecord | null {
 
 // Get trades with filters
 export function getTrades(options: {
-  strategy?: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy?: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
   type?: "BUY" | "SELL";
   startDate?: string;
   endDate?: string;
@@ -259,7 +258,7 @@ export function insertPosition(
 }
 
 // Get open positions
-export function getOpenPositions(strategy?: "pumpfun" | "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche"): PositionRecord[] {
+export function getOpenPositions(strategy?: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche"): PositionRecord[] {
   const db = getDb();
   let query = "SELECT * FROM positions WHERE status = 'open'";
   const params: unknown[] = [];
@@ -305,7 +304,6 @@ export function getDailyStats(date: string): DailyStats | null {
     winningTrades: row.winning_trades as number,
     losingTrades: row.losing_trades as number,
     totalPnl: row.total_pnl as number,
-    pumpfunPnl: row.pumpfun_pnl as number,
     polymarketPnl: row.polymarket_pnl as number,
     totalFees: row.total_fees as number,
     startingBalance: row.starting_balance as number | undefined,
@@ -328,20 +326,18 @@ export function updateDailyStats(date: string): DailyStats {
     winningTrades: trades.filter((t) => t.pnl > 0).length,
     losingTrades: trades.filter((t) => t.pnl < 0).length,
     totalPnl: trades.reduce((sum, t) => sum + t.pnl, 0),
-    pumpfunPnl: trades.filter((t) => t.strategy === "pumpfun").reduce((sum, t) => sum + t.pnl, 0),
     polymarketPnl: trades.filter((t) => t.strategy === "polymarket").reduce((sum, t) => sum + t.pnl, 0),
     totalFees: trades.reduce((sum, t) => sum + t.fees, 0),
   };
 
   const stmt = db.prepare(`
-    INSERT INTO daily_stats (date, total_trades, winning_trades, losing_trades, total_pnl, pumpfun_pnl, polymarket_pnl, total_fees)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO daily_stats (date, total_trades, winning_trades, losing_trades, total_pnl, polymarket_pnl, total_fees)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(date) DO UPDATE SET
       total_trades = excluded.total_trades,
       winning_trades = excluded.winning_trades,
       losing_trades = excluded.losing_trades,
       total_pnl = excluded.total_pnl,
-      pumpfun_pnl = excluded.pumpfun_pnl,
       polymarket_pnl = excluded.polymarket_pnl,
       total_fees = excluded.total_fees
   `);
@@ -352,7 +348,6 @@ export function updateDailyStats(date: string): DailyStats {
     stats.winningTrades,
     stats.losingTrades,
     stats.totalPnl,
-    stats.pumpfunPnl,
     stats.polymarketPnl,
     stats.totalFees
   );
@@ -372,7 +367,6 @@ export function getStatsRange(startDate: string, endDate: string): DailyStats[] 
     winningTrades: row.winning_trades as number,
     losingTrades: row.losing_trades as number,
     totalPnl: row.total_pnl as number,
-    pumpfunPnl: row.pumpfun_pnl as number,
     polymarketPnl: row.polymarket_pnl as number,
     totalFees: row.total_fees as number,
     startingBalance: row.starting_balance as number | undefined,
@@ -384,7 +378,7 @@ export function getStatsRange(startDate: string, endDate: string): DailyStats[] 
 function mapRowToTrade(row: Record<string, unknown>): TradeRecord {
   return {
     id: row.id as string,
-    strategy: row.strategy as "pumpfun" | "polymarket" | "base",
+    strategy: row.strategy as TradeRecord["strategy"],
     type: row.type as "BUY" | "SELL",
     tokenAddress: row.token_address as string | undefined,
     tokenSymbol: row.token_symbol as string | undefined,
@@ -410,7 +404,7 @@ function mapRowToTrade(row: Record<string, unknown>): TradeRecord {
 function mapRowToPosition(row: Record<string, unknown>): PositionRecord {
   return {
     id: row.id as string,
-    strategy: row.strategy as "pumpfun" | "polymarket" | "base",
+    strategy: row.strategy as PositionRecord["strategy"],
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string | undefined,
     entryPrice: row.entry_price as number,

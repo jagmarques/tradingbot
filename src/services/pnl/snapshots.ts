@@ -8,10 +8,8 @@ export interface DailySnapshot {
   date: string;
   totalPnl: number;
   cryptoCopyPnl: number;
-  pumpfunPnl: number;
   polyCopyPnl: number;
   aiBettingPnl: number;
-  tokenAiPnl: number;
 }
 
 // Take a snapshot of today's P&L and persist to daily_stats
@@ -21,23 +19,19 @@ export function takeDailySnapshot(): void {
   const breakdown = getDailyPnlBreakdown();
 
   db.prepare(`
-    INSERT INTO daily_stats (date, total_pnl, pumpfun_pnl, crypto_copy_pnl, poly_copy_pnl, ai_betting_pnl, token_ai_pnl)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO daily_stats (date, total_pnl, crypto_copy_pnl, poly_copy_pnl, ai_betting_pnl)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(date) DO UPDATE SET
       total_pnl = excluded.total_pnl,
-      pumpfun_pnl = excluded.pumpfun_pnl,
       crypto_copy_pnl = excluded.crypto_copy_pnl,
       poly_copy_pnl = excluded.poly_copy_pnl,
-      ai_betting_pnl = excluded.ai_betting_pnl,
-      token_ai_pnl = excluded.token_ai_pnl
+      ai_betting_pnl = excluded.ai_betting_pnl
   `).run(
     today,
     breakdown.total,
-    breakdown.pumpfun,
     breakdown.cryptoCopy,
     breakdown.polyCopy,
     breakdown.aiBetting,
-    breakdown.tokenAi,
   );
 
   console.log(`[PnL] Snapshot saved for ${today}: $${breakdown.total.toFixed(2)}`);
@@ -53,10 +47,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
   let row: {
     totalPnl: number;
     cryptoCopyPnl: number;
-    pumpfunPnl: number;
     polyCopyPnl: number;
     aiBettingPnl: number;
-    tokenAiPnl: number;
   };
 
   if (days === null) {
@@ -64,10 +56,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
       SELECT
         COALESCE(SUM(total_pnl), 0) as totalPnl,
         COALESCE(SUM(crypto_copy_pnl), 0) as cryptoCopyPnl,
-        COALESCE(SUM(pumpfun_pnl), 0) as pumpfunPnl,
         COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
-        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
-        COALESCE(SUM(token_ai_pnl), 0) as tokenAiPnl
+        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl
       FROM daily_stats
     `).get() as typeof row;
   } else {
@@ -79,10 +69,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
       SELECT
         COALESCE(SUM(total_pnl), 0) as totalPnl,
         COALESCE(SUM(crypto_copy_pnl), 0) as cryptoCopyPnl,
-        COALESCE(SUM(pumpfun_pnl), 0) as pumpfunPnl,
         COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
-        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
-        COALESCE(SUM(token_ai_pnl), 0) as tokenAiPnl
+        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl
       FROM daily_stats
       WHERE date >= ?
     `).get(dateStr) as typeof row;
@@ -92,10 +80,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
     date: "aggregate",
     totalPnl: row.totalPnl,
     cryptoCopyPnl: row.cryptoCopyPnl,
-    pumpfunPnl: row.pumpfunPnl,
     polyCopyPnl: row.polyCopyPnl,
     aiBettingPnl: row.aiBettingPnl,
-    tokenAiPnl: row.tokenAiPnl,
   };
 }
 

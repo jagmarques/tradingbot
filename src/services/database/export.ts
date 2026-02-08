@@ -6,7 +6,7 @@ import path from "path";
 export function exportTradesToCsv(options: {
   startDate?: string;
   endDate?: string;
-  strategy?: "pumpfun" | "polymarket";
+  strategy?: "polymarket";
   outputPath?: string;
 }): string {
   const trades = getTrades({
@@ -83,7 +83,6 @@ export function exportStatsToCsv(options: {
     "Losing Trades",
     "Win Rate %",
     "Total P&L",
-    "Pump.fun P&L",
     "Polymarket P&L",
     "Total Fees",
   ];
@@ -97,7 +96,6 @@ export function exportStatsToCsv(options: {
       stat.losingTrades.toString(),
       winRate.toFixed(1),
       stat.totalPnl.toFixed(2),
-      stat.pumpfunPnl.toFixed(2),
       stat.polymarketPnl.toFixed(2),
       stat.totalFees.toFixed(4),
     ];
@@ -155,7 +153,6 @@ export function exportTaxReport(year: number, outputDir: string): { tradesPath: 
 export function getMonthlyReport(year: number, month: number): {
   totalTrades: number;
   totalPnl: number;
-  pumpfunPnl: number;
   polymarketPnl: number;
   winRate: number;
   bestDay: DailyStats | null;
@@ -170,7 +167,6 @@ export function getMonthlyReport(year: number, month: number): {
   const totalTrades = stats.reduce((sum, s) => sum + s.totalTrades, 0);
   const winningTrades = stats.reduce((sum, s) => sum + s.winningTrades, 0);
   const totalPnl = stats.reduce((sum, s) => sum + s.totalPnl, 0);
-  const pumpfunPnl = stats.reduce((sum, s) => sum + s.pumpfunPnl, 0);
   const polymarketPnl = stats.reduce((sum, s) => sum + s.polymarketPnl, 0);
 
   const sortedByPnl = [...stats].sort((a, b) => b.totalPnl - a.totalPnl);
@@ -178,7 +174,6 @@ export function getMonthlyReport(year: number, month: number): {
   return {
     totalTrades,
     totalPnl,
-    pumpfunPnl,
     polymarketPnl,
     winRate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0,
     bestDay: sortedByPnl[0] || null,

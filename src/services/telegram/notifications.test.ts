@@ -26,7 +26,7 @@ vi.mock("../risk/manager.js", () => ({
   getDailyPnl: (): number => 25.5,
   getDailyPnlPercentage: (): number => 25.5,
   getTodayTrades: (): Array<Record<string, unknown>> => [
-    { id: "1", strategy: "pumpfun", type: "BUY", amount: 10, price: 0.001, pnl: 15, timestamp: Date.now() },
+    { id: "1", strategy: "polymarket", type: "BUY", amount: 10, price: 0.001, pnl: 15, timestamp: Date.now() },
     { id: "2", strategy: "polymarket", type: "SELL", amount: 20, price: 0.65, pnl: 10.5, timestamp: Date.now() },
   ],
 }));
@@ -53,7 +53,7 @@ describe("Telegram Notifications", () => {
   describe("notifyTrade", () => {
     it("should send trade notification", async () => {
       await notifyTrade({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         type: "BUY",
         amount: 10,
         price: 0.001,
@@ -63,14 +63,14 @@ describe("Telegram Notifications", () => {
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("[PAPER]"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("BUY"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("PUMPFUN"));
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("POLYMARKET"));
     });
   });
 
   describe("notifyBuy", () => {
     it("should send buy notification with TX link", async () => {
       await notifyBuy({
-        strategy: "pumpfun",
+        strategy: "polymarket",
         symbol: "TEST",
         amount: 10,
         price: 0.001,
@@ -80,7 +80,7 @@ describe("Telegram Notifications", () => {
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("BUY"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("TEST"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("solscan.io"));
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("polygonscan.com"));
     });
   });
 
@@ -167,8 +167,7 @@ describe("Telegram Notifications", () => {
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Daily Summary"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("$25.50"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Pump.fun"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Polymarket"));
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Total Trades"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Win Rate"));
     });
   });

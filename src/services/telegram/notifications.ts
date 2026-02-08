@@ -36,10 +36,9 @@ function formatDate(date: Date = new Date(), userId?: string): string {
 export async function notifyTrade(trade: Omit<Trade, "id" | "timestamp">): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "";
   const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
-  const strategyEmoji = trade.strategy === "pumpfun" ? "🚀" : "📊";
 
   const message =
-    `${mode}${strategyEmoji} <b>${trade.type} ${trade.strategy.toUpperCase()}</b>\n\n` +
+    `${mode}${emoji} <b>${trade.type} ${trade.strategy.toUpperCase()}</b>\n\n` +
     `Amount: $${trade.amount.toFixed(2)}\n` +
     `Price: ${trade.price.toFixed(8)}\n` +
     `${emoji} P&L: $${trade.pnl.toFixed(2)}`;
@@ -49,23 +48,22 @@ export async function notifyTrade(trade: Omit<Trade, "id" | "timestamp">): Promi
 
 // Buy executed alert
 export async function notifyBuy(params: {
-  strategy: "pumpfun" | "polymarket";
+  strategy: "polymarket";
   symbol?: string;
   amount: number;
   price: number;
   txHash?: string;
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "";
-  const emoji = params.strategy === "pumpfun" ? "🚀" : "📊";
 
   let message =
-    `${mode}${emoji} <b>BUY ${params.strategy.toUpperCase()}</b>\n\n` +
+    `${mode}📊 <b>BUY ${params.strategy.toUpperCase()}</b>\n\n` +
     (params.symbol ? `Token: ${params.symbol}\n` : "") +
     `Amount: $${params.amount.toFixed(2)}\n` +
     `Price: ${params.price.toFixed(8)}`;
 
   if (params.txHash) {
-    message += `\n\n<a href="https://solscan.io/tx/${params.txHash}">View TX</a>`;
+    message += `\n\n<a href="https://polygonscan.com/tx/${params.txHash}">View TX</a>`;
   }
 
   await sendMessage(message);
@@ -73,7 +71,7 @@ export async function notifyBuy(params: {
 
 // Sell executed alert
 export async function notifySell(params: {
-  strategy: "pumpfun" | "polymarket";
+  strategy: "polymarket";
   symbol?: string;
   amount: number;
   price: number;
@@ -94,11 +92,7 @@ export async function notifySell(params: {
     (params.reason ? `\nReason: ${params.reason}` : "");
 
   if (params.txHash) {
-    const explorer =
-      params.strategy === "pumpfun"
-        ? `https://solscan.io/tx/${params.txHash}`
-        : `https://polygonscan.com/tx/${params.txHash}`;
-    message += `\n\n<a href="${explorer}">View TX</a>`;
+    message += `\n\n<a href="https://polygonscan.com/tx/${params.txHash}">View TX</a>`;
   }
 
   await sendMessage(message);
@@ -160,12 +154,6 @@ export async function notifyDailySummary(): Promise<void> {
   const pnlPct = getDailyPnlPercentage();
   const trades = getTodayTrades();
 
-  const pumpfunTrades = trades.filter((t) => t.strategy === "pumpfun");
-  const polymarketTrades = trades.filter((t) => t.strategy === "polymarket");
-
-  const pumpfunPnl = pumpfunTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const polymarketPnl = polymarketTrades.reduce((sum, t) => sum + t.pnl, 0);
-
   const wins = trades.filter((t) => t.pnl > 0).length;
   const losses = trades.filter((t) => t.pnl < 0).length;
   const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
@@ -177,9 +165,6 @@ export async function notifyDailySummary(): Promise<void> {
     `${new Date().toLocaleDateString()}\n\n` +
     `<b>Total P&L</b>\n` +
     `$${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n\n` +
-    `<b>Breakdown</b>\n` +
-    `🚀 Pump.fun: $${pumpfunPnl.toFixed(2)} (${pumpfunTrades.length} trades)\n` +
-    `📊 Polymarket: $${polymarketPnl.toFixed(2)} (${polymarketTrades.length} trades)\n\n` +
     `<b>Stats</b>\n` +
     `Total Trades: ${trades.length}\n` +
     `Wins: ${wins} | Losses: ${losses}\n` +
@@ -200,11 +185,11 @@ export async function notifyLowBalance(currency: string, balance: number, minimu
 
 // Opportunity detected (for monitoring)
 export async function notifyOpportunity(params: {
-  strategy: "pumpfun" | "polymarket";
+  strategy: "polymarket";
   confidence: number;
   details: string;
 }): Promise<void> {
-  const emoji = params.strategy === "pumpfun" ? "🚀" : "📊";
+  const emoji = "📊";
   const message =
     `${emoji} <b>Opportunity Detected</b>\n\n` +
     `Strategy: ${params.strategy}\n` +
@@ -333,55 +318,6 @@ export async function notifyTopTraderCopyClose(params: {
     `Trader: ${escapeHtml(params.traderName)}\n\n` +
     `<b>${escapeHtml(params.marketTitle)}</b>\n` +
     `PnL: ${pnlEmoji}$${params.pnl.toFixed(2)} (${pnlEmoji}${params.pnlPct.toFixed(1)}%)`;
-  await sendMessage(message);
-}
-
-// Token AI: Entry notification
-export async function notifyTokenAIEntry(params: {
-  tokenSymbol: string;
-  chain: string;
-  sizeUsd: number;
-  entryPrice: number;
-  confidence: number;
-  aiProbability: number;
-  kellyFraction: number;
-}): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "";
-  const confPct = (params.confidence * 100).toFixed(0);
-  const probPct = (params.aiProbability * 100).toFixed(0);
-  const kellyPct = (params.kellyFraction * 100).toFixed(1);
-  const message =
-    `${mode}<b>TOKEN AI ENTRY</b>\n\n` +
-    `<b>${escapeHtml(params.tokenSymbol)}</b> (${params.chain})\n\n` +
-    `Size: $${params.sizeUsd.toFixed(2)}\n` +
-    `Entry: $${params.entryPrice.toFixed(8)}\n` +
-    `AI Prob: ${probPct}%\n` +
-    `Confidence: ${confPct}%\n` +
-    `Kelly: ${kellyPct}%`;
-  await sendMessage(message);
-}
-
-// Token AI: Exit notification
-export async function notifyTokenAIExit(params: {
-  tokenSymbol: string;
-  chain: string;
-  sizeUsd: number;
-  entryPrice: number;
-  exitPrice: number;
-  pnl: number;
-  exitReason: string;
-}): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "";
-  const pnlPct = params.sizeUsd > 0 ? (params.pnl / params.sizeUsd) * 100 : 0;
-  const pnlSign = params.pnl >= 0 ? "+" : "";
-  const message =
-    `${mode}<b>TOKEN AI EXIT</b>\n\n` +
-    `<b>${escapeHtml(params.tokenSymbol)}</b> (${params.chain})\n\n` +
-    `Size: $${params.sizeUsd.toFixed(2)}\n` +
-    `Entry: $${params.entryPrice.toFixed(8)}\n` +
-    `Exit: $${params.exitPrice.toFixed(8)}\n` +
-    `P&L: ${pnlSign}$${params.pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(1)}%)\n` +
-    `Reason: ${params.exitReason}`;
   await sendMessage(message);
 }
 
