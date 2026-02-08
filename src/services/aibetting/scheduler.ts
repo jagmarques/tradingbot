@@ -181,8 +181,8 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
       }
 
-      // Ensemble: 5 R1 calls, take median probability
-      const ENSEMBLE_SIZE = 5;
+      // Ensemble: 3 R1 calls, take median probability
+      const ENSEMBLE_SIZE = 3;
       const ensembleResults: AIAnalysis[] = [];
 
       for (let i = 0; i < ENSEMBLE_SIZE; i++) {
