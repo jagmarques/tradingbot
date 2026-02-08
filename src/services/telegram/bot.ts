@@ -18,7 +18,7 @@ import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
 import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
-import { getCopyStats, getOpenCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
+import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
 import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, clearAllTraders, type TraderSortBy, type TimeFilter } from "../traders/storage.js";
 import { Chain } from "../traders/types.js";
 import {
@@ -179,6 +179,10 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("bets_copy", async (ctx) => {
     await handleBets(ctx, "copy");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("bets_copy_closed", async (ctx) => {
+    await handleBets(ctx, "copy_closed");
     await ctx.answerCallbackQuery();
   });
 
@@ -920,7 +924,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleBets(ctx: Context, tab: "open" | "closed" | "copy"): Promise<void> {
+async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_closed"): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /bets from user ${ctx.from?.id}`);
     return;
@@ -929,11 +933,16 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy"): Promis
   try {
     let message = `<b>Bets</b>\n\n`;
 
-    const tabButtons = [[
-      { text: tab === "open" ? "* AI Open" : "AI Open", callback_data: "bets_open" },
-      { text: tab === "closed" ? "* AI Closed" : "AI Closed", callback_data: "bets_closed" },
-      { text: tab === "copy" ? "* Copy" : "Copy", callback_data: "bets_copy" },
-    ]];
+    const tabButtons = [
+      [
+        { text: tab === "open" ? "* AI Open" : "AI Open", callback_data: "bets_open" },
+        { text: tab === "closed" ? "* AI Closed" : "AI Closed", callback_data: "bets_closed" },
+      ],
+      [
+        { text: tab === "copy" ? "* Copy Open" : "Copy Open", callback_data: "bets_copy" },
+        { text: tab === "copy_closed" ? "* Copy Closed" : "Copy Closed", callback_data: "bets_copy_closed" },
+      ],
+    ];
 
     if (tab === "open") {
       const openBets = loadOpenPositions();
@@ -1037,8 +1046,8 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy"): Promis
       message += `${aiStats.totalBets} closed | $${closedTotalInvested.toFixed(0)} invested | ${aiStats.winRate.toFixed(0)}% win\n\n`;
       message += closedLines;
 
-    } else {
-      // Copy tab - Polymarket copy positions
+    } else if (tab === "copy") {
+      // Copy Open tab - Polymarket copy positions
       const positionsWithValues = await getOpenPositionsWithValues();
       const polyStats = getCopyStats();
 
@@ -1083,6 +1092,53 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy"): Promis
       message += `<b>Unrealized: ${uSign}$${unrealizedPnl.toFixed(2)} | Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
       message += `${positionsWithValues.length} open | $${totalInvested.toFixed(0)} invested | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
       message += copyLines;
+
+    } else {
+      // Copy Closed tab
+      const closedCopies = getClosedCopiedPositions(10);
+      const polyStats = getCopyStats();
+
+      if (closedCopies.length === 0) {
+        const rSign = polyStats.totalPnl >= 0 ? "+" : "";
+        message += `<b>Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
+        message += `0 closed\n\n`;
+        message += "No closed copy positions yet.";
+        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(message, allButtons);
+        return;
+      }
+
+      let copyClosedInvested = 0;
+      let copyClosedPnl = 0;
+      let copyClosedLines = "";
+
+      for (const pos of closedCopies) {
+        const titleShort = pos.marketTitle.length > 35
+          ? pos.marketTitle.slice(0, 35) + "..."
+          : pos.marketTitle;
+        const pnl = pos.pnl ?? 0;
+        const pnlPct = pos.size > 0 ? (pnl / pos.size) * 100 : 0;
+        const pnlSign = pnl >= 0 ? "+" : "";
+        const exitDate = pos.exitTimestamp
+          ? new Date(pos.exitTimestamp).toLocaleDateString()
+          : "?";
+
+        copyClosedInvested += pos.size;
+        copyClosedPnl += pnl;
+
+        copyClosedLines += `<b>${titleShort}</b>\n`;
+        copyClosedLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
+        if (pos.exitPrice !== undefined) {
+          copyClosedLines += ` -> ${(pos.exitPrice * 100).toFixed(0)}c`;
+        }
+        copyClosedLines += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
+        copyClosedLines += ` | ${exitDate}\n\n`;
+      }
+
+      const rSign = copyClosedPnl >= 0 ? "+" : "";
+      message += `<b>Realized: ${rSign}$${copyClosedPnl.toFixed(2)}</b>\n`;
+      message += `${polyStats.closedPositions} closed | $${copyClosedInvested.toFixed(0)} invested | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += copyClosedLines;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];

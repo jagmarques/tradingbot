@@ -4,6 +4,7 @@ export {
   getTrackedTraders,
   fetchTopTraders,
   getOpenCopiedPositions,
+  getClosedCopiedPositions,
   getCopyStats,
   getOpenPositionsWithValues,
   clearAllCopiedPositions,
