@@ -98,13 +98,106 @@ function extractArticleText(html: string, url: string): string | null {
   return null;
 }
 
+// Decode Google News redirect URLs to real article URLs
+async function decodeGoogleNewsUrl(sourceUrl: string): Promise<string> {
+  try {
+    const url = new URL(sourceUrl);
+    if (url.hostname !== "news.google.com") return sourceUrl;
+
+    const pathSegments = url.pathname.split("/");
+    const articlesIdx = pathSegments.indexOf("articles");
+    if (articlesIdx === -1 || articlesIdx >= pathSegments.length - 1) return sourceUrl;
+
+    const base64Part = pathSegments[articlesIdx + 1];
+
+    // URL-safe base64 to standard base64
+    const standardBase64 = base64Part.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = Buffer.from(standardBase64, "base64");
+    const binaryStr = decoded.toString("binary");
+
+    // Check for protobuf prefix 0x08, 0x13, 0x22
+    const prefix = String.fromCharCode(0x08, 0x13, 0x22);
+    let str = binaryStr;
+    if (str.startsWith(prefix)) {
+      str = str.substring(prefix.length);
+    }
+
+    // Read length byte(s) and extract URL
+    const bytes = Uint8Array.from(str, (c) => c.charCodeAt(0));
+    const len = bytes[0];
+    if (len === undefined) return sourceUrl;
+
+    // Variable-length encoding: if high bit set, 2-byte length
+    const urlStr =
+      len >= 0x80
+        ? str.substring(2, 2 + ((len & 0x7f) | ((bytes[1] ?? 0) << 7)))
+        : str.substring(1, 1 + len);
+
+    if (urlStr.startsWith("http")) {
+      return urlStr;
+    }
+
+    // Newer AU_yqL format - try batchexecute endpoint
+    if (urlStr.startsWith("AU_yqL") || base64Part.startsWith("AU_yqL")) {
+      return await fetchDecodedBatchExecute(base64Part);
+    }
+
+    // Regex fallback - search decoded bytes for URL
+    const decodedUtf8 = decoded.toString("utf-8");
+    const urlMatch = decodedUtf8.match(/https?:\/\/[^\s"\x00-\x1f]+/);
+    if (urlMatch) return urlMatch[0];
+
+    return sourceUrl;
+  } catch {
+    console.warn(`[News] Failed to decode Google News URL: ${sourceUrl.slice(0, 80)}`);
+    return sourceUrl;
+  }
+}
+
+async function fetchDecodedBatchExecute(articleId: string): Promise<string> {
+  try {
+    const reqUrl = "https://news.google.com/rss/articles/" + articleId;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const resp = await fetch(reqUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const html = await resp.text();
+
+    // Extract data-n-au attribute which contains the real URL
+    const auMatch = html.match(/data-n-au="([^"]+)"/);
+    if (auMatch) return auMatch[1];
+
+    // Fallback: look for canonical link
+    const canonicalMatch = html.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/);
+    if (canonicalMatch) return canonicalMatch[1];
+
+    return reqUrl;
+  } catch {
+    console.warn(`[News] batchexecute decode failed for article`);
+    return "https://news.google.com/rss/articles/" + articleId;
+  }
+}
+
 // Fetch article content from URL and extract text
 async function fetchArticleContent(url: string): Promise<string | null> {
   try {
+    const realUrl = await decodeGoogleNewsUrl(url);
+    if (realUrl !== url) {
+      console.log(`[News] Decoded: ${url.slice(0, 60)} -> ${realUrl.slice(0, 80)}`);
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch(url, {
+    const response = await fetch(realUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml",
