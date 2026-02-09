@@ -181,9 +181,9 @@ export async function cancelAllOrders(): Promise<number> {
 export async function validateApiConnection(): Promise<boolean> {
   try {
     const address = getAddress();
-    const headers = getHeaders("GET", "/api-keys");
+    const headers = getHeaders("GET", "/open-orders");
 
-    const response = await fetch(`${CLOB_API_URL}/api-keys`, {
+    const response = await fetch(`${CLOB_API_URL}/open-orders`, {
       method: "GET",
       headers,
     });
