@@ -1,9 +1,7 @@
-import { sendMessage, sendStatusMessage } from "./bot.js";
-import { getDailyPnl, getDailyPnlPercentage, getTodayTrades, type Trade, getRiskStatus } from "../risk/manager.js";
+import { sendMessage } from "./bot.js";
+import { getDailyPnl, getDailyPnlPercentage, getTodayTrades, type Trade } from "../risk/manager.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
-
-let statusReporterInterval: NodeJS.Timeout | null = null;
 
 // Format date with user's timezone
 function formatDate(date: Date = new Date(), userId?: string): string {
@@ -330,49 +328,3 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// Start periodic status reporter (hourly)
-export function startStatusReporter(): void {
-  // Send status every hour (first one after 1 hour)
-  statusReporterInterval = setInterval(() => {
-    sendStatusUpdate();
-  }, 60 * 60 * 1000);
-
-  console.log("[Telegram] Status reporter started (hourly)");
-}
-
-// Stop periodic status reporter
-export function stopStatusReporter(): void {
-  if (statusReporterInterval) {
-    clearInterval(statusReporterInterval);
-    statusReporterInterval = null;
-    console.log("[Telegram] Status reporter stopped");
-  }
-}
-
-// Send current status
-async function sendStatusUpdate(): Promise<void> {
-  try {
-    const status = await getRiskStatus();
-    const pnl = getDailyPnl();
-    const pnlPct = getDailyPnlPercentage();
-    const trades = getTodayTrades();
-
-    const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
-    const modeEmoji = status.isPaperMode ? "📝" : "💰";
-    const pnlEmoji = pnl >= 0 ? "📈" : "📉";
-
-    const message =
-      `${statusEmoji} ${modeEmoji} <b>Status</b>\n\n` +
-      `<b>Trading</b>\n` +
-      `Status: ${status.tradingEnabled ? "Active" : "Paused"}\n` +
-      `SOL: ${status.solBalance.toFixed(4)}\n` +
-      `MATIC: ${status.maticBalance.toFixed(4)}\n\n` +
-      `<b>Today</b>\n` +
-      `${pnlEmoji} $${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n` +
-      `Trades: ${trades.length}`;
-
-    await sendStatusMessage(message);
-  } catch (err) {
-    console.error("[Telegram] Status update error:", err);
-  }
-}
