@@ -181,12 +181,19 @@ export async function cancelAllOrders(): Promise<number> {
 export async function validateApiConnection(): Promise<boolean> {
   try {
     const address = getAddress();
-    const orders = await getOpenOrders();
-    if (orders !== null) {
+    const headers = getHeaders("GET", "/orders?status=open");
+
+    const response = await fetch(`${CLOB_API_URL}/orders?status=open`, {
+      method: "GET",
+      headers,
+    });
+
+    if (response.ok) {
       console.log(`[Polymarket] API key verified for wallet ${address.slice(0, 6)}...${address.slice(-4)}`);
       return true;
     }
-    console.error("[Polymarket] API key verification failed - key may not match wallet");
+
+    console.error(`[Polymarket] API key verification failed (HTTP ${response.status}) - key may not match wallet`);
     return false;
   } catch (error) {
     console.error("[Polymarket] API connection failed:", error);
