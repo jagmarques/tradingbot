@@ -154,10 +154,17 @@ describe("Copy Filter", () => {
     });
 
     it("low conviction: skip", () => {
-      const result = filterPolyCopy(0.199, 43, 0.50);
+      const result = filterPolyCopy(0.199, 43, 0.60);
 
       expect(result.shouldCopy).toBe(false);
       expect(result.reason).toContain("Conviction too low");
+    });
+
+    it("coin-flip price (50c) rejected", () => {
+      const result = filterPolyCopy(0.418, 5000, 0.50);
+
+      expect(result.shouldCopy).toBe(false);
+      expect(result.reason).toContain("coin-flip");
     });
 
     it("standard ROI (10%) with decent conviction", () => {
@@ -169,7 +176,7 @@ describe("Copy Filter", () => {
     });
 
     it("low ROI (< 5%) gets rejected", () => {
-      const result = filterPolyCopy(0.03, 1000, 0.50);
+      const result = filterPolyCopy(0.03, 1000, 0.60);
 
       expect(result.shouldCopy).toBe(false);
       expect(result.traderQualityMultiplier).toBe(0);

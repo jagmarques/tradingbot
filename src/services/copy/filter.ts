@@ -116,6 +116,15 @@ export function filterPolyCopy(
     };
   }
 
+  if (tradePrice >= 0.48 && tradePrice <= 0.52) {
+    return {
+      shouldCopy: false,
+      recommendedSizeUsd: 0,
+      reason: `Price ${(tradePrice * 100).toFixed(0)}c is coin-flip territory (48-52c)`,
+      traderQualityMultiplier: 0,
+    };
+  }
+
   const traderQualityMultiplier = getRoiQualityMultiplier(traderRoi);
 
   if (traderQualityMultiplier === 0) {

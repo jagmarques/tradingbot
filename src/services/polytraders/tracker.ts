@@ -538,6 +538,11 @@ async function checkForNewTrades(): Promise<void> {
             continue;
           }
 
+          if (gammaNotFoundCache.has(trade.conditionId)) {
+            skip("market_not_found");
+            continue;
+          }
+
           const alreadyCopied = Array.from(copiedPositions.values()).some(
             p => p.conditionId === trade.conditionId,
           );
