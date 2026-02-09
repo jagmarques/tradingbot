@@ -160,7 +160,7 @@ export async function cancelOrder(orderId: string): Promise<boolean> {
 }
 
 export async function getOpenOrders(): Promise<Order[]> {
-  const result = await request<Order[]>("GET", "/orders?status=open");
+  const result = await request<Order[]>("GET", "/open-orders");
   return result ?? [];
 }
 
@@ -181,9 +181,9 @@ export async function cancelAllOrders(): Promise<number> {
 export async function validateApiConnection(): Promise<boolean> {
   try {
     const address = getAddress();
-    const headers = getHeaders("GET", "/orders?status=open");
+    const headers = getHeaders("GET", "/api-keys");
 
-    const response = await fetch(`${CLOB_API_URL}/orders?status=open`, {
+    const response = await fetch(`${CLOB_API_URL}/api-keys`, {
       method: "GET",
       headers,
     });
