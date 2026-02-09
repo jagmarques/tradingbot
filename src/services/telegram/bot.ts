@@ -28,7 +28,7 @@ import {
 } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
+import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
@@ -100,6 +100,7 @@ export async function startBot(): Promise<void> {
   bot.command("clearcopies", handleClearCopies);
   bot.command("cleartraders", handleClearTraders);
   bot.command("resetpaper", handleReset);
+  bot.command("mode", handleMode);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -311,6 +312,14 @@ export async function startBot(): Promise<void> {
   bot.callbackQuery("cancel_resetpaper", async (ctx) => {
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Reset cancelled.", backButton);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("mode", async (ctx) => {
+    await handleMode(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("mode_toggle_logonly", async (ctx) => {
+    await handleToggleLogOnly(ctx);
     await ctx.answerCallbackQuery();
   });
 
@@ -1534,6 +1543,38 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Reset failed. Check logs.", backButton);
   }
+}
+
+async function handleMode(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /mode from user ${ctx.from?.id}`);
+    return;
+  }
+
+  const tradingMode = isPaperMode() ? "PAPER" : "LIVE";
+  const logOnly = isLogOnlyMode();
+
+  let message = `<b>Trading Mode</b>\n\n`;
+  message += `Mode: <b>${tradingMode}</b> (env var)\n`;
+  message += `Log-Only: <b>${logOnly ? "ON" : "OFF"}</b>\n\n`;
+  message += `Log-only skips bet placement, useful for monitoring.`;
+
+  const buttons = [
+    [{ text: logOnly ? "Log-Only: ON" : "Log-Only: OFF", callback_data: "mode_toggle_logonly" }],
+    [{ text: "Back", callback_data: "main_menu" }],
+  ];
+
+  await sendDataMessage(message, buttons);
+}
+
+async function handleToggleLogOnly(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const newValue = !isLogOnlyMode();
+  setLogOnlyMode(newValue);
+  console.log(`[Telegram] Log-only mode toggled to ${newValue} by user ${ctx.from?.id}`);
+
+  await handleMode(ctx);
 }
 
 async function handleTextInput(ctx: Context): Promise<void> {

@@ -9,6 +9,8 @@ export interface CalibrationScore {
   lastUpdated: string;
 }
 
+let lastNoDataLogAt = 0;
+
 // Update calibration scores for all categories based on 30-day window
 export function updateCalibrationScores(
   predictionType: "market" | "token" = "market"
@@ -44,7 +46,11 @@ export function updateCalibrationScores(
     }>;
 
     if (categoryStats.length === 0) {
-      console.log("[Calibration] No resolved predictions in 30-day window");
+      const now = Date.now();
+      if (now - lastNoDataLogAt >= 3600000) {
+        console.log("[Calibration] No resolved predictions in 30-day window");
+        lastNoDataLogAt = now;
+      }
       return 0;
     }
 
