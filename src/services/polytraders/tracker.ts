@@ -11,6 +11,7 @@ import { getChatId } from "../telegram/bot.js";
 import { parseDate, minutesUntil, hoursUntil } from "../../utils/dates.js";
 import { filterPolyCopy } from "../copy/filter.js";
 import { canTrade } from "../risk/manager.js";
+import { isLogOnlyMode } from "../aibetting/scheduler.js";
 
 const DATA_API_URL = "https://data-api.polymarket.com/v1";
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
@@ -484,6 +485,11 @@ async function checkForNewTrades(): Promise<void> {
   try {
     if (!canTrade()) {
       console.log("[PolyTraders] Kill switch active, skipping cycle");
+      return;
+    }
+
+    if (isLogOnlyMode()) {
+      console.log("[PolyTraders] Log-only mode active, skipping cycle");
       return;
     }
 

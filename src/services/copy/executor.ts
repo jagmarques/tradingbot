@@ -13,6 +13,7 @@ import {
   ESTIMATED_SLIPPAGE_DEX,
 } from "../../config/constants.js";
 import { filterCryptoCopy, getApproxUsdValue, type CopyFilterResult } from "./filter.js";
+import { isLogOnlyMode } from "../aibetting/scheduler.js";
 
 // Crypto copied position tracking
 export interface CryptoCopyPosition {
@@ -264,6 +265,11 @@ export async function executeCopyTrade(
   // Check risk limits
   if (!canTrade()) {
     console.log("[CopyTrade] Trading disabled by risk manager");
+    return null;
+  }
+
+  if (isLogOnlyMode()) {
+    console.log("[CopyTrade] Log-only mode active, skipping trade");
     return null;
   }
 
