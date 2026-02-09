@@ -18,8 +18,7 @@ function buildAnalysisPrompt(
   news: NewsItem[],
   history: AIAnalysis[],
   stats: { winRate: number; totalBets: number },
-  siblingTitles?: string[],
-  marketPrice?: number
+  siblingTitles?: string[]
 ): string {
   const resolveDate = new Date(market.endDate).toLocaleDateString();
 
@@ -77,7 +76,7 @@ Consider each candidate's specific advantages, endorsements, polling data, and u
 ${performanceNote}MARKET: ${market.title}
 ${market.description ? `Description: ${market.description.slice(0, 500)}\n` : ""}Category: ${market.category}
 Resolves: ${resolveDate}
-${marketPrice !== undefined ? `Current market price: ${(marketPrice * 100).toFixed(0)}c (the market's implied probability)\n\nCONSIDER: The market price reflects collective wisdom. Your job is to find where this price is WRONG. Is the true probability higher, lower, or roughly the same as ${(marketPrice * 100).toFixed(0)}%? Explain WHY you disagree with the market if you do.\n` : ""}
+
 ${siblingSection}${contextSection}NEWS AND EVIDENCE:
 ${newsSection}
 
@@ -93,7 +92,7 @@ STEP 1.5 - TIMELINE ANALYSIS (for date-based markets):
 ${market.title.match(/by|before|in (202\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i) ? `What needs to happen by ${resolveDate} for each outcome?\nWhat is the current trajectory? What milestones remain?` : "Skip this step - market is not date-based."}
 
 STEP 2 - PROBABILITY REASONING:
-Based ONLY on the evidence from Step 1, reason through the likelihood of each outcome.
+Based ONLY on the evidence from Step 1 and your background knowledge, reason through the likelihood of each outcome.
 Consider base rates, historical precedent, and current trajectory.
 
 Avoid round numbers like 40%, 35%, 50%, 60%. Use precise estimates like 37%, 43%, 52%, 67%. Round numbers indicate insufficient analysis - always commit to a specific value based on your evidence.
@@ -249,8 +248,7 @@ export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
   model?: "deepseek-chat" | "deepseek-reasoner",
-  siblingTitles?: string[],
-  marketPrice?: number
+  siblingTitles?: string[]
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
 
@@ -259,7 +257,7 @@ export async function analyzeMarket(
   const dbStats = getBettingStats();
   const stats = { winRate: dbStats.winRate, totalBets: dbStats.totalBets };
 
-  const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles, marketPrice);
+  const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
     const response = await callDeepSeek(prompt, model ?? "deepseek-chat", undefined, undefined, "aibetting");
