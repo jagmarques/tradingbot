@@ -59,9 +59,11 @@ function isAuthorized(ctx: Context): boolean {
 }
 
 const MAIN_MENU_BUTTONS = [
-  [{ text: "📊 Status", callback_data: "status" }],
-  [{ text: "💰 Balance", callback_data: "balance" }],
-  [{ text: "📈 P&L", callback_data: "pnl" }],
+  [
+    { text: "📊 Status", callback_data: "status" },
+    { text: "💰 Balance", callback_data: "balance" },
+    { text: "📈 P&L", callback_data: "pnl" },
+  ],
   [
     { text: "🔄 Trades", callback_data: "trades" },
     { text: "🎯 Bets", callback_data: "bets" },
@@ -70,13 +72,15 @@ const MAIN_MENU_BUTTONS = [
     { text: "📋 Traders", callback_data: "traders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
   ],
-  [{ text: "Settings", callback_data: "settings" }],
+  [
+    { text: "⚙️ Mode", callback_data: "mode" },
+    { text: "🔧 Settings", callback_data: "settings" },
+  ],
   [
     { text: "⏸️ Stop", callback_data: "stop" },
     { text: "▶️ Resume", callback_data: "resume" },
+    { text: "🗂 Manage", callback_data: "manage" },
   ],
-  [{ text: "Manage", callback_data: "manage" }],
-  [{ text: "⏱️ Timezone", callback_data: "timezone" }],
 ];
 
 export async function startBot(): Promise<void> {
@@ -1690,6 +1694,7 @@ async function handleTextInput(ctx: Context): Promise<void> {
         { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
       ],
       [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
+      [{ text: "Timezone", callback_data: "timezone" }],
       [{ text: "Back", callback_data: "main_menu" }],
     ];
 
@@ -1794,6 +1799,7 @@ async function handleSettings(ctx: Context): Promise<void> {
       { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
     ],
     [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
+    [{ text: "Timezone", callback_data: "timezone" }],
     [{ text: "Back", callback_data: "main_menu" }],
   ];
 
