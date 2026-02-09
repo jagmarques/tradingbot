@@ -130,8 +130,8 @@ export function filterCandidateMarkets(
       return false;
     }
 
-    // Must have sufficient volume (lowered from 1000 to 500 for more opportunities)
-    if (market.volume24h < 500) {
+    // Must have sufficient volume (lowered from 500 to 200 for more opportunities)
+    if (market.volume24h < 200) {
       return false;
     }
 
