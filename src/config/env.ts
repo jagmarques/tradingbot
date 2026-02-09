@@ -21,6 +21,7 @@ const envSchema = z.object({
   // Polygon / Polymarket
   POLYMARKET_API_KEY: z.string().min(1, "POLYMARKET_API_KEY is required"),
   POLYMARKET_SECRET: z.string().min(1, "POLYMARKET_SECRET is required"),
+  POLYMARKET_PASSPHRASE: z.string().default(""),
   POLYGON_PRIVATE_KEY: z.string().min(1, "POLYGON_PRIVATE_KEY is required"),
 
   // EVM chains (Base, BNB, Arbitrum, Avalanche) - uses same key for all EVM chains

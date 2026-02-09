@@ -57,6 +57,7 @@ function getHeaders(method: string, path: string, body: string = ""): Record<str
     "POLY_SIGNATURE": signature,
     "POLY_TIMESTAMP": timestamp.toString(),
     "POLY_API_KEY": env.POLYMARKET_API_KEY,
+    "POLY_PASSPHRASE": env.POLYMARKET_PASSPHRASE,
   };
 }
 
@@ -184,13 +185,14 @@ export async function validateApiConnection(): Promise<boolean> {
     const env = loadEnv();
     const hasApiKey = env.POLYMARKET_API_KEY.length > 0;
     const hasSecret = env.POLYMARKET_SECRET.length > 0;
+    const hasPassphrase = env.POLYMARKET_PASSPHRASE.length > 0;
 
-    if (hasApiKey && hasSecret) {
+    if (hasApiKey && hasSecret && hasPassphrase) {
       console.log(`[Polymarket] Wallet: ${address} | API key configured`);
       return true;
     }
 
-    console.error("[Polymarket] Missing API key or secret");
+    console.error("[Polymarket] Missing API key, secret, or passphrase");
     return false;
   } catch (error) {
     console.error("[Polymarket] Wallet setup failed:", error);
