@@ -125,12 +125,35 @@ describe("Polymarket CLOB Client", () => {
   it("should validate API connection", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      status: 200,
     });
 
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();
 
     expect(isValid).toBe(true);
+  });
+
+  it("should fail API validation on auth error", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: () => Promise.resolve("Unauthorized"),
+    });
+
+    const { validateApiConnection } = await import("./polymarket.js");
+    const isValid = await validateApiConnection();
+
+    expect(isValid).toBe(false);
+  });
+
+  it("should fail API validation on network error", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+    const { validateApiConnection } = await import("./polymarket.js");
+    const isValid = await validateApiConnection();
+
+    expect(isValid).toBe(false);
   });
 
   it("should get open orders", async () => {
