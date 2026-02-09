@@ -22,6 +22,7 @@ import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions 
 import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
 import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
+import { validateApiConnection } from "./services/polygon/polymarket.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -76,6 +77,9 @@ async function main(): Promise<void> {
 
     // Validate EVM copy-trading chains
     await validateCopyChains();
+
+    // Verify Polymarket API key matches wallet
+    await validateApiConnection();
 
     // AI-powered Polymarket betting
     if (env.AIBETTING_ENABLED === "true" && env.DEEPSEEK_API_KEY) {
