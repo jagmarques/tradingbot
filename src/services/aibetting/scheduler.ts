@@ -258,12 +258,12 @@ OUTPUT JSON ONLY:
         }
       }
 
-      // Apply Bayesian prior ONCE: 67% market price + 33% R1 (Bridgewater AIA)
+      // Apply Bayesian prior ONCE: 50% market price + 50% R1
       analysis.r1RawProbability = r1FinalRaw;
-      analysis.probability = 0.67 * yesPrice + 0.33 * r1FinalRaw;
+      analysis.probability = 0.5 * yesPrice + 0.5 * r1FinalRaw;
       analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
 
-      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: 0.67*${(yesPrice * 100).toFixed(0)}% + 0.33*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
+      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: 0.50*${(yesPrice * 100).toFixed(0)}% + 0.50*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
 
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);

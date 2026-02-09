@@ -172,7 +172,7 @@ export function evaluateBetOpportunity(
   const marketPrice = yesOutcome?.price || 0.5;
   const tokenId = yesOutcome?.tokenId || "";
 
-  // analysis.probability is already Bayesian-weighted (0.67*market + 0.33*R1)
+  // analysis.probability is already Bayesian-weighted (0.50*market + 0.50*R1)
   const aiProbability = analysis.probability;
 
   const edge = aiProbability - marketPrice;
@@ -316,7 +316,8 @@ export async function shouldExitPosition(
   newAnalysis: AIAnalysis | null
 ): Promise<{ shouldExit: boolean; reason: string }> {
   const SETTLEMENT_RISK_HOURS = 6;
-  const STOP_LOSS_THRESHOLD = -0.25;
+  const STOP_LOSS_THRESHOLD = -0.15;
+  const TAKE_PROFIT_THRESHOLD = 0.40;
 
   if (position.marketEndDate) {
     const hours = hoursUntil(position.marketEndDate);
@@ -334,8 +335,28 @@ export async function shouldExitPosition(
   if (pnlPercent < STOP_LOSS_THRESHOLD) {
     return {
       shouldExit: true,
-      reason: `Stop-loss: P&L ${(pnlPercent * 100).toFixed(1)}% exceeded -25% limit`,
+      reason: `Stop-loss: P&L ${(pnlPercent * 100).toFixed(1)}% exceeded -15% limit`,
     };
+  }
+
+  if (pnlPercent > TAKE_PROFIT_THRESHOLD) {
+    const HOLD_TO_RESOLUTION_DAYS = 7;
+    if (position.marketEndDate) {
+      const hours = hoursUntil(position.marketEndDate);
+      if (hours !== null && hours > 0 && hours < HOLD_TO_RESOLUTION_DAYS * 24) {
+        console.log(`[Evaluator] Skipping take-profit: ${hours.toFixed(0)}h to resolution, holding for $1 payout`);
+      } else {
+        return {
+          shouldExit: true,
+          reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +40% target`,
+        };
+      }
+    } else {
+      return {
+        shouldExit: true,
+        reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +40% target`,
+      };
+    }
   }
 
   const yesPrice = position.side === "YES" ? currentPrice : 1 - currentPrice;
@@ -343,7 +364,7 @@ export async function shouldExitPosition(
   const priceDiff = currentPrice - position.entryPrice;
   const priceChangePercent = priceDiff / position.entryPrice;
 
-  if (priceChangePercent < -0.15) {
+  if (priceChangePercent < -0.10) {
     console.log(
       `[Evaluator] Price moved ${(priceChangePercent * 100).toFixed(1)}% against ${position.marketTitle} - triggering AI re-analysis`
     );
