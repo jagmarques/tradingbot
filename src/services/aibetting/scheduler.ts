@@ -87,7 +87,7 @@ let isRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
-let logOnlyMode = true; // Shadow mode: analyze but don't place bets
+let logOnlyMode = false; // Shadow mode: analyze but don't place bets
 
 const CACHE_DURATION_MS = 8 * 60 * 60 * 1000;
 
