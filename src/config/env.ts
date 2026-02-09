@@ -66,6 +66,7 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 let cachedEnv: Env | null = null;
+let tradingModeOverride: "paper" | "live" | null = null;
 
 export function loadEnv(): Env {
   if (cachedEnv) return cachedEnv;
@@ -83,6 +84,17 @@ export function loadEnv(): Env {
   return cachedEnv;
 }
 
+export function setTradingMode(mode: "paper" | "live"): void {
+  tradingModeOverride = mode;
+  console.log(`[Env] Trading mode set to ${mode.toUpperCase()} (runtime override)`);
+}
+
+export function getTradingMode(): "paper" | "live" {
+  if (tradingModeOverride !== null) return tradingModeOverride;
+  return loadEnv().TRADING_MODE;
+}
+
 export function isPaperMode(): boolean {
+  if (tradingModeOverride !== null) return tradingModeOverride === "paper";
   return loadEnv().TRADING_MODE === "paper";
 }
