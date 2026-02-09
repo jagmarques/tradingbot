@@ -96,6 +96,10 @@ async function main(): Promise<void> {
         minConfidence: env.AIBETTING_MIN_CONFIDENCE,
         scanIntervalMs: env.AIBETTING_SCAN_INTERVAL,
         categoriesEnabled: ["politics", "crypto", "sports", "business", "entertainment", "other"],
+        bayesianWeight: env.AIBETTING_BAYESIAN_WEIGHT,
+        takeProfitThreshold: env.AIBETTING_TAKE_PROFIT,
+        stopLossThreshold: env.AIBETTING_STOP_LOSS,
+        holdResolutionDays: env.AIBETTING_HOLD_RESOLUTION_DAYS,
       });
       console.log("[Bot] AI Betting started");
     } else {

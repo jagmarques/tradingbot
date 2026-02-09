@@ -1728,7 +1728,18 @@ async function handleTextInput(ctx: Context): Promise<void> {
 
     // Create a mock context for handleSettings
     const settings = getSettings(userId);
+    const env = loadEnv();
     const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
+
+    const aiEnabled = env.AIBETTING_ENABLED === "true";
+    const aiBettingSection = aiEnabled
+      ? `\n\n<b>AI BETTING</b>\n` +
+        `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
+        `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
+        `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
+        `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
+        `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
+      : `\n\n<b>AI BETTING</b>\nDisabled`;
 
     const message =
       `<b>Settings</b>\n\n` +
@@ -1739,7 +1750,8 @@ async function handleTextInput(ctx: Context): Promise<void> {
       `<b>Copy Amounts (fixed per trade):</b>\n` +
       `SOL: ${settings.copyAmountSol} | ETH: ${settings.copyAmountEth}\n` +
       `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
-      `Polymarket: $${settings.polymarketCopyUsd}`;
+      `Polymarket: $${settings.polymarketCopyUsd}` +
+      aiBettingSection;
 
     const keyboard = [
       [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
@@ -1832,8 +1844,19 @@ async function handleSettings(ctx: Context): Promise<void> {
   if (!userId) return;
 
   const settings = getSettings(userId);
+  const env = loadEnv();
 
   const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
+
+  const aiEnabled = env.AIBETTING_ENABLED === "true";
+  const aiBettingSection = aiEnabled
+    ? `\n\n<b>AI BETTING</b>\n` +
+      `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
+      `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
+      `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
+      `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
+      `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
+    : `\n\n<b>AI BETTING</b>\nDisabled`;
 
   const message =
     `<b>Settings</b>\n\n` +
@@ -1844,7 +1867,8 @@ async function handleSettings(ctx: Context): Promise<void> {
     `<b>Copy Amounts (fixed per trade):</b>\n` +
     `SOL: ${settings.copyAmountSol} | ETH: ${settings.copyAmountEth}\n` +
     `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
-    `Polymarket: $${settings.polymarketCopyUsd}`;
+    `Polymarket: $${settings.polymarketCopyUsd}` +
+    aiBettingSection;
 
   const keyboard = [
     [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],

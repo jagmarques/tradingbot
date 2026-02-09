@@ -313,11 +313,12 @@ export function evaluateAllOpportunities(
 export async function shouldExitPosition(
   position: AIBettingPosition,
   currentPrice: number,
-  newAnalysis: AIAnalysis | null
+  newAnalysis: AIAnalysis | null,
+  config?: AIBettingConfig
 ): Promise<{ shouldExit: boolean; reason: string }> {
   const SETTLEMENT_RISK_HOURS = 6;
-  const STOP_LOSS_THRESHOLD = -0.15;
-  const TAKE_PROFIT_THRESHOLD = 0.40;
+  const STOP_LOSS_THRESHOLD = config ? -config.stopLossThreshold : -0.15;
+  const TAKE_PROFIT_THRESHOLD = config?.takeProfitThreshold ?? 0.40;
 
   if (position.marketEndDate) {
     const hours = hoursUntil(position.marketEndDate);
@@ -335,12 +336,12 @@ export async function shouldExitPosition(
   if (pnlPercent < STOP_LOSS_THRESHOLD) {
     return {
       shouldExit: true,
-      reason: `Stop-loss: P&L ${(pnlPercent * 100).toFixed(1)}% exceeded -15% limit`,
+      reason: `Stop-loss: P&L ${(pnlPercent * 100).toFixed(1)}% exceeded -${(STOP_LOSS_THRESHOLD * -100).toFixed(0)}% limit`,
     };
   }
 
   if (pnlPercent > TAKE_PROFIT_THRESHOLD) {
-    const HOLD_TO_RESOLUTION_DAYS = 7;
+    const HOLD_TO_RESOLUTION_DAYS = config?.holdResolutionDays ?? 7;
     if (position.marketEndDate) {
       const hours = hoursUntil(position.marketEndDate);
       if (hours !== null && hours > 0 && hours < HOLD_TO_RESOLUTION_DAYS * 24) {
@@ -348,13 +349,13 @@ export async function shouldExitPosition(
       } else {
         return {
           shouldExit: true,
-          reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +40% target`,
+          reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +${(TAKE_PROFIT_THRESHOLD * 100).toFixed(0)}% target`,
         };
       }
     } else {
       return {
         shouldExit: true,
-        reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +40% target`,
+        reason: `Take-profit: P&L +${(pnlPercent * 100).toFixed(1)}% exceeded +${(TAKE_PROFIT_THRESHOLD * 100).toFixed(0)}% target`,
       };
     }
   }
