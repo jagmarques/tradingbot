@@ -96,6 +96,10 @@ export interface AIBettingConfig {
   minConfidence: number;
   scanIntervalMs: number;
   categoriesEnabled: MarketCategory[];
+  bayesianWeight: number;      // 0-1, weight given to market price vs R1
+  takeProfitThreshold: number;  // 0-1, exit when P&L exceeds this (e.g. 0.40 = +40%)
+  stopLossThreshold: number;    // 0-1, exit when P&L below negative of this (e.g. 0.15 = -15%)
+  holdResolutionDays: number;   // Days before resolution to hold instead of taking profit
 }
 
 export interface AnalysisCycleResult {

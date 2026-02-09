@@ -54,6 +54,10 @@ const envSchema = z.object({
   AIBETTING_MIN_EDGE: numericStringMax1("0.12"),
   AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.60"),
   AIBETTING_SCAN_INTERVAL: numericString("1800000"), // 30 min (markets resolve in days)
+  AIBETTING_BAYESIAN_WEIGHT: numericStringMax1("0.50"),
+  AIBETTING_TAKE_PROFIT: numericStringMax1("0.40"),
+  AIBETTING_STOP_LOSS: numericStringMax1("0.15"), // Used as negative threshold in evaluator (-0.15 = -15% P&L)
+  AIBETTING_HOLD_RESOLUTION_DAYS: numericString("7"),
 
   // Risk Limits
   MAX_POLYMARKET_BET_USDC: numericString("20"),

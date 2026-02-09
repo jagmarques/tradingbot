@@ -260,10 +260,11 @@ OUTPUT JSON ONLY:
 
       // Apply Bayesian prior ONCE: 50% market price + 50% R1
       analysis.r1RawProbability = r1FinalRaw;
-      analysis.probability = 0.5 * yesPrice + 0.5 * r1FinalRaw;
+      const bw = config!.bayesianWeight;
+      analysis.probability = bw * yesPrice + (1 - bw) * r1FinalRaw;
       analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
 
-      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: 0.50*${(yesPrice * 100).toFixed(0)}% + 0.50*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
+      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: ${bw.toFixed(2)}*${(yesPrice * 100).toFixed(0)}% + ${(1-bw).toFixed(2)}*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
 
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);
@@ -423,7 +424,7 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
     if (currentPrice === null) continue;
 
     const analysis = analyses.get(position.marketId) || null;
-    const { shouldExit, reason } = await shouldExitPosition(position, currentPrice, analysis);
+    const { shouldExit, reason } = await shouldExitPosition(position, currentPrice, analysis, config ?? undefined);
 
     if (shouldExit) {
       const { success, pnl } = await exitPosition(position, currentPrice, reason);
