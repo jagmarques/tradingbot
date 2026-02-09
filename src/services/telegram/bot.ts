@@ -1,10 +1,8 @@
 import { Bot, Context, InputFile } from "grammy";
-import { loadEnv, isPaperMode } from "../../config/env.js";
+import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
 import { exportTradersToPdf } from "./pdf-export.js";
 import {
   getRiskStatus,
-  activateKillSwitch,
-  deactivateKillSwitch,
   getDailyPnl,
   getDailyPnlPercentage,
   getDailyPnlBreakdown,
@@ -322,8 +320,16 @@ export async function startBot(): Promise<void> {
     await handleMode(ctx);
     await ctx.answerCallbackQuery();
   });
-  bot.callbackQuery("mode_toggle_logonly", async (ctx) => {
-    await handleToggleLogOnly(ctx);
+  bot.callbackQuery("mode_switch_live", async (ctx) => {
+    await handleModeSwitchLive(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("mode_confirm_live", async (ctx) => {
+    await handleModeConfirmLive(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("mode_switch_paper", async (ctx) => {
+    await handleModeSwitchPaper(ctx);
     await ctx.answerCallbackQuery();
   });
 
@@ -1213,10 +1219,10 @@ async function handleStop(ctx: Context): Promise<void> {
     return;
   }
 
-  activateKillSwitch();
-  console.log("[Telegram] All trading stopped by user");
+  setLogOnlyMode(true);
+  console.log("[Telegram] Trading paused (log-only mode) by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("All trading stopped", backButton);
+  await sendDataMessage("Trading paused - analyzing only, no bets placed.", backButton);
 }
 
 async function handleResume(ctx: Context): Promise<void> {
@@ -1225,10 +1231,10 @@ async function handleResume(ctx: Context): Promise<void> {
     return;
   }
 
-  deactivateKillSwitch();
-  console.log("[Telegram] All trading resumed by user");
+  setLogOnlyMode(false);
+  console.log("[Telegram] Trading resumed (log-only off) by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("All trading resumed", backButton);
+  await sendDataMessage("Trading resumed - bets will be placed.", backButton);
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {
@@ -1555,28 +1561,84 @@ async function handleMode(ctx: Context): Promise<void> {
     return;
   }
 
-  const tradingMode = isPaperMode() ? "PAPER" : "LIVE";
+  const currentMode = getTradingMode().toUpperCase();
   const logOnly = isLogOnlyMode();
 
   let message = `<b>Trading Mode</b>\n\n`;
-  message += `Mode: <b>${tradingMode}</b> (env var)\n`;
-  message += `Log-Only: <b>${logOnly ? "ON" : "OFF"}</b>\n\n`;
-  message += `Log-only skips bet placement, useful for monitoring.`;
+  message += `Mode: <b>${currentMode}</b>\n`;
+  if (logOnly) {
+    message += `Status: <b>Paused</b> (analyzing only)\n`;
+  }
+
+  const buttons: { text: string; callback_data: string }[][] = [];
+
+  if (getTradingMode() === "paper") {
+    buttons.push([{ text: "Switch to LIVE", callback_data: "mode_switch_live" }]);
+  } else {
+    buttons.push([{ text: "Switch to PAPER", callback_data: "mode_switch_paper" }]);
+  }
+
+  buttons.push([{ text: "Back", callback_data: "main_menu" }]);
+
+  await sendDataMessage(message, buttons);
+}
+
+async function handleModeSwitchLive(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  let message = `<b>Switch to LIVE Mode</b>\n\n`;
+  message += `WARNING: This will:\n`;
+  message += `- Delete ALL paper trade data\n`;
+  message += `- Start trading with REAL money\n\n`;
+  message += `<b>Are you sure?</b>`;
 
   const buttons = [
-    [{ text: logOnly ? "Log-Only: ON" : "Log-Only: OFF", callback_data: "mode_toggle_logonly" }],
-    [{ text: "Back", callback_data: "main_menu" }],
+    [{ text: "Confirm - Switch to LIVE", callback_data: "mode_confirm_live" }],
+    [{ text: "Cancel", callback_data: "mode" }],
   ];
 
   await sendDataMessage(message, buttons);
 }
 
-async function handleToggleLogOnly(ctx: Context): Promise<void> {
+async function handleModeConfirmLive(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  const newValue = !isLogOnlyMode();
-  setLogOnlyMode(newValue);
-  console.log(`[Telegram] Log-only mode toggled to ${newValue} by user ${ctx.from?.id}`);
+  try {
+    // Delete all paper positions/trades (same logic as handleResetConfirm)
+    const db = (await import("../database/db.js")).getDb();
+
+    deleteAllPositions();
+    deleteAllAnalyses();
+    clearAllPositions();
+    clearAnalysisCache();
+
+    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+    clearAllCopiedPositions();
+
+    db.prepare("DELETE FROM crypto_copy_positions").run();
+    db.prepare("DELETE FROM trades").run();
+    db.prepare("DELETE FROM positions").run();
+    db.prepare("DELETE FROM daily_stats").run();
+    db.prepare("DELETE FROM arbitrage_positions").run();
+
+    // Switch to live mode
+    setTradingMode("live");
+    console.log("[Telegram] Switched to LIVE mode, paper data deleted");
+
+    await handleMode(ctx);
+  } catch (err) {
+    console.error("[Telegram] Mode switch error:", err);
+    const backButton = [[{ text: "Back", callback_data: "mode" }]];
+    await sendDataMessage("Failed to switch mode. Check logs.", backButton);
+  }
+}
+
+async function handleModeSwitchPaper(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  // No confirmation needed for switching to paper (safe)
+  setTradingMode("paper");
+  console.log("[Telegram] Switched to PAPER mode");
 
   await handleMode(ctx);
 }
