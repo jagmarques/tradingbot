@@ -356,7 +356,7 @@ export async function shouldExitPosition(
 
     const freshNews = await fetchNewsForMarket(market);
 
-    const freshAnalysis = await analyzeMarket(market, freshNews, undefined, undefined, yesPrice);
+    const freshAnalysis = await analyzeMarket(market, freshNews);
 
     if (!freshAnalysis) {
       console.log(`[Evaluator] AI re-analysis failed, keeping position`);

@@ -186,7 +186,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       const ensembleResults: AIAnalysis[] = [];
 
       for (let i = 0; i < ENSEMBLE_SIZE; i++) {
-        const singleAnalysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles, yesPrice);
+        const singleAnalysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles);
         if (singleAnalysis) {
           ensembleResults.push(singleAnalysis);
           console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: R1=${(singleAnalysis.probability * 100).toFixed(1)}%`);
@@ -226,7 +226,6 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         const supervisorPrompt = `You are a senior prediction market analyst reviewing junior analysts' estimates.
 
 MARKET: ${market.title}
-Market price: ${(yesPrice * 100).toFixed(0)}c
 
 ANALYST ESTIMATES (spread: ${(spread * 100).toFixed(0)} percentage points):
 ${allReasoning}
