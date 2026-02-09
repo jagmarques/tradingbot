@@ -7,6 +7,7 @@ vi.mock("../../config/env.js", () => ({
   loadEnv: vi.fn(() => ({
     POLYMARKET_API_KEY: "test-api-key",
     POLYMARKET_SECRET: "test-secret",
+    POLYMARKET_PASSPHRASE: "test-passphrase",
   })),
 }));
 
@@ -123,11 +124,6 @@ describe("Polymarket CLOB Client", () => {
   });
 
   it("should validate API connection", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-    });
-
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();
 
@@ -135,11 +131,12 @@ describe("Polymarket CLOB Client", () => {
   });
 
   it("should fail API validation on auth error", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      text: () => Promise.resolve("Unauthorized"),
-    });
+    const { loadEnv } = await import("../../config/env.js");
+    vi.mocked(loadEnv).mockReturnValueOnce({
+      POLYMARKET_API_KEY: "",
+      POLYMARKET_SECRET: "test-secret",
+      POLYMARKET_PASSPHRASE: "test-passphrase",
+    } as any);
 
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();
@@ -148,7 +145,12 @@ describe("Polymarket CLOB Client", () => {
   });
 
   it("should fail API validation on network error", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    const { loadEnv } = await import("../../config/env.js");
+    vi.mocked(loadEnv).mockReturnValueOnce({
+      POLYMARKET_API_KEY: "test-api-key",
+      POLYMARKET_SECRET: "test-secret",
+      POLYMARKET_PASSPHRASE: "",
+    } as any);
 
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();
