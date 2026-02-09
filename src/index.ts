@@ -9,7 +9,7 @@ import { loadEnv, isPaperMode } from "./config/env.js";
 import { initDb, closeDb } from "./services/database/db.js";
 import { startHealthServer, stopHealthServer } from "./services/health/server.js";
 import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
-import { notifyBotStarted, notifyBotStopped, notifyCriticalError, startStatusReporter, stopStatusReporter } from "./services/telegram/notifications.js";
+import { notifyBotStarted, notifyBotStopped, notifyCriticalError } from "./services/telegram/notifications.js";
 import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
 import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { setDailyStartBalance } from "./services/risk/manager.js";
@@ -67,9 +67,6 @@ async function main(): Promise<void> {
 
     // Notify startup
     await notifyBotStarted();
-
-    // Start periodic status reporter
-    startStatusReporter();
 
     // Start trader tracker and auto-discovery
     await startTracking();
@@ -131,7 +128,6 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
-    stopStatusReporter();
     stopPolymarketMonitoring();
     stopPnlCron();
     stopAIBetting();

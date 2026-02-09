@@ -38,7 +38,6 @@ let chatId: string | null = null;
 let lastMenuMessageId: number | null = null;
 let lastDataMessageId: number | null = null;
 let lastTimezonePromptId: number | null = null;
-let lastStatusUpdateId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentTraderSort: TraderSortBy = "score";
 let currentTimeFilter: TimeFilter = 12; // Default: 1 year
@@ -435,21 +434,6 @@ async function sendDataMessage(text: string, inlineKeyboard?: { text: string; ca
     lastDataMessageId = msg.message_id;
   } catch (err) {
     console.error("[Telegram] Failed to send data message:", err);
-  }
-}
-
-// Send status message and delete previous one to keep chat clean
-export async function sendStatusMessage(text: string): Promise<void> {
-  if (!bot || !chatId) return;
-  try {
-    // Delete previous status message if exists
-    if (lastStatusUpdateId) {
-      await bot.api.deleteMessage(chatId, lastStatusUpdateId).catch(() => {});
-    }
-    const msg = await bot.api.sendMessage(chatId, text, { parse_mode: "HTML" });
-    lastStatusUpdateId = msg.message_id;
-  } catch (err) {
-    console.error("[Telegram] Failed to send status message:", err);
   }
 }
 
