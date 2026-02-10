@@ -119,7 +119,9 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
     }
   }
 
-  console.log(`[InsiderScanner] Found ${pumped.length} pumped tokens on ${chain} (5x+ in 24h)`);
+  if (pumped.length > 0) {
+    console.log(`[InsiderScanner] Found ${pumped.length} pumped tokens on ${chain} (5x+ in 24h)`);
+  }
   return pumped;
 }
 
@@ -201,8 +203,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     insidersFound: 0,
     errors: [],
   };
-
-  console.log("[InsiderScanner] Starting scan...");
 
   for (const chain of INSIDER_CONFIG.SCAN_CHAINS) {
     try {
@@ -289,9 +289,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     result.errors.push(msg);
   }
 
-  console.log(
-    `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} early buyers analyzed, ${result.insidersFound} insiders (3+ gems)`
-  );
+  if (result.pumpedTokensFound > 0) {
+    console.log(
+      `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} early buyers analyzed, ${result.insidersFound} insiders (3+ gems)`
+    );
+  }
 
   return result;
 }
