@@ -23,6 +23,7 @@ import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/poly
 import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { validateApiConnection } from "./services/polygon/polymarket.js";
+import { startInsiderScanner, stopInsiderScanner } from "./services/insiders/index.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -110,6 +111,14 @@ async function main(): Promise<void> {
     startPolyTraderTracking(5000);
     console.log("[Bot] Polymarket trader tracking started");
 
+    // EVM insider wallet detection
+    if (process.env.ETHERSCAN_API_KEY) {
+      startInsiderScanner();
+      console.log("[Bot] Insider scanner started");
+    } else {
+      console.log("[Bot] Insider scanner disabled (set ETHERSCAN_API_KEY to enable)");
+    }
+
     // Start P&L daily snapshot cron
     startPnlCron();
 
@@ -140,6 +149,7 @@ async function shutdown(signal: string): Promise<void> {
     stopPnlCron();
     stopAIBetting();
     stopPolyTraderTracking();
+    stopInsiderScanner();
     stopTraderAlerts();
     stopDiscovery();
     stopTracking();
