@@ -124,46 +124,74 @@ export function filterCandidateMarkets(
   const oneDayMs = 24 * 60 * 60 * 1000;
   const ninetyDaysMs = 90 * oneDayMs; // Extended from 7 to 90 days
 
-  return markets.filter((market) => {
+  const rejectReasons = {
+    existingPosition: 0,
+    volume: 0,
+    noTokens: 0,
+    endDate: 0,
+    category: 0,
+    extremePrice: 0,
+  };
+
+  const passed: PolymarketEvent[] = [];
+
+  for (const market of markets) {
     // Skip markets we already have positions in
     if (existingPositionMarketIds.has(market.conditionId)) {
-      return false;
+      rejectReasons.existingPosition++;
+      continue;
     }
 
-    // Must have sufficient volume (lowered from 500 to 200 for more opportunities)
-    if (market.volume24h < 200) {
-      return false;
+    // Must have sufficient volume (lowered from 500 to 100 for more opportunities)
+    if (market.volume24h < 100) {
+      rejectReasons.volume++;
+      continue;
     }
 
     // Must have valid outcomes with token IDs
     if (!market.outcomes.some((o) => o.tokenId)) {
-      return false;
+      rejectReasons.noTokens++;
+      continue;
     }
 
     // Check end date is within 1-90 days (extended window for more opportunities)
     const endTime = parseDate(market.endDate);
     if (endTime === null) {
-      return false;
+      rejectReasons.endDate++;
+      continue;
     }
     const timeUntilEnd = endTime - now;
 
     if (timeUntilEnd < oneDayMs || timeUntilEnd > ninetyDaysMs) {
-      return false;
+      rejectReasons.endDate++;
+      continue;
     }
 
     // Check category is enabled
     if (!config.categoriesEnabled.includes(market.category)) {
-      return false;
+      rejectReasons.category++;
+      continue;
     }
 
     // Skip markets at extreme prices (likely already resolved in practice)
     const yesPrice = market.outcomes.find((o) => o.name === "Yes")?.price || 0.5;
     if (yesPrice < 0.05 || yesPrice > 0.95) {
-      return false;
+      rejectReasons.extremePrice++;
+      continue;
     }
 
-    return true;
-  });
+    passed.push(market);
+  }
+
+  const rejected = markets.length - passed.length;
+  if (rejected > 0) {
+    const parts = Object.entries(rejectReasons)
+      .filter(([, count]) => count > 0)
+      .map(([reason, count]) => `${reason}=${count}`);
+    console.log(`[Scanner] Rejected: ${rejected} markets (${parts.join(", ")})`);
+  }
+
+  return passed;
 }
 
 export function scoreMarket(market: PolymarketEvent): number {
