@@ -6,7 +6,6 @@ import type {
   AIBettingPosition,
 } from "./types.js";
 import { hoursUntil } from "../../utils/dates.js";
-import { isPaperMode } from "../../config/env.js";
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
@@ -73,8 +72,6 @@ function calculateBetSize(
 
 const MAX_BETS_PER_GROUP = 1;
 const MAX_MARKET_DISAGREEMENT = 0.30;
-const DYNAMIC_EDGE_THRESHOLD = 0.20;
-const DYNAMIC_CONFIDENCE_FLOOR = 0.50;
 
 function extractSignificantWords(title: string): string[] {
   const stopWords = new Set([
@@ -108,7 +105,8 @@ function wordOverlapRatio(words1: string[], words2: string[]): number {
 
 function limitCorrelatedBets(
   decisions: BetDecision[],
-  markets: PolymarketEvent[]
+  markets: PolymarketEvent[],
+  currentPositions: AIBettingPosition[]
 ): BetDecision[] {
   const titleMap = new Map<string, string>();
   for (const m of markets) {
@@ -119,6 +117,10 @@ function limitCorrelatedBets(
   for (const d of decisions) {
     wordsMap.set(d.marketId, extractSignificantWords(titleMap.get(d.marketId) || ""));
   }
+
+  // Build word maps for existing open positions (cross-cycle check)
+  const openPositions = currentPositions.filter(p => p.status === "open");
+  const positionWords = openPositions.map(p => extractSignificantWords(p.marketTitle));
 
   // Group correlated markets by word overlap
   const groups: BetDecision[][] = [];
@@ -144,15 +146,21 @@ function limitCorrelatedBets(
     groups.push(group);
   }
 
-  // Keep top N by EV from each group (already sorted by caller)
+  // Keep top N by EV from each group, accounting for existing correlated positions
   const result: BetDecision[] = [];
   for (const group of groups) {
-    const kept = group.slice(0, MAX_BETS_PER_GROUP);
+    const groupWords = wordsMap.get(group[0].marketId)!;
+    const existingCorrelated = positionWords.filter(
+      pw => wordOverlapRatio(groupWords, pw) > 0.5
+    ).length;
+
+    const remainingSlots = Math.max(0, MAX_BETS_PER_GROUP - existingCorrelated);
+    const kept = group.slice(0, remainingSlots);
     const dropped = group.length - kept.length;
     if (dropped > 0) {
       const title = titleMap.get(group[0].marketId) || "unknown";
       console.log(
-        `[Evaluator] Correlation guard: kept ${kept.length}/${group.length} from "${title.substring(0, 60)}"`
+        `[Evaluator] Correlation guard: kept ${kept.length}/${group.length} from "${title.substring(0, 60)}" (${existingCorrelated} existing positions in group)`
       );
     }
     result.push(...kept);
@@ -194,10 +202,8 @@ export function evaluateBetOpportunity(
 
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
 
-  const availableBankroll = isPaperMode() ? bankroll : bankroll - currentExposure;
-  const maxAllowedBet = isPaperMode()
-    ? config.maxBetSize
-    : Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
+  const availableBankroll = bankroll - currentExposure;
+  const maxAllowedBet = Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
 
   const recommendedSize = calculateBetSize(
     aiProbability,
@@ -208,9 +214,7 @@ export function evaluateBetOpportunity(
   );
 
   const roundedConfidence = Math.round(analysis.confidence * 100) / 100;
-  const effectiveMinConfidence = absEdge >= DYNAMIC_EDGE_THRESHOLD ? DYNAMIC_CONFIDENCE_FLOOR : config.minConfidence;
-  const isDynamicThreshold = absEdge >= DYNAMIC_EDGE_THRESHOLD && effectiveMinConfidence < config.minConfidence;
-  const meetsConfidence = roundedConfidence >= effectiveMinConfidence;
+  const meetsConfidence = roundedConfidence >= config.minConfidence;
   const meetsEdge = effectiveEdge >= adjustedMinEdge;
   const withinDisagreement = absEdge <= MAX_MARKET_DISAGREEMENT;
   const hasBudget = recommendedSize >= 1; // At least $1 bet
@@ -221,11 +225,8 @@ export function evaluateBetOpportunity(
   let reason: string;
   if (shouldBet) {
     reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}% cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}% ${side}), Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
-    if (isDynamicThreshold) {
-      reason += ` (dynamic: ${(effectiveMinConfidence * 100).toFixed(0)}% floor)`;
-    }
   } else if (!meetsConfidence) {
-    reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(effectiveMinConfidence * 100).toFixed(0)}%`;
+    reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
@@ -248,7 +249,6 @@ export function evaluateBetOpportunity(
     expectedValue,
     recommendedSize: Math.floor(recommendedSize * 100) / 100,
     reason,
-    dynamicThreshold: isDynamicThreshold && shouldBet,
   };
 }
 
@@ -269,28 +269,40 @@ export function evaluateAllOpportunities(
     (p) => p.status === "open"
   ).length;
 
-  if (!isPaperMode() && openPositionCount >= config.maxPositions) {
+  if (openPositionCount >= config.maxPositions) {
     console.log(
       `[Evaluator] Max positions reached (${openPositionCount}/${config.maxPositions})`
     );
     return decisions;
   }
 
+  let cumExposure = currentExposure;
+  let cumPositionCount = openPositionCount;
+
   for (const market of markets) {
     const analysis = analyses.get(market.conditionId);
     if (!analysis) continue;
+
+    if (cumPositionCount >= config.maxPositions) {
+      console.log(
+        `[Evaluator] Skipping ${market.title} - max positions reached (${cumPositionCount}/${config.maxPositions})`
+      );
+      continue;
+    }
 
     const decision = evaluateBetOpportunity(
       market,
       analysis,
       config,
-      currentExposure,
+      cumExposure,
       bankroll
     );
 
     decisions.push(decision);
 
     if (decision.shouldBet) {
+      cumExposure += decision.recommendedSize;
+      cumPositionCount++;
       console.log(
         `[Evaluator] BET: ${market.title} - ${decision.side} @ $${decision.recommendedSize.toFixed(2)} (${decision.reason})`
       );
@@ -306,8 +318,8 @@ export function evaluateAllOpportunities(
     .filter((d) => d.shouldBet)
     .sort((a, b) => Math.abs(b.expectedValue) - Math.abs(a.expectedValue));
 
-  // Limit correlated bets (max 2 per event group)
-  return limitCorrelatedBets(approved, markets);
+  // Limit correlated bets (max 1 per event group, accounting for existing positions)
+  return limitCorrelatedBets(approved, markets, currentPositions);
 }
 
 export async function shouldExitPosition(
