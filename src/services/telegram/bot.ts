@@ -30,6 +30,8 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
+import { getTopInsiders } from "../insiders/storage.js";
+import { runManualInsiderScan, getInsiderScannerStatus } from "../insiders/index.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -69,6 +71,7 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "📋 Traders", callback_data: "traders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
+    { text: "🕵 Insiders", callback_data: "insiders" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
@@ -103,6 +106,7 @@ export async function startBot(): Promise<void> {
   bot.command("cleartraders", handleClearTraders);
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
+  bot.command("insiders", handleInsiders);
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -160,6 +164,14 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("bettors", async (ctx) => {
     await handleBettors(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders", async (ctx) => {
+    await handleInsiders(ctx);
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders_scan", async (ctx) => {
+    await handleInsidersScan(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets", async (ctx) => {
@@ -898,6 +910,62 @@ async function handleBettors(ctx: Context): Promise<void> {
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch bettors", backButton);
   }
+}
+
+async function handleInsiders(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) {
+    console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
+    return;
+  }
+
+  try {
+    const topInsiders = getTopInsiders(10);
+    const status = getInsiderScannerStatus();
+
+    let message = `<b>Insider Wallets</b>\n\n`;
+
+    if (topInsiders.length === 0) {
+      message += "No insider wallets detected yet. Scanner runs every 6h.";
+    } else {
+      for (const wallet of topInsiders) {
+        const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
+        message += `<b>${wallet.chain.toUpperCase()}</b> <code>${shortAddr}</code> - ${wallet.gemHitCount} gems\n`;
+        message += `Tokens: ${wallet.gems.join(", ")}\n\n`;
+      }
+    }
+
+    const scannerStatus = status.running ? "Running" : "Stopped";
+    message += `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+
+    const buttons = [
+      [
+        { text: "Refresh", callback_data: "insiders" },
+        { text: "Scan Now", callback_data: "insiders_scan" },
+      ],
+      [{ text: "Back", callback_data: "main_menu" }],
+    ];
+
+    await sendDataMessage(message, buttons);
+  } catch (err) {
+    console.error("[Telegram] Insiders error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to fetch insiders", backButton);
+  }
+}
+
+async function handleInsidersScan(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const buttons = [
+    [{ text: "Refresh", callback_data: "insiders" }],
+    [{ text: "Back", callback_data: "main_menu" }],
+  ];
+  await sendDataMessage("Scanning... this takes a few minutes.", buttons);
+
+  // Fire and forget - don't await the long scan
+  runManualInsiderScan().catch((err) =>
+    console.error("[Telegram] Manual insider scan error:", err)
+  );
 }
 
 async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_closed"): Promise<void> {
