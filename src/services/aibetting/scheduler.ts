@@ -88,6 +88,7 @@ let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
 let logOnlyMode = false; // Shadow mode: analyze but don't place bets
+let lastCalibrationLogAt = 0;
 
 const CACHE_DURATION_MS = 8 * 60 * 60 * 1000;
 
@@ -439,7 +440,11 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
 async function updateCalibrationScoresJob(): Promise<void> {
   try {
     const updated = updateCalibrationScores();
-    console.log(`[Calibration] Updated ${updated} category scores`);
+    const now = Date.now();
+    if (updated > 0 || now - lastCalibrationLogAt >= 3600000) {
+      console.log(`[Calibration] Updated ${updated} category scores`);
+      lastCalibrationLogAt = now;
+    }
   } catch (error) {
     console.error("[Calibration] Error updating scores:", error);
   }
