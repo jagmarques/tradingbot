@@ -122,7 +122,7 @@ export function filterCandidateMarkets(
 ): PolymarketEvent[] {
   const now = Date.now();
   const oneDayMs = 24 * 60 * 60 * 1000;
-  const ninetyDaysMs = 90 * oneDayMs; // Extended from 7 to 90 days
+  const maxDaysMs = 365 * oneDayMs;
 
   const rejectReasons = {
     existingPosition: 0,
@@ -154,7 +154,7 @@ export function filterCandidateMarkets(
       continue;
     }
 
-    // Check end date is within 1-90 days (extended window for more opportunities)
+    // Check end date is within 1-365 days
     const endTime = parseDate(market.endDate);
     if (endTime === null) {
       rejectReasons.endDate++;
@@ -162,7 +162,7 @@ export function filterCandidateMarkets(
     }
     const timeUntilEnd = endTime - now;
 
-    if (timeUntilEnd < oneDayMs || timeUntilEnd > ninetyDaysMs) {
+    if (timeUntilEnd < oneDayMs || timeUntilEnd > maxDaysMs) {
       rejectReasons.endDate++;
       continue;
     }
