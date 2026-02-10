@@ -348,15 +348,6 @@ OUTPUT JSON ONLY:
         if (position) {
           result.betsPlaced++;
           console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
-
-          if (decision.dynamicThreshold) {
-            const msg =
-              `[Dynamic Threshold] ${market.title}\n` +
-              `Edge ${(Math.abs(decision.edge) * 100).toFixed(1)}% -> confidence floor lowered to 50%\n` +
-              `Confidence: ${(decision.confidence * 100).toFixed(0)}% | AI: ${(decision.aiProbability * 100).toFixed(0)}% vs Market: ${(decision.marketPrice * 100).toFixed(0)}%\n` +
-              `Bet: ${decision.side} $${decision.recommendedSize.toFixed(2)}`;
-            import("../telegram/bot.js").then(({ sendMessage }) => sendMessage(msg)).catch(() => {});
-          }
         }
       }
     }

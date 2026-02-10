@@ -63,7 +63,6 @@ export interface BetDecision {
   expectedValue: number;
   recommendedSize: number;
   reason: string;
-  dynamicThreshold?: boolean;
 }
 
 export type PositionStatus = "open" | "closed";
