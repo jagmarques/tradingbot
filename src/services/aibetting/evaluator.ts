@@ -6,6 +6,7 @@ import type {
   AIBettingPosition,
 } from "./types.js";
 import { hoursUntil } from "../../utils/dates.js";
+import { isPaperMode } from "../../config/env.js";
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
@@ -203,7 +204,9 @@ export function evaluateBetOpportunity(
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
 
   const availableBankroll = bankroll - currentExposure;
-  const maxAllowedBet = Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
+  const maxAllowedBet = isPaperMode()
+    ? config.maxBetSize
+    : Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
 
   const recommendedSize = calculateBetSize(
     aiProbability,
