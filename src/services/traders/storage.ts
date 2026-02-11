@@ -49,6 +49,13 @@ export function initInsiderTables(): void {
     CREATE INDEX IF NOT EXISTS idx_insider_wallets_gem_count ON insider_wallets(gem_hit_count)
   `);
 
+  // Add P&L columns (safe if already exist)
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN buy_tokens REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_tokens REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN status TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN buy_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
+
   console.log("[InsiderScanner] Database tables initialized");
 }
 
@@ -124,6 +131,18 @@ export function getTopInsiders(limit: number): InsiderWallet[] {
   return rows.map(mapRowToInsiderWallet);
 }
 
+export function updateGemHitPnl(
+  walletAddress: string, tokenAddress: string, chain: string,
+  buyTokens: number, sellTokens: number, status: string,
+  buyDate: number, sellDate: number
+): void {
+  const db = getDb();
+  db.prepare(`
+    UPDATE insider_gem_hits SET buy_tokens = ?, sell_tokens = ?, status = ?, buy_date = ?, sell_date = ?
+    WHERE wallet_address = ? AND token_address = ? AND chain = ?
+  `).run(buyTokens, sellTokens, status, buyDate, sellDate, walletAddress.toLowerCase(), tokenAddress.toLowerCase(), chain);
+}
+
 export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
   const db = getDb();
 
@@ -138,8 +157,13 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
     buyTimestamp: row.buy_timestamp as number,
-    buyBlockNumber: 0, // Not stored in DB
+    buyBlockNumber: 0,
     pumpMultiple: row.pump_multiple as number,
+    buyTokens: (row.buy_tokens as number) || undefined,
+    sellTokens: (row.sell_tokens as number) || undefined,
+    status: (row.status as GemHit["status"]) || undefined,
+    buyDate: (row.buy_date as number) || undefined,
+    sellDate: (row.sell_date as number) || undefined,
   }));
 }
 

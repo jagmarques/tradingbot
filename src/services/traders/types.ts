@@ -73,7 +73,7 @@ export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
 };
 
 // Insider wallet detection types
-export type EvmChain = "ethereum" | "base" | "arbitrum";
+export type EvmChain = "ethereum" | "base" | "arbitrum" | "polygon" | "optimism";
 
 export interface PumpedToken {
   tokenAddress: string;
@@ -95,6 +95,11 @@ export interface GemHit {
   buyTimestamp: number;
   buyBlockNumber: number;
   pumpMultiple: number;
+  buyTokens?: number;
+  sellTokens?: number;
+  status?: "holding" | "sold" | "partial";
+  buyDate?: number;
+  sellDate?: number;
 }
 
 export interface InsiderWallet {
@@ -116,9 +121,9 @@ export interface InsiderScanResult {
 
 export const INSIDER_CONFIG = {
   MIN_PUMP_MULTIPLE: 3, // 3x pump
-  MIN_GEM_HITS: 3, // 3+ gems to be considered insider
+  MIN_GEM_HITS: 2, // 2+ gems to be considered insider
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
-  SCAN_CHAINS: ["ethereum", "base", "arbitrum"] as EvmChain[],
-  SCAN_INTERVAL_MS: 15 * 60 * 1000, // 15 minutes between scans
+  SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism"] as EvmChain[],
+  SCAN_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes between scans
 };
