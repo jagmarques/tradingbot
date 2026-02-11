@@ -126,4 +126,6 @@ export const INSIDER_CONFIG = {
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism"] as EvmChain[],
   SCAN_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes between scans
+  MAX_HISTORY_TOKENS: 50, // max unique tokens to check per wallet history scan
+  HISTORY_MIN_FDV_USD: 100000, // minimum FDV to consider a token "real"
 };
