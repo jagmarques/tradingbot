@@ -29,8 +29,8 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-// GeckoTerminal free tier: 30 req/min = 2s between requests
-const GECKO_INTERVAL_MS = 2000;
+// GeckoTerminal free tier: 30 req/min -> use 2500ms interval (24 req/min) for safety margin
+const GECKO_INTERVAL_MS = 2500;
 let geckoFetchQueue: Promise<void> = Promise.resolve();
 
 async function geckoRateLimitedFetch(url: string): Promise<Response> {
@@ -39,7 +39,13 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   });
   geckoFetchQueue = myTurn;
   await myTurn;
-  return fetch(url);
+  const response = await fetch(url);
+  if (response.status === 429) {
+    console.warn(`[InsiderScanner] GeckoTerminal 429 rate limited, retrying in 5s: ${url}`);
+    await new Promise((r) => setTimeout(r, 5000));
+    return fetch(url);
+  }
+  return response;
 }
 
 // Rate limiting for Etherscan (220ms between requests, per chain)
