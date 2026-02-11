@@ -109,6 +109,17 @@ function isArticleRelevant(articleText: string, marketTitle: string): boolean {
   return matched >= 2 || matched / keywords.length >= 0.15;
 }
 
+function buildAlternativeQuery(title: string, originalQuery: string): string | null {
+  // Extract key named entities and nouns (capitalized words, 4+ chars)
+  const words = title.match(/\b[A-Z][a-z]{3,}\b/g) || [];
+  const unique = [...new Set(words)];
+  if (unique.length < 2) return null;
+  // Take top 3-4 proper nouns, skip any that were already the entire original query
+  const alt = unique.slice(0, 4).join(" ");
+  if (alt === originalQuery) return null;
+  return alt;
+}
+
 async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   if (!query || query.split(/\s+/).filter(w => w.length >= 3).length === 0) return [];
 
@@ -253,6 +264,29 @@ export async function fetchNewsForMarket(
         }
       } catch {
         // continue
+      }
+    }
+
+    // If <2 articles have content, retry with simplified query (no API call)
+    if (contentFetched < 2) {
+      const altQuery = buildAlternativeQuery(market.title, query);
+      if (altQuery && altQuery !== query) {
+        await new Promise(r => setTimeout(r, 2000));
+        const altArticles = await fetchGdeltArticles(altQuery);
+        const altItems = altArticles
+          .filter(a => !isPredictionMarketContent(a.title))
+          .filter(a => !items.some(existing => existing.url === a.url));
+
+        for (const alt of altItems.slice(0, 2)) {
+          const content = await fetchArticleContent(alt.url);
+          if (content && !isPredictionMarketContent(content.slice(0, 500)) && isArticleRelevant(alt.title + " " + content, market.title)) {
+            const item: NewsItem = { source: alt.domain, title: alt.title, summary: alt.title, url: alt.url, publishedAt: alt.seendate, content };
+            items.push(item);
+            contentFetched++;
+            console.log(`[News] Alt content (${alt.domain}): ${content.slice(0, 150).replace(/\n/g, " ")}`);
+          }
+        }
+        console.log(`[News] After retry: ${contentFetched} articles with content`);
       }
     }
 
