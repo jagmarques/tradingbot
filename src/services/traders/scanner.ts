@@ -391,7 +391,9 @@ export async function scanWalletHistory(): Promise<void> {
       };
 
       if (data.status !== "1" || !Array.isArray(data.result)) {
-        console.log(`[InsiderScanner] History: ${wallet.address.slice(0, 8)} - no transfers found`);
+        console.log(
+          `[InsiderScanner] History: ${wallet.address.slice(0, 8)} - no transfers found (status=${data.status}, resultType=${typeof data.result}, resultLength=${Array.isArray(data.result) ? data.result.length : String(data.result).slice(0, 80)})`
+        );
         continue;
       }
 
@@ -446,14 +448,15 @@ export async function scanWalletHistory(): Promise<void> {
           };
 
           const fdvUsd = parseFloat(geckoData.data.attributes.fdv_usd || "0");
+          const reserveUsd = parseFloat(geckoData.data.attributes.total_reserve_in_usd || "0");
 
-          // Only consider tokens with sufficient FDV (not dead/rugged)
-          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD) {
+          // FDV or liquidity must qualify
+          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) {
             continue;
           }
 
-          // Calculate a rough pump multiple from FDV
-          const pumpMultiple = Math.min(fdvUsd / 100000, 100);
+          // Pump multiple from FDV ratio
+          const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
 
           // Store as gem hit
           const hit: GemHit = {
