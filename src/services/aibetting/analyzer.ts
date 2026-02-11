@@ -43,7 +43,7 @@ Consider each candidate's specific advantages, endorsements, polling data, and u
     top3.forEach((n, i) => {
       newsSection += `ARTICLE ${i + 1}: [${n.source}] ${n.title}\n`;
       const content = n.content || n.summary || "No content available";
-      newsSection += `Content: ${content.slice(0, 5000)}\n\n`;
+      newsSection += `Content: ${content.slice(0, 2000)}\n\n`;
     });
 
     // Show titles only for remaining articles
@@ -74,7 +74,7 @@ Consider each candidate's specific advantages, endorsements, polling data, and u
   return `You are an expert prediction market analyst. Your job: find where markets are mispriced based on EVIDENCE.
 
 ${performanceNote}MARKET: ${market.title}
-${market.description ? `Description: ${market.description.slice(0, 500)}\n` : ""}Category: ${market.category}
+${market.description ? `Description: ${market.description.slice(0, 200)}\n` : ""}Category: ${market.category}
 Resolves: ${resolveDate}
 
 ${siblingSection}${contextSection}NEWS AND EVIDENCE:

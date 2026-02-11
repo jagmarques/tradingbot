@@ -182,8 +182,8 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
       }
 
-      // Ensemble: 3 R1 calls, take median probability
-      const ENSEMBLE_SIZE = 3;
+      // Ensemble: 2 R1 calls, take mean probability
+      const ENSEMBLE_SIZE = 2;
       const ensembleResults: AIAnalysis[] = [];
 
       for (let i = 0; i < ENSEMBLE_SIZE; i++) {
@@ -203,22 +203,22 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         continue;
       }
 
-      // Take median of RAW R1 probabilities (no weighting applied yet)
+      // Take mean of RAW R1 probabilities (no weighting applied yet)
       const sortedProbs = ensembleResults.map(a => a.probability).sort((a, b) => a - b);
-      const medianRawProb = sortedProbs[Math.floor(sortedProbs.length / 2)];
+      const meanRawProb = sortedProbs.reduce((a, b) => a + b, 0) / sortedProbs.length;
 
       // Check spread for supervisor trigger
       const spread = sortedProbs[sortedProbs.length - 1] - sortedProbs[0];
 
-      // Use the analysis closest to median as base
-      const closestToMedian = ensembleResults.reduce((best, curr) =>
-        Math.abs(curr.probability - medianRawProb) < Math.abs(best.probability - medianRawProb) ? curr : best
+      // Use the analysis closest to mean as base
+      const closestToMean = ensembleResults.reduce((best, curr) =>
+        Math.abs(curr.probability - meanRawProb) < Math.abs(best.probability - meanRawProb) ? curr : best
       );
-      let r1FinalRaw = medianRawProb;
-      let analysis = { ...closestToMedian, probability: medianRawProb };
+      let r1FinalRaw = meanRawProb;
+      let analysis = { ...closestToMean, probability: meanRawProb };
 
-      // Supervisor agent: if spread > 20pp, make extra R1 call with all RAW reasoning
-      if (spread > 0.20) {
+      // Supervisor agent: if spread > 15pp, make extra R1 call with all RAW reasoning
+      if (spread > 0.15) {
         console.log(`[AIBetting] Supervisor triggered (spread ${(spread * 100).toFixed(0)}pp): ${market.title}`);
         const allReasoning = ensembleResults.map((a, i) =>
           `Analyst ${i + 1}: P=${(a.probability * 100).toFixed(1)}% - ${a.reasoning}`
@@ -252,10 +252,10 @@ OUTPUT JSON ONLY:
             r1FinalRaw = supervisorAnalysis.probability;
             analysis.reasoning = `[Supervisor] ${supervisorAnalysis.reasoning}`;
             analysis.confidence = supervisorAnalysis.confidence;
-            console.log(`[AIBetting] Supervisor: ${(r1FinalRaw * 100).toFixed(1)}% (was median ${(medianRawProb * 100).toFixed(1)}%)`);
+            console.log(`[AIBetting] Supervisor: ${(r1FinalRaw * 100).toFixed(1)}% (was mean ${(meanRawProb * 100).toFixed(1)}%)`);
           }
         } catch (error) {
-          console.warn(`[AIBetting] Supervisor call failed, using median:`, error);
+          console.warn(`[AIBetting] Supervisor call failed, using mean:`, error);
         }
       }
 
@@ -265,7 +265,7 @@ OUTPUT JSON ONLY:
       analysis.probability = bw * yesPrice + (1 - bw) * r1FinalRaw;
       analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
 
-      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1median=${(medianRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: ${bw.toFixed(2)}*${(yesPrice * 100).toFixed(0)}% + ${(1-bw).toFixed(2)}*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
+      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1mean=${(meanRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: ${bw.toFixed(2)}*${(yesPrice * 100).toFixed(0)}% + ${(1-bw).toFixed(2)}*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
 
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);
