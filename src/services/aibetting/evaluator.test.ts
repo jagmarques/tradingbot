@@ -26,6 +26,7 @@ vi.mock("./analyzer.js", () => ({
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
+import { isPaperMode } from "../../config/env.js";
 
 const mockConfig: AIBettingConfig = {
   maxBetSize: 10,
@@ -210,6 +211,34 @@ describe("evaluateBetOpportunity", () => {
 
     expect(decision.side).toBe("NO");
     expect(decision.tokenId).toBe("token-no");
+  });
+
+  it("should bypass exposure cap in paper mode", () => {
+    // Mock paper mode (already default: true)
+    vi.mocked(isPaperMode).mockReturnValue(true);
+
+    const market = makeMarket();
+    const analysis = makeAnalysis({ probability: 0.70, confidence: 0.80 });
+    const currentExposure = 45; // $45 of $50 max exposure used
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, currentExposure, 10000);
+
+    expect(decision.shouldBet).toBe(true);
+    expect(decision.recommendedSize).toBeGreaterThan(5);
+    expect(decision.recommendedSize).toBeLessThanOrEqual(mockConfig.maxBetSize);
+  });
+
+  it("should enforce exposure cap in live mode", () => {
+    // Mock live mode
+    vi.mocked(isPaperMode).mockReturnValue(false);
+
+    const market = makeMarket();
+    const analysis = makeAnalysis({ probability: 0.70, confidence: 0.80 });
+    const currentExposure = 45; // $45 of $50 max exposure used
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, currentExposure, 10000);
+
+    expect(decision.shouldBet).toBe(true);
+    expect(decision.recommendedSize).toBeLessThanOrEqual(5);
+    expect(decision.recommendedSize).toBeGreaterThan(0);
   });
 });
 
