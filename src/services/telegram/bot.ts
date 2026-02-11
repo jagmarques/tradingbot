@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders } from "../traders/storage.js";
+import { getTopInsiders, getGemHitsForWallet } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
@@ -703,10 +703,29 @@ async function handleInsiders(ctx: Context): Promise<void> {
     if (topInsiders.length === 0) {
       message += "No insider wallets detected yet.";
     } else {
-      for (const wallet of topInsiders) {
+      // Enrich with gem hit details and sort by best total pump
+      const enriched = topInsiders.map((wallet) => {
+        const hits = getGemHitsForWallet(wallet.address, wallet.chain);
+        const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
+        return { wallet, hits, totalPump };
+      });
+      enriched.sort((a, b) => b.totalPump - a.totalPump);
+
+      for (const { wallet, hits } of enriched) {
         const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
         message += `<b>${wallet.chain.toUpperCase()}</b> <code>${shortAddr}</code> - ${wallet.gemHitCount} gems\n`;
-        message += `Tokens: ${wallet.gems.join(", ")}\n\n`;
+        for (const hit of hits) {
+          const fmt = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const pump = hit.pumpMultiple ? `${hit.pumpMultiple.toFixed(1)}x` : "?";
+          const buyStr = hit.buyDate ? fmt(hit.buyDate) : fmt(hit.buyTimestamp);
+          const sellStr = hit.sellDate ? fmt(hit.sellDate) : "";
+          const statusLabel = hit.status === "sold" ? `Sold ${sellStr}`
+            : hit.status === "holding" ? "Holding"
+            : hit.status === "partial" ? `Partial sell ${sellStr}`
+            : "";
+          message += `  ${hit.tokenSymbol} ${pump} | Buy ${buyStr}${statusLabel ? ` | ${statusLabel}` : ""}\n`;
+        }
+        message += "\n";
       }
     }
 

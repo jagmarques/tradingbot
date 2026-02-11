@@ -1,6 +1,6 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES } from "./types.js";
 
@@ -10,6 +10,8 @@ const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
   ethereum: "eth",
   base: "base",
   arbitrum: "arbitrum",
+  polygon: "polygon_pos",
+  optimism: "optimism",
 };
 
 // Etherscan V2 API
@@ -20,6 +22,8 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   ethereum: 1,
   base: 8453,
   arbitrum: 42161,
+  polygon: 137,
+  optimism: 10,
 };
 
 // Zero address
@@ -95,7 +99,7 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
       const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
       // Filter by thresholds
-      if (h24Change < 200 || volumeH24 < 5000 || liquidity < 2000) continue;
+      if (h24Change < 100 || volumeH24 < 5000 || liquidity < 2000) continue;
 
       // Extract token address from relationships.base_token.data.id (format: "network_address")
       const baseTokenId = pool.relationships.base_token.data.id;
@@ -124,10 +128,61 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
     }
 
     console.log(
-      `[InsiderScanner] ${chain}: ${pumped.length} trending tokens passed filters (>=200% change, >=$5k vol, >=$2k liq)`
+      `[InsiderScanner] ${chain}: ${pumped.length} trending tokens passed filters (>=100% change, >=$5k vol, >=$2k liq)`
     );
   } catch (err) {
     console.error(`[InsiderScanner] GeckoTerminal error for ${chain}:`, err);
+  }
+
+  // Also check new_pools endpoint
+  try {
+    if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
+      const newPoolsUrl = `${GECKO_BASE}/networks/${networkId}/new_pools`;
+      const newPoolsResponse = await geckoRateLimitedFetch(newPoolsUrl);
+
+      if (newPoolsResponse.ok) {
+        const newPoolsData = (await newPoolsResponse.json()) as { data: GeckoPool[] };
+        const newPools = newPoolsData.data || [];
+        let newCount = 0;
+
+        for (const pool of newPools) {
+          if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
+
+          const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
+          const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
+          const liquidity = parseFloat(pool.attributes.reserve_in_usd);
+
+          if (h24Change < 100 || volumeH24 < 5000 || liquidity < 2000) continue;
+
+          const baseTokenId = pool.relationships.base_token.data.id;
+          const parts = baseTokenId.split("_");
+          if (parts.length < 2) continue;
+          const tokenAddress = parts.slice(1).join("_").toLowerCase();
+
+          if (seen.has(tokenAddress)) continue;
+          seen.add(tokenAddress);
+
+          const nameParts = pool.attributes.name.split(" / ");
+          const symbol = nameParts[0] || "UNKNOWN";
+
+          pumped.push({
+            tokenAddress,
+            chain,
+            symbol,
+            pairAddress: pool.attributes.address,
+            priceChangeH24: h24Change,
+            volumeH24,
+            liquidity,
+            discoveredAt: Date.now(),
+          });
+          newCount++;
+        }
+
+        console.log(`[InsiderScanner] ${chain}: ${newCount} additional tokens from new_pools`);
+      }
+    }
+  } catch (err) {
+    console.error(`[InsiderScanner] new_pools error for ${chain}:`, err);
   }
 
   return pumped;
@@ -203,6 +258,85 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
   }
 }
 
+// Query Etherscan for wallet+token transfer history to determine buy/sell status
+interface WalletTokenPnl {
+  buyTokens: number;
+  sellTokens: number;
+  status: "holding" | "sold" | "partial";
+  buyDate: number;
+  sellDate: number;
+}
+
+export async function getWalletTokenPnl(
+  walletAddress: string, tokenAddress: string, chain: EvmChain
+): Promise<WalletTokenPnl> {
+  const chainId = ETHERSCAN_CHAIN_IDS[chain];
+  const apiKey = process.env.ETHERSCAN_API_KEY || "";
+
+  const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${walletAddress}&contractaddress=${tokenAddress}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+
+  const response = await etherscanRateLimitedFetch(url, chain);
+  const data = (await response.json()) as {
+    status: string;
+    result: Array<{
+      from: string;
+      to: string;
+      value: string;
+      tokenDecimal: string;
+      timeStamp: string;
+    }>;
+  };
+
+  let buyTokens = 0;
+  let sellTokens = 0;
+  let buyDate = 0;
+  let sellDate = 0;
+
+  if (data.status === "1" && Array.isArray(data.result)) {
+    for (const tx of data.result) {
+      const amount = parseFloat(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal));
+      const ts = parseInt(tx.timeStamp) * 1000;
+      if (tx.to.toLowerCase() === walletAddress.toLowerCase()) {
+        buyTokens += amount;
+        if (!buyDate) buyDate = ts;
+      } else if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
+        sellTokens += amount;
+        sellDate = ts;
+      }
+    }
+  }
+
+  const status: "holding" | "sold" | "partial" =
+    sellTokens > 0.9 * buyTokens ? "sold"
+    : sellTokens < 0.1 * buyTokens ? "holding"
+    : "partial";
+
+  return { buyTokens, sellTokens, status, buyDate, sellDate };
+}
+
+// Enrich gem hits with P&L data (non-blocking, runs after scan)
+export async function enrichInsiderPnl(): Promise<void> {
+  const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
+
+  for (const wallet of insiders) {
+    const hits = getGemHitsForWallet(wallet.address, wallet.chain);
+
+    for (const hit of hits) {
+      if (hit.status) continue; // Already enriched
+
+      try {
+        const pnl = await getWalletTokenPnl(hit.walletAddress, hit.tokenAddress, hit.chain);
+        updateGemHitPnl(hit.walletAddress, hit.tokenAddress, hit.chain, pnl.buyTokens, pnl.sellTokens, pnl.status, pnl.buyDate, pnl.sellDate);
+        console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
+      } catch (err) {
+        console.error(`[InsiderScanner] P&L enrichment failed for ${hit.tokenSymbol}:`, err);
+      }
+
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+}
+
 // Main scan orchestrator
 export async function runInsiderScan(): Promise<InsiderScanResult> {
   const result: InsiderScanResult = {
@@ -212,7 +346,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     errors: [],
   };
 
-  for (const chain of INSIDER_CONFIG.SCAN_CHAINS) {
+  await Promise.all(INSIDER_CONFIG.SCAN_CHAINS.map(async (chain) => {
     try {
       // Find pumped tokens
       const pumpedTokens = await findPumpedTokens(chain);
@@ -239,8 +373,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
             upsertGemHit(hit);
           }
 
-          // 2s delay between tokens to respect free tier rate limits
-          await new Promise((r) => setTimeout(r, 2000));
+          // 500ms delay between tokens
+          await new Promise((r) => setTimeout(r, 500));
         } catch (err) {
           const msg = `Error processing ${token.symbol} on ${chain}: ${err}`;
           console.error(`[InsiderScanner] ${msg}`);
@@ -252,9 +386,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const msg = `Error scanning ${chain}: ${err}`;
       console.error(`[InsiderScanner] ${msg}`);
       result.errors.push(msg);
-      continue;
     }
-  }
+  }));
 
   // Recalculate insider wallets from gem_hits
   try {
@@ -296,6 +429,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     console.error(`[InsiderScanner] ${msg}`);
     result.errors.push(msg);
   }
+
+  // Enrich P&L data (non-blocking)
+  enrichInsiderPnl().catch(err => {
+    console.error("[InsiderScanner] P&L enrichment error:", err);
+  });
 
   console.log(
     `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} wallets, ${result.insidersFound} insiders`
