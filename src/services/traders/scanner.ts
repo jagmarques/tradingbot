@@ -26,9 +26,9 @@ const DEXSCREENER_CHAIN_IDS: Record<EvmChain, string> = {
 
 // Search terms per chain
 const CHAIN_SEARCH_TERMS: Record<EvmChain, string[]> = {
-  ethereum: ["pepe", "shib", "uni", "token", "a", "e"],
-  base: ["brett", "degen", "token", "a", "e"],
-  arbitrum: ["arb", "gmx", "token", "a", "e"],
+  ethereum: ["pepe", "shib", "mog", "wojak", "turbo", "floki"],
+  base: ["brett", "degen", "toshi", "normie", "mfer", "higher"],
+  arbitrum: ["arb", "gmx", "pendle", "magic", "grail", "jones"],
 };
 
 // Zero address
@@ -71,12 +71,14 @@ interface DexScreenerPair {
   liquidity: { usd: number };
 }
 
-// Find tokens that pumped 5x+ in 24h on a given chain
+// Find tokens that pumped 3x+ in 24h on a given chain
 export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   const chainId = DEXSCREENER_CHAIN_IDS[chain];
   const terms = CHAIN_SEARCH_TERMS[chain];
   const seen = new Set<string>();
   const pumped: PumpedToken[] = [];
+
+  console.log(`[InsiderScanner] Searching ${chain} with ${terms.length} terms...`);
 
   for (const term of terms) {
     if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
@@ -87,12 +89,18 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
       if (!response.ok) continue;
 
       const data = (await response.json()) as { pairs?: DexScreenerPair[] };
+      const totalPairs = data.pairs?.length || 0;
       const pairs = (data.pairs || []).filter(
         (p) =>
           p.chainId === chainId &&
-          (p.priceChange?.h24 || 0) >= 400 && // 5x = 400% increase
-          (p.volume?.h24 || 0) >= 10000 &&
-          (p.liquidity?.usd || 0) >= 5000
+          (p.priceChange?.h24 || 0) >= 200 && // 3x = 200% increase
+          (p.volume?.h24 || 0) >= 5000 &&
+          (p.liquidity?.usd || 0) >= 2000
+      );
+      const filteredPairs = pairs.length;
+
+      console.log(
+        `[InsiderScanner] ${chain}/${term}: ${totalPairs} pairs returned, ${filteredPairs} passed filters (>=200% change, >=$5k vol, >=$2k liq)`
       );
 
       for (const pair of pairs) {
@@ -119,9 +127,7 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
     }
   }
 
-  if (pumped.length > 0) {
-    console.log(`[InsiderScanner] Found ${pumped.length} pumped tokens on ${chain} (5x+ in 24h)`);
-  }
+  console.log(`[InsiderScanner] ${chain}: ${pumped.length} pumped tokens found from ${terms.length} search terms`);
   return pumped;
 }
 
@@ -289,11 +295,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     result.errors.push(msg);
   }
 
-  if (result.pumpedTokensFound > 0) {
-    console.log(
-      `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} early buyers analyzed, ${result.insidersFound} insiders (3+ gems)`
-    );
-  }
+  console.log(
+    `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} wallets, ${result.insidersFound} insiders`
+  );
 
   return result;
 }

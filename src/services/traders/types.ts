@@ -115,9 +115,10 @@ export interface InsiderScanResult {
 }
 
 export const INSIDER_CONFIG = {
-  MIN_PUMP_MULTIPLE: 5, // 5x pump
+  MIN_PUMP_MULTIPLE: 3, // 3x pump
   MIN_GEM_HITS: 3, // 3+ gems to be considered insider
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum"] as EvmChain[],
+  SCAN_INTERVAL_MS: 15 * 60 * 1000, // 15 minutes between scans
 };
