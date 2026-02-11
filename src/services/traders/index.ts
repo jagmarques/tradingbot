@@ -2,6 +2,7 @@ import { initInsiderTables } from "./storage.js";
 import { getInsiderCount } from "./storage.js";
 import { runInsiderScan } from "./scanner.js";
 import type { InsiderScanResult } from "./types.js";
+import { INSIDER_CONFIG } from "./types.js";
 
 let running = false;
 let scanning = false;
@@ -20,6 +21,12 @@ async function scanLoop(): Promise<void> {
     } finally {
       scanning = false;
     }
+
+    // Wait between scans to avoid API abuse
+    if (running) {
+      console.log(`[InsiderScanner] Next scan in ${INSIDER_CONFIG.SCAN_INTERVAL_MS / 60000} minutes`);
+      await new Promise((r) => setTimeout(r, INSIDER_CONFIG.SCAN_INTERVAL_MS));
+    }
   }
 }
 
@@ -29,7 +36,7 @@ export function startInsiderScanner(): void {
   initInsiderTables();
   running = true;
 
-  console.log("[InsiderScanner] Started (continuous)");
+  console.log(`[InsiderScanner] Started (every ${INSIDER_CONFIG.SCAN_INTERVAL_MS / 60000} min)`);
 
   // Start loop after short delay to not block startup
   setTimeout(() => {
