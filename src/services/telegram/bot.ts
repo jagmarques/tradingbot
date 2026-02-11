@@ -1,6 +1,5 @@
-import { Bot, Context, InputFile } from "grammy";
+import { Bot, Context } from "grammy";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { exportTradersToPdf } from "./pdf-export.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -15,10 +14,7 @@ import { getEthBalance as getBaseEthBalance } from "../base/executor.js";
 import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
-import { getTrackedTraderCount, isTrackerRunning } from "../traders/tracker.js";
 import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
-import { getTopTraders, getTopTradersSorted, getTokenTrades, getTrader, clearAllTraders, type TraderSortBy, type TimeFilter } from "../traders/storage.js";
-import { Chain } from "../traders/types.js";
 import {
   getSettings,
   toggleAutoCopy,
@@ -30,8 +26,8 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders } from "../insiders/storage.js";
-import { runManualInsiderScan, getInsiderScannerStatus } from "../insiders/index.js";
+import { getTopInsiders } from "../traders/storage.js";
+import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -39,8 +35,6 @@ let lastMenuMessageId: number | null = null;
 let lastDataMessageId: number | null = null;
 let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
-let currentTraderSort: TraderSortBy = "score";
-let currentTimeFilter: TimeFilter = 12; // Default: 1 year
 let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
 const alertMessageIds: number[] = []; // Track all alert messages for cleanup
 
@@ -69,9 +63,8 @@ const MAIN_MENU_BUTTONS = [
     { text: "🎯 Bets", callback_data: "bets" },
   ],
   [
-    { text: "📋 Traders", callback_data: "traders" },
-    { text: "🎲 Bettors", callback_data: "bettors" },
     { text: "🕵 Insiders", callback_data: "insiders" },
+    { text: "🎲 Bettors", callback_data: "bettors" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
@@ -96,14 +89,11 @@ export async function startBot(): Promise<void> {
   bot.command("balance", handleBalance);
   bot.command("pnl", handlePnl);
   bot.command("trades", handleTrades);
-  bot.command("traders", handleTraders);
   bot.command("timezone", handleTimezone);
   bot.command("stop", handleStop);
   bot.command("resume", handleResume);
-  bot.command("traderspdf", handleTradersPdf);
   bot.command("ai", handleAI);
   bot.command("clearcopies", handleClearCopies);
-  bot.command("cleartraders", handleClearTraders);
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
   bot.command("insiders", handleInsiders);
@@ -158,20 +148,12 @@ export async function startBot(): Promise<void> {
     await handleResume(ctx);
     await ctx.answerCallbackQuery();
   });
-  bot.callbackQuery("traders", async (ctx) => {
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
   bot.callbackQuery("bettors", async (ctx) => {
     await handleBettors(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders", async (ctx) => {
     await handleInsiders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("insiders_scan", async (ctx) => {
-    await handleInsidersScan(ctx);
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets", async (ctx) => {
@@ -192,62 +174,6 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("bets_copy_closed", async (ctx) => {
     await handleBets(ctx, "copy_closed");
-    await ctx.answerCallbackQuery();
-  });
-
-  // Handle trader detail button clicks (format: trader_ADDRESS_CHAIN)
-  bot.callbackQuery(/^trader_(.+)_(.+)$/, async (ctx) => {
-    await handleTraderDetail(ctx);
-    await ctx.answerCallbackQuery();
-  });
-
-  // Handle back to traders list
-  bot.callbackQuery("back_to_traders", async (ctx) => {
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-
-  // Trader sort callbacks
-  bot.callbackQuery("sort_score", async (ctx) => {
-    currentTraderSort = "score";
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("sort_pnl", async (ctx) => {
-    currentTraderSort = "pnl";
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("sort_pnl_pct", async (ctx) => {
-    currentTraderSort = "pnl_pct";
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-
-  // Time filter callbacks
-  bot.callbackQuery("time_1", async (ctx) => {
-    currentTimeFilter = 1;
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("time_3", async (ctx) => {
-    currentTimeFilter = 3;
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("time_6", async (ctx) => {
-    currentTimeFilter = 6;
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("time_12", async (ctx) => {
-    currentTimeFilter = 12;
-    await handleTraders(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("time_0", async (ctx) => {
-    currentTimeFilter = 0;
-    await handleTraders(ctx);
     await ctx.answerCallbackQuery();
   });
 
@@ -507,7 +433,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const schedulerStatus = getAIBettingStatus();
     const polyStats = getCopyStats();
     const cryptoCopyPositions = getCryptoCopyPositions();
-    const traderCount = getTrackedTraderCount();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeTag = status.isPaperMode ? "Paper" : "Live";
@@ -544,7 +469,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
     message += `Poly Copy: ${polyStats.openPositions} open${copyPnlStr} | $${polyStats.totalPnl.toFixed(2)} realized\n`;
     message += `Crypto Copy: ${cryptoCopyPositions.length} open\n`;
-    message += `Tracker: ${traderCount} wallets`;
 
     if (status.pauseReason) {
       message += `\n\n⚠️ ${status.pauseReason}`;
@@ -723,154 +647,6 @@ async function handleTrades(ctx: Context): Promise<void> {
   }
 }
 
-async function handleTraders(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /traders from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const traderCount = getTrackedTraderCount();
-    const trackerRunning = isTrackerRunning();
-    const topTradersList = getTopTradersSorted(10, currentTraderSort, undefined, currentTimeFilter);
-
-    // Labels
-    const sortLabels: Record<TraderSortBy, string> = {
-      score: "Score",
-      pnl: "Total PnL",
-      pnl_pct: "PnL %",
-    };
-    const timeLabels: Record<TimeFilter, string> = {
-      1: "1M",
-      3: "3M",
-      6: "6M",
-      12: "1Y",
-      0: "All",
-    };
-
-    let message = `<b>Trader Tracker</b>\n\n`;
-    message += `Status: ${trackerRunning ? "Running" : "Stopped"}\n`;
-    message += `Total Tracked: ${traderCount}\n`;
-    message += `Period: <b>${timeLabels[currentTimeFilter]}</b> | Sort: <b>${sortLabels[currentTraderSort]}</b>\n\n`;
-
-    // Time filter buttons
-    const timeButtons: { text: string; callback_data: string }[][] = [[
-      { text: currentTimeFilter === 1 ? "* 1M" : "1M", callback_data: "time_1" },
-      { text: currentTimeFilter === 3 ? "* 3M" : "3M", callback_data: "time_3" },
-      { text: currentTimeFilter === 6 ? "* 6M" : "6M", callback_data: "time_6" },
-      { text: currentTimeFilter === 12 ? "* 1Y" : "1Y", callback_data: "time_12" },
-      { text: currentTimeFilter === 0 ? "* All" : "All", callback_data: "time_0" },
-    ]];
-
-    // Sort filter buttons
-    const sortButtons: { text: string; callback_data: string }[][] = [[
-      { text: currentTraderSort === "score" ? "* Score" : "Score", callback_data: "sort_score" },
-      { text: currentTraderSort === "pnl" ? "* $ PnL" : "$ PnL", callback_data: "sort_pnl" },
-      { text: currentTraderSort === "pnl_pct" ? "* % PnL" : "% PnL", callback_data: "sort_pnl_pct" },
-    ]];
-
-    if (topTradersList.length === 0) {
-      message += "No traders with activity in this period\n\nTry a different time filter:";
-      const allButtons = [...timeButtons, ...sortButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(message, allButtons);
-      return;
-    }
-
-    message += "Click a trader to see details:";
-
-    // Create inline keyboard buttons for each trader
-    const traderButtons: { text: string; callback_data: string }[][] = [];
-    for (const trader of topTradersList) {
-      const pnlSign = trader.totalPnlUsd >= 0 ? "+" : "";
-      const pctSign = trader.pnlPct >= 0 ? "+" : "";
-      const investedStr = trader.totalInvested > 0 ? `$${trader.totalInvested.toFixed(0)}` : "?";
-
-      let buttonText: string;
-      if (currentTraderSort === "pnl_pct") {
-        // Show % prominently when sorted by %
-        buttonText = `${pctSign}${trader.pnlPct.toFixed(0)}% | ${trader.chain.toUpperCase()} | ${pnlSign}$${trader.totalPnlUsd.toFixed(0)} from ${investedStr}`;
-      } else if (currentTraderSort === "pnl") {
-        // Show $ PnL prominently
-        buttonText = `${pnlSign}$${trader.totalPnlUsd.toFixed(0)} | ${trader.chain.toUpperCase()} | ${trader.winRate.toFixed(0)}%W | ${pctSign}${trader.pnlPct.toFixed(0)}%`;
-      } else {
-        // Default: show score prominently
-        buttonText = `${trader.score.toFixed(0)}pt | ${trader.chain.toUpperCase()} | ${trader.winRate.toFixed(0)}%W | ${pnlSign}$${trader.totalPnlUsd.toFixed(0)}`;
-      }
-
-      traderButtons.push([{
-        text: buttonText,
-        callback_data: `trader_${trader.address}_${trader.chain}`,
-      }]);
-    }
-
-    // Combine: time filter + sort filter + trader buttons + back button
-    const allButtons = [...timeButtons, ...sortButtons, ...traderButtons, [{ text: "Back", callback_data: "main_menu" }]];
-
-    await sendDataMessage(message, allButtons);
-  } catch (err) {
-    console.error("[Telegram] Traders error:", err);
-  }
-}
-
-async function handleTraderDetail(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized trader detail from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    // Extract address and chain from callback data (format: trader_ADDRESS_CHAIN)
-    const match = ctx.callbackQuery?.data?.match(/^trader_(.+)_(.+)$/);
-    if (!match) return;
-
-    const [, address, chain] = match;
-    const trader = getTrader(address, chain as Chain);
-
-    if (!trader) {
-      await sendDataMessage("Trader not found");
-      return;
-    }
-
-    const tokenTrades = getTokenTrades(address, chain as Chain);
-
-    let message = `<b>Trader Details</b>\n\n`;
-    message += `<b>Chain:</b> ${trader.chain.toUpperCase()}\n`;
-    message += `<b>Address:</b>\n<code>${trader.address}</code>\n\n`;
-    message += `<b>Score:</b> ${trader.score.toFixed(0)}\n`;
-    message += `<b>Win Rate:</b> ${trader.winRate.toFixed(0)}%\n`;
-    message += `<b>Total Trades:</b> ${trader.totalTrades}\n`;
-    message += `<b>Winning:</b> ${trader.winningTrades} | <b>Losing:</b> ${trader.losingTrades}\n`;
-    const pnlSign = trader.totalPnlUsd >= 0 ? "+" : "";
-    message += `<b>Total PnL:</b> ${pnlSign}$${trader.totalPnlUsd.toFixed(0)}\n\n`;
-
-    if (tokenTrades.length === 0) {
-      message += "<i>No detailed trade history available</i>";
-    } else {
-      message += `<b>Trade History (${tokenTrades.length} tokens):</b>\n\n`;
-
-      for (const trade of tokenTrades.slice(0, 10)) {
-        const tradePnlSign = trade.pnlUsd >= 0 ? "+" : "";
-        const pnlPctSign = trade.pnlPct >= 0 ? "+" : "";
-        const firstDate = new Date(trade.firstBuyTimestamp).toLocaleDateString();
-        const lastDate = new Date(trade.lastSellTimestamp).toLocaleDateString();
-
-        message += `<b>${trade.tokenSymbol}</b>\n`;
-        message += `Bought: $${trade.buyAmountUsd.toFixed(0)} | Sold: $${trade.sellAmountUsd.toFixed(0)}\n`;
-        message += `Period: ${firstDate} - ${lastDate}\n`;
-        message += `PnL: ${tradePnlSign}$${trade.pnlUsd.toFixed(0)} (${pnlPctSign}${trade.pnlPct.toFixed(0)}%)\n\n`;
-      }
-
-      if (tokenTrades.length > 10) {
-        message += `<i>...and ${tokenTrades.length - 10} more trades</i>`;
-      }
-    }
-
-    const backButton = [[{ text: "Back to Traders", callback_data: "back_to_traders" }]];
-    await sendDataMessage(message, backButton);
-  } catch (err) {
-    console.error("[Telegram] Trader detail error:", err);
-  }
-}
 
 async function handleBettors(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
@@ -925,7 +701,7 @@ async function handleInsiders(ctx: Context): Promise<void> {
     let message = `<b>Insider Wallets</b>\n\n`;
 
     if (topInsiders.length === 0) {
-      message += "No insider wallets detected yet. Scanner runs every 6h.";
+      message += "No insider wallets detected yet.";
     } else {
       for (const wallet of topInsiders) {
         const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
@@ -937,13 +713,7 @@ async function handleInsiders(ctx: Context): Promise<void> {
     const scannerStatus = status.running ? "Running" : "Stopped";
     message += `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
 
-    const buttons = [
-      [
-        { text: "Refresh", callback_data: "insiders" },
-        { text: "Scan Now", callback_data: "insiders_scan" },
-      ],
-      [{ text: "Back", callback_data: "main_menu" }],
-    ];
+    const buttons = [[{ text: "Back", callback_data: "main_menu" }]];
 
     await sendDataMessage(message, buttons);
   } catch (err) {
@@ -951,21 +721,6 @@ async function handleInsiders(ctx: Context): Promise<void> {
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch insiders", backButton);
   }
-}
-
-async function handleInsidersScan(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  const buttons = [
-    [{ text: "Refresh", callback_data: "insiders" }],
-    [{ text: "Back", callback_data: "main_menu" }],
-  ];
-  await sendDataMessage("Scanning... this takes a few minutes.", buttons);
-
-  // Fire and forget - don't await the long scan
-  runManualInsiderScan().catch((err) =>
-    console.error("[Telegram] Manual insider scan error:", err)
-  );
 }
 
 async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_closed"): Promise<void> {
@@ -1251,36 +1006,6 @@ async function handleCloseAllCopies(ctx: Context): Promise<void> {
   await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
 }
 
-async function handleTradersPdf(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /traderspdf from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const allTraders = getTopTraders(100);
-
-    if (allTraders.length === 0) {
-      await sendDataMessage("No traders to export");
-      return;
-    }
-
-    await sendDataMessage(`Generating PDF for ${allTraders.length} traders...`);
-
-    const pdfBuffer = await exportTradersToPdf(allTraders);
-    const filename = `traders_${new Date().toISOString().split("T")[0]}.pdf`;
-
-    await ctx.replyWithDocument(new InputFile(pdfBuffer, filename), {
-      caption: `Profitable Traders Report - ${allTraders.length} traders`,
-    });
-
-    console.log(`[Telegram] Exported ${allTraders.length} traders to PDF`);
-  } catch (err) {
-    console.error("[Telegram] Traders PDF error:", err);
-    await sendDataMessage("Failed to generate PDF");
-  }
-}
-
 async function handleStop(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /stop from user ${ctx.from?.id}`);
@@ -1390,11 +1115,6 @@ async function handleAI(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
     const userId = ctx.from?.id?.toString() || "";
     const settings = getSettings(userId);
-    const traderCount = getTrackedTraderCount();
-    const trackerRunning = isTrackerRunning();
-    const topTraders = getTopTradersSorted(5, "score");
-
-    // Balances
     const solBalance = await getSolBalanceFormatted();
     const usdcBalance = await getUsdcBalanceFormatted();
 
@@ -1420,11 +1140,6 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Max copies/day: ${settings.maxCopyPerDay}
 - Today's copies: ${settings.dailyCopyCount}
 
-=== WALLET COPY TRADING ===
-- Tracker running: ${trackerRunning}
-- Total tracked wallets: ${traderCount}
-- Top 5 traders by score:
-${topTraders.map(t => `  - ${t.address.slice(0, 8)}... (${t.chain}) Score:${t.score} WR:${t.winRate.toFixed(0)}% PnL:$${t.totalPnlUsd.toFixed(0)}`).join("\n")}
 
 === POLYMARKET COPY TRADING ===
 - Total copies: ${copyStats.totalCopies}
@@ -1512,18 +1227,6 @@ async function handleClearCopies(ctx: Context): Promise<void> {
   }
 }
 
-async function handleClearTraders(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  try {
-    const count = clearAllTraders();
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(`Cleared ${count} traders and their trades.\n\nDiscovery will find new traders from scratch.`, backButton);
-  } catch (err) {
-    console.error("[Telegram] Clear traders error:", err);
-    await sendDataMessage("Failed to clear traders. Check logs.");
-  }
-}
 
 async function handleReset(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {

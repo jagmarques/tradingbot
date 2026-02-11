@@ -1,3 +1,4 @@
+// Shared types for copy trading and telegram consumers
 export type Chain = "solana" | "ethereum" | "polygon" | "base" | "arbitrum" | "bsc" | "optimism" | "avalanche" | "sonic";
 
 export interface Trader {
@@ -31,77 +32,6 @@ export interface TraderTrade {
   txHash: string;
   timestamp: number;
 }
-
-export interface TraderAlert {
-  id: string;
-  walletAddress: string;
-  trade: TraderTrade;
-  walletScore: number;
-  walletWinRate: number;
-  sentAt: number;
-}
-
-// Token-level trade summary (historical analysis)
-export interface TokenTrade {
-  id: string;
-  walletAddress: string;
-  chain: Chain;
-  tokenAddress: string;
-  tokenSymbol: string;
-  buyAmountUsd: number;
-  sellAmountUsd: number;
-  pnlUsd: number;
-  pnlPct: number;
-  firstBuyTimestamp: number;
-  lastSellTimestamp: number;
-}
-
-export interface WalletTransfer {
-  id: string;
-  fromAddress: string;
-  toAddress: string;
-  chain: Chain;
-  amountUsd: number;
-  txHash: string;
-  timestamp: number;
-}
-
-export interface WalletCluster {
-  id: string;
-  primaryWallet: string;
-  linkedWallets: string[];
-  chain: Chain;
-  totalTransferred: number;
-  discoveredAt: number;
-  updatedAt: number;
-}
-
-export const TRANSFER_THRESHOLDS = {
-  MIN_TRANSFER_USD: 500,
-  MIN_TRANSFERS_TO_LINK: 2,
-  MAX_TIME_BETWEEN_TRANSFERS: 7 * 24 * 60 * 60 * 1000,
-};
-
-export const SCORING_WEIGHTS = {
-  WIN_RATE: 30,
-  PROFIT_FACTOR: 25,
-  CONSISTENCY: 25,
-  VOLUME: 20,
-};
-
-export const TRADER_THRESHOLDS = {
-  MIN_TRADES: 5,
-  MIN_WIN_RATE: 0.50,
-  MIN_PROFIT_FACTOR: 1.2,
-  MIN_SCORE: 60,
-};
-
-export const BIG_HITTER_THRESHOLDS = {
-  MIN_TRADES: 3,
-  MAX_TRADES: 4,
-  MIN_TOTAL_PNL_USD: 500,
-  MIN_WIN_RATE: 0.50,
-};
 
 export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
   solana: [
@@ -140,4 +70,54 @@ export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
     "0xF491e7B69E4244ad4002BC14e878a34207E38c29",
     "0x16327E3FbDaCA3bcF7E38F5Af2599D2DDc33aE52",
   ],
+};
+
+// Insider wallet detection types
+export type EvmChain = "ethereum" | "base" | "arbitrum";
+
+export interface PumpedToken {
+  tokenAddress: string;
+  chain: EvmChain;
+  symbol: string;
+  pairAddress: string;
+  priceChangeH24: number; // e.g. 500 for 5x
+  volumeH24: number;
+  liquidity: number;
+  discoveredAt: number;
+}
+
+export interface GemHit {
+  walletAddress: string;
+  chain: EvmChain;
+  tokenAddress: string;
+  tokenSymbol: string;
+  buyTxHash: string;
+  buyTimestamp: number;
+  buyBlockNumber: number;
+  pumpMultiple: number;
+}
+
+export interface InsiderWallet {
+  address: string;
+  chain: EvmChain;
+  gemHitCount: number;
+  gems: string[]; // token symbols
+  firstSeenAt: number;
+  lastSeenAt: number;
+  score: number; // higher = more gems
+}
+
+export interface InsiderScanResult {
+  pumpedTokensFound: number;
+  walletsAnalyzed: number;
+  insidersFound: number;
+  errors: string[];
+}
+
+export const INSIDER_CONFIG = {
+  MIN_PUMP_MULTIPLE: 5, // 5x pump
+  MIN_GEM_HITS: 3, // 3+ gems to be considered insider
+  EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
+  MAX_TOKENS_PER_SCAN: 20,
+  SCAN_CHAINS: ["ethereum", "base", "arbitrum"] as EvmChain[],
 };

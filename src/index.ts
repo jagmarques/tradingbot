@@ -14,16 +14,13 @@ import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/a
 import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { setDailyStartBalance } from "./services/risk/manager.js";
 import { getSolBalance } from "./services/solana/wallet.js";
-import { initTracker, startTracking, stopTracking, getTrackedTraderCount } from "./services/traders/tracker.js";
-import { startDiscovery, stopDiscovery } from "./services/traders/discovery.js";
-import { startTraderAlerts, stopTraderAlerts } from "./services/traders/alerts.js";
 import { validateCopyChains } from "./services/evm/index.js";
 import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions } from "./services/aibetting/index.js";
 import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
 import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { validateApiConnection } from "./services/polygon/polymarket.js";
-import { startInsiderScanner, stopInsiderScanner } from "./services/insiders/index.js";
+import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -39,9 +36,6 @@ async function main(): Promise<void> {
     // Initialize database
     initDb();
     console.log("[Bot] Database initialized");
-
-    // Initialize trader tracker
-    initTracker();
 
     // Initialize crypto copy tracking
     const recoveredCryptocopies = initCryptoCopyTracking();
@@ -69,12 +63,6 @@ async function main(): Promise<void> {
 
     // Notify startup
     await notifyBotStarted();
-
-    // Start trader tracker and auto-discovery
-    await startTracking();
-    startDiscovery();
-    startTraderAlerts();
-    console.log(`[Bot] Trader tracker started (${getTrackedTraderCount()} wallets tracked)`);
 
     // Validate EVM copy-trading chains
     await validateCopyChains();
@@ -150,9 +138,6 @@ async function shutdown(signal: string): Promise<void> {
     stopAIBetting();
     stopPolyTraderTracking();
     stopInsiderScanner();
-    stopTraderAlerts();
-    stopDiscovery();
-    stopTracking();
     stopBot();
     stopHealthServer();
     closeDb();
