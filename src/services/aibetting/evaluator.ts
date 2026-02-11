@@ -257,7 +257,8 @@ export function evaluateAllOpportunities(
   analyses: Map<string, AIAnalysis>,
   config: AIBettingConfig,
   currentPositions: AIBettingPosition[],
-  bankroll: number
+  bankroll: number,
+  paperMode = false
 ): BetDecision[] {
   const decisions: BetDecision[] = [];
 
@@ -265,44 +266,22 @@ export function evaluateAllOpportunities(
     .filter((p) => p.status === "open")
     .reduce((sum, p) => sum + p.size, 0);
 
-  const openPositionCount = currentPositions.filter(
-    (p) => p.status === "open"
-  ).length;
-
-  if (openPositionCount >= config.maxPositions) {
-    console.log(
-      `[Evaluator] Max positions reached (${openPositionCount}/${config.maxPositions})`
-    );
-    return decisions;
-  }
-
-  let cumExposure = currentExposure;
-  let cumPositionCount = openPositionCount;
-
+  // Evaluate ALL markets first (don't skip based on position count)
   for (const market of markets) {
     const analysis = analyses.get(market.conditionId);
     if (!analysis) continue;
-
-    if (cumPositionCount >= config.maxPositions) {
-      console.log(
-        `[Evaluator] Skipping ${market.title} - max positions reached (${cumPositionCount}/${config.maxPositions})`
-      );
-      continue;
-    }
 
     const decision = evaluateBetOpportunity(
       market,
       analysis,
       config,
-      cumExposure,
+      currentExposure,
       bankroll
     );
 
     decisions.push(decision);
 
     if (decision.shouldBet) {
-      cumExposure += decision.recommendedSize;
-      cumPositionCount++;
       console.log(
         `[Evaluator] BET: ${market.title} - ${decision.side} @ $${decision.recommendedSize.toFixed(2)} (${decision.reason})`
       );
@@ -319,7 +298,30 @@ export function evaluateAllOpportunities(
     .sort((a, b) => Math.abs(b.expectedValue) - Math.abs(a.expectedValue));
 
   // Limit correlated bets (max 1 per event group, accounting for existing positions)
-  return limitCorrelatedBets(approved, markets, currentPositions);
+  const decorrelated = limitCorrelatedBets(approved, markets, currentPositions);
+
+  // Apply position limit after ranking (best edges first). Paper mode: no limit.
+  if (paperMode) return decorrelated;
+
+  const openPositionCount = currentPositions.filter(
+    (p) => p.status === "open"
+  ).length;
+  const slotsAvailable = Math.max(0, config.maxPositions - openPositionCount);
+
+  if (slotsAvailable === 0) {
+    console.log(
+      `[Evaluator] Max positions reached (${openPositionCount}/${config.maxPositions})`
+    );
+    return [];
+  }
+
+  if (decorrelated.length > slotsAvailable) {
+    console.log(
+      `[Evaluator] Position limit: keeping top ${slotsAvailable} of ${decorrelated.length} opportunities`
+    );
+  }
+
+  return decorrelated.slice(0, slotsAvailable);
 }
 
 export async function shouldExitPosition(

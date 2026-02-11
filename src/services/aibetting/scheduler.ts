@@ -329,7 +329,8 @@ OUTPUT JSON ONLY:
       analyses,
       config,
       openPositions,
-      usdcBalance
+      usdcBalance,
+      isPaperMode()
     );
     result.opportunitiesFound = decisions.length;
 
