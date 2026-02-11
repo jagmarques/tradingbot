@@ -185,6 +185,57 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
     console.error(`[InsiderScanner] new_pools error for ${chain}:`, err);
   }
 
+  // Also check top_pools endpoint (by volume)
+  try {
+    if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
+      const topPoolsUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_volume_usd_desc&page=1`;
+      const topPoolsResponse = await geckoRateLimitedFetch(topPoolsUrl);
+
+      if (topPoolsResponse.ok) {
+        const topPoolsData = (await topPoolsResponse.json()) as { data: GeckoPool[] };
+        const topPools = topPoolsData.data || [];
+        let topCount = 0;
+
+        for (const pool of topPools) {
+          if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
+
+          const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
+          const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
+          const liquidity = parseFloat(pool.attributes.reserve_in_usd);
+
+          if (h24Change < 100 || volumeH24 < 5000 || liquidity < 2000) continue;
+
+          const baseTokenId = pool.relationships.base_token.data.id;
+          const parts = baseTokenId.split("_");
+          if (parts.length < 2) continue;
+          const tokenAddress = parts.slice(1).join("_").toLowerCase();
+
+          if (seen.has(tokenAddress)) continue;
+          seen.add(tokenAddress);
+
+          const nameParts = pool.attributes.name.split(" / ");
+          const symbol = nameParts[0] || "UNKNOWN";
+
+          pumped.push({
+            tokenAddress,
+            chain,
+            symbol,
+            pairAddress: pool.attributes.address,
+            priceChangeH24: h24Change,
+            volumeH24,
+            liquidity,
+            discoveredAt: Date.now(),
+          });
+          topCount++;
+        }
+
+        console.log(`[InsiderScanner] ${chain}: ${topCount} additional tokens from top_pools`);
+      }
+    }
+  } catch (err) {
+    console.error(`[InsiderScanner] top_pools error for ${chain}:`, err);
+  }
+
   return pumped;
 }
 
@@ -315,6 +366,127 @@ export async function getWalletTokenPnl(
   return { buyTokens, sellTokens, status, buyDate, sellDate };
 }
 
+// Scan historical wallet transactions for additional gem hits
+export async function scanWalletHistory(): Promise<void> {
+  const insiders = getInsiderWallets(undefined, 1); // Cast wider net with 1+ gem hits
+
+  console.log(`[InsiderScanner] History: Scanning ${insiders.length} insider wallets`);
+
+  for (const wallet of insiders) {
+    try {
+      const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain];
+      const apiKey = process.env.ETHERSCAN_API_KEY || "";
+
+      // Query all token transfers for this wallet (no contractaddress filter)
+      const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+      const response = await etherscanRateLimitedFetch(url, wallet.chain);
+      const data = (await response.json()) as {
+        status: string;
+        result: Array<{
+          contractAddress: string;
+          tokenSymbol: string;
+          tokenDecimal: string;
+          timeStamp: string;
+        }>;
+      };
+
+      if (data.status !== "1" || !Array.isArray(data.result)) {
+        console.log(`[InsiderScanner] History: ${wallet.address.slice(0, 8)} - no transfers found`);
+        continue;
+      }
+
+      // Build map of unique token addresses
+      const tokenMap = new Map<string, { symbol: string; firstTx: number }>();
+      for (const tx of data.result) {
+        const tokenAddr = tx.contractAddress.toLowerCase();
+        if (!tokenMap.has(tokenAddr)) {
+          tokenMap.set(tokenAddr, {
+            symbol: tx.tokenSymbol || "UNKNOWN",
+            firstTx: parseInt(tx.timeStamp) * 1000,
+          });
+        }
+      }
+
+      // Get existing gems for this wallet to avoid duplicates
+      const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
+      const existingTokens = new Set(existingGems.map(g => g.tokenAddress.toLowerCase()));
+
+      // Filter to new tokens only, cap at MAX_HISTORY_TOKENS
+      const newTokens = Array.from(tokenMap.entries())
+        .filter(([addr]) => !existingTokens.has(addr))
+        .slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS);
+
+      let checkedCount = 0;
+      let newGemsCount = 0;
+
+      // Check each token on GeckoTerminal
+      const networkId = GECKO_NETWORK_IDS[wallet.chain];
+      for (const [tokenAddress, tokenInfo] of newTokens) {
+        try {
+          const geckoUrl = `${GECKO_BASE}/networks/${networkId}/tokens/${tokenAddress}`;
+          const geckoResponse = await geckoRateLimitedFetch(geckoUrl);
+
+          checkedCount++;
+
+          if (!geckoResponse.ok) {
+            // Token doesn't exist on GeckoTerminal, skip
+            continue;
+          }
+
+          const geckoData = (await geckoResponse.json()) as {
+            data: {
+              attributes: {
+                symbol: string;
+                fdv_usd: string;
+                volume_usd: { h24: string };
+                price_usd: string;
+                total_reserve_in_usd: string;
+              };
+            };
+          };
+
+          const fdvUsd = parseFloat(geckoData.data.attributes.fdv_usd || "0");
+
+          // Only consider tokens with sufficient FDV (not dead/rugged)
+          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD) {
+            continue;
+          }
+
+          // Calculate a rough pump multiple from FDV
+          const pumpMultiple = Math.min(fdvUsd / 100000, 100);
+
+          // Store as gem hit
+          const hit: GemHit = {
+            walletAddress: wallet.address,
+            chain: wallet.chain,
+            tokenAddress,
+            tokenSymbol: geckoData.data.attributes.symbol || tokenInfo.symbol,
+            buyTxHash: "",
+            buyTimestamp: tokenInfo.firstTx,
+            buyBlockNumber: 0,
+            pumpMultiple,
+          };
+          upsertGemHit(hit);
+          newGemsCount++;
+        } catch (err) {
+          // Skip individual token errors, continue scanning
+          continue;
+        }
+      }
+
+      console.log(
+        `[InsiderScanner] History: ${wallet.address.slice(0, 8)} - checked ${checkedCount} tokens, found ${newGemsCount} new gems`
+      );
+
+      // Delay between wallets
+      await new Promise((r) => setTimeout(r, 500));
+    } catch (err) {
+      console.error(`[InsiderScanner] History scan error for ${wallet.address}:`, err);
+      continue;
+    }
+  }
+}
+
 // Enrich gem hits with P&L data (non-blocking, runs after scan)
 export async function enrichInsiderPnl(): Promise<void> {
   const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
@@ -434,6 +606,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   // Enrich P&L data (non-blocking)
   enrichInsiderPnl().catch(err => {
     console.error("[InsiderScanner] P&L enrichment error:", err);
+  });
+
+  // Scan historical wallet transactions (non-blocking)
+  scanWalletHistory().catch(err => {
+    console.error("[InsiderScanner] History scan error:", err);
   });
 
   console.log(
