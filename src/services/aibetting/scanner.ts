@@ -124,6 +124,10 @@ export function filterCandidateMarkets(
   const oneDayMs = 24 * 60 * 60 * 1000;
   const maxDaysMs = 365 * oneDayMs;
 
+  // Sports events resolve instantly (match ends -> 0c or 100c), so require more buffer
+  const sportsMinDays = 7;
+  const defaultMinDays = 1;
+
   const rejectReasons = {
     existingPosition: 0,
     volume: 0,
@@ -154,15 +158,16 @@ export function filterCandidateMarkets(
       continue;
     }
 
-    // Check end date is within 1-365 days
+    // Check end date - sports need 7+ days (instant resolution risk), others 1+ days
     const endTime = parseDate(market.endDate);
     if (endTime === null) {
       rejectReasons.endDate++;
       continue;
     }
     const timeUntilEnd = endTime - now;
+    const minDays = market.category === "sports" ? sportsMinDays : defaultMinDays;
 
-    if (timeUntilEnd < oneDayMs || timeUntilEnd > maxDaysMs) {
+    if (timeUntilEnd < minDays * oneDayMs || timeUntilEnd > maxDaysMs) {
       rejectReasons.endDate++;
       continue;
     }
