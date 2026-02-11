@@ -722,6 +722,7 @@ async function handleInsiders(ctx: Context): Promise<void> {
           const statusLabel = hit.status === "sold" ? `Sold ${sellStr}`
             : hit.status === "holding" ? "Holding"
             : hit.status === "partial" ? `Partial sell ${sellStr}`
+            : hit.status === "unknown" ? ""
             : "";
           message += `  ${hit.tokenSymbol} ${pump} | Buy ${buyStr}${statusLabel ? ` | ${statusLabel}` : ""}\n`;
         }

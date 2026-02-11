@@ -97,7 +97,7 @@ export interface GemHit {
   pumpMultiple: number;
   buyTokens?: number;
   sellTokens?: number;
-  status?: "holding" | "sold" | "partial";
+  status?: "holding" | "sold" | "partial" | "unknown";
   buyDate?: number;
   sellDate?: number;
 }
