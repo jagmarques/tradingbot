@@ -4,8 +4,13 @@ import { upsertGemHit, upsertInsiderWallet } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES } from "./types.js";
 
-// DexScreener API
-const DEXSCREENER_BASE = "https://api.dexscreener.com";
+// GeckoTerminal API
+const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
+const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
+  ethereum: "eth",
+  base: "base",
+  arbitrum: "arbitrum",
+};
 
 // Etherscan V2 API
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
@@ -17,32 +22,18 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   arbitrum: 42161,
 };
 
-// DexScreener chain IDs
-const DEXSCREENER_CHAIN_IDS: Record<EvmChain, string> = {
-  ethereum: "ethereum",
-  base: "base",
-  arbitrum: "arbitrum",
-};
-
-// Search terms per chain
-const CHAIN_SEARCH_TERMS: Record<EvmChain, string[]> = {
-  ethereum: ["pepe", "shib", "mog", "wojak", "turbo", "floki"],
-  base: ["brett", "degen", "toshi", "normie", "mfer", "higher"],
-  arbitrum: ["arb", "gmx", "pendle", "magic", "grail", "jones"],
-};
-
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-// Rate limiting for DexScreener (250ms between requests)
-const DEXSCREENER_INTERVAL_MS = 250;
-let dexFetchQueue: Promise<void> = Promise.resolve();
+// GeckoTerminal free tier: 30 req/min = 2s between requests
+const GECKO_INTERVAL_MS = 2000;
+let geckoFetchQueue: Promise<void> = Promise.resolve();
 
-async function dexRateLimitedFetch(url: string): Promise<Response> {
-  const myTurn = dexFetchQueue.then(async () => {
-    await new Promise((r) => setTimeout(r, DEXSCREENER_INTERVAL_MS));
+async function geckoRateLimitedFetch(url: string): Promise<Response> {
+  const myTurn = geckoFetchQueue.then(async () => {
+    await new Promise((r) => setTimeout(r, GECKO_INTERVAL_MS));
   });
-  dexFetchQueue = myTurn;
+  geckoFetchQueue = myTurn;
   await myTurn;
   return fetch(url);
 }
@@ -61,73 +52,84 @@ async function etherscanRateLimitedFetch(url: string, chain: string): Promise<Re
   return fetch(url);
 }
 
-interface DexScreenerPair {
-  chainId: string;
-  pairAddress: string;
-  baseToken: { address: string; symbol: string };
-  priceUsd: string;
-  volume: { h24: number };
-  priceChange: { h24: number };
-  liquidity: { usd: number };
+interface GeckoPool {
+  id: string;
+  type: string;
+  attributes: {
+    name: string;
+    address: string;
+    base_token_price_usd: string;
+    price_change_percentage: { h1: string; h24: string };
+    transactions: { h24: { buys: number; sells: number } };
+    volume_usd: { h24: string };
+    reserve_in_usd: string;
+  };
+  relationships: {
+    base_token: { data: { id: string; type: string } };
+  };
 }
 
 // Find tokens that pumped 3x+ in 24h on a given chain
 export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
-  const chainId = DEXSCREENER_CHAIN_IDS[chain];
-  const terms = CHAIN_SEARCH_TERMS[chain];
+  const networkId = GECKO_NETWORK_IDS[chain];
   const seen = new Set<string>();
   const pumped: PumpedToken[] = [];
 
-  console.log(`[InsiderScanner] Searching ${chain} with ${terms.length} terms...`);
+  try {
+    const url = `${GECKO_BASE}/networks/${networkId}/trending_pools`;
+    const response = await geckoRateLimitedFetch(url);
 
-  for (const term of terms) {
-    if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
-
-    try {
-      const url = `${DEXSCREENER_BASE}/latest/dex/search?q=${encodeURIComponent(term)}`;
-      const response = await dexRateLimitedFetch(url);
-      if (!response.ok) continue;
-
-      const data = (await response.json()) as { pairs?: DexScreenerPair[] };
-      const totalPairs = data.pairs?.length || 0;
-      const pairs = (data.pairs || []).filter(
-        (p) =>
-          p.chainId === chainId &&
-          (p.priceChange?.h24 || 0) >= 200 && // 3x = 200% increase
-          (p.volume?.h24 || 0) >= 5000 &&
-          (p.liquidity?.usd || 0) >= 2000
-      );
-      const filteredPairs = pairs.length;
-
-      console.log(
-        `[InsiderScanner] ${chain}/${term}: ${totalPairs} pairs returned, ${filteredPairs} passed filters (>=200% change, >=$5k vol, >=$2k liq)`
-      );
-
-      for (const pair of pairs) {
-        const addr = pair.baseToken.address.toLowerCase();
-        if (seen.has(addr)) continue;
-        seen.add(addr);
-
-        pumped.push({
-          tokenAddress: addr,
-          chain,
-          symbol: pair.baseToken.symbol,
-          pairAddress: pair.pairAddress,
-          priceChangeH24: pair.priceChange.h24,
-          volumeH24: pair.volume.h24,
-          liquidity: pair.liquidity.usd,
-          discoveredAt: Date.now(),
-        });
-
-        if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
-      }
-    } catch (err) {
-      console.error(`[InsiderScanner] DexScreener search error for "${term}" on ${chain}:`, err);
-      continue;
+    if (!response.ok) {
+      console.error(`[InsiderScanner] GeckoTerminal API returned ${response.status} for ${chain}`);
+      return [];
     }
+
+    const data = (await response.json()) as { data: GeckoPool[] };
+    const pools = data.data || [];
+
+    for (const pool of pools) {
+      if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
+
+      const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
+      const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
+      const liquidity = parseFloat(pool.attributes.reserve_in_usd);
+
+      // Filter by thresholds
+      if (h24Change < 200 || volumeH24 < 5000 || liquidity < 2000) continue;
+
+      // Extract token address from relationships.base_token.data.id (format: "network_address")
+      const baseTokenId = pool.relationships.base_token.data.id;
+      const parts = baseTokenId.split("_");
+      if (parts.length < 2) continue;
+      const tokenAddress = parts.slice(1).join("_").toLowerCase();
+
+      // Skip duplicates
+      if (seen.has(tokenAddress)) continue;
+      seen.add(tokenAddress);
+
+      // Extract symbol from pool name (format: "SYMBOL / QUOTE")
+      const nameParts = pool.attributes.name.split(" / ");
+      const symbol = nameParts[0] || "UNKNOWN";
+
+      pumped.push({
+        tokenAddress,
+        chain,
+        symbol,
+        pairAddress: pool.attributes.address,
+        priceChangeH24: h24Change,
+        volumeH24,
+        liquidity,
+        discoveredAt: Date.now(),
+      });
+    }
+
+    console.log(
+      `[InsiderScanner] ${chain}: ${pumped.length} trending tokens passed filters (>=200% change, >=$5k vol, >=$2k liq)`
+    );
+  } catch (err) {
+    console.error(`[InsiderScanner] GeckoTerminal error for ${chain}:`, err);
   }
 
-  console.log(`[InsiderScanner] ${chain}: ${pumped.length} pumped tokens found from ${terms.length} search terms`);
   return pumped;
 }
 
