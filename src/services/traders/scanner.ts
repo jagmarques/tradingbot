@@ -262,7 +262,7 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
 interface WalletTokenPnl {
   buyTokens: number;
   sellTokens: number;
-  status: "holding" | "sold" | "partial";
+  status: "holding" | "sold" | "partial" | "unknown";
   buyDate: number;
   sellDate: number;
 }
@@ -306,8 +306,9 @@ export async function getWalletTokenPnl(
     }
   }
 
-  const status: "holding" | "sold" | "partial" =
-    sellTokens > 0.9 * buyTokens ? "sold"
+  const status: "holding" | "sold" | "partial" | "unknown" =
+    buyTokens === 0 && sellTokens === 0 ? "unknown"
+    : sellTokens > 0.9 * buyTokens ? "sold"
     : sellTokens < 0.1 * buyTokens ? "holding"
     : "partial";
 
