@@ -5,6 +5,24 @@ import { callDeepSeek } from "./deepseek.js";
 
 const GDELT_API_URL = "https://api.gdeltproject.org/api/v2/doc/doc";
 
+// Cache news results per market (4h TTL) to avoid re-fetching + re-filtering same articles
+const NEWS_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const newsCache = new Map<string, { items: NewsItem[]; cachedAt: number }>();
+
+function getCachedNews(marketId: string): NewsItem[] | null {
+  const cached = newsCache.get(marketId);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > NEWS_CACHE_TTL_MS) {
+    newsCache.delete(marketId);
+    return null;
+  }
+  return cached.items;
+}
+
+function cacheNews(marketId: string, items: NewsItem[]): void {
+  newsCache.set(marketId, { items, cachedAt: Date.now() });
+}
+
 interface GdeltArticle {
   url: string;
   title: string;
@@ -220,6 +238,9 @@ async function fetchArticleContent(url: string): Promise<string | null> {
 export async function fetchNewsForMarket(
   market: PolymarketEvent
 ): Promise<NewsItem[]> {
+  const cached = getCachedNews(market.conditionId);
+  if (cached) return cached;
+
   const query = buildSearchQuery(market);
 
   if (!query) {
@@ -342,6 +363,7 @@ export async function fetchNewsForMarket(
     }
 
     console.log(`[News] ${items.length} articles for "${query}", ${contentFetched}/3 fetched`);
+    cacheNews(market.conditionId, items);
     return items;
   } catch (error) {
     console.error(`[News] Failed for "${query}":`, error);

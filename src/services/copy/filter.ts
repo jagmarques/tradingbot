@@ -99,13 +99,16 @@ export function filterCryptoCopy(
 
 // Conviction-based copy sizing
 const COPY_RATIO = 0.005; // 0.5% of trader's bet size
+const COPY_RATIO_PAPER = 0.01; // 1% in paper mode (more data)
 const MAX_COPY_BET = 10; // $10 cap
 const MIN_COPY_SIZE = 2; // skip below $2
+const MIN_COPY_SIZE_PAPER = 1; // $1 in paper mode
 
 export function filterPolyCopy(
   traderRoi: number,
   tradeUsdcSize: number,
   tradePrice: number,
+  paperMode = false,
 ): CopyFilterResult {
   if (tradePrice > 0.95 || tradePrice < 0.05) {
     return {
@@ -136,13 +139,15 @@ export function filterPolyCopy(
     };
   }
 
-  const rawSize = Math.min(MAX_COPY_BET, tradeUsdcSize * COPY_RATIO * traderQualityMultiplier);
+  const ratio = paperMode ? COPY_RATIO_PAPER : COPY_RATIO;
+  const minSize = paperMode ? MIN_COPY_SIZE_PAPER : MIN_COPY_SIZE;
+  const rawSize = Math.min(MAX_COPY_BET, tradeUsdcSize * ratio * traderQualityMultiplier);
 
-  if (rawSize < MIN_COPY_SIZE) {
+  if (rawSize < minSize) {
     return {
       shouldCopy: false,
       recommendedSizeUsd: 0,
-      reason: `Conviction too low: $${tradeUsdcSize.toFixed(0)} trade -> $${rawSize.toFixed(2)} copy (min $${MIN_COPY_SIZE})`,
+      reason: `Conviction too low: $${tradeUsdcSize.toFixed(0)} trade -> $${rawSize.toFixed(2)} copy (min $${minSize})`,
       traderQualityMultiplier,
     };
   }
