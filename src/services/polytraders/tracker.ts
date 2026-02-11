@@ -576,7 +576,7 @@ async function checkForNewTrades(): Promise<void> {
 
           console.log(`[PolyTraders] New trade by ${info.name} (ROI: ${(traderRoi * 100).toFixed(1)}%): ${trade.outcome} $${trade.usdcSize.toFixed(0)} @ ${(trade.price * 100).toFixed(0)}c on ${trade.title || trade.conditionId} [${ttrLabel}]`);
 
-          const filterResult = filterPolyCopy(traderRoi, trade.usdcSize, trade.price);
+          const filterResult = filterPolyCopy(traderRoi, trade.usdcSize, trade.price, isPaperMode());
 
           if (!filterResult.shouldCopy) {
             skip("filter");
