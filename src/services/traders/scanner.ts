@@ -2,7 +2,7 @@ import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.j
 import { INSIDER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet } from "./storage.js";
 import { getDb } from "../database/db.js";
-import { KNOWN_EXCHANGES } from "../traders/types.js";
+import { KNOWN_EXCHANGES } from "./types.js";
 
 // DexScreener API
 const DEXSCREENER_BASE = "https://api.dexscreener.com";
