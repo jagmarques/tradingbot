@@ -695,40 +695,65 @@ async function handleInsiders(ctx: Context): Promise<void> {
   }
 
   try {
-    const topInsiders = getTopInsiders(10);
+    const topInsiders = getTopInsiders(20);
     const status = getInsiderScannerStatus();
 
-    let message = `<b>Insider Wallets</b>\n\n`;
-
     if (topInsiders.length === 0) {
-      message += "No insider wallets detected yet.";
-    } else {
-      // Enrich with gem hit details and sort by best total pump
-      const enriched = topInsiders.map((wallet) => {
-        const hits = getGemHitsForWallet(wallet.address, wallet.chain);
-        const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
-        return { wallet, hits, totalPump };
-      });
-      enriched.sort((a, b) => b.totalPump - a.totalPump);
-
-      for (const { wallet, hits } of enriched.slice(0, 20)) {
-        const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
-        const bestHit = hits.reduce((best, h) => (h.pumpMultiple || 0) > (best.pumpMultiple || 0) ? h : best, hits[0]);
-        const bestPump = bestHit?.pumpMultiple ? `${bestHit.pumpMultiple.toFixed(0)}x` : "?";
-        const bestToken = bestHit?.tokenSymbol || "?";
-        message += `<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems | Best: ${bestToken} ${bestPump}\n`;
-      }
-      if (enriched.length > 20) {
-        message += `\n+${enriched.length - 20} more wallets`;
-      }
+      const scannerStatus = status.running ? "Running" : "Stopped";
+      const buttons = [[{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insider wallets detected yet.\nScanner: ${scannerStatus}`, buttons);
+      return;
     }
 
+    // Enrich with gem hit details and sort by best total pump
+    const enriched = topInsiders.map((wallet) => {
+      const hits = getGemHitsForWallet(wallet.address, wallet.chain);
+      const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
+      return { wallet, hits, totalPump };
+    });
+    enriched.sort((a, b) => b.totalPump - a.totalPump);
+
+    // Build per-wallet blocks with all gems
+    const walletBlocks: string[] = [];
+    for (const { wallet, hits } of enriched) {
+      const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
+      const gemList = hits
+        .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
+        .map((h) => `${h.tokenSymbol} (${h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?"})`)
+        .join(", ");
+      walletBlocks.push(`<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems\n${gemList}`);
+    }
+
+    // Split into messages that fit Telegram's 4096 char limit
+    const header = `<b>Insider Wallets</b>\n\n`;
     const scannerStatus = status.running ? "Running" : "Stopped";
-    message += `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+    const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+    const maxLen = 3900; // leave room for footer + buttons
 
+    const messages: string[] = [];
+    let current = header;
+    for (const block of walletBlocks) {
+      if (current.length + block.length + 2 > maxLen) {
+        messages.push(current);
+        current = "";
+      }
+      current += (current && current !== header ? "\n\n" : "") + block;
+    }
+    current += footer;
+    messages.push(current);
+
+    // Send all pages, only last gets Back button
     const buttons = [[{ text: "Back", callback_data: "main_menu" }]];
-
-    await sendDataMessage(message, buttons);
+    for (let i = 0; i < messages.length; i++) {
+      const isLast = i === messages.length - 1;
+      if (isLast) {
+        await sendDataMessage(messages[i], buttons);
+      } else {
+        if (bot && chatId) {
+          await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+        }
+      }
+    }
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
