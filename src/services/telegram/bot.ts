@@ -711,10 +711,14 @@ async function handleInsiders(ctx: Context): Promise<void> {
       });
       enriched.sort((a, b) => b.totalPump - a.totalPump);
 
-      for (const { wallet, hits } of enriched) {
+      const MAX_WALLETS = 5;
+      const MAX_GEMS = 5;
+      for (const { wallet, hits } of enriched.slice(0, MAX_WALLETS)) {
         const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
         message += `<b>${wallet.chain.toUpperCase()}</b> <code>${shortAddr}</code> - ${wallet.gemHitCount} gems\n`;
-        for (const hit of hits) {
+        // Show top gems by pump multiple
+        const sorted = [...hits].sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0));
+        for (const hit of sorted.slice(0, MAX_GEMS)) {
           const fmt = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
           const pump = hit.pumpMultiple ? `${hit.pumpMultiple.toFixed(1)}x` : "?";
           const buyStr = hit.buyDate ? fmt(hit.buyDate) : fmt(hit.buyTimestamp);
@@ -726,7 +730,13 @@ async function handleInsiders(ctx: Context): Promise<void> {
             : "";
           message += `  ${hit.tokenSymbol} ${pump} | Buy ${buyStr}${statusLabel ? ` | ${statusLabel}` : ""}\n`;
         }
+        if (hits.length > MAX_GEMS) {
+          message += `  ... +${hits.length - MAX_GEMS} more\n`;
+        }
         message += "\n";
+      }
+      if (enriched.length > MAX_WALLETS) {
+        message += `+${enriched.length - MAX_WALLETS} more wallets\n`;
       }
     }
 
