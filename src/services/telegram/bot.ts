@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders, getGemHitsForWallet } from "../traders/storage.js";
+import { getTopInsiders, getGemHitsForWallet, getAllHeldGemHits } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
@@ -37,6 +37,8 @@ let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
 const alertMessageIds: number[] = []; // Track all alert messages for cleanup
+let insiderGemCache: { text: string; cachedAt: number } | null = null;
+const INSIDER_GEM_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 // Authorization check - strict security
 // Only the authorized user (TELEGRAM_CHAT_ID) can send commands
@@ -688,6 +690,74 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
+async function getAIGemAnalysis(): Promise<string | null> {
+  // Return cached if fresh
+  if (insiderGemCache && Date.now() - insiderGemCache.cachedAt < INSIDER_GEM_CACHE_TTL) {
+    return insiderGemCache.text;
+  }
+
+  const heldGems = getAllHeldGemHits();
+  if (heldGems.length === 0) return null;
+
+  // Deduplicate by token address (same token held by multiple wallets)
+  const uniqueTokens = new Map<string, { symbol: string; chain: string; pumpMultiple: number; holdersCount: number; buyDate: number }>();
+  for (const gem of heldGems) {
+    const key = `${gem.tokenAddress}_${gem.chain}`;
+    const existing = uniqueTokens.get(key);
+    if (existing) {
+      existing.holdersCount++;
+      existing.pumpMultiple = Math.max(existing.pumpMultiple, gem.pumpMultiple);
+    } else {
+      uniqueTokens.set(key, {
+        symbol: gem.tokenSymbol,
+        chain: gem.chain,
+        pumpMultiple: gem.pumpMultiple,
+        holdersCount: 1,
+        buyDate: gem.buyDate || gem.buyTimestamp,
+      });
+    }
+  }
+
+  const tokenList = Array.from(uniqueTokens.values())
+    .sort((a, b) => b.holdersCount - a.holdersCount || b.pumpMultiple - a.pumpMultiple)
+    .slice(0, 20) // Cap at 20 tokens to keep prompt short
+    .map((t) => {
+      const daysHeld = Math.round((Date.now() - (t.buyDate || 0)) / 86400000);
+      return `${t.symbol} (${t.chain}) - ${t.pumpMultiple.toFixed(1)}x pump, ${t.holdersCount} insider(s) holding, ${daysHeld}d held`;
+    })
+    .join("\n");
+
+  const prompt = `These tokens are currently held by crypto insider wallets (smart money that finds gems early). Analyze which ones look most promising to buy now.
+
+Tokens held by insiders:
+${tokenList}
+
+For each token you recommend (pick top 3-5 max), give:
+1. Token symbol
+2. Why it looks good (brief, 1 sentence)
+3. Risk level (low/medium/high)
+
+If none look worth buying, say so. Be concise. No markdown formatting - use plain text only.`;
+
+  try {
+    const response = await callDeepSeek(
+      prompt,
+      "deepseek-chat",
+      "You are a crypto analyst. Be direct and concise. No fluff. Plain text only, no markdown.",
+      0.3,
+      "insider-gems"
+    );
+
+    // Format the AI response for Telegram
+    const text = `<b>AI Gem Analysis</b>\n<i>(${uniqueTokens.size} tokens held by insiders)</i>\n\n${response}`;
+    insiderGemCache = { text, cachedAt: Date.now() };
+    return text;
+  } catch (err) {
+    console.error("[Telegram] AI gem analysis failed:", err);
+    return null;
+  }
+}
+
 async function handleInsiders(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
@@ -753,6 +823,17 @@ async function handleInsiders(ctx: Context): Promise<void> {
           await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
         }
       }
+    }
+
+    // After sending all wallet pages, send AI gem analysis
+    try {
+      const gemAnalysis = await getAIGemAnalysis();
+      if (gemAnalysis && bot && chatId) {
+        await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+      }
+    } catch (aiErr) {
+      console.error("[Telegram] AI gem analysis message failed:", aiErr);
+      // Non-fatal - wallet list was already sent
     }
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);

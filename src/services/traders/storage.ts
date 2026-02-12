@@ -167,6 +167,28 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
   }));
 }
 
+export function getAllHeldGemHits(): GemHit[] {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT * FROM insider_gem_hits WHERE status = 'holding' ORDER BY pump_multiple DESC"
+  ).all() as Record<string, unknown>[];
+  return rows.map((row) => ({
+    walletAddress: row.wallet_address as string,
+    chain: row.chain as EvmChain,
+    tokenAddress: row.token_address as string,
+    tokenSymbol: row.token_symbol as string,
+    buyTxHash: row.buy_tx_hash as string,
+    buyTimestamp: row.buy_timestamp as number,
+    buyBlockNumber: 0,
+    pumpMultiple: row.pump_multiple as number,
+    buyTokens: (row.buy_tokens as number) || undefined,
+    sellTokens: (row.sell_tokens as number) || undefined,
+    status: (row.status as GemHit["status"]) || undefined,
+    buyDate: (row.buy_date as number) || undefined,
+    sellDate: (row.sell_date as number) || undefined,
+  }));
+}
+
 export function getInsiderCount(): number {
   const db = getDb();
   const row = db.prepare("SELECT COUNT(*) as count FROM insider_wallets").get() as { count: number };
