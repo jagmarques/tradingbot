@@ -205,6 +205,13 @@ export function getInsiderCount(): number {
   return row.count;
 }
 
+export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
+  const db = getDb();
+  db.prepare(
+    `UPDATE insider_gem_hits SET pump_multiple = ? WHERE token_address = ? AND chain = ?`
+  ).run(pumpMultiple, tokenAddress.toLowerCase(), chain);
+}
+
 function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
   let gems: string[] = [];
   try {
