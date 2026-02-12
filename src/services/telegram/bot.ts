@@ -832,13 +832,13 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         const maxPump = Math.max(...pumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, avgPump, minPump, maxPump, launchStr, maxPumpVal: maxPump };
+        return { symbol: t.symbol, chain: t.chain, holders, avgPump, minPump, maxPump, launchStr, launchTs: earliestBuy, maxPumpVal: maxPump };
       });
 
-      // Sort: holder count desc, then avg pump desc
-      tokenEntries.sort((a, b) => b.holders - a.holders || b.avgPump - a.avgPump);
+      // Sort: most holders first, then lowest pump (undervalued), then most recent launch
+      tokenEntries.sort((a, b) => b.holders - a.holders || a.avgPump - b.avgPump || b.launchTs - a.launchTs);
 
-      const tokenBlocks = tokenEntries.map((t) => {
+      const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPump: ${t.maxPumpVal.toFixed(0)}x | Holders: ${t.holders}\nROI: avg ${t.avgPump.toFixed(0)}x | min ${t.minPump.toFixed(0)}x | max ${t.maxPumpVal.toFixed(0)}x`;
       });
