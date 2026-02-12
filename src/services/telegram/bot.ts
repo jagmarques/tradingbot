@@ -921,22 +921,21 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return;
     }
 
-    // Build per-wallet blocks with gems
+    // Build per-wallet blocks with gems (show top 10)
     const walletBlocks: string[] = [];
-    for (const { wallet, hits } of filtered) {
+    for (const { wallet, hits } of filtered.slice(0, 10)) {
       const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
 
-      const displayHits = hits;
-
-      const gemList = displayHits
+      const gemList = hits
         .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
         .map((h) => {
           const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
           const fmt = (ts: number | undefined) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
           const buyStr = fmt(h.buyDate || h.buyTimestamp);
-          const sellStr = h.status === "sold" || h.status === "partial" ? ` | Sold: ${fmt(h.sellDate)}` : "";
-          const holdTag = h.status === "holding" ? " [H]" : "";
-          return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr}${sellStr}${holdTag}`;
+          if (h.status === "sold" || h.status === "partial") {
+            return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr} | Sold: ${fmt(h.sellDate)}`;
+          }
+          return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr}`;
         })
         .join("\n");
 
