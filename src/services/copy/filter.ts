@@ -101,8 +101,8 @@ export function filterCryptoCopy(
 const COPY_RATIO = 0.005; // 0.5% of trader's bet size
 const COPY_RATIO_PAPER = 0.01; // 1% in paper mode (more data)
 const MAX_COPY_BET = 10; // $10 cap
-const MIN_COPY_SIZE = 2; // skip below $2
-const MIN_COPY_SIZE_PAPER = 1; // $1 in paper mode
+const MIN_COPY_SIZE = 5; // skip below $5
+const MIN_COPY_SIZE_PAPER = 3; // $3 in paper mode
 
 export function filterPolyCopy(
   traderRoi: number,

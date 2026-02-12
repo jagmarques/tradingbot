@@ -647,7 +647,7 @@ async function refreshTopTraders(): Promise<void> {
 
   // Sort by ROI descending, take top 20
   const sorted = [...best.values()]
-    .filter((t) => t.vol > 0 && t.pnl / t.vol > 0.05)
+    .filter((t) => t.vol > 0 && t.pnl / t.vol > 0.15)
     .sort((a, b) => b.pnl / b.vol - a.pnl / a.vol)
     .slice(0, 20);
 
