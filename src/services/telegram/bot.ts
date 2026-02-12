@@ -803,7 +803,89 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return;
     }
 
-    // Enrich with gem hit details
+    // Token-centric view for holding tab - handle separately
+    if (tab === "holding") {
+      const heldGems = getAllHeldGemHits();
+
+      if (heldGems.length === 0) {
+        const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.`, buttons);
+        return;
+      }
+
+      // Group by tokenAddress+chain
+      const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
+      for (const gem of heldGems) {
+        const key = `${gem.tokenAddress}_${gem.chain}`;
+        if (!tokenMap.has(key)) {
+          tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
+        }
+        tokenMap.get(key)!.gems.push(gem);
+      }
+
+      // Build token blocks
+      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
+        const holders = t.gems.length;
+        const pumps = t.gems.map((g) => g.pumpMultiple || 0);
+        const avgPump = pumps.reduce((a, b) => a + b, 0) / pumps.length;
+        const minPump = Math.min(...pumps);
+        const maxPump = Math.max(...pumps);
+        const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
+        const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return { symbol: t.symbol, chain: t.chain, holders, avgPump, minPump, maxPump, launchStr, maxPumpVal: maxPump };
+      });
+
+      // Sort: holder count desc, then avg pump desc
+      tokenEntries.sort((a, b) => b.holders - a.holders || b.avgPump - a.avgPump);
+
+      const tokenBlocks = tokenEntries.map((t) => {
+        const chainTag = t.chain.toUpperCase().slice(0, 3);
+        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPump: ${t.maxPumpVal.toFixed(0)}x | Holders: ${t.holders}\nROI: avg ${t.avgPump.toFixed(0)}x | min ${t.minPump.toFixed(0)}x | max ${t.maxPumpVal.toFixed(0)}x`;
+      });
+
+      // Paginate and send
+      const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
+      const scannerStatus = status.running ? "Running" : "Stopped";
+      const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+      const maxLen = 3900;
+
+      const messages: string[] = [];
+      let current = header;
+      for (const block of tokenBlocks) {
+        if (current.length + block.length + 2 > maxLen) {
+          messages.push(current);
+          current = "";
+        }
+        current += (current && current !== header ? "\n\n" : "") + block;
+      }
+      current += footer;
+      messages.push(current);
+
+      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      for (let i = 0; i < messages.length; i++) {
+        const isLast = i === messages.length - 1;
+        if (isLast) {
+          await sendDataMessage(messages[i], buttons);
+        } else {
+          if (bot && chatId) {
+            await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+          }
+        }
+      }
+
+      // AI gem analysis at bottom
+      try {
+        const gemAnalysis = await getAIGemAnalysis();
+        if (gemAnalysis && bot && chatId) {
+          await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+        }
+      } catch (aiErr) {
+        console.error("[Telegram] AI gem analysis message failed:", aiErr);
+      }
+      return;
+    }
+
+    // Enrich with gem hit details for other tabs
     const enriched = topInsiders.map((wallet) => {
       const hits = getGemHitsForWallet(wallet.address, wallet.chain);
       const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
@@ -827,13 +909,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     } else if (tab === "best") {
       filtered.sort((a, b) => b.avgPump - a.avgPump);
       tabLabel = "Best Performers";
-    } else if (tab === "holding") {
-      filtered = enriched.filter((e) =>
-        e.hits.some((h) => h.status === "holding")
-      );
-      filtered.sort((a, b) => b.totalPump - a.totalPump);
-      tabLabel = "Currently Holding";
-      emptyMessage = "No insiders currently holding gems.";
     } else {
       // "all" tab - default sorting by totalPump
       filtered.sort((a, b) => b.totalPump - a.totalPump);
@@ -851,11 +926,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     for (const { wallet, hits } of filtered) {
       const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
 
-      // For holding tab, only show held gems and include extra detail
-      let displayHits = hits;
-      if (tab === "holding") {
-        displayHits = hits.filter((h) => h.status === "holding");
-      }
+      const displayHits = hits;
 
       const gemList = displayHits
         .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
@@ -900,19 +971,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         if (bot && chatId) {
           await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
         }
-      }
-    }
-
-    // AI gem analysis ONLY on holding tab
-    if (tab === "holding") {
-      try {
-        const gemAnalysis = await getAIGemAnalysis();
-        if (gemAnalysis && bot && chatId) {
-          await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
-        }
-      } catch (aiErr) {
-        console.error("[Telegram] AI gem analysis message failed:", aiErr);
-        // Non-fatal - wallet list was already sent
       }
     }
   } catch (err) {
