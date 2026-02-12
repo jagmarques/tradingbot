@@ -72,6 +72,34 @@ export const KNOWN_EXCHANGES: Record<Chain, string[]> = {
   ],
 };
 
+// Known DEX routers and aggregators (for sell vs transfer detection)
+export const KNOWN_DEX_ROUTERS: Record<string, string[]> = {
+  ethereum: [
+    "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2
+    "0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3
+    "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD", // Uniswap Universal
+    "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F", // SushiSwap
+    "0x1111111254EEB25477B68fb85Ed929f73A960582", // 1inch V5
+    "0xDef1C0ded9bec7F1a1670819833240f027b25EfF", // 0x Exchange
+  ],
+  base: [
+    "0x2626664c2603336E57B271c5C0b26F421741e481", // Uniswap V3
+    "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD", // Uniswap Universal
+    "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43", // Aerodrome
+  ],
+  arbitrum: [
+    "0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3
+    "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", // SushiSwap
+  ],
+  polygon: [
+    "0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3
+    "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", // SushiSwap
+  ],
+  optimism: [
+    "0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3
+  ],
+};
+
 // Insider wallet detection types
 export type EvmChain = "ethereum" | "base" | "arbitrum" | "polygon" | "optimism";
 
@@ -97,7 +125,7 @@ export interface GemHit {
   pumpMultiple: number;
   buyTokens?: number;
   sellTokens?: number;
-  status?: "holding" | "sold" | "partial" | "unknown";
+  status?: "holding" | "sold" | "partial" | "transferred" | "unknown";
   buyDate?: number;
   sellDate?: number;
 }

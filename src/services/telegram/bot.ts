@@ -932,6 +932,9 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
           const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
           const fmt = (ts: number | undefined) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
           const buyStr = fmt(h.buyDate || h.buyTimestamp);
+          if (h.status === "transferred") {
+            return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr} | Transferred: ${fmt(h.sellDate)}`;
+          }
           if (h.status === "sold" || h.status === "partial") {
             return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr} | Sold: ${fmt(h.sellDate)}`;
           }
