@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders, getGemHitsForWallet, getGemHitsForToken, getAllHeldGemHits } from "../traders/storage.js";
+import { getTopInsiders, getGemHitsForWallet, getAllHeldGemHits } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
@@ -857,35 +857,17 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         displayHits = hits.filter((h) => h.status === "holding");
       }
 
-      let gemList: string;
-      if (tab === "holding") {
-        // Enhanced holding display with buy date and launch date
-        gemList = displayHits
-          .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
-          .map((h) => {
-            const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
-            const buyDate = h.buyDate || h.buyTimestamp;
-            const buyDateStr = buyDate ? new Date(buyDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
-
-            // Calculate launch date as earliest buy for this token across ALL gem hits
-            const allHitsForToken = getGemHitsForToken(h.tokenAddress, h.chain);
-            const launchTimestamp = Math.min(...allHitsForToken.map(gh => gh.buyDate || gh.buyTimestamp || Date.now()));
-            const launchDateStr = new Date(launchTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-            return `${h.tokenSymbol} (${pump}) - Bought: ${buyDateStr} | Launched: ${launchDateStr}`;
-          })
-          .join("\n");
-      } else {
-        // Standard display for other tabs
-        gemList = displayHits
-          .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
-          .map((h) => {
-            const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
-            const statusTag = h.status === "holding" ? " [H]" : "";
-            return `${h.tokenSymbol} (${pump})${statusTag}`;
-          })
-          .join(", ");
-      }
+      const gemList = displayHits
+        .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
+        .map((h) => {
+          const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
+          const fmt = (ts: number | undefined) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
+          const buyStr = fmt(h.buyDate || h.buyTimestamp);
+          const sellStr = h.status === "sold" || h.status === "partial" ? ` | Sold: ${fmt(h.sellDate)}` : "";
+          const holdTag = h.status === "holding" ? " [H]" : "";
+          return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr}${sellStr}${holdTag}`;
+        })
+        .join("\n");
 
       walletBlocks.push(`<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems\n${gemList}`);
     }
