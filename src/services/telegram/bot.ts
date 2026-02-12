@@ -711,32 +711,15 @@ async function handleInsiders(ctx: Context): Promise<void> {
       });
       enriched.sort((a, b) => b.totalPump - a.totalPump);
 
-      const MAX_WALLETS = 5;
-      const MAX_GEMS = 5;
-      for (const { wallet, hits } of enriched.slice(0, MAX_WALLETS)) {
+      for (const { wallet, hits } of enriched.slice(0, 20)) {
         const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
-        message += `<b>${wallet.chain.toUpperCase()}</b> <code>${shortAddr}</code> - ${wallet.gemHitCount} gems\n`;
-        // Show top gems by pump multiple
-        const sorted = [...hits].sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0));
-        for (const hit of sorted.slice(0, MAX_GEMS)) {
-          const fmt = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          const pump = hit.pumpMultiple ? `${hit.pumpMultiple.toFixed(1)}x` : "?";
-          const buyStr = hit.buyDate ? fmt(hit.buyDate) : fmt(hit.buyTimestamp);
-          const sellStr = hit.sellDate ? fmt(hit.sellDate) : "";
-          const statusLabel = hit.status === "sold" ? `Sold ${sellStr}`
-            : hit.status === "holding" ? "Holding"
-            : hit.status === "partial" ? `Partial sell ${sellStr}`
-            : hit.status === "unknown" ? ""
-            : "";
-          message += `  ${hit.tokenSymbol} ${pump} | Buy ${buyStr}${statusLabel ? ` | ${statusLabel}` : ""}\n`;
-        }
-        if (hits.length > MAX_GEMS) {
-          message += `  ... +${hits.length - MAX_GEMS} more\n`;
-        }
-        message += "\n";
+        const bestHit = hits.reduce((best, h) => (h.pumpMultiple || 0) > (best.pumpMultiple || 0) ? h : best, hits[0]);
+        const bestPump = bestHit?.pumpMultiple ? `${bestHit.pumpMultiple.toFixed(0)}x` : "?";
+        const bestToken = bestHit?.tokenSymbol || "?";
+        message += `<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems | Best: ${bestToken} ${bestPump}\n`;
       }
-      if (enriched.length > MAX_WALLETS) {
-        message += `+${enriched.length - MAX_WALLETS} more wallets\n`;
+      if (enriched.length > 20) {
+        message += `\n+${enriched.length - 20} more wallets`;
       }
     }
 
