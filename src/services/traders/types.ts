@@ -156,4 +156,5 @@ export const INSIDER_CONFIG = {
   SCAN_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes between scans
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
   HISTORY_MIN_FDV_USD: 10000, // min FDV to qualify
+  SNIPER_MAX_HOLD_MS: 24 * 60 * 60 * 1000, // max hold time to be considered a sniper flip
 };
