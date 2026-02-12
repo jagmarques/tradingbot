@@ -442,13 +442,9 @@ export async function scanWalletHistory(): Promise<void> {
 async function _scanWalletHistoryInner(): Promise<void> {
   const insiders = getInsiderWallets(undefined, 1); // Cast wider net with 1+ gem hits
 
-  // Filter to ethereum-only wallets (Etherscan V2 tokentx without contractaddress filter only works on ethereum)
-  const ethInsiders = insiders.filter(w => w.chain === "ethereum");
-  const skippedCount = insiders.length - ethInsiders.length;
+  console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
 
-  console.log(`[InsiderScanner] History: Scanning ${ethInsiders.length} ethereum wallets (skipped ${skippedCount} non-ethereum)`);
-
-  for (const wallet of ethInsiders) {
+  for (const wallet of insiders) {
     try {
       const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain];
       const apiKey = process.env.ETHERSCAN_API_KEY || "";
