@@ -704,15 +704,28 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   try {
     const db = getDb();
 
+    const totalGems = (db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_hits").get() as { cnt: number }).cnt;
+    const quickFlips = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM insider_gem_hits
+      WHERE status = 'sold' AND sell_date > 0 AND buy_date > 0
+        AND (sell_date - buy_date) < ?
+    `).get(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS) as { cnt: number }).cnt;
+
+    if (quickFlips > 0) {
+      console.log(`[InsiderScanner] Filtered ${quickFlips}/${totalGems} gem hits as sniper bot flips (<24h hold)`);
+    }
+
     const walletGroups = db.prepare(`
       SELECT wallet_address, chain, COUNT(*) as gem_count,
              GROUP_CONCAT(DISTINCT token_symbol) as token_symbols,
              MIN(buy_timestamp) as first_seen,
              MAX(buy_timestamp) as last_seen
       FROM insider_gem_hits
+      WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
+            AND (sell_date - buy_date) < ?)
       GROUP BY wallet_address, chain
       HAVING gem_count >= ?
-    `).all(INSIDER_CONFIG.MIN_GEM_HITS) as Array<{
+    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS) as Array<{
       wallet_address: string;
       chain: EvmChain;
       gem_count: number;
