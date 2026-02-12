@@ -121,13 +121,17 @@ export function getInsiderWallets(chain?: EvmChain, minHits?: number): InsiderWa
   return rows.map(mapRowToInsiderWallet);
 }
 
-export function getTopInsiders(limit: number): InsiderWallet[] {
+export function getTopInsiders(limit: number, chain?: string): InsiderWallet[] {
   const db = getDb();
-
-  const rows = db.prepare(
-    "SELECT * FROM insider_wallets ORDER BY gem_hit_count DESC, score DESC LIMIT ?"
-  ).all(limit) as Record<string, unknown>[];
-
+  let query = "SELECT * FROM insider_wallets";
+  const params: unknown[] = [];
+  if (chain) {
+    query += " WHERE chain = ?";
+    params.push(chain);
+  }
+  query += " ORDER BY gem_hit_count DESC, score DESC LIMIT ?";
+  params.push(limit);
+  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map(mapRowToInsiderWallet);
 }
 
@@ -168,11 +172,16 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 }
 
 
-export function getAllHeldGemHits(): GemHit[] {
+export function getAllHeldGemHits(chain?: string): GemHit[] {
   const db = getDb();
-  const rows = db.prepare(
-    "SELECT * FROM insider_gem_hits WHERE status = 'holding' ORDER BY pump_multiple DESC"
-  ).all() as Record<string, unknown>[];
+  let query = "SELECT * FROM insider_gem_hits WHERE status = 'holding'";
+  const params: unknown[] = [];
+  if (chain) {
+    query += " AND chain = ?";
+    params.push(chain);
+  }
+  query += " ORDER BY pump_multiple DESC";
+  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
     chain: row.chain as EvmChain,

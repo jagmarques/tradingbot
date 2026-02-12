@@ -169,6 +169,15 @@ export async function startBot(): Promise<void> {
     await handleInsiders(ctx, "holding");
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
+    const match = ctx.match;
+    if (!match) return;
+    const chainVal = match[1];
+    const tabVal = match[2] as "all" | "hot" | "best" | "holding";
+    const resolvedChain = chainVal === "all" ? undefined : chainVal;
+    await handleInsiders(ctx, tabVal, resolvedChain);
+    await ctx.answerCallbackQuery();
+  });
   bot.callbackQuery("bets", async (ctx) => {
     await handleBets(ctx, "open");
     await ctx.answerCallbackQuery();
@@ -690,7 +699,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holding" = "all"): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holding" = "all", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -705,30 +714,37 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       insiderExtraMessageIds.length = 0;
     }
 
-    const topInsiders = getTopInsiders(20);
+    const topInsiders = getTopInsiders(20, chain);
     const status = getInsiderScannerStatus();
 
-    const tabButtons = [
+    const chainButtons = [
       [
         { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
         { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
         { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
       ],
+      [
+        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
+        { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
+        { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
+        { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
+      ],
     ];
 
     if (topInsiders.length === 0) {
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insider wallets detected yet.\nScanner: ${scannerStatus}`, buttons);
       return;
     }
 
     if (tab === "holding") {
-      const heldGems = getAllHeldGemHits();
+      const heldGems = getAllHeldGemHits(chain);
 
       if (heldGems.length === 0) {
-        const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
         await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.`, buttons);
         return;
       }
@@ -777,7 +793,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       current += footer;
       messages.push(current);
 
-      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
       for (let i = 0; i < messages.length; i++) {
         const isLast = i === messages.length - 1;
         if (isLast) {
@@ -821,7 +837,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     }
 
     if (filtered.length === 0 && emptyMessage) {
-      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage(`<b>Insider Wallets</b> - ${tabLabel}\n\n${emptyMessage}`, buttons);
       return;
     }
@@ -868,7 +884,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     messages.push(current);
 
     // Last page gets buttons
-    const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
     for (let i = 0; i < messages.length; i++) {
       const isLast = i === messages.length - 1;
       if (isLast) {
@@ -882,15 +898,22 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     }
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
-    const tabButtons = [
+    const chainButtons = [
       [
         { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
         { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
         { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
       ],
+      [
+        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
+        { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
+        { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
+        { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
+      ],
     ];
-    const backButton = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    const backButton = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch insiders", backButton);
   }
 }
