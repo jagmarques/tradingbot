@@ -36,21 +36,16 @@ let lastDataMessageId: number | null = null;
 let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
-const alertMessageIds: number[] = []; // Track all alert messages for cleanup
+const alertMessageIds: number[] = [];
+const insiderExtraMessageIds: number[] = [];
 let insiderGemCache: { text: string; cachedAt: number } | null = null;
-const INSIDER_GEM_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
+const INSIDER_GEM_CACHE_TTL = 4 * 60 * 60 * 1000;
 
-// Authorization check - strict security
-// Only the authorized user (TELEGRAM_CHAT_ID) can send commands
-// This works in both private chats and groups
+// Only TELEGRAM_CHAT_ID user can send commands
 function isAuthorized(ctx: Context): boolean {
   const fromId = ctx.from?.id?.toString();
 
-  // Must have a sender
   if (!fromId) return false;
-
-  // Only the configured user can send commands
-  // TELEGRAM_CHAT_ID should be the user's ID, not a group ID
   return fromId === chatId;
 }
 
@@ -102,7 +97,7 @@ export async function startBot(): Promise<void> {
     await handleInsiders(ctx, "all");
   });
 
-  // Inline button callback handlers
+  // Callback handlers
   bot.callbackQuery("status", async (ctx) => {
     await handleStatus(ctx);
     await ctx.answerCallbackQuery();
@@ -197,18 +192,16 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
 
-  // Clear chat callback
   bot.callbackQuery("clear_chat", async (ctx) => {
-    // Delete all tracked alert messages
     for (const msgId of alertMessageIds) {
       await bot?.api.deleteMessage(chatId!, msgId).catch(() => {});
     }
-    alertMessageIds.length = 0; // Clear the array
+    alertMessageIds.length = 0;
     await sendMainMenu();
     await ctx.answerCallbackQuery();
   });
 
-  // Settings callbacks
+  // Settings
   bot.callbackQuery("settings", async (ctx) => {
     await handleSettings(ctx);
     await ctx.answerCallbackQuery();
@@ -323,10 +316,8 @@ export function getChatId(): string | null {
   return chatId;
 }
 
-// Track last alert with button
 let lastAlertWithButtonId: number | null = null;
 
-// Send message to configured chat (only last alert has Clear Chat button)
 export async function sendMessage(text: string): Promise<void> {
   if (!bot || !chatId) {
     console.warn("[Telegram] Bot not initialized, cannot send message");
@@ -334,14 +325,12 @@ export async function sendMessage(text: string): Promise<void> {
   }
 
   try {
-    // Remove button from previous alert (fire and forget)
     if (lastAlertWithButtonId) {
       bot.api.editMessageReplyMarkup(chatId, lastAlertWithButtonId, {
         reply_markup: { inline_keyboard: [] },
       }).catch(() => {});
     }
 
-    // Send new alert with button
     const msg = await bot.api.sendMessage(chatId, text, {
       parse_mode: "HTML",
       reply_markup: {
@@ -362,7 +351,6 @@ export async function sendMainMenu(): Promise<void> {
   }
 
   try {
-    // Collect all message IDs to delete
     const toDelete: number[] = [];
     if (lastMenuMessageId) toDelete.push(lastMenuMessageId);
     if (lastDataMessageId) toDelete.push(lastDataMessageId);
@@ -370,12 +358,10 @@ export async function sendMainMenu(): Promise<void> {
     if (lastTimezonePromptId) toDelete.push(lastTimezonePromptId);
     toDelete.push(...alertMessageIds);
 
-    // Delete all in parallel (fire and forget)
     const currentChatId = chatId;
     const currentBot = bot;
     Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
 
-    // Reset tracking
     lastMenuMessageId = null;
     lastDataMessageId = null;
     lastPromptMessageId = null;
@@ -393,11 +379,14 @@ export async function sendMainMenu(): Promise<void> {
   }
 }
 
-// Send data message and delete previous one to keep chat clean
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
-    // Delete previous data message if exists
+    for (const id of insiderExtraMessageIds) {
+      await bot.api.deleteMessage(chatId, id).catch(() => {});
+    }
+    insiderExtraMessageIds.length = 0;
+
     if (lastDataMessageId) {
       await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
     }
@@ -432,12 +421,10 @@ async function handleStart(ctx: Context): Promise<void> {
     setUserTimezone(userId, "UTC");
   }
 
-  // Delete the /start command message itself
   if (ctx.message?.message_id && chatId) {
     await bot?.api.deleteMessage(chatId, ctx.message.message_id).catch(() => {});
   }
 
-  // Just show the menu (don't duplicate - sendMainMenu handles cleanup)
   await sendMainMenu();
 }
 
@@ -709,7 +696,6 @@ async function handleBettors(ctx: Context): Promise<void> {
 }
 
 async function getAIGemAnalysis(): Promise<string | null> {
-  // Return cached if fresh
   if (insiderGemCache && Date.now() - insiderGemCache.cachedAt < INSIDER_GEM_CACHE_TTL) {
     return insiderGemCache.text;
   }
@@ -717,7 +703,6 @@ async function getAIGemAnalysis(): Promise<string | null> {
   const heldGems = getAllHeldGemHits();
   if (heldGems.length === 0) return null;
 
-  // Deduplicate by token address (same token held by multiple wallets)
   const uniqueTokens = new Map<string, { symbol: string; chain: string; pumpMultiple: number; holdersCount: number; buyDate: number }>();
   for (const gem of heldGems) {
     const key = `${gem.tokenAddress}_${gem.chain}`;
@@ -738,35 +723,29 @@ async function getAIGemAnalysis(): Promise<string | null> {
 
   const tokenList = Array.from(uniqueTokens.values())
     .sort((a, b) => b.holdersCount - a.holdersCount || b.pumpMultiple - a.pumpMultiple)
-    .slice(0, 20) // Cap at 20 tokens to keep prompt short
+    .slice(0, 20)
     .map((t) => {
       const daysHeld = Math.round((Date.now() - (t.buyDate || 0)) / 86400000);
       return `${t.symbol} (${t.chain}) - ${t.pumpMultiple.toFixed(1)}x pump, ${t.holdersCount} insider(s) holding, ${daysHeld}d held`;
     })
     .join("\n");
 
-  const prompt = `These tokens are currently held by crypto insider wallets (smart money that finds gems early). Analyze which ones look most promising to buy now.
+  const prompt = `Insider wallets (smart money) hold these tokens. Pick exactly 3 most promising to buy now. One line each: SYMBOL - reason (max 10 words). No risk levels, no numbering, no extra text.
 
-Tokens held by insiders:
+Tokens:
 ${tokenList}
 
-For each token you recommend (pick top 3-5 max), give:
-1. Token symbol
-2. Why it looks good (brief, 1 sentence)
-3. Risk level (low/medium/high)
-
-If none look worth buying, say so. Be concise. No markdown formatting - use plain text only.`;
+If none look good, say "None worth buying right now." and nothing else.`;
 
   try {
     const response = await callDeepSeek(
       prompt,
       "deepseek-chat",
-      "You are a crypto analyst. Be direct and concise. No fluff. Plain text only, no markdown.",
+      "You are a crypto analyst. Ultra-concise. Plain text only.",
       0.3,
       "insider-gems"
     );
 
-    // Format the AI response for Telegram
     const text = `<b>AI Gem Analysis</b>\n<i>(${uniqueTokens.size} tokens held by insiders)</i>\n\n${response}`;
     insiderGemCache = { text, cachedAt: Date.now() };
     return text;
@@ -786,7 +765,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     const topInsiders = getTopInsiders(20);
     const status = getInsiderScannerStatus();
 
-    // Tab buttons
     const tabButtons = [
       [
         { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
@@ -803,7 +781,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return;
     }
 
-    // Token-centric view for holding tab - handle separately
     if (tab === "holding") {
       const heldGems = getAllHeldGemHits();
 
@@ -813,7 +790,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         return;
       }
 
-      // Group by tokenAddress+chain
       const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
       for (const gem of heldGems) {
         const key = `${gem.tokenAddress}_${gem.chain}`;
@@ -823,7 +799,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         tokenMap.get(key)!.gems.push(gem);
       }
 
-      // Build token blocks
       const tokenEntries = Array.from(tokenMap.values()).map((t) => {
         const holders = t.gems.length;
         const pumps = t.gems.map((g) => g.pumpMultiple || 0);
@@ -835,7 +810,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         return { symbol: t.symbol, chain: t.chain, holders, avgPump, minPump, maxPump, launchStr, launchTs: earliestBuy, maxPumpVal: maxPump };
       });
 
-      // Sort: most holders first, then lowest pump (undervalued), then most recent launch
       tokenEntries.sort((a, b) => b.holders - a.holders || a.avgPump - b.avgPump || b.launchTs - a.launchTs);
 
       const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
@@ -843,7 +817,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPump: ${t.maxPumpVal.toFixed(0)}x | Holders: ${t.holders}\nROI: avg ${t.avgPump.toFixed(0)}x | min ${t.minPump.toFixed(0)}x | max ${t.maxPumpVal.toFixed(0)}x`;
       });
 
-      // Paginate and send
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
       const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
@@ -868,16 +841,17 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
           await sendDataMessage(messages[i], buttons);
         } else {
           if (bot && chatId) {
-            await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+            insiderExtraMessageIds.push(overflowMsg.message_id);
           }
         }
       }
 
-      // AI gem analysis at bottom
       try {
         const gemAnalysis = await getAIGemAnalysis();
         if (gemAnalysis && bot && chatId) {
-          await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+          const aiMsg = await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+          insiderExtraMessageIds.push(aiMsg.message_id);
         }
       } catch (aiErr) {
         console.error("[Telegram] AI gem analysis message failed:", aiErr);
@@ -885,7 +859,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return;
     }
 
-    // Enrich with gem hit details for other tabs
     const enriched = topInsiders.map((wallet) => {
       const hits = getGemHitsForWallet(wallet.address, wallet.chain);
       const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
@@ -893,7 +866,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return { wallet, hits, totalPump, avgPump };
     });
 
-    // Apply tab-specific filtering and sorting
     let filtered = enriched;
     let tabLabel = "All Wallets";
     let emptyMessage = "";
@@ -910,18 +882,16 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       filtered.sort((a, b) => b.avgPump - a.avgPump);
       tabLabel = "Best Performers";
     } else {
-      // "all" tab - default sorting by totalPump
+      // default: sort by totalPump
       filtered.sort((a, b) => b.totalPump - a.totalPump);
     }
 
-    // Check if filtering resulted in empty set
     if (filtered.length === 0 && emptyMessage) {
       const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage(`<b>Insider Wallets</b> - ${tabLabel}\n\n${emptyMessage}`, buttons);
       return;
     }
 
-    // Build per-wallet blocks with gems (show top 10)
     const walletBlocks: string[] = [];
     for (const { wallet, hits } of filtered.slice(0, 10)) {
       const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
@@ -945,11 +915,11 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       walletBlocks.push(`<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems\n${gemList}`);
     }
 
-    // Split into messages that fit Telegram's 4096 char limit
+    // Paginate (4096 char limit)
     const header = `<b>Insider Wallets</b> - ${tabLabel}\n\n`;
     const scannerStatus = status.running ? "Running" : "Stopped";
     const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
-    const maxLen = 3900; // leave room for footer + buttons
+    const maxLen = 3900;
 
     const messages: string[] = [];
     let current = header;
@@ -963,7 +933,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
     current += footer;
     messages.push(current);
 
-    // Send all pages, only last gets buttons
+    // Last page gets buttons
     const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
     for (let i = 0; i < messages.length; i++) {
       const isLast = i === messages.length - 1;
@@ -971,7 +941,8 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         await sendDataMessage(messages[i], buttons);
       } else {
         if (bot && chatId) {
-          await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+          const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+          insiderExtraMessageIds.push(overflowMsg.message_id);
         }
       }
     }
