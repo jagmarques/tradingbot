@@ -1,6 +1,6 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 
@@ -543,7 +543,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
           };
           upsertGemHit(hit);
           newGemsCount++;
-        } catch (err) {
+        } catch {
           // Skip individual token errors, continue scanning
           continue;
         }
@@ -582,6 +582,69 @@ export async function enrichInsiderPnl(): Promise<void> {
 
       await new Promise((r) => setTimeout(r, 500));
     }
+  }
+}
+
+export async function updateHeldGemPrices(): Promise<void> {
+  const heldGems = getAllHeldGemHits();
+
+  // Deduplicate by token+chain (many wallets may hold same token)
+  const uniqueTokens = new Map<string, { tokenAddress: string; chain: EvmChain; symbol: string; oldMultiple: number }>();
+  for (const gem of heldGems) {
+    const key = `${gem.tokenAddress}_${gem.chain}`;
+    if (!uniqueTokens.has(key)) {
+      uniqueTokens.set(key, {
+        tokenAddress: gem.tokenAddress,
+        chain: gem.chain,
+        symbol: gem.tokenSymbol,
+        oldMultiple: gem.pumpMultiple,
+      });
+    }
+  }
+
+  if (uniqueTokens.size === 0) return;
+
+  console.log(`[InsiderScanner] Updating prices for ${uniqueTokens.size} held tokens`);
+  let updated = 0;
+
+  for (const [, token] of uniqueTokens) {
+    try {
+      const networkId = GECKO_NETWORK_IDS[token.chain];
+      if (!networkId) continue;
+
+      const geckoUrl = `${GECKO_BASE}/networks/${networkId}/tokens/${token.tokenAddress}`;
+      const response = await geckoRateLimitedFetch(geckoUrl);
+
+      if (!response.ok) continue;
+
+      const data = (await response.json()) as {
+        data: {
+          attributes: {
+            fdv_usd: string;
+          };
+        };
+      };
+
+      const fdvUsd = parseFloat(data.data.attributes.fdv_usd || "0");
+      if (fdvUsd <= 0) continue;
+
+      const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+
+      // Only update if changed significantly (>10% difference)
+      const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
+      if (changeRatio > 0.1) {
+        updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
+        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x`);
+        updated++;
+      }
+    } catch {
+      // Skip individual token errors
+      continue;
+    }
+  }
+
+  if (updated > 0) {
+    console.log(`[InsiderScanner] Updated ${updated}/${uniqueTokens.size} held token prices`);
   }
 }
 
@@ -686,6 +749,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   // Scan historical wallet transactions (non-blocking)
   scanWalletHistory().catch(err => {
     console.error("[InsiderScanner] History scan error:", err);
+  });
+
+  // Update held gem prices (non-blocking)
+  updateHeldGemPrices().catch(err => {
+    console.error("[InsiderScanner] Held gem price update error:", err);
   });
 
   console.log(
