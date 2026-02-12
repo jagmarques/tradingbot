@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders, getGemHitsForWallet, getAllHeldGemHits } from "../traders/storage.js";
+import { getTopInsiders, getGemHitsForWallet, getGemHitsForToken, getAllHeldGemHits } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
@@ -98,7 +98,9 @@ export async function startBot(): Promise<void> {
   bot.command("clearcopies", handleClearCopies);
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
-  bot.command("insiders", handleInsiders);
+  bot.command("insiders", async (ctx) => {
+    await handleInsiders(ctx, "all");
+  });
 
   // Inline button callback handlers
   bot.callbackQuery("status", async (ctx) => {
@@ -155,7 +157,23 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders", async (ctx) => {
-    await handleInsiders(ctx);
+    await handleInsiders(ctx, "all");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders_all", async (ctx) => {
+    await handleInsiders(ctx, "all");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders_hot", async (ctx) => {
+    await handleInsiders(ctx, "hot");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders_best", async (ctx) => {
+    await handleInsiders(ctx, "best");
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("insiders_holding", async (ctx) => {
+    await handleInsiders(ctx, "holding");
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets", async (ctx) => {
@@ -758,7 +776,7 @@ If none look worth buying, say so. Be concise. No markdown formatting - use plai
   }
 }
 
-async function handleInsiders(ctx: Context): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holding" = "all"): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -768,34 +786,112 @@ async function handleInsiders(ctx: Context): Promise<void> {
     const topInsiders = getTopInsiders(20);
     const status = getInsiderScannerStatus();
 
+    // Tab buttons
+    const tabButtons = [
+      [
+        { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
+        { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
+        { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
+      ],
+    ];
+
     if (topInsiders.length === 0) {
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const buttons = [[{ text: "Back", callback_data: "main_menu" }]];
+      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insider wallets detected yet.\nScanner: ${scannerStatus}`, buttons);
       return;
     }
 
-    // Enrich with gem hit details and sort by best total pump
+    // Enrich with gem hit details
     const enriched = topInsiders.map((wallet) => {
       const hits = getGemHitsForWallet(wallet.address, wallet.chain);
       const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
-      return { wallet, hits, totalPump };
+      const avgPump = hits.length > 0 ? totalPump / hits.length : 0;
+      return { wallet, hits, totalPump, avgPump };
     });
-    enriched.sort((a, b) => b.totalPump - a.totalPump);
 
-    // Build per-wallet blocks with all gems
+    // Apply tab-specific filtering and sorting
+    let filtered = enriched;
+    let tabLabel = "All Wallets";
+    let emptyMessage = "";
+
+    if (tab === "hot") {
+      const sevenDaysAgo = Date.now() - 7 * 86400000;
+      filtered = enriched.filter((e) =>
+        e.hits.some((h) => (h.buyDate || h.buyTimestamp) >= sevenDaysAgo)
+      );
+      filtered.sort((a, b) => b.totalPump - a.totalPump);
+      tabLabel = "Recent Gems (7d)";
+      emptyMessage = "No wallets found gems in the last 7 days.";
+    } else if (tab === "best") {
+      filtered.sort((a, b) => b.avgPump - a.avgPump);
+      tabLabel = "Best Performers";
+    } else if (tab === "holding") {
+      filtered = enriched.filter((e) =>
+        e.hits.some((h) => h.status === "holding")
+      );
+      filtered.sort((a, b) => b.totalPump - a.totalPump);
+      tabLabel = "Currently Holding";
+      emptyMessage = "No insiders currently holding gems.";
+    } else {
+      // "all" tab - default sorting by totalPump
+      filtered.sort((a, b) => b.totalPump - a.totalPump);
+    }
+
+    // Check if filtering resulted in empty set
+    if (filtered.length === 0 && emptyMessage) {
+      const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(`<b>Insider Wallets</b> - ${tabLabel}\n\n${emptyMessage}`, buttons);
+      return;
+    }
+
+    // Build per-wallet blocks with gems
     const walletBlocks: string[] = [];
-    for (const { wallet, hits } of enriched) {
+    for (const { wallet, hits } of filtered) {
       const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
-      const gemList = hits
-        .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
-        .map((h) => `${h.tokenSymbol} (${h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?"})`)
-        .join(", ");
+
+      // For holding tab, only show held gems and include extra detail
+      let displayHits = hits;
+      if (tab === "holding") {
+        displayHits = hits.filter((h) => h.status === "holding");
+      }
+
+      let gemList: string;
+      if (tab === "holding") {
+        // Enhanced holding display with buy date and launch date
+        gemList = displayHits
+          .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
+          .map((h) => {
+            const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
+            const buyDate = h.buyDate || h.buyTimestamp;
+            const buyDateStr = buyDate ? new Date(buyDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
+
+            // Calculate launch date as earliest buy for this token across ALL gem hits
+            const allHitsForToken = getGemHitsForToken(h.tokenAddress, h.chain);
+            const launchTimestamp = Math.min(...allHitsForToken.map(gh => gh.buyDate || gh.buyTimestamp || Date.now()));
+            const launchDateStr = new Date(launchTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+            return `${h.tokenSymbol} (${pump}) - Bought: ${buyDateStr} | Launched: ${launchDateStr}`;
+          })
+          .join("\n");
+      } else {
+        // Standard display for other tabs
+        gemList = displayHits
+          .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
+          .map((h) => {
+            const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
+            const statusTag = h.status === "holding" ? " [H]" : "";
+            return `${h.tokenSymbol} (${pump})${statusTag}`;
+          })
+          .join(", ");
+      }
+
       walletBlocks.push(`<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems\n${gemList}`);
     }
 
     // Split into messages that fit Telegram's 4096 char limit
-    const header = `<b>Insider Wallets</b>\n\n`;
+    const header = `<b>Insider Wallets</b> - ${tabLabel}\n\n`;
     const scannerStatus = status.running ? "Running" : "Stopped";
     const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
     const maxLen = 3900; // leave room for footer + buttons
@@ -812,8 +908,8 @@ async function handleInsiders(ctx: Context): Promise<void> {
     current += footer;
     messages.push(current);
 
-    // Send all pages, only last gets Back button
-    const buttons = [[{ text: "Back", callback_data: "main_menu" }]];
+    // Send all pages, only last gets buttons
+    const buttons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
     for (let i = 0; i < messages.length; i++) {
       const isLast = i === messages.length - 1;
       if (isLast) {
@@ -825,19 +921,29 @@ async function handleInsiders(ctx: Context): Promise<void> {
       }
     }
 
-    // After sending all wallet pages, send AI gem analysis
-    try {
-      const gemAnalysis = await getAIGemAnalysis();
-      if (gemAnalysis && bot && chatId) {
-        await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+    // AI gem analysis ONLY on holding tab
+    if (tab === "holding") {
+      try {
+        const gemAnalysis = await getAIGemAnalysis();
+        if (gemAnalysis && bot && chatId) {
+          await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
+        }
+      } catch (aiErr) {
+        console.error("[Telegram] AI gem analysis message failed:", aiErr);
+        // Non-fatal - wallet list was already sent
       }
-    } catch (aiErr) {
-      console.error("[Telegram] AI gem analysis message failed:", aiErr);
-      // Non-fatal - wallet list was already sent
     }
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    const tabButtons = [
+      [
+        { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
+        { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
+        { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
+      ],
+    ];
+    const backButton = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch insiders", backButton);
   }
 }
