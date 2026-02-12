@@ -38,8 +38,6 @@ let lastPromptMessageId: number | null = null;
 let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
 const alertMessageIds: number[] = [];
 const insiderExtraMessageIds: number[] = [];
-let insiderGemCache: { text: string; cachedAt: number } | null = null;
-const INSIDER_GEM_CACHE_TTL = 4 * 60 * 60 * 1000;
 
 // Only TELEGRAM_CHAT_ID user can send commands
 function isAuthorized(ctx: Context): boolean {
@@ -357,6 +355,7 @@ export async function sendMainMenu(): Promise<void> {
     if (lastPromptMessageId) toDelete.push(lastPromptMessageId);
     if (lastTimezonePromptId) toDelete.push(lastTimezonePromptId);
     toDelete.push(...alertMessageIds);
+    toDelete.push(...insiderExtraMessageIds);
 
     const currentChatId = chatId;
     const currentBot = bot;
@@ -367,6 +366,7 @@ export async function sendMainMenu(): Promise<void> {
     lastPromptMessageId = null;
     lastTimezonePromptId = null;
     alertMessageIds.length = 0;
+    insiderExtraMessageIds.length = 0;
     lastAlertWithButtonId = null;
 
     const msg = await bot.api.sendMessage(chatId, "🤖", {
@@ -382,11 +382,6 @@ export async function sendMainMenu(): Promise<void> {
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
-    for (const id of insiderExtraMessageIds) {
-      await bot.api.deleteMessage(chatId, id).catch(() => {});
-    }
-    insiderExtraMessageIds.length = 0;
-
     if (lastDataMessageId) {
       await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
     }
@@ -695,66 +690,6 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function getAIGemAnalysis(): Promise<string | null> {
-  if (insiderGemCache && Date.now() - insiderGemCache.cachedAt < INSIDER_GEM_CACHE_TTL) {
-    return insiderGemCache.text;
-  }
-
-  const heldGems = getAllHeldGemHits();
-  if (heldGems.length === 0) return null;
-
-  const uniqueTokens = new Map<string, { symbol: string; chain: string; pumpMultiple: number; holdersCount: number; buyDate: number }>();
-  for (const gem of heldGems) {
-    const key = `${gem.tokenAddress}_${gem.chain}`;
-    const existing = uniqueTokens.get(key);
-    if (existing) {
-      existing.holdersCount++;
-      existing.pumpMultiple = Math.max(existing.pumpMultiple, gem.pumpMultiple);
-    } else {
-      uniqueTokens.set(key, {
-        symbol: gem.tokenSymbol,
-        chain: gem.chain,
-        pumpMultiple: gem.pumpMultiple,
-        holdersCount: 1,
-        buyDate: gem.buyDate || gem.buyTimestamp,
-      });
-    }
-  }
-
-  const tokenList = Array.from(uniqueTokens.values())
-    .sort((a, b) => b.holdersCount - a.holdersCount || b.pumpMultiple - a.pumpMultiple)
-    .slice(0, 20)
-    .map((t) => {
-      const daysHeld = Math.round((Date.now() - (t.buyDate || 0)) / 86400000);
-      return `${t.symbol} (${t.chain}) - ${t.pumpMultiple.toFixed(1)}x pump, ${t.holdersCount} insider(s) holding, ${daysHeld}d held`;
-    })
-    .join("\n");
-
-  const prompt = `Insider wallets (smart money) hold these tokens. Pick exactly 3 most promising to buy now. One line each: SYMBOL - reason (max 10 words). No risk levels, no numbering, no extra text.
-
-Tokens:
-${tokenList}
-
-If none look good, say "None worth buying right now." and nothing else.`;
-
-  try {
-    const response = await callDeepSeek(
-      prompt,
-      "deepseek-chat",
-      "You are a crypto analyst. Ultra-concise. Plain text only.",
-      0.3,
-      "insider-gems"
-    );
-
-    const text = `<b>AI Gem Analysis</b>\n<i>(${uniqueTokens.size} tokens held by insiders)</i>\n\n${response}`;
-    insiderGemCache = { text, cachedAt: Date.now() };
-    return text;
-  } catch (err) {
-    console.error("[Telegram] AI gem analysis failed:", err);
-    return null;
-  }
-}
-
 async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holding" = "all"): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
@@ -762,6 +697,14 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
   }
 
   try {
+    // Clean up overflow pages from previous insiders view
+    if (bot && chatId) {
+      for (const id of insiderExtraMessageIds) {
+        await bot.api.deleteMessage(chatId, id).catch(() => {});
+      }
+      insiderExtraMessageIds.length = 0;
+    }
+
     const topInsiders = getTopInsiders(20);
     const status = getInsiderScannerStatus();
 
@@ -847,15 +790,6 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         }
       }
 
-      try {
-        const gemAnalysis = await getAIGemAnalysis();
-        if (gemAnalysis && bot && chatId) {
-          const aiMsg = await bot.api.sendMessage(chatId, gemAnalysis, { parse_mode: "HTML" });
-          insiderExtraMessageIds.push(aiMsg.message_id);
-        }
-      } catch (aiErr) {
-        console.error("[Telegram] AI gem analysis message failed:", aiErr);
-      }
       return;
     }
 
