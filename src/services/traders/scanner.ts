@@ -2,7 +2,7 @@ import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.j
 import { INSIDER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl } from "./storage.js";
 import { getDb } from "../database/db.js";
-import { KNOWN_EXCHANGES } from "./types.js";
+import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
@@ -345,7 +345,7 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
 interface WalletTokenPnl {
   buyTokens: number;
   sellTokens: number;
-  status: "holding" | "sold" | "partial" | "unknown";
+  status: "holding" | "sold" | "partial" | "transferred" | "unknown";
   buyDate: number;
   sellDate: number;
 }
@@ -370,8 +370,17 @@ export async function getWalletTokenPnl(
     }>;
   };
 
+  // Build set of known sell destinations (DEX routers + exchanges)
+  const sellDestinations = new Set<string>();
+  const routers = KNOWN_DEX_ROUTERS[chain] || [];
+  for (const addr of routers) sellDestinations.add(addr.toLowerCase());
+  const chainKey = chain as keyof typeof KNOWN_EXCHANGES;
+  const exchanges = KNOWN_EXCHANGES[chainKey] || [];
+  for (const addr of exchanges) sellDestinations.add(addr.toLowerCase());
+
   let buyTokens = 0;
-  let sellTokens = 0;
+  let soldTokens = 0;
+  let transferredTokens = 0;
   let buyDate = 0;
   let sellDate = 0;
 
@@ -383,17 +392,32 @@ export async function getWalletTokenPnl(
         buyTokens += amount;
         if (!buyDate) buyDate = ts;
       } else if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
-        sellTokens += amount;
+        const dest = tx.to.toLowerCase();
+        if (sellDestinations.has(dest) || dest === ZERO_ADDRESS) {
+          soldTokens += amount;
+        } else {
+          transferredTokens += amount;
+        }
         sellDate = ts;
       }
     }
   }
 
-  const status: "holding" | "sold" | "partial" | "unknown" =
-    buyTokens === 0 && sellTokens === 0 ? "unknown"
-    : sellTokens > 0.9 * buyTokens ? "sold"
-    : sellTokens < 0.1 * buyTokens ? "holding"
-    : "partial";
+  const sellTokens = soldTokens + transferredTokens;
+  const totalOut = sellTokens;
+
+  let status: "holding" | "sold" | "partial" | "transferred" | "unknown";
+  if (buyTokens === 0 && totalOut === 0) {
+    status = "unknown";
+  } else if (totalOut > 0.9 * buyTokens && transferredTokens > soldTokens) {
+    status = "transferred";
+  } else if (totalOut > 0.9 * buyTokens) {
+    status = "sold";
+  } else if (totalOut < 0.1 * buyTokens) {
+    status = "holding";
+  } else {
+    status = "partial";
+  }
 
   return { buyTokens, sellTokens, status, buyDate, sellDate };
 }
