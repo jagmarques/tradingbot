@@ -1,5 +1,6 @@
 import { callDeepSeek } from "../shared/llm.js";
-import { getCachedGemAnalysis, saveGemAnalysis, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, type GemAnalysis } from "./storage.js";
+import { isPaperMode } from "../../config/env.js";
 
 const GDELT_API_URL = "https://api.gdeltproject.org/api/v2/doc/doc";
 
@@ -115,6 +116,32 @@ Respond JSON only: {"score": <number>, "summary": "<1-2 sentences>"}`;
   }
 }
 
+export async function paperBuyGems(
+  tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number }>
+): Promise<void> {
+  if (!isPaperMode()) return;
+
+  for (const token of tokens) {
+    if (token.score < 60) continue;
+    const existing = getGemPaperTrade(token.symbol, token.chain);
+    if (existing) continue;
+
+    insertGemPaperTrade({
+      tokenSymbol: token.symbol,
+      chain: token.chain,
+      buyPumpMultiple: token.currentPump,
+      currentPumpMultiple: token.currentPump,
+      buyTimestamp: Date.now(),
+      amountUsd: 10,
+      pnlPct: 0,
+      aiScore: token.score,
+      status: "open",
+    });
+
+    console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at ${token.currentPump.toFixed(1)}x, score: ${token.score}`);
+  }
+}
+
 export function analyzeGemsBackground(
   tokens: Array<{
     symbol: string;
@@ -127,14 +154,20 @@ export function analyzeGemsBackground(
   console.log(`[GemAnalyzer] Background analysis started for ${tokens.length} tokens`);
 
   (async () => {
+    const results: Array<{symbol: string; chain: string; currentPump: number; score: number}> = [];
+
     for (const token of tokens) {
       try {
-        await analyzeGem(token.symbol, token.chain, token.currentPump, token.peakPump, token.insiderCount);
+        const analysis = await analyzeGem(token.symbol, token.chain, token.currentPump, token.peakPump, token.insiderCount);
+        results.push({ symbol: token.symbol, chain: token.chain, currentPump: token.currentPump, score: analysis.score });
         // 2s delay between analyses to avoid rate limits
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
         console.error(`[GemAnalyzer] Background analysis error for ${token.symbol}:`, error);
       }
     }
+
+    // Auto-buy scored gems as paper trades
+    await paperBuyGems(results);
   })();
 }

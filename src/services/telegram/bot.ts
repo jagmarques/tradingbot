@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemPaperTrade, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { analyzeGemsBackground } from "../traders/gem-analyzer.js";
 
@@ -861,11 +861,21 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
 
       const tokenBlocks = scoredOpps.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
+        let block = "";
         if (t.aiScore !== undefined && t.aiSummary !== undefined) {
-          return `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}\nAI: ${t.aiSummary}`;
+          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}\nAI: ${t.aiSummary}`;
         } else {
-          return `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
         }
+
+        // Add paper trade P&L if exists
+        const paperTrade = getGemPaperTrade(t.symbol, t.chain);
+        if (paperTrade && paperTrade.status === "open") {
+          const sign = paperTrade.pnlPct >= 0 ? "+" : "";
+          block += `\nPaper: Bought at ${paperTrade.buyPumpMultiple.toFixed(1)}x | P&L: ${sign}${paperTrade.pnlPct.toFixed(0)}%`;
+        }
+
+        return block;
       });
 
       // Trigger background analysis for unscored tokens (non-blocking)
@@ -875,7 +885,19 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+
+      // Paper portfolio summary
+      const openPaperTrades = getOpenGemPaperTrades();
+      let paperSummary = "";
+      if (openPaperTrades.length > 0) {
+        const totalPnlUsd = openPaperTrades.reduce((sum, trade) => sum + (trade.pnlPct / 100) * trade.amountUsd, 0);
+        const avgPnlPct = openPaperTrades.reduce((sum, trade) => sum + trade.pnlPct, 0) / openPaperTrades.length;
+        const sign = totalPnlUsd >= 0 ? "+" : "";
+        const avgSign = avgPnlPct >= 0 ? "+" : "";
+        paperSummary = `\nPaper Portfolio: ${openPaperTrades.length} positions | P&L: ${sign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
+      }
+
+      const footer = `${paperSummary}\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
       const maxLen = 3900;
 
       const messages: string[] = [];

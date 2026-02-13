@@ -1,6 +1,6 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 
@@ -634,6 +634,7 @@ export async function updateHeldGemPrices(): Promise<void> {
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
         updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
+        updateGemPaperTradePrice(token.symbol, token.chain, newMultiple);
         console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x`);
         updated++;
       }
