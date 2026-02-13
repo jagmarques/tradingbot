@@ -59,6 +59,17 @@ export function initInsiderTables(): void {
   // Seed max_pump_multiple from existing pump_multiple for old records
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS insider_gem_analyses (
+      id TEXT PRIMARY KEY,
+      token_symbol TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      analyzed_at INTEGER NOT NULL
+    )
+  `);
+
   console.log("[InsiderScanner] Database tables initialized");
 }
 
@@ -224,4 +235,42 @@ function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
     firstSeenAt: row.first_seen_at as number,
     lastSeenAt: row.last_seen_at as number,
   };
+}
+
+export interface GemAnalysis {
+  tokenSymbol: string;
+  chain: string;
+  score: number;
+  summary: string;
+  analyzedAt: number;
+}
+
+export function getCachedGemAnalysis(symbol: string, chain: string): GemAnalysis | null {
+  const db = getDb();
+  const id = `${symbol.toLowerCase()}_${chain}`;
+  const CACHE_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+  const row = db.prepare("SELECT * FROM insider_gem_analyses WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  const analyzedAt = row.analyzed_at as number;
+  if (Date.now() - analyzedAt > CACHE_TTL_MS) return null;
+
+  return {
+    tokenSymbol: row.token_symbol as string,
+    chain: row.chain as string,
+    score: row.score as number,
+    summary: row.summary as string,
+    analyzedAt,
+  };
+}
+
+export function saveGemAnalysis(analysis: GemAnalysis): void {
+  const db = getDb();
+  const id = `${analysis.tokenSymbol.toLowerCase()}_${analysis.chain}`;
+
+  db.prepare(`
+    INSERT OR REPLACE INTO insider_gem_analyses (id, token_symbol, chain, score, summary, analyzed_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, analysis.tokenSymbol, analysis.chain, analysis.score, analysis.summary, analysis.analyzedAt);
 }
