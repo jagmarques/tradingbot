@@ -153,8 +153,16 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   return analysis;
 }
 
+const GECKO_NETWORK_MAP: Record<string, string> = {
+  ethereum: "eth",
+  base: "base",
+  arbitrum: "arbitrum",
+  polygon: "polygon_pos",
+  optimism: "optimism",
+};
+
 export async function paperBuyGems(
-  tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number }>
+  tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
   if (!isPaperMode()) return;
 
@@ -163,19 +171,33 @@ export async function paperBuyGems(
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing) continue;
 
+    // Fetch actual USD price from GeckoTerminal
+    let priceUsd = 0;
+    const networkId = GECKO_NETWORK_MAP[token.chain];
+    if (networkId && token.tokenAddress) {
+      try {
+        const resp = await fetch(`https://api.geckoterminal.com/api/v2/networks/${networkId}/tokens/${token.tokenAddress}`);
+        if (resp.ok) {
+          const data = (await resp.json()) as { data: { attributes: { price_usd: string } } };
+          priceUsd = parseFloat(data?.data?.attributes?.price_usd || "0");
+        }
+      } catch { /* use 0 */ }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
     insertGemPaperTrade({
       tokenSymbol: token.symbol,
       chain: token.chain,
-      buyPumpMultiple: token.currentPump,
-      currentPumpMultiple: token.currentPump,
       buyTimestamp: Date.now(),
       amountUsd: 10,
       pnlPct: 0,
       aiScore: token.score,
       status: "open",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
     });
 
-    console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at ${token.currentPump.toFixed(1)}x, score: ${token.score}`);
+    console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
   }
 }
 
@@ -190,12 +212,12 @@ export function analyzeGemsBackground(
   console.log(`[GemAnalyzer] Background analysis started for ${tokens.length} tokens`);
 
   (async () => {
-    const results: Array<{ symbol: string; chain: string; currentPump: number; score: number }> = [];
+    const results: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }> = [];
 
     for (const token of tokens) {
       try {
         const analysis = await analyzeGem(token.symbol, token.chain, token.tokenAddress);
-        results.push({ symbol: token.symbol, chain: token.chain, currentPump: token.currentPump, score: analysis.score });
+        results.push({ symbol: token.symbol, chain: token.chain, currentPump: token.currentPump, score: analysis.score, tokenAddress: token.tokenAddress });
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
         console.error(`[GemAnalyzer] Background analysis error for ${token.symbol}:`, error);
