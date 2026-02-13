@@ -4,6 +4,10 @@ import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWall
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 
+function stripEmoji(s: string): string {
+  return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
+}
+
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
 const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
@@ -535,7 +539,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
             walletAddress: wallet.address,
             chain: wallet.chain,
             tokenAddress,
-            tokenSymbol: geckoData.data.attributes.symbol || tokenInfo.symbol,
+            tokenSymbol: stripEmoji(geckoData.data.attributes.symbol || tokenInfo.symbol),
             buyTxHash: "",
             buyTimestamp: tokenInfo.firstTx,
             buyBlockNumber: 0,
@@ -676,7 +680,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
               walletAddress: buyer,
               chain,
               tokenAddress: token.tokenAddress,
-              tokenSymbol: token.symbol,
+              tokenSymbol: stripEmoji(token.symbol),
               buyTxHash: "", // Not tracked individually
               buyTimestamp: token.discoveredAt,
               buyBlockNumber: 0,

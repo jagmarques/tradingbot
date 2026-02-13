@@ -72,14 +72,14 @@ export function scoreToken(data: Record<string, unknown>): number {
   }
 
   // Tax penalties
-  if (typeof data.buy_tax === "string") {
+  if (typeof data.buy_tax === "string" && data.buy_tax !== "") {
     const buyTaxPct = parseFloat(data.buy_tax) * 100;
-    score -= Math.floor(buyTaxPct / 5) * 10;
+    if (!isNaN(buyTaxPct)) score -= Math.floor(buyTaxPct / 5) * 10;
   }
 
-  if (typeof data.sell_tax === "string") {
+  if (typeof data.sell_tax === "string" && data.sell_tax !== "") {
     const sellTaxPct = parseFloat(data.sell_tax) * 100;
-    score -= Math.floor(sellTaxPct / 5) * 10;
+    if (!isNaN(sellTaxPct)) score -= Math.floor(sellTaxPct / 5) * 10;
   }
 
   // BONUSES
@@ -137,7 +137,8 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   if (cached) return cached;
 
   const goPlusData = await fetchGoPlusData(tokenAddress, chain);
-  const score = goPlusData ? scoreToken(goPlusData) : 50;
+  const rawScore = goPlusData ? scoreToken(goPlusData) : 50;
+  const score = Number.isFinite(rawScore) ? rawScore : 50;
 
   const analysis: GemAnalysis = {
     tokenSymbol: symbol,
