@@ -758,7 +758,8 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         tokenMap.get(key)!.gems.push(gem);
       }
 
-      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
+      const tokenEntries = Array.from(tokenMap.entries()).map(([key, t]) => {
+        const tokenAddress = key.split("_")[0];
         const holders = t.gems.length;
         // pumpMultiple = current value (updated by updateHeldGemPrices)
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
@@ -768,14 +769,20 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
         const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress };
       });
 
-      tokenEntries.sort((a, b) => b.holders - a.holders || b.currentPump - a.currentPump || b.launchTs - a.launchTs);
+      const symbolCounts = new Map<string, number>();
+      for (const t of tokenEntries) {
+        symbolCounts.set(t.symbol, (symbolCounts.get(t.symbol) || 0) + 1);
+      }
+
+      tokenEntries.sort((a, b) => b.currentPump - a.currentPump || b.holders - a.holders || b.launchTs - a.launchTs);
 
       const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
+        const addrSuffix = (symbolCounts.get(t.symbol) || 0) > 1 ? ` (${t.tokenAddress.slice(0, 6)})` : "";
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Holders: ${t.holders}`;
+        return `<b>${t.symbol}</b>${addrSuffix} (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
