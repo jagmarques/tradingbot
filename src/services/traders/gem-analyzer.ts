@@ -37,45 +37,103 @@ export async function searchTokenInfo(symbol: string): Promise<string> {
   }
 }
 
+// NOTE: GDELT won't find most new meme coins (they're too small/new for news articles).
+// Most tokens will return "No recent mentions found" - this is expected and normal.
+// The AI should still evaluate based on token name/concept and whatever it can find.
+export async function searchTokenSocials(symbol: string): Promise<string> {
+  const query = `"${symbol}" crypto twitter community website`;
+  const url = `${GDELT_API_URL}?query=${encodeURIComponent(query)}+sourcelang:eng&mode=artlist&format=json&maxrecords=5&timespan=30d`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) return "No recent mentions found";
+
+    const text = await response.text();
+    if (!text.startsWith("{")) return "No recent mentions found";
+
+    const data = JSON.parse(text) as { articles?: Array<{ title: string }> };
+    if (!data.articles || data.articles.length === 0) return "No recent mentions found";
+
+    const titles = data.articles.map((a) => a.title).join("\n");
+    return titles;
+  } catch (error) {
+    console.warn(`[GemAnalyzer] GDELT social search failed for ${symbol}:`, error instanceof Error ? error.message : "unknown");
+    return "No recent mentions found";
+  }
+}
+
 export async function analyzeGem(
   symbol: string,
   chain: string,
-  currentPump: number,
-  peakPump: number,
-  insiderCount: number
+  _currentPump: number,
+  _peakPump: number,
+  _insiderCount: number
 ): Promise<GemAnalysis> {
   // Check cache first
   const cached = getCachedGemAnalysis(symbol, chain);
   if (cached) return cached;
 
-  // Fetch web context
-  const searchResults = await searchTokenInfo(symbol);
+  // Fetch web context from both general and social searches in parallel
+  const [webResults, socialResults] = await Promise.all([
+    searchTokenInfo(symbol),
+    searchTokenSocials(symbol),
+  ]);
 
-  // Build prompt
-  const userPrompt = `Rate this token as a buying opportunity.
+  // Build prompt - focuses PURELY on social presence and legitimacy
+  // Price metrics (currentPump, peakPump, insiderCount) are NOT included per user instruction
+  const userPrompt = `You are a meme coin analyst evaluating new tokens based PURELY on social presence and project legitimacy.
+
+IMPORTANT: Judge based ONLY on:
+
+1. SOCIAL PRESENCE (most important):
+   - Does the token have an official X/Twitter account?
+   - Are people discussing it on social media?
+   - Is there organic community engagement (not just bots)?
+
+2. PROJECT LEGITIMACY:
+   - Does it have an official website?
+   - Is there a clear use case or narrative?
+   - Does the token name/symbol sound legitimate vs. generic scam?
+
+3. YOUR OWN KNOWLEDGE:
+   - Do you recognize this token from your training data?
+   - Is it a known meme or legitimate project?
 
 Token: ${symbol} on ${chain}
-Current pump: ${currentPump.toFixed(1)}x (from baseline)
-Peak pump: ${peakPump.toFixed(1)}x
-Insider wallets holding: ${insiderCount}
 
-Recent web mentions:
-${searchResults}
+Web search results:
+${webResults}
 
-Score 1-100:
-90-100: Strong buy - growing community, active development
-70-89: Good buy - solid potential
-50-69: Neutral - mixed signals
-30-49: Risky - red flags
-1-29: Avoid - likely scam or dead
+Social/community search results:
+${socialResults}
 
-Respond JSON only: {"score": <number>, "summary": "<1-2 sentences>"}`;
+SCORING GUIDE:
+- 80-100: Active X account + website + community buzz + you recognize it as legitimate
+- 60-79: Some social presence, people talking about it, seems real
+- 40-59: Minimal presence, no official accounts found, generic name
+- 20-39: No social presence, likely bot-created or dead
+- 1-19: Red flags (obvious scam name, copy of existing token, etc.)
+
+IMPORTANT: If both searches found "No recent mentions", the score should be LOW (20-40) because real tokens have SOME web footprint. However, this is common for new meme coins - they're too small for news coverage yet.
+
+Respond JSON only: {"score": <number>, "summary": "<1-2 sentences focusing on social presence and legitimacy>"}`;
 
   try {
     const response = await callDeepSeek(
       userPrompt,
       "deepseek-chat",
-      "You are a crypto token analyst. Respond with JSON only, no markdown.",
+      "You are a meme coin social presence analyst. Respond with JSON only, no markdown.",
       undefined,
       "gem-analyzer"
     );
