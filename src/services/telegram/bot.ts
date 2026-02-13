@@ -26,8 +26,9 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
+import { analyzeGemsBackground } from "../traders/gem-analyzer.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -836,13 +837,41 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         return;
       }
 
-      // Sort: most insiders first, then lowest pump (best opportunity)
-      opportunities.sort((a, b) => b.holders - a.holders || a.currentPump - b.currentPump);
+      // Look up cached AI analysis for each opportunity
+      const scoredOpps: Array<typeof opportunities[0] & { aiScore?: number; aiSummary?: string }> = [];
+      const unscored: Array<{symbol: string, chain: string, currentPump: number, peakPump: number, insiderCount: number}> = [];
 
-      const tokenBlocks = opportunities.slice(0, 20).map((t) => {
-        const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+      for (const t of opportunities) {
+        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
+        if (analysis) {
+          scoredOpps.push({ ...t, aiScore: analysis.score, aiSummary: analysis.summary });
+        } else {
+          scoredOpps.push(t);
+          unscored.push({ symbol: t.symbol, chain: t.chain, currentPump: t.currentPump, peakPump: t.peakPump, insiderCount: t.holders });
+        }
+      }
+
+      // Sort: scored tokens first (by score descending), then unscored at bottom
+      scoredOpps.sort((a, b) => {
+        if (a.aiScore !== undefined && b.aiScore !== undefined) return b.aiScore - a.aiScore;
+        if (a.aiScore !== undefined) return -1;
+        if (b.aiScore !== undefined) return 1;
+        return b.holders - a.holders || a.currentPump - b.currentPump;
       });
+
+      const tokenBlocks = scoredOpps.slice(0, 20).map((t) => {
+        const chainTag = t.chain.toUpperCase().slice(0, 3);
+        if (t.aiScore !== undefined && t.aiSummary !== undefined) {
+          return `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}\nAI: ${t.aiSummary}`;
+        } else {
+          return `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+        }
+      });
+
+      // Trigger background analysis for unscored tokens (non-blocking)
+      if (unscored.length > 0) {
+        analyzeGemsBackground(unscored);
+      }
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
