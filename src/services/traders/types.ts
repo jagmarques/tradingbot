@@ -123,6 +123,7 @@ export interface GemHit {
   buyTimestamp: number;
   buyBlockNumber: number;
   pumpMultiple: number;
+  maxPumpMultiple?: number;
   buyTokens?: number;
   sellTokens?: number;
   status?: "holding" | "sold" | "partial" | "transferred" | "unknown";

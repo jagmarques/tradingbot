@@ -760,20 +760,22 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
 
       const tokenEntries = Array.from(tokenMap.values()).map((t) => {
         const holders = t.gems.length;
-        const pumps = t.gems.map((g) => g.pumpMultiple || 0);
-        const avgPump = pumps.reduce((a, b) => a + b, 0) / pumps.length;
-        const minPump = Math.min(...pumps);
-        const maxPump = Math.max(...pumps);
+        // pumpMultiple = current value (updated by updateHeldGemPrices)
+        const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
+        const currentPump = currentPumps.reduce((a, b) => a + b, 0) / currentPumps.length;
+        // maxPumpMultiple = historical peak
+        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
+        const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, avgPump, minPump, maxPump, launchStr, launchTs: earliestBuy, maxPumpVal: maxPump };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
       });
 
-      tokenEntries.sort((a, b) => b.holders - a.holders || a.avgPump - b.avgPump || b.launchTs - a.launchTs);
+      tokenEntries.sort((a, b) => b.holders - a.holders || b.currentPump - a.currentPump || b.launchTs - a.launchTs);
 
       const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPump: ${t.maxPumpVal.toFixed(0)}x | Holders: ${t.holders}\nROI: avg ${t.avgPump.toFixed(0)}x | min ${t.minPump.toFixed(0)}x | max ${t.maxPumpVal.toFixed(0)}x`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(0)}x | Now: ${t.currentPump.toFixed(1)}x | Holders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;

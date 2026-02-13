@@ -55,6 +55,9 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN status TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN buy_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN max_pump_multiple REAL DEFAULT 0"); } catch { /* already exists */ }
+  // Seed max_pump_multiple from existing pump_multiple for old records
+  db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
 
   console.log("[InsiderScanner] Database tables initialized");
 }
@@ -163,6 +166,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
     buyTimestamp: row.buy_timestamp as number,
     buyBlockNumber: 0,
     pumpMultiple: row.pump_multiple as number,
+    maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
     buyTokens: (row.buy_tokens as number) || undefined,
     sellTokens: (row.sell_tokens as number) || undefined,
     status: (row.status as GemHit["status"]) || undefined,
@@ -191,6 +195,7 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
     buyTimestamp: row.buy_timestamp as number,
     buyBlockNumber: 0,
     pumpMultiple: row.pump_multiple as number,
+    maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
     buyTokens: (row.buy_tokens as number) || undefined,
     sellTokens: (row.sell_tokens as number) || undefined,
     status: (row.status as GemHit["status"]) || undefined,
@@ -208,8 +213,11 @@ export function getInsiderCount(): number {
 export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
   const db = getDb();
   db.prepare(
-    `UPDATE insider_gem_hits SET pump_multiple = ? WHERE token_address = ? AND chain = ?`
-  ).run(pumpMultiple, tokenAddress.toLowerCase(), chain);
+    `UPDATE insider_gem_hits
+     SET pump_multiple = ?,
+         max_pump_multiple = MAX(COALESCE(max_pump_multiple, 0), ?)
+     WHERE token_address = ? AND chain = ?`
+  ).run(pumpMultiple, pumpMultiple, tokenAddress.toLowerCase(), chain);
 }
 
 function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
