@@ -70,6 +70,9 @@ export function initInsiderTables(): void {
     )
   `);
 
+  // One-time: clear old DeepSeek scores so GoPlus rescores everything
+  db.exec("DELETE FROM insider_gem_analyses");
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_gem_paper_trades (
       id TEXT PRIMARY KEY,
