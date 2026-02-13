@@ -124,19 +124,6 @@ export function getInsiderWallets(chain?: EvmChain, minHits?: number): InsiderWa
   return rows.map(mapRowToInsiderWallet);
 }
 
-export function getTopInsiders(limit: number, chain?: string): InsiderWallet[] {
-  const db = getDb();
-  let query = "SELECT * FROM insider_wallets";
-  const params: unknown[] = [];
-  if (chain) {
-    query += " WHERE chain = ?";
-    params.push(chain);
-  }
-  query += " ORDER BY gem_hit_count DESC, score DESC LIMIT ?";
-  params.push(limit);
-  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
-  return rows.map(mapRowToInsiderWallet);
-}
 
 export function updateGemHitPnl(
   walletAddress: string, tokenAddress: string, chain: string,
