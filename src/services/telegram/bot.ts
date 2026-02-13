@@ -735,38 +735,33 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
 
       const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
       for (const gem of heldGems) {
-        const key = `${gem.tokenAddress}_${gem.chain}`;
+        const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
         if (!tokenMap.has(key)) {
           tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
         }
         tokenMap.get(key)!.gems.push(gem);
       }
 
-      const tokenEntries = Array.from(tokenMap.entries()).map(([key, t]) => {
-        const tokenAddress = key.split("_")[0];
+      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
         const holders = t.gems.length;
         // pumpMultiple = current value (updated by updateHeldGemPrices)
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
-        const currentPump = currentPumps.reduce((a, b) => a + b, 0) / currentPumps.length;
+        const currentPump = Math.max(...currentPumps);
         // maxPumpMultiple = historical peak
         const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
         const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
       });
 
-      const symbolCounts = new Map<string, number>();
-      for (const t of tokenEntries) {
-        symbolCounts.set(t.symbol, (symbolCounts.get(t.symbol) || 0) + 1);
-      }
+      const alive = tokenEntries.filter((t) => t.currentPump >= 1.0);
 
-      tokenEntries.sort((a, b) => b.currentPump - a.currentPump || b.holders - a.holders || b.launchTs - a.launchTs);
+      alive.sort((a, b) => b.currentPump - a.currentPump || b.holders - a.holders || b.launchTs - a.launchTs);
 
-      const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
-        const addrSuffix = (symbolCounts.get(t.symbol) || 0) > 1 ? ` (${t.tokenAddress.slice(0, 6)})` : "";
+      const tokenBlocks = alive.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b>${addrSuffix} (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
@@ -814,27 +809,26 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       // Group by token+chain (same as Holding)
       const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
       for (const gem of heldGems) {
-        const key = `${gem.tokenAddress}_${gem.chain}`;
+        const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
         if (!tokenMap.has(key)) {
           tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
         }
         tokenMap.get(key)!.gems.push(gem);
       }
 
-      const tokenEntries = Array.from(tokenMap.entries()).map(([key, t]) => {
-        const tokenAddress = key.split("_")[0];
+      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
         const holders = t.gems.length;
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
-        const currentPump = currentPumps.reduce((a, b) => a + b, 0) / currentPumps.length;
+        const currentPump = Math.max(...currentPumps);
         const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
         const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
       });
 
-      // Filter: only tokens that haven't rallied hard yet (< 5x)
-      const opportunities = tokenEntries.filter((t) => t.currentPump < 5);
+      // Filter: only tokens that haven't rallied hard yet (< 5x) and are alive (>= 1.0x)
+      const opportunities = tokenEntries.filter((t) => t.currentPump >= 1.0 && t.currentPump < 5);
 
       if (opportunities.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -845,15 +839,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       // Sort: most insiders first, then lowest pump (best opportunity)
       opportunities.sort((a, b) => b.holders - a.holders || a.currentPump - b.currentPump);
 
-      const symbolCounts = new Map<string, number>();
-      for (const t of opportunities) {
-        symbolCounts.set(t.symbol, (symbolCounts.get(t.symbol) || 0) + 1);
-      }
-
       const tokenBlocks = opportunities.slice(0, 20).map((t) => {
-        const addrSuffix = (symbolCounts.get(t.symbol) || 0) > 1 ? ` (${t.tokenAddress.slice(0, 6)})` : "";
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b>${addrSuffix} (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
