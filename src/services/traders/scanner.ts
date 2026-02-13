@@ -1,8 +1,9 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice, getCachedGemAnalysis } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
+import { analyzeGemsBackground } from "./gem-analyzer.js";
 
 function stripEmoji(s: string): string {
   return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
@@ -449,6 +450,9 @@ async function _scanWalletHistoryInner(): Promise<void> {
   console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
 
   for (const wallet of insiders) {
+    // Etherscan free API only supports ethereum and base
+    if (wallet.chain !== "ethereum" && wallet.chain !== "base") continue;
+
     try {
       const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain];
       const apiKey = process.env.ETHERSCAN_API_KEY || "";
@@ -773,6 +777,29 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   updateHeldGemPrices().catch(err => {
     console.error("[InsiderScanner] Held gem price update error:", err);
   });
+
+  // Auto-score and paper-buy unscored held gems (non-blocking)
+  try {
+    const heldGems = getAllHeldGemHits();
+    const unscoredTokens = new Map<string, { symbol: string; chain: string; currentPump: number; tokenAddress: string }>();
+    for (const gem of heldGems) {
+      const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
+      if (!unscoredTokens.has(key) && !getCachedGemAnalysis(gem.tokenSymbol, gem.chain)) {
+        unscoredTokens.set(key, {
+          symbol: gem.tokenSymbol,
+          chain: gem.chain,
+          currentPump: gem.pumpMultiple,
+          tokenAddress: gem.tokenAddress,
+        });
+      }
+    }
+    if (unscoredTokens.size > 0) {
+      console.log(`[InsiderScanner] Auto-scoring ${unscoredTokens.size} unscored gems`);
+      analyzeGemsBackground(Array.from(unscoredTokens.values()));
+    }
+  } catch (err) {
+    console.error("[InsiderScanner] Auto-score error:", err);
+  }
 
   console.log(
     `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} wallets, ${result.insidersFound} insiders`

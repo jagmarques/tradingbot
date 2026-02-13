@@ -642,11 +642,16 @@ async function handleTrades(ctx: Context): Promise<void> {
     // Gem paper trades
     const gemPaperTrades = getOpenGemPaperTrades();
     if (gemPaperTrades.length > 0) {
-      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open)\n`;
+      const totalInvested = gemPaperTrades.reduce((s, t) => s + t.amountUsd, 0);
+      const totalPnlUsd = gemPaperTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
+      const totalSign = totalPnlUsd >= 0 ? "+" : "";
+      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open | $${totalInvested.toFixed(0)} invested | ${totalSign}$${totalPnlUsd.toFixed(2)})\n`;
       for (const t of gemPaperTrades.slice(0, 10)) {
-        const pnlEmoji = t.pnlPct >= 0 ? "🟢" : "🔴";
-        const sign = t.pnlPct >= 0 ? "+" : "";
-        message += `  ${pnlEmoji} ${t.tokenSymbol} (${t.chain.slice(0, 3).toUpperCase()}): ${sign}${t.pnlPct.toFixed(0)}% | Score: ${t.aiScore ?? "?"}\n`;
+        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+        const sign = pnlUsd >= 0 ? "+" : "";
+        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()})\n`;
+        message += `$${t.amountUsd.toFixed(0)} @ ${t.buyPumpMultiple.toFixed(1)}x | Now: ${t.currentPumpMultiple.toFixed(1)}x\n`;
+        message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
       if (gemPaperTrades.length > 10) message += `  ...and ${gemPaperTrades.length - 10} more\n`;
       message += `\n`;
@@ -892,8 +897,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         // Add paper trade P&L if exists
         const paperTrade = getGemPaperTrade(t.symbol, t.chain);
         if (paperTrade && paperTrade.status === "open") {
-          const sign = paperTrade.pnlPct >= 0 ? "+" : "";
-          block += `\nPaper: Bought at ${paperTrade.buyPumpMultiple.toFixed(1)}x | P&L: ${sign}${paperTrade.pnlPct.toFixed(0)}%`;
+          const pnlUsd = (paperTrade.pnlPct / 100) * paperTrade.amountUsd;
+          const sign = pnlUsd >= 0 ? "+" : "";
+          block += `\nPaper: $${paperTrade.amountUsd.toFixed(0)} @ ${paperTrade.buyPumpMultiple.toFixed(1)}x | P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${paperTrade.pnlPct.toFixed(0)}%)`;
         }
 
         return block;
