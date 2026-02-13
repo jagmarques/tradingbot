@@ -159,7 +159,7 @@ export async function paperBuyGems(
   if (!isPaperMode()) return;
 
   for (const token of tokens) {
-    if (token.score < 60) continue;
+    if (token.score < 80) continue;
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing) continue;
 
