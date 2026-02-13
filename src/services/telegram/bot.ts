@@ -775,7 +775,7 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
 
       const tokenBlocks = tokenEntries.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(0)}x | Now: ${t.currentPump.toFixed(1)}x | Holders: ${t.holders}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Holders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
