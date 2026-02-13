@@ -37,9 +37,7 @@ export async function searchTokenInfo(symbol: string): Promise<string> {
   }
 }
 
-// NOTE: GDELT won't find most new meme coins (they're too small/new for news articles).
-// Most tokens will return "No recent mentions found" - this is expected and normal.
-// The AI should still evaluate based on token name/concept and whatever it can find.
+// GDELT won't find most new meme coins - expected
 export async function searchTokenSocials(symbol: string): Promise<string> {
   const query = `"${symbol}" crypto twitter community website`;
   const url = `${GDELT_API_URL}?query=${encodeURIComponent(query)}+sourcelang:eng&mode=artlist&format=json&maxrecords=5&timespan=30d`;
@@ -80,18 +78,14 @@ export async function analyzeGem(
   _peakPump: number,
   _insiderCount: number
 ): Promise<GemAnalysis> {
-  // Check cache first
   const cached = getCachedGemAnalysis(symbol, chain);
   if (cached) return cached;
 
-  // Fetch web context from both general and social searches in parallel
   const [webResults, socialResults] = await Promise.all([
     searchTokenInfo(symbol),
     searchTokenSocials(symbol),
   ]);
 
-  // Build prompt - focuses PURELY on social presence and legitimacy
-  // Price metrics (currentPump, peakPump, insiderCount) are NOT included per user instruction
   const userPrompt = `You are a meme coin analyst evaluating new tokens based PURELY on social presence and project legitimacy.
 
 IMPORTANT: Judge based ONLY on:
@@ -138,7 +132,6 @@ Respond JSON only: {"score": <number>, "summary": "<1-2 sentences focusing on so
       "gem-analyzer"
     );
 
-    // Strip markdown code fences if present
     const cleaned = response.replace(/^```json\n?/i, "").replace(/\n?```$/i, "").trim();
 
     const parsed = JSON.parse(cleaned) as { score: number; summary: string };
@@ -160,7 +153,6 @@ Respond JSON only: {"score": <number>, "summary": "<1-2 sentences focusing on so
   } catch (error) {
     console.error(`[GemAnalyzer] Analysis failed for ${symbol}:`, error);
 
-    // Return default on failure
     const analysis: GemAnalysis = {
       tokenSymbol: symbol,
       chain,
@@ -218,14 +210,12 @@ export function analyzeGemsBackground(
       try {
         const analysis = await analyzeGem(token.symbol, token.chain, token.currentPump, token.peakPump, token.insiderCount);
         results.push({ symbol: token.symbol, chain: token.chain, currentPump: token.currentPump, score: analysis.score });
-        // 2s delay between analyses to avoid rate limits
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
         console.error(`[GemAnalyzer] Background analysis error for ${token.symbol}:`, error);
       }
     }
 
-    // Auto-buy scored gems as paper trades
     await paperBuyGems(results);
   })();
 }
