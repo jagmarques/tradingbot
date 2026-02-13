@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getTopInsiders, getGemHitsForWallet, getAllHeldGemHits } from "../traders/storage.js";
+import { getAllHeldGemHits } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 
 let bot: Bot | null = null;
@@ -92,7 +92,7 @@ export async function startBot(): Promise<void> {
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
   bot.command("insiders", async (ctx) => {
-    await handleInsiders(ctx, "all");
+    await handleInsiders(ctx, "holding");
   });
 
   // Callback handlers
@@ -150,30 +150,22 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders", async (ctx) => {
-    await handleInsiders(ctx, "all");
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("insiders_all", async (ctx) => {
-    await handleInsiders(ctx, "all");
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("insiders_hot", async (ctx) => {
-    await handleInsiders(ctx, "hot");
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("insiders_best", async (ctx) => {
-    await handleInsiders(ctx, "best");
+    await handleInsiders(ctx, "holding");
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_holding", async (ctx) => {
     await handleInsiders(ctx, "holding");
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("insiders_opps", async (ctx) => {
+    await handleInsiders(ctx, "opps");
+    await ctx.answerCallbackQuery();
+  });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     const match = ctx.match;
     if (!match) return;
     const chainVal = match[1];
-    const tabVal = match[2] as "all" | "hot" | "best" | "holding";
+    const tabVal = match[2] as "holding" | "opps";
     const resolvedChain = chainVal === "all" ? undefined : chainVal;
     await handleInsiders(ctx, tabVal, resolvedChain);
     await ctx.answerCallbackQuery();
@@ -699,7 +691,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holding" = "all", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -714,15 +706,12 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       insiderExtraMessageIds.length = 0;
     }
 
-    const topInsiders = getTopInsiders(20, chain);
     const status = getInsiderScannerStatus();
 
     const chainButtons = [
       [
-        { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
-        { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
-        { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
+        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
       ],
       [
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
@@ -733,21 +722,16 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       ],
     ];
 
-    if (topInsiders.length === 0) {
+    const heldGems = getAllHeldGemHits(chain);
+
+    if (heldGems.length === 0) {
       const scannerStatus = status.running ? "Running" : "Stopped";
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insider wallets detected yet.\nScanner: ${scannerStatus}`, buttons);
+      await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insiders currently holding gems.\nScanner: ${scannerStatus}`, buttons);
       return;
     }
 
     if (tab === "holding") {
-      const heldGems = getAllHeldGemHits(chain);
-
-      if (heldGems.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.`, buttons);
-        return;
-      }
 
       const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
       for (const gem of heldGems) {
@@ -818,101 +802,99 @@ async function handleInsiders(ctx: Context, tab: "all" | "hot" | "best" | "holdi
       return;
     }
 
-    const enriched = topInsiders.map((wallet) => {
-      const hits = getGemHitsForWallet(wallet.address, wallet.chain);
-      const totalPump = hits.reduce((sum, h) => sum + (h.pumpMultiple || 0), 0);
-      const avgPump = hits.length > 0 ? totalPump / hits.length : 0;
-      return { wallet, hits, totalPump, avgPump };
-    });
+    if (tab === "opps") {
+      const heldGems = getAllHeldGemHits(chain);
 
-    let filtered = enriched;
-    let tabLabel = "All Wallets";
-    let emptyMessage = "";
+      if (heldGems.length === 0) {
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Gems\n\nNo insiders currently holding gems.`, buttons);
+        return;
+      }
 
-    if (tab === "hot") {
-      const sevenDaysAgo = Date.now() - 7 * 86400000;
-      filtered = enriched.filter((e) =>
-        e.hits.some((h) => (h.buyDate || h.buyTimestamp) >= sevenDaysAgo)
-      );
-      filtered.sort((a, b) => b.totalPump - a.totalPump);
-      tabLabel = "Recent Gems (7d)";
-      emptyMessage = "No wallets found gems in the last 7 days.";
-    } else if (tab === "best") {
-      filtered.sort((a, b) => b.avgPump - a.avgPump);
-      tabLabel = "Best Performers";
-    } else {
-      // default: sort by totalPump
-      filtered.sort((a, b) => b.totalPump - a.totalPump);
-    }
+      // Group by token+chain (same as Holding)
+      const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
+      for (const gem of heldGems) {
+        const key = `${gem.tokenAddress}_${gem.chain}`;
+        if (!tokenMap.has(key)) {
+          tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
+        }
+        tokenMap.get(key)!.gems.push(gem);
+      }
 
-    if (filtered.length === 0 && emptyMessage) {
+      const tokenEntries = Array.from(tokenMap.entries()).map(([key, t]) => {
+        const tokenAddress = key.split("_")[0];
+        const holders = t.gems.length;
+        const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
+        const currentPump = currentPumps.reduce((a, b) => a + b, 0) / currentPumps.length;
+        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
+        const peakPump = Math.max(...peakPumps);
+        const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
+        const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress };
+      });
+
+      // Filter: only tokens that haven't rallied hard yet (< 5x)
+      const opportunities = tokenEntries.filter((t) => t.currentPump < 5);
+
+      if (opportunities.length === 0) {
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Gems\n\nNo opportunities found (all held tokens above 5x).`, buttons);
+        return;
+      }
+
+      // Sort: most insiders first, then lowest pump (best opportunity)
+      opportunities.sort((a, b) => b.holders - a.holders || a.currentPump - b.currentPump);
+
+      const symbolCounts = new Map<string, number>();
+      for (const t of opportunities) {
+        symbolCounts.set(t.symbol, (symbolCounts.get(t.symbol) || 0) + 1);
+      }
+
+      const tokenBlocks = opportunities.slice(0, 20).map((t) => {
+        const addrSuffix = (symbolCounts.get(t.symbol) || 0) > 1 ? ` (${t.tokenAddress.slice(0, 6)})` : "";
+        const chainTag = t.chain.toUpperCase().slice(0, 3);
+        return `<b>${t.symbol}</b>${addrSuffix} (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+      });
+
+      const header = `<b>Insider Wallets</b> - Gems\n\n`;
+      const scannerStatus = status.running ? "Running" : "Stopped";
+      const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+      const maxLen = 3900;
+
+      const messages: string[] = [];
+      let current = header;
+      for (const block of tokenBlocks) {
+        if (current.length + block.length + 2 > maxLen) {
+          messages.push(current);
+          current = "";
+        }
+        current += (current && current !== header ? "\n\n" : "") + block;
+      }
+      current += footer;
+      messages.push(current);
+
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(`<b>Insider Wallets</b> - ${tabLabel}\n\n${emptyMessage}`, buttons);
+      for (let i = 0; i < messages.length; i++) {
+        const isLast = i === messages.length - 1;
+        if (isLast) {
+          await sendDataMessage(messages[i], buttons);
+        } else {
+          if (bot && chatId) {
+            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+            insiderExtraMessageIds.push(overflowMsg.message_id);
+          }
+        }
+      }
+
       return;
     }
 
-    const walletBlocks: string[] = [];
-    for (const { wallet, hits } of filtered.slice(0, 10)) {
-      const shortAddr = `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`;
-
-      const gemList = hits
-        .sort((a, b) => (b.pumpMultiple || 0) - (a.pumpMultiple || 0))
-        .map((h) => {
-          const pump = h.pumpMultiple ? h.pumpMultiple.toFixed(0) + "x" : "?";
-          const fmt = (ts: number | undefined) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
-          const buyStr = fmt(h.buyDate || h.buyTimestamp);
-          if (h.status === "transferred") {
-            return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr} | Transferred: ${fmt(h.sellDate)}`;
-          }
-          if (h.status === "sold" || h.status === "partial") {
-            return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr} | Sold: ${fmt(h.sellDate)}`;
-          }
-          return `${h.tokenSymbol} (${pump}) - Buy: ${buyStr}`;
-        })
-        .join("\n");
-
-      walletBlocks.push(`<code>${shortAddr}</code> ${wallet.chain.toUpperCase()} | ${wallet.gemHitCount} gems\n${gemList}`);
-    }
-
-    // Paginate (4096 char limit)
-    const header = `<b>Insider Wallets</b> - ${tabLabel}\n\n`;
-    const scannerStatus = status.running ? "Running" : "Stopped";
-    const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
-    const maxLen = 3900;
-
-    const messages: string[] = [];
-    let current = header;
-    for (const block of walletBlocks) {
-      if (current.length + block.length + 2 > maxLen) {
-        messages.push(current);
-        current = "";
-      }
-      current += (current && current !== header ? "\n\n" : "") + block;
-    }
-    current += footer;
-    messages.push(current);
-
-    // Last page gets buttons
-    const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-    for (let i = 0; i < messages.length; i++) {
-      const isLast = i === messages.length - 1;
-      if (isLast) {
-        await sendDataMessage(messages[i], buttons);
-      } else {
-        if (bot && chatId) {
-          const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
-          insiderExtraMessageIds.push(overflowMsg.message_id);
-        }
-      }
-    }
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
     const chainButtons = [
       [
-        { text: tab === "all" ? "* All" : "All", callback_data: "insiders_all" },
-        { text: tab === "hot" ? "* Hot" : "Hot", callback_data: "insiders_hot" },
-        { text: tab === "best" ? "* Best" : "Best", callback_data: "insiders_best" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
+        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
       ],
       [
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
