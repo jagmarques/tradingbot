@@ -48,6 +48,14 @@ function isAuthorized(ctx: Context): boolean {
   return fromId === chatId;
 }
 
+function formatTokenPrice(price: number): string {
+  if (price === 0) return "$0";
+  if (price >= 1) return `$${price.toFixed(2)}`;
+  if (price >= 0.01) return `$${price.toFixed(4)}`;
+  if (price >= 0.000001) return `$${price.toFixed(6)}`;
+  return `$${price.toExponential(2)}`;
+}
+
 const MAIN_MENU_BUTTONS = [
   [
     { text: "📊 Status", callback_data: "status" },
@@ -649,8 +657,9 @@ async function handleTrades(ctx: Context): Promise<void> {
       for (const t of gemPaperTrades.slice(0, 10)) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
-        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()})\n`;
-        message += `$${t.amountUsd.toFixed(0)} @ ${t.buyPumpMultiple.toFixed(1)}x | Now: ${t.currentPumpMultiple.toFixed(1)}x\n`;
+        const scoreStr = t.aiScore != null ? ` | Score: ${t.aiScore}` : "";
+        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr})\n`;
+        message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
       if (gemPaperTrades.length > 10) message += `  ...and ${gemPaperTrades.length - 10} more\n`;
@@ -899,7 +908,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         if (paperTrade && paperTrade.status === "open") {
           const pnlUsd = (paperTrade.pnlPct / 100) * paperTrade.amountUsd;
           const sign = pnlUsd >= 0 ? "+" : "";
-          block += `\nPaper: $${paperTrade.amountUsd.toFixed(0)} @ ${paperTrade.buyPumpMultiple.toFixed(1)}x | P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${paperTrade.pnlPct.toFixed(0)}%)`;
+          const entryStr = formatTokenPrice(paperTrade.buyPriceUsd);
+          block += `\nPaper: $${paperTrade.amountUsd.toFixed(0)} @ ${entryStr} | P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${paperTrade.pnlPct.toFixed(0)}%)`;
         }
 
         return block;
@@ -1497,14 +1507,16 @@ async function handleReset(ctx: Context): Promise<void> {
   const closedStats = getBettingStats();
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
+  const gemTrades = getOpenGemPaperTrades();
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
   message += `  AI Bets: ${openAIBets.length} open + ${closedStats.totalBets} closed\n`;
   message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
   message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
+  message += `  Gem Trades: ${gemTrades.length} open\n`;
   message += `  Trades + daily stats: all\n`;
-  message += `  AI analysis cache: all\n\n`;
+  message += `  Caches (AI + GoPlus scores): all\n\n`;
   message += "<b>This cannot be undone.</b>";
 
   const buttons = [
@@ -1552,20 +1564,39 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 7. Arbitrage positions
     const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
 
+    // 8. Gem paper trades
+    const gemTradesResult = db.prepare("DELETE FROM insider_gem_paper_trades").run();
+
+    // 9. Gem analyses (GoPlus scores cache)
+    const gemAnalysesResult = db.prepare("DELETE FROM insider_gem_analyses").run();
+
+    // 10. Copy outcomes
+    const copyOutcomesResult = db.prepare("DELETE FROM copy_outcomes").run();
+
+    // 11. Calibration data
+    const calPredResult = db.prepare("DELETE FROM calibration_predictions").run();
+    const calScoreResult = db.prepare("DELETE FROM calibration_scores").run();
+    const calLogResult = db.prepare("DELETE FROM calibration_log").run();
+
+    // 12. Whale trades
+    const whaleResult = db.prepare("DELETE FROM whale_trades").run();
+
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
       + polyCopiesDeleted + cryptoResult.changes + tradesResult.changes
-      + positionsResult.changes + dailyResult.changes + arbResult.changes;
+      + positionsResult.changes + dailyResult.changes + arbResult.changes
+      + gemTradesResult.changes + gemAnalysesResult.changes
+      + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
+      + calLogResult.changes + whaleResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
 
     let message = "<b>Reset Complete</b>\n\n";
     message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
-    message += `Poly copies: ${polyCopiesDeleted} records\n`;
+    message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
-    message += `Trades: ${tradesResult.changes} records\n`;
-    message += `Positions: ${positionsResult.changes} records\n`;
-    message += `Daily stats: ${dailyResult.changes} records\n`;
-    message += `Arbitrage: ${arbResult.changes} records\n\n`;
+    message += `Gem trades: ${gemTradesResult.changes} + ${gemAnalysesResult.changes} scores\n`;
+    message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
+    message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
     message += `<b>Total: ${totalDeleted} records deleted</b>\n`;
     message += "Paper trading is ready to start fresh.";
 
@@ -1643,6 +1674,13 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     db.prepare("DELETE FROM positions").run();
     db.prepare("DELETE FROM daily_stats").run();
     db.prepare("DELETE FROM arbitrage_positions").run();
+    db.prepare("DELETE FROM insider_gem_paper_trades").run();
+    db.prepare("DELETE FROM insider_gem_analyses").run();
+    db.prepare("DELETE FROM copy_outcomes").run();
+    db.prepare("DELETE FROM calibration_predictions").run();
+    db.prepare("DELETE FROM calibration_scores").run();
+    db.prepare("DELETE FROM calibration_log").run();
+    db.prepare("DELETE FROM whale_trades").run();
 
     // Switch to live mode
     setTradingMode("live");

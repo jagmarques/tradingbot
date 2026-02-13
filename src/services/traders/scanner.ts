@@ -629,21 +629,27 @@ export async function updateHeldGemPrices(): Promise<void> {
         data: {
           attributes: {
             fdv_usd: string;
+            price_usd: string;
           };
         };
       };
 
       const fdvUsd = parseFloat(data.data.attributes.fdv_usd || "0");
+      const priceUsd = parseFloat(data.data.attributes.price_usd || "0");
       if (fdvUsd <= 0) continue;
 
       const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
 
-      // Only update if changed significantly (>10% difference)
+      // Always update paper trade with real price
+      if (priceUsd > 0) {
+        updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
+      }
+
+      // Only update gem hit pump multiple if changed significantly (>10% difference)
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
         updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
-        updateGemPaperTradePrice(token.symbol, token.chain, newMultiple);
-        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x`);
+        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd > 0 ? priceUsd.toFixed(6) : "N/A"})`);
         updated++;
       }
     } catch {

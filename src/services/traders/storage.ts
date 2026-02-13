@@ -85,6 +85,10 @@ export function initInsiderTables(): void {
     )
   `);
 
+  // Add price columns for accurate P&L (safe if already exist)
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN buy_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN current_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
+
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
@@ -301,13 +305,13 @@ export interface GemPaperTrade {
   id: string;
   tokenSymbol: string;
   chain: string;
-  buyPumpMultiple: number;
-  currentPumpMultiple: number;
   buyTimestamp: number;
   amountUsd: number;
   pnlPct: number;
   aiScore: number | null;
   status: "open" | "closed";
+  buyPriceUsd: number;
+  currentPriceUsd: number;
 }
 
 export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
@@ -317,19 +321,20 @@ export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
   db.prepare(`
     INSERT OR IGNORE INTO insider_gem_paper_trades (
       id, token_symbol, chain, buy_pump_multiple, current_pump_multiple,
-      buy_timestamp, amount_usd, pnl_pct, ai_score, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      buy_timestamp, amount_usd, pnl_pct, ai_score, status,
+      buy_price_usd, current_price_usd
+    ) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     trade.tokenSymbol,
     trade.chain,
-    trade.buyPumpMultiple,
-    trade.currentPumpMultiple,
     trade.buyTimestamp,
     trade.amountUsd,
     trade.pnlPct,
     trade.aiScore,
-    trade.status
+    trade.status,
+    trade.buyPriceUsd,
+    trade.currentPriceUsd
   );
 }
 
@@ -344,13 +349,13 @@ export function getGemPaperTrade(symbol: string, chain: string): GemPaperTrade |
     id: row.id as string,
     tokenSymbol: row.token_symbol as string,
     chain: row.chain as string,
-    buyPumpMultiple: row.buy_pump_multiple as number,
-    currentPumpMultiple: row.current_pump_multiple as number,
     buyTimestamp: row.buy_timestamp as number,
     amountUsd: row.amount_usd as number,
     pnlPct: row.pnl_pct as number,
     aiScore: (row.ai_score as number | null),
     status: row.status as "open" | "closed",
+    buyPriceUsd: (row.buy_price_usd as number) || 0,
+    currentPriceUsd: (row.current_price_usd as number) || 0,
   };
 }
 
@@ -363,26 +368,29 @@ export function getOpenGemPaperTrades(): GemPaperTrade[] {
     id: row.id as string,
     tokenSymbol: row.token_symbol as string,
     chain: row.chain as string,
-    buyPumpMultiple: row.buy_pump_multiple as number,
-    currentPumpMultiple: row.current_pump_multiple as number,
     buyTimestamp: row.buy_timestamp as number,
     amountUsd: row.amount_usd as number,
     pnlPct: row.pnl_pct as number,
     aiScore: (row.ai_score as number | null),
     status: row.status as "open" | "closed",
+    buyPriceUsd: (row.buy_price_usd as number) || 0,
+    currentPriceUsd: (row.current_price_usd as number) || 0,
   }));
 }
 
-export function updateGemPaperTradePrice(symbol: string, chain: string, currentMultiple: number): void {
+export function updateGemPaperTradePrice(symbol: string, chain: string, currentPriceUsd: number): void {
   const db = getDb();
   const id = `${symbol.toLowerCase()}_${chain}`;
 
   db.prepare(`
     UPDATE insider_gem_paper_trades
-    SET current_pump_multiple = ?,
-        pnl_pct = ((? / buy_pump_multiple - 1) * 100)
+    SET current_price_usd = ?,
+        pnl_pct = CASE
+          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100)
+          ELSE 0
+        END
     WHERE id = ?
-  `).run(currentMultiple, currentMultiple, id);
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
 }
 
 export function closeGemPaperTrade(symbol: string, chain: string): void {
