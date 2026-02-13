@@ -474,6 +474,14 @@ async function handleStatus(ctx: Context): Promise<void> {
     message += `Poly Copy: ${polyStats.openPositions} open${copyPnlStr} | $${polyStats.totalPnl.toFixed(2)} realized\n`;
     message += `Crypto Copy: ${cryptoCopyPositions.length} open\n`;
 
+    // Gem paper trades
+    const gemPaperTrades = getOpenGemPaperTrades();
+    if (gemPaperTrades.length > 0) {
+      const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const gemSign = gemTotalPnl >= 0 ? "+" : "";
+      message += `Gem Paper: ${gemPaperTrades.length} open | ${gemSign}$${gemTotalPnl.toFixed(2)}\n`;
+    }
+
     if (status.pauseReason) {
       message += `\n\n⚠️ ${status.pauseReason}`;
     }
@@ -631,6 +639,19 @@ async function handleTrades(ctx: Context): Promise<void> {
       message += `\n`;
     }
 
+    // Gem paper trades
+    const gemPaperTrades = getOpenGemPaperTrades();
+    if (gemPaperTrades.length > 0) {
+      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open)\n`;
+      for (const t of gemPaperTrades.slice(0, 10)) {
+        const pnlEmoji = t.pnlPct >= 0 ? "🟢" : "🔴";
+        const sign = t.pnlPct >= 0 ? "+" : "";
+        message += `  ${pnlEmoji} ${t.tokenSymbol} (${t.chain.slice(0, 3).toUpperCase()}): ${sign}${t.pnlPct.toFixed(0)}% | Score: ${t.aiScore ?? "?"}\n`;
+      }
+      if (gemPaperTrades.length > 10) message += `  ...and ${gemPaperTrades.length - 10} more\n`;
+      message += `\n`;
+    }
+
     // Recent trades
     if (trades.length > 0) {
       const recentTrades = trades.slice(-10);
@@ -640,7 +661,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString();
         message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
       }
-    } else if (cryptoCopyPositions.length === 0) {
+    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0) {
       message += "No trades or positions.";
     }
 
