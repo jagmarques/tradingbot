@@ -825,7 +825,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress: t.gems[0].tokenAddress };
       });
 
       // Filter: only tokens that haven't rallied hard yet (< 5x) and are alive (>= 1.0x)
@@ -838,16 +838,16 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       }
 
       // Look up cached AI analysis for each opportunity
-      const scoredOpps: Array<typeof opportunities[0] & { aiScore?: number; aiSummary?: string }> = [];
-      const unscored: Array<{symbol: string, chain: string, currentPump: number, peakPump: number, insiderCount: number}> = [];
+      const scoredOpps: Array<typeof opportunities[0] & { aiScore?: number }> = [];
+      const unscored: Array<{symbol: string, chain: string, currentPump: number, tokenAddress: string}> = [];
 
       for (const t of opportunities) {
         const analysis = getCachedGemAnalysis(t.symbol, t.chain);
         if (analysis) {
-          scoredOpps.push({ ...t, aiScore: analysis.score, aiSummary: analysis.summary });
+          scoredOpps.push({ ...t, aiScore: analysis.score });
         } else {
           scoredOpps.push(t);
-          unscored.push({ symbol: t.symbol, chain: t.chain, currentPump: t.currentPump, peakPump: t.peakPump, insiderCount: t.holders });
+          unscored.push({ symbol: t.symbol, chain: t.chain, currentPump: t.currentPump, tokenAddress: t.tokenAddress });
         }
       }
 
@@ -862,8 +862,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       const tokenBlocks = scoredOpps.slice(0, 20).map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         let block = "";
-        if (t.aiScore !== undefined && t.aiSummary !== undefined) {
-          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}\nAI: ${t.aiSummary}`;
+        if (t.aiScore !== undefined) {
+          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
         } else {
           block = `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
         }
