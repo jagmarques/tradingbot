@@ -153,11 +153,11 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   return analysis;
 }
 
-const GECKO_NETWORK_MAP: Record<string, string> = {
-  ethereum: "eth",
+const DEXSCREENER_CHAIN_MAP: Record<string, string> = {
+  ethereum: "ethereum",
   base: "base",
   arbitrum: "arbitrum",
-  polygon: "polygon_pos",
+  polygon: "polygon",
   optimism: "optimism",
 };
 
@@ -171,18 +171,25 @@ export async function paperBuyGems(
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing) continue;
 
-    // Fetch actual USD price from GeckoTerminal
+    // Fetch USD price from DexScreener
     let priceUsd = 0;
-    const networkId = GECKO_NETWORK_MAP[token.chain];
-    if (networkId && token.tokenAddress) {
+    const dexChain = DEXSCREENER_CHAIN_MAP[token.chain];
+    if (dexChain && token.tokenAddress) {
       try {
-        const resp = await fetch(`https://api.geckoterminal.com/api/v2/networks/${networkId}/tokens/${token.tokenAddress}`);
+        const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${token.tokenAddress}`);
         if (resp.ok) {
-          const data = (await resp.json()) as { data: { attributes: { price_usd: string } } };
-          priceUsd = parseFloat(data?.data?.attributes?.price_usd || "0");
+          const data = (await resp.json()) as Array<{ priceUsd?: string }>;
+          if (Array.isArray(data) && data.length > 0) {
+            priceUsd = parseFloat(data[0].priceUsd || "0");
+          }
         }
-      } catch { /* use 0 */ }
-      await new Promise((r) => setTimeout(r, 2000));
+      } catch { /* retry next cycle */ }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    if (priceUsd <= 0) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - no price available, will retry`);
+      continue;
     }
 
     insertGemPaperTrade({
