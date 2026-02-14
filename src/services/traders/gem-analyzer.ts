@@ -1,5 +1,6 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, type GemAnalysis } from "./storage.js";
 import { isPaperMode } from "../../config/env.js";
+import { dexScreenerFetch } from "../shared/dexscreener.js";
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
   ethereum: "1",
@@ -153,14 +154,6 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   return analysis;
 }
 
-const DEXSCREENER_CHAIN_MAP: Record<string, string> = {
-  ethereum: "ethereum",
-  base: "base",
-  arbitrum: "arbitrum",
-  polygon: "polygon",
-  optimism: "optimism",
-};
-
 // Track tokens that repeatedly fail price fetch - stop retrying after MAX_PRICE_FAILURES
 const MAX_PRICE_FAILURES = 3;
 const priceFetchFailures = new Map<string, number>();
@@ -179,21 +172,9 @@ export async function paperBuyGems(
     const failures = priceFetchFailures.get(failKey) ?? 0;
     if (failures >= MAX_PRICE_FAILURES) continue;
 
-    // Fetch USD price from DexScreener
-    let priceUsd = 0;
-    const dexChain = DEXSCREENER_CHAIN_MAP[token.chain];
-    if (dexChain && token.tokenAddress) {
-      try {
-        const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${token.tokenAddress}`);
-        if (resp.ok) {
-          const data = (await resp.json()) as Array<{ priceUsd?: string }>;
-          if (Array.isArray(data) && data.length > 0) {
-            priceUsd = parseFloat(data[0].priceUsd || "0");
-          }
-        }
-      } catch { /* retry next cycle */ }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
+    // Fetch USD price from DexScreener (shared rate limiter)
+    const pair = await dexScreenerFetch(token.chain, token.tokenAddress);
+    const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
 
     if (priceUsd <= 0) {
       const newFails = failures + 1;
