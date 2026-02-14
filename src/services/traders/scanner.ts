@@ -644,7 +644,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     errors: [],
   };
 
-  await Promise.all(INSIDER_CONFIG.SCAN_CHAINS.map(async (chain) => {
+  console.log(`[InsiderScanner] Scanning ${INSIDER_CONFIG.SCAN_CHAINS.length} chains sequentially to respect rate limits`);
+
+  for (const chain of INSIDER_CONFIG.SCAN_CHAINS) {
     try {
       // Find pumped tokens
       const pumpedTokens = await findPumpedTokens(chain);
@@ -685,7 +687,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.error(`[InsiderScanner] ${msg}`);
       result.errors.push(msg);
     }
-  }));
+  }
 
   // Recalculate insider wallets from gem_hits
   try {
