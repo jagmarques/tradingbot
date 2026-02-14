@@ -89,6 +89,9 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN buy_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN current_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
 
+  // Delete paper trades with no buy price (failed price fetch)
+  db.exec("DELETE FROM insider_gem_paper_trades WHERE buy_price_usd = 0 OR buy_price_usd IS NULL");
+
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {

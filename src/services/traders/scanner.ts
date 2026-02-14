@@ -1,6 +1,6 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice, getCachedGemAnalysis } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground } from "./gem-analyzer.js";
@@ -278,6 +278,11 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
 
 // Find wallets that bought a token early (within first 50-100 transfers)
 export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
+  // Etherscan V2 free API only supports ethereum mainnet
+  if (token.chain !== "ethereum") {
+    return [];
+  }
+
   const chainId = ETHERSCAN_CHAIN_IDS[token.chain];
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
 
@@ -358,6 +363,11 @@ interface WalletTokenPnl {
 export async function getWalletTokenPnl(
   walletAddress: string, tokenAddress: string, chain: EvmChain
 ): Promise<WalletTokenPnl> {
+  // Etherscan V2 free API only supports ethereum mainnet
+  if (chain !== "ethereum") {
+    return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
+  }
+
   const chainId = ETHERSCAN_CHAIN_IDS[chain];
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
 
@@ -450,8 +460,8 @@ async function _scanWalletHistoryInner(): Promise<void> {
   console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
 
   for (const wallet of insiders) {
-    // Etherscan free API only supports ethereum and base
-    if (wallet.chain !== "ethereum" && wallet.chain !== "base") continue;
+    // Etherscan V2 free API only supports ethereum mainnet
+    if (wallet.chain !== "ethereum") continue;
 
     try {
       const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain];
@@ -615,45 +625,40 @@ export async function updateHeldGemPrices(): Promise<void> {
   console.log(`[InsiderScanner] Updating prices for ${uniqueTokens.size} held tokens`);
   let updated = 0;
 
+  const DEXSCREENER_CHAINS: Record<string, string> = {
+    ethereum: "ethereum", base: "base", arbitrum: "arbitrum", polygon: "polygon", optimism: "optimism",
+  };
+
   for (const [, token] of uniqueTokens) {
     try {
-      const networkId = GECKO_NETWORK_IDS[token.chain];
-      if (!networkId) continue;
+      const dexChain = DEXSCREENER_CHAINS[token.chain];
+      if (!dexChain) continue;
 
-      const geckoUrl = `${GECKO_BASE}/networks/${networkId}/tokens/${token.tokenAddress}`;
-      const response = await geckoRateLimitedFetch(geckoUrl);
+      const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${token.tokenAddress}`);
+      if (!resp.ok) continue;
 
-      if (!response.ok) continue;
+      const pairs = (await resp.json()) as Array<{ priceUsd?: string; fdv?: number }>;
+      if (!Array.isArray(pairs) || pairs.length === 0) continue;
 
-      const data = (await response.json()) as {
-        data: {
-          attributes: {
-            fdv_usd: string;
-            price_usd: string;
-          };
-        };
-      };
+      const priceUsd = parseFloat(pairs[0].priceUsd || "0");
+      const fdvUsd = pairs[0].fdv || 0;
 
-      const fdvUsd = parseFloat(data.data.attributes.fdv_usd || "0");
-      const priceUsd = parseFloat(data.data.attributes.price_usd || "0");
-      if (fdvUsd <= 0) continue;
-
-      const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
-
-      // Always update paper trade with real price
       if (priceUsd > 0) {
         updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
       }
 
-      // Only update gem hit pump multiple if changed significantly (>10% difference)
-      const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
-      if (changeRatio > 0.1) {
-        updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
-        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd > 0 ? priceUsd.toFixed(6) : "N/A"})`);
-        updated++;
+      if (fdvUsd > 0) {
+        const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+        const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
+        if (changeRatio > 0.1) {
+          updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
+          console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd.toFixed(6)})`);
+          updated++;
+        }
       }
+
+      await new Promise((r) => setTimeout(r, 1000)); // DexScreener: 60 req/min
     } catch {
-      // Skip individual token errors
       continue;
     }
   }
@@ -784,14 +789,17 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     console.error("[InsiderScanner] Held gem price update error:", err);
   });
 
-  // Auto-score and paper-buy unscored held gems (non-blocking)
+  // Auto-score and paper-buy unscored or unbought held gems (non-blocking)
   try {
     const heldGems = getAllHeldGemHits();
-    const unscoredTokens = new Map<string, { symbol: string; chain: string; currentPump: number; tokenAddress: string }>();
+    const tokensToProcess = new Map<string, { symbol: string; chain: string; currentPump: number; tokenAddress: string }>();
     for (const gem of heldGems) {
       const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
-      if (!unscoredTokens.has(key) && !getCachedGemAnalysis(gem.tokenSymbol, gem.chain)) {
-        unscoredTokens.set(key, {
+      if (tokensToProcess.has(key)) continue;
+      const cached = getCachedGemAnalysis(gem.tokenSymbol, gem.chain);
+      // Process if: no score yet, OR scored >= 80 but no paper trade exists
+      if (!cached || (cached.score >= 80 && !getGemPaperTrade(gem.tokenSymbol, gem.chain))) {
+        tokensToProcess.set(key, {
           symbol: gem.tokenSymbol,
           chain: gem.chain,
           currentPump: gem.pumpMultiple,
@@ -799,9 +807,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
         });
       }
     }
-    if (unscoredTokens.size > 0) {
-      console.log(`[InsiderScanner] Auto-scoring ${unscoredTokens.size} unscored gems`);
-      analyzeGemsBackground(Array.from(unscoredTokens.values()));
+    if (tokensToProcess.size > 0) {
+      console.log(`[InsiderScanner] Auto-scoring ${tokensToProcess.size} unscored/unbought gems`);
+      analyzeGemsBackground(Array.from(tokensToProcess.values()));
     }
   } catch (err) {
     console.error("[InsiderScanner] Auto-score error:", err);
