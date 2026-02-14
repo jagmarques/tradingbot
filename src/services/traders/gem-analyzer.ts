@@ -1,6 +1,6 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, type GemAnalysis } from "./storage.js";
 import { isPaperMode } from "../../config/env.js";
-import { dexScreenerFetch } from "../shared/dexscreener.js";
+import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
   ethereum: "1",
@@ -62,9 +62,39 @@ export function scoreToken(data: Record<string, unknown>): number {
     data.can_take_back_ownership === "1" ||
     data.hidden_owner === "1" ||
     data.selfdestruct === "1" ||
-    data.is_blacklisted === "1"
+    data.is_blacklisted === "1" ||
+    data.slippage_modifiable === "1" ||
+    data.is_proxy === "1" ||
+    data.transfer_pausable === "1" ||
+    data.anti_whale_modifiable === "1" ||
+    data.cannot_sell_all === "1" ||
+    data.cannot_buy === "1" ||
+    data.is_whitelisted === "1" ||
+    data.is_airdrop_scam === "1" ||
+    (typeof data.is_true_token === "string" && data.is_true_token === "0")
   ) {
     return 0;
+  }
+
+  // Creator history kill flag
+  if (typeof data.honeypot_with_same_creator === "string") {
+    const count = parseInt(data.honeypot_with_same_creator, 10);
+    if (!isNaN(count) && count > 0) return 0;
+  }
+
+  // Tax kill flags (>10%)
+  if (typeof data.buy_tax === "string" && data.buy_tax !== "") {
+    const buyTaxPct = parseFloat(data.buy_tax) * 100;
+    if (!isNaN(buyTaxPct) && buyTaxPct > 10) return 0;
+    // Gradual penalty for taxes <= 10%
+    if (!isNaN(buyTaxPct)) score -= Math.floor(buyTaxPct / 5) * 10;
+  }
+
+  if (typeof data.sell_tax === "string" && data.sell_tax !== "") {
+    const sellTaxPct = parseFloat(data.sell_tax) * 100;
+    if (!isNaN(sellTaxPct) && sellTaxPct > 10) return 0;
+    // Gradual penalty for taxes <= 10%
+    if (!isNaN(sellTaxPct)) score -= Math.floor(sellTaxPct / 5) * 10;
   }
 
   // PENALTIES
@@ -72,15 +102,9 @@ export function scoreToken(data: Record<string, unknown>): number {
     score -= 20;
   }
 
-  // Tax penalties
-  if (typeof data.buy_tax === "string" && data.buy_tax !== "") {
-    const buyTaxPct = parseFloat(data.buy_tax) * 100;
-    if (!isNaN(buyTaxPct)) score -= Math.floor(buyTaxPct / 5) * 10;
-  }
-
-  if (typeof data.sell_tax === "string" && data.sell_tax !== "") {
-    const sellTaxPct = parseFloat(data.sell_tax) * 100;
-    if (!isNaN(sellTaxPct)) score -= Math.floor(sellTaxPct / 5) * 10;
+  // External call penalty (risky but not necessarily modifiable)
+  if (data.external_call === "1") {
+    score -= 10;
   }
 
   // BONUSES
@@ -233,4 +257,37 @@ export function analyzeGemsBackground(
 
     await paperBuyGems(results);
   })();
+}
+
+export async function revalidateHeldGems(): Promise<void> {
+  const openTrades = getOpenGemPaperTrades();
+  if (openTrades.length === 0) return;
+
+  console.log(`[GemAnalyzer] Revalidating ${openTrades.length} held gems`);
+
+  // Look up token addresses
+  const tokensToCheck: Array<{ chain: string; tokenAddress: string; symbol: string }> = [];
+  for (const trade of openTrades) {
+    const tokenAddress = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
+    if (tokenAddress) {
+      tokensToCheck.push({ chain: trade.chain, tokenAddress, symbol: trade.tokenSymbol });
+    }
+  }
+
+  if (tokensToCheck.length === 0) return;
+
+  // Batch-fetch DexScreener prices
+  const priceMap = await dexScreenerFetchBatch(tokensToCheck);
+
+  // Auto-close trades with low liquidity
+  for (const token of tokensToCheck) {
+    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    if (!pair) continue;
+
+    const liquidityUsd = pair.liquidity?.usd ?? 0;
+    if (liquidityUsd < 500) {
+      closeGemPaperTrade(token.symbol, token.chain);
+      console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $500 (rug)`);
+    }
+  }
 }
