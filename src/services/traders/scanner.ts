@@ -35,49 +35,14 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-// GeckoTerminal free tier: 30 req/min -> use 2500ms base interval (24 req/min) for safety
-const GECKO_BASE_INTERVAL_MS = 2500;
-let geckoIntervalMs = GECKO_BASE_INTERVAL_MS;
-let geckoFetchQueue: Promise<void> = Promise.resolve();
-let geckoConsecutive429s = 0;
-let geckoPausedUntil = 0;
+// GeckoTerminal: only used for pool discovery (~12 calls/cycle), 5s between calls
+let geckoQueue: Promise<void> = Promise.resolve();
 
 async function geckoRateLimitedFetch(url: string): Promise<Response> {
-  // Circuit breaker: if paused after too many 429s, return synthetic 429
-  if (Date.now() < geckoPausedUntil) {
-    return new Response(null, { status: 429, statusText: "Rate limit cooldown" });
-  }
-
-  const myTurn = geckoFetchQueue.then(async () => {
-    await new Promise((r) => setTimeout(r, geckoIntervalMs));
-  });
-  geckoFetchQueue = myTurn;
+  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 5000)));
+  geckoQueue = myTurn;
   await myTurn;
-
-  // Check again after waiting in queue (cooldown may have started)
-  if (Date.now() < geckoPausedUntil) {
-    return new Response(null, { status: 429, statusText: "Rate limit cooldown" });
-  }
-
-  const response = await fetch(url);
-  if (response.status === 429) {
-    geckoConsecutive429s++;
-    if (geckoConsecutive429s >= 3) {
-      // Exponential cooldown: 30s, 60s, 120s (max 2 min)
-      const cooldownMs = Math.min(30_000 * Math.pow(2, geckoConsecutive429s - 3), 120_000);
-      geckoPausedUntil = Date.now() + cooldownMs;
-      geckoIntervalMs = Math.min(geckoIntervalMs * 2, 10_000); // Double interval, max 10s
-      console.warn(`[InsiderScanner] GeckoTerminal ${geckoConsecutive429s} consecutive 429s, pausing ${cooldownMs / 1000}s, interval now ${geckoIntervalMs}ms`);
-    }
-    return response; // Return 429 to caller, don't retry outside queue
-  }
-
-  // Success: gradually recover interval
-  if (geckoConsecutive429s > 0) {
-    geckoConsecutive429s = 0;
-    geckoIntervalMs = Math.max(geckoIntervalMs - 500, GECKO_BASE_INTERVAL_MS);
-  }
-  return response;
+  return fetch(url);
 }
 
 // Rate limiting for Etherscan (220ms between requests, per chain)
