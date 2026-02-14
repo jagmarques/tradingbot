@@ -4,6 +4,7 @@ import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWall
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground } from "./gem-analyzer.js";
+import { dexScreenerFetch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
   return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
@@ -511,31 +512,22 @@ async function _scanWalletHistoryInner(): Promise<void> {
       let checkedCount = 0;
       let newGemsCount = 0;
 
-      const DEXSCREENER_CHAINS: Record<string, string> = {
-        ethereum: "ethereum", base: "base", arbitrum: "arbitrum", polygon: "polygon", optimism: "optimism",
-      };
-      const dexChain = DEXSCREENER_CHAINS[wallet.chain];
-
       for (const [tokenAddress, tokenInfo] of newTokens) {
         try {
-          if (!dexChain) continue;
-          const dexResp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${tokenAddress}`);
+          const pair = await dexScreenerFetch(wallet.chain, tokenAddress);
           checkedCount++;
 
-          if (!dexResp.ok) continue;
+          if (!pair) continue;
 
-          const pairs = (await dexResp.json()) as Array<{ baseToken?: { symbol?: string }; fdv?: number; liquidity?: { usd?: number }; priceUsd?: string }>;
-          if (!Array.isArray(pairs) || pairs.length === 0) continue;
-
-          const fdvUsd = pairs[0].fdv || 0;
-          const reserveUsd = pairs[0].liquidity?.usd || 0;
+          const fdvUsd = pair.fdv || 0;
+          const reserveUsd = pair.liquidity?.usd || 0;
 
           if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) {
             continue;
           }
 
           const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
-          const symbol = pairs[0].baseToken?.symbol || tokenInfo.symbol;
+          const symbol = pair.baseToken?.symbol || tokenInfo.symbol;
 
           const hit: GemHit = {
             walletAddress: wallet.address,
@@ -549,8 +541,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
           };
           upsertGemHit(hit);
           newGemsCount++;
-
-          await new Promise((r) => setTimeout(r, 1000)); // DexScreener: 60 req/min
         } catch {
           continue;
         }
@@ -614,23 +604,13 @@ export async function updateHeldGemPrices(): Promise<void> {
   console.log(`[InsiderScanner] Updating prices for ${uniqueTokens.size} held tokens`);
   let updated = 0;
 
-  const DEXSCREENER_CHAINS: Record<string, string> = {
-    ethereum: "ethereum", base: "base", arbitrum: "arbitrum", polygon: "polygon", optimism: "optimism",
-  };
-
   for (const [, token] of uniqueTokens) {
     try {
-      const dexChain = DEXSCREENER_CHAINS[token.chain];
-      if (!dexChain) continue;
+      const pair = await dexScreenerFetch(token.chain, token.tokenAddress);
+      if (!pair) continue;
 
-      const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${token.tokenAddress}`);
-      if (!resp.ok) continue;
-
-      const pairs = (await resp.json()) as Array<{ priceUsd?: string; fdv?: number }>;
-      if (!Array.isArray(pairs) || pairs.length === 0) continue;
-
-      const priceUsd = parseFloat(pairs[0].priceUsd || "0");
-      const fdvUsd = pairs[0].fdv || 0;
+      const priceUsd = parseFloat(pair.priceUsd || "0");
+      const fdvUsd = pair.fdv || 0;
 
       if (priceUsd > 0) {
         updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
@@ -645,8 +625,6 @@ export async function updateHeldGemPrices(): Promise<void> {
           updated++;
         }
       }
-
-      await new Promise((r) => setTimeout(r, 1000)); // DexScreener: 60 req/min
     } catch {
       continue;
     }
