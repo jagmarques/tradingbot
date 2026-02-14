@@ -524,3 +524,7 @@ export function clearAnalysisCache(): void {
   analysisCache.clear();
   console.log("[Scheduler] Cleared analysis cache");
 }
+
+export function getCachedMarketAnalysis(marketId: string): AIAnalysis | null {
+  return getCachedAnalysis(marketId);
+}

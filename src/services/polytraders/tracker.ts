@@ -11,7 +11,10 @@ import { getChatId } from "../telegram/bot.js";
 import { parseDate, minutesUntil, hoursUntil } from "../../utils/dates.js";
 import { filterPolyCopy } from "../copy/filter.js";
 import { canTrade } from "../risk/manager.js";
-import { isLogOnlyMode } from "../aibetting/scheduler.js";
+import { isLogOnlyMode, getCachedMarketAnalysis } from "../aibetting/scheduler.js";
+import { fetchNewsForMarket } from "../aibetting/news.js";
+import { analyzeMarket } from "../aibetting/analyzer.js";
+import type { PolymarketEvent } from "../aibetting/types.js";
 
 const DATA_API_URL = "https://data-api.polymarket.com/v1";
 const GAMMA_API_URL = "https://gamma-api.polymarket.com";
@@ -376,6 +379,105 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number, slug?: s
   }
 }
 
+type GammaFullMarket = GammaMarketResult & {
+  question?: string;
+  description?: string;
+  category?: string;
+  outcomePrices?: string;
+};
+
+async function fetchFullMarketData(conditionId: string): Promise<PolymarketEvent | null> {
+  try {
+    const response = await fetch(`${GAMMA_API_URL}/markets?conditionId=${conditionId}`);
+    if (!response.ok) return null;
+    const markets = await response.json() as GammaFullMarket[];
+    const cid = conditionId.toLowerCase();
+    const market = markets.find(m => m.conditionId?.toLowerCase() === cid);
+    if (!market) return null;
+
+    const tokenIds = JSON.parse(market.clobTokenIds) as string[];
+    const prices = market.outcomePrices ? JSON.parse(market.outcomePrices) as string[] : [];
+
+    return {
+      conditionId: market.conditionId,
+      questionId: "",
+      slug: "",
+      title: market.question || "",
+      description: market.description || "",
+      category: (market.category?.toLowerCase() || "other") as PolymarketEvent["category"],
+      endDate: market.endDate || "",
+      volume24h: 0,
+      liquidity: 0,
+      outcomes: [
+        { tokenId: tokenIds[0] || "", name: "Yes", price: parseFloat(prices[0] || "0.5") },
+        { tokenId: tokenIds[1] || "", name: "No", price: parseFloat(prices[1] || "0.5") },
+      ],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function checkAIAgreement(
+  aiProb: number,
+  confidence: number,
+  tradeOutcome: string,
+  outcomeIndex: number
+): { approved: boolean; reason: string; aiProbability: number } {
+  const traderBetsYes = tradeOutcome.toUpperCase() === "YES" || outcomeIndex === 0;
+  const aiProb100 = (aiProb * 100).toFixed(0);
+  const conf100 = (confidence * 100).toFixed(0);
+
+  // AI agrees with trader direction
+  const aiAgreesYes = aiProb > 0.5;
+  if (traderBetsYes === aiAgreesYes) {
+    return { approved: true, reason: `AI agrees (${aiProb100}%)`, aiProbability: aiProb };
+  }
+
+  // AI is genuinely uncertain (45-55%)
+  if (aiProb >= 0.45 && aiProb <= 0.55) {
+    return { approved: true, reason: `AI neutral (${aiProb100}%)`, aiProbability: aiProb };
+  }
+
+  // AI disagrees - reject
+  return { approved: false, reason: `AI disagrees (${aiProb100}%, conf ${conf100}%)`, aiProbability: aiProb };
+}
+
+async function validateWithAI(
+  trade: TraderActivity,
+  conditionId: string
+): Promise<{ approved: boolean; reason: string; aiProbability?: number }> {
+  try {
+    // Check scheduler cache first (free, instant)
+    const cached = getCachedMarketAnalysis(conditionId);
+    if (cached) {
+      console.log(`[PolyTraders] AI cache hit: ${(cached.probability * 100).toFixed(0)}%`);
+      return checkAIAgreement(cached.probability, cached.confidence, trade.outcome, trade.outcomeIndex);
+    }
+
+    // Fetch full market data for analysis
+    const marketData = await fetchFullMarketData(conditionId);
+    if (!marketData || !marketData.title) {
+      return { approved: true, reason: "no market data for AI" };
+    }
+
+    // Fetch news (4h cached)
+    const news = await fetchNewsForMarket(marketData);
+
+    // Single fast deepseek-chat call
+    const analysis = await analyzeMarket(marketData, news, "deepseek-chat");
+    if (!analysis) {
+      return { approved: true, reason: "AI analysis failed" };
+    }
+
+    console.log(`[PolyTraders] AI analysis: ${(analysis.probability * 100).toFixed(0)}% conf=${(analysis.confidence * 100).toFixed(0)}%`);
+    return checkAIAgreement(analysis.probability, analysis.confidence, trade.outcome, trade.outcomeIndex);
+  } catch (error) {
+    console.warn("[PolyTraders] AI validation error:", error);
+    return { approved: true, reason: "AI error (allowing)" };
+  }
+}
+
 async function copyTrade(
   trade: TraderActivity,
   traderInfo: { name: string; pnl: number },
@@ -582,6 +684,21 @@ async function checkForNewTrades(): Promise<void> {
             skip("filter");
             console.log(`[PolyTraders] Filter rejected: ${filterResult.reason}`);
           } else {
+            // AI validation before copying
+            const aiResult = await validateWithAI(trade, trade.conditionId);
+            if (!aiResult.approved) {
+              if (isPaperMode()) {
+                // Paper mode: log but still copy to measure AI accuracy
+                console.log(`[PolyTraders] AI would reject (paper, copying anyway): ${aiResult.reason}`);
+              } else {
+                skip("ai_rejected");
+                console.log(`[PolyTraders] AI rejected: ${trade.title} - ${aiResult.reason}`);
+                continue;
+              }
+            } else {
+              console.log(`[PolyTraders] AI approved: ${aiResult.reason}`);
+            }
+
             const learnedMultiplier = getTraderMultiplierFromHistory(info.name);
             let finalSize = filterResult.recommendedSizeUsd;
             if (learnedMultiplier !== null) {
