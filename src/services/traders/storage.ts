@@ -239,6 +239,14 @@ export function getInsiderCount(): number {
   return row.count;
 }
 
+export function getGemHolderCount(symbol: string, chain: string): number {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT COUNT(DISTINCT wallet_address) as count FROM insider_gem_hits WHERE token_symbol = ? AND chain = ? AND status = 'holding'"
+  ).get(symbol, chain) as { count: number };
+  return row.count;
+}
+
 export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
   const db = getDb();
   db.prepare(
