@@ -4,7 +4,7 @@ import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWall
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground } from "./gem-analyzer.js";
-import { dexScreenerFetch } from "../shared/dexscreener.js";
+import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
   return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
@@ -604,29 +604,32 @@ export async function updateHeldGemPrices(): Promise<void> {
   console.log(`[InsiderScanner] Updating prices for ${uniqueTokens.size} held tokens`);
   let updated = 0;
 
+  // Batch fetch all prices at once
+  const tokenArray = Array.from(uniqueTokens.values()).map((t) => ({
+    chain: t.chain,
+    tokenAddress: t.tokenAddress,
+  }));
+  const priceMap = await dexScreenerFetchBatch(tokenArray);
+
   for (const [, token] of uniqueTokens) {
-    try {
-      const pair = await dexScreenerFetch(token.chain, token.tokenAddress);
-      if (!pair) continue;
+    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    if (!pair) continue;
 
-      const priceUsd = parseFloat(pair.priceUsd || "0");
-      const fdvUsd = pair.fdv || 0;
+    const priceUsd = parseFloat(pair.priceUsd || "0");
+    const fdvUsd = pair.fdv || 0;
 
-      if (priceUsd > 0) {
-        updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
+    if (priceUsd > 0) {
+      updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
+    }
+
+    if (fdvUsd > 0) {
+      const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+      const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
+      if (changeRatio > 0.1) {
+        updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
+        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd.toFixed(6)})`);
+        updated++;
       }
-
-      if (fdvUsd > 0) {
-        const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
-        const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
-        if (changeRatio > 0.1) {
-          updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
-          console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd.toFixed(6)})`);
-          updated++;
-        }
-      }
-    } catch {
-      continue;
     }
   }
 
