@@ -10,25 +10,16 @@ export const DEXSCREENER_CHAINS: Record<string, string> = {
   optimism: "optimism",
 };
 
-// GeckoTerminal network IDs for fallback
-const GECKO_NETWORK_IDS: Record<string, string> = {
-  ethereum: "eth",
-  base: "base",
-  arbitrum: "arbitrum",
-  polygon: "polygon_pos",
-  optimism: "optimism",
-};
-
 interface DexPair {
   priceUsd?: string;
   fdv?: number;
   liquidity?: { usd?: number };
   baseToken?: { symbol?: string };
+  chainId?: string;
 }
 
 export async function dexScreenerFetch(chain: string, tokenAddress: string): Promise<DexPair | null> {
-  const dexChain = DEXSCREENER_CHAINS[chain];
-  if (!dexChain || !tokenAddress) return null;
+  if (!tokenAddress) return null;
 
   // Queue to enforce rate limit across all callers
   const myTurn = dexFetchQueue.then(() =>
@@ -38,50 +29,18 @@ export async function dexScreenerFetch(chain: string, tokenAddress: string): Pro
   await myTurn;
 
   try {
-    const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${tokenAddress}`);
-    if (resp.ok) {
-      const pairs = (await resp.json()) as DexPair[];
-      if (Array.isArray(pairs) && pairs.length > 0) {
-        return pairs[0];
-      }
-    }
-  } catch {
-    // DexScreener failed, fall through to GeckoTerminal
-  }
+    // Use chain-agnostic endpoint - works for any token address across all chains
+    const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+    if (!resp.ok) return null;
 
-  // Fallback to GeckoTerminal when DexScreener returns no data
-  const geckoNetwork = GECKO_NETWORK_IDS[chain];
-  if (!geckoNetwork) return null;
+    const data = (await resp.json()) as { pairs?: DexPair[] };
+    const pairs = data.pairs;
+    if (!Array.isArray(pairs) || pairs.length === 0) return null;
 
-  try {
-    // Small delay to be respectful to GeckoTerminal
-    await new Promise<void>((r) => setTimeout(r, 500));
-
-    console.log(`[DexScreener] Fallback to GeckoTerminal for ${chain}/${tokenAddress.slice(0, 10)}...`);
-    const geckoResp = await fetch(
-      `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/tokens/${tokenAddress}`
-    );
-    if (!geckoResp.ok) return null;
-
-    const geckoData = (await geckoResp.json()) as {
-      data?: {
-        attributes?: {
-          price_usd?: string;
-          fdv_usd?: string;
-          symbol?: string;
-        };
-      };
-    };
-
-    const attrs = geckoData.data?.attributes;
-    if (!attrs?.price_usd) return null;
-
-    return {
-      priceUsd: attrs.price_usd,
-      fdv: attrs.fdv_usd ? parseFloat(attrs.fdv_usd) : undefined,
-      liquidity: undefined,
-      baseToken: attrs.symbol ? { symbol: attrs.symbol } : undefined,
-    };
+    // Prefer pair matching the expected chain, otherwise take highest liquidity
+    const dexChain = DEXSCREENER_CHAINS[chain];
+    const chainMatch = dexChain ? pairs.find((p) => p.chainId === dexChain) : null;
+    return chainMatch || pairs[0];
   } catch {
     return null;
   }
