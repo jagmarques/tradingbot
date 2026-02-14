@@ -511,49 +511,37 @@ async function _scanWalletHistoryInner(): Promise<void> {
       let checkedCount = 0;
       let newGemsCount = 0;
 
-      // Check each token on GeckoTerminal
-      const networkId = GECKO_NETWORK_IDS[wallet.chain];
+      const DEXSCREENER_CHAINS: Record<string, string> = {
+        ethereum: "ethereum", base: "base", arbitrum: "arbitrum", polygon: "polygon", optimism: "optimism",
+      };
+      const dexChain = DEXSCREENER_CHAINS[wallet.chain];
+
       for (const [tokenAddress, tokenInfo] of newTokens) {
         try {
-          const geckoUrl = `${GECKO_BASE}/networks/${networkId}/tokens/${tokenAddress}`;
-          const geckoResponse = await geckoRateLimitedFetch(geckoUrl);
-
+          if (!dexChain) continue;
+          const dexResp = await fetch(`https://api.dexscreener.com/tokens/v1/${dexChain}/${tokenAddress}`);
           checkedCount++;
 
-          if (!geckoResponse.ok) {
-            // Token doesn't exist on GeckoTerminal, skip
-            continue;
-          }
+          if (!dexResp.ok) continue;
 
-          const geckoData = (await geckoResponse.json()) as {
-            data: {
-              attributes: {
-                symbol: string;
-                fdv_usd: string;
-                volume_usd: { h24: string };
-                price_usd: string;
-                total_reserve_in_usd: string;
-              };
-            };
-          };
+          const pairs = (await dexResp.json()) as Array<{ baseToken?: { symbol?: string }; fdv?: number; liquidity?: { usd?: number }; priceUsd?: string }>;
+          if (!Array.isArray(pairs) || pairs.length === 0) continue;
 
-          const fdvUsd = parseFloat(geckoData.data.attributes.fdv_usd || "0");
-          const reserveUsd = parseFloat(geckoData.data.attributes.total_reserve_in_usd || "0");
+          const fdvUsd = pairs[0].fdv || 0;
+          const reserveUsd = pairs[0].liquidity?.usd || 0;
 
-          // FDV or liquidity must qualify
           if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) {
             continue;
           }
 
-          // Pump multiple from FDV ratio
           const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+          const symbol = pairs[0].baseToken?.symbol || tokenInfo.symbol;
 
-          // Store as gem hit
           const hit: GemHit = {
             walletAddress: wallet.address,
             chain: wallet.chain,
             tokenAddress,
-            tokenSymbol: stripEmoji(geckoData.data.attributes.symbol || tokenInfo.symbol),
+            tokenSymbol: stripEmoji(symbol),
             buyTxHash: "",
             buyTimestamp: tokenInfo.firstTx,
             buyBlockNumber: 0,
@@ -561,8 +549,9 @@ async function _scanWalletHistoryInner(): Promise<void> {
           };
           upsertGemHit(hit);
           newGemsCount++;
+
+          await new Promise((r) => setTimeout(r, 1000)); // DexScreener: 60 req/min
         } catch {
-          // Skip individual token errors, continue scanning
           continue;
         }
       }
