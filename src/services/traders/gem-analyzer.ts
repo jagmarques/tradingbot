@@ -172,9 +172,9 @@ export async function paperBuyGems(
     const failures = priceFetchFailures.get(failKey) ?? 0;
     if (failures >= MAX_PRICE_FAILURES) continue;
 
-    // Fetch USD price from DexScreener (shared rate limiter)
     const pair = await dexScreenerFetch(token.chain, token.tokenAddress);
     const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    const liquidityUsd = pair?.liquidity?.usd ?? 0;
 
     if (priceUsd <= 0) {
       const newFails = failures + 1;
@@ -185,7 +185,11 @@ export async function paperBuyGems(
       continue;
     }
 
-    // Clear failure count on success
+    if (liquidityUsd < 1000) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $1000 (likely clone)`);
+      continue;
+    }
+
     priceFetchFailures.delete(failKey);
 
     insertGemPaperTrade({
