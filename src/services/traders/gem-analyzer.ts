@@ -161,6 +161,10 @@ const DEXSCREENER_CHAIN_MAP: Record<string, string> = {
   optimism: "optimism",
 };
 
+// Track tokens that repeatedly fail price fetch - stop retrying after MAX_PRICE_FAILURES
+const MAX_PRICE_FAILURES = 3;
+const priceFetchFailures = new Map<string, number>();
+
 export async function paperBuyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
@@ -170,6 +174,10 @@ export async function paperBuyGems(
     if (token.score < 80) continue;
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing) continue;
+
+    const failKey = `${token.symbol}_${token.chain}`;
+    const failures = priceFetchFailures.get(failKey) ?? 0;
+    if (failures >= MAX_PRICE_FAILURES) continue;
 
     // Fetch USD price from DexScreener
     let priceUsd = 0;
@@ -188,9 +196,16 @@ export async function paperBuyGems(
     }
 
     if (priceUsd <= 0) {
-      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - no price available, will retry`);
+      const newFails = failures + 1;
+      priceFetchFailures.set(failKey, newFails);
+      if (newFails >= MAX_PRICE_FAILURES) {
+        console.log(`[GemAnalyzer] Giving up on ${token.symbol} (${token.chain}) - no price after ${MAX_PRICE_FAILURES} attempts`);
+      }
       continue;
     }
+
+    // Clear failure count on success
+    priceFetchFailures.delete(failKey);
 
     insertGemPaperTrade({
       tokenSymbol: token.symbol,
