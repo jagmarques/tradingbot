@@ -1,9 +1,9 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, getCachedGemAnalysis, getGemPaperTrade, closeGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
-import { analyzeGemsBackground, revalidateHeldGems } from "./gem-analyzer.js";
+import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
@@ -538,6 +538,15 @@ export async function enrichInsiderPnl(): Promise<void> {
         const pnl = await getWalletTokenPnl(hit.walletAddress, hit.tokenAddress, hit.chain);
         updateGemHitPnl(hit.walletAddress, hit.tokenAddress, hit.chain, pnl.buyTokens, pnl.sellTokens, pnl.status, pnl.buyDate, pnl.sellDate);
         console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
+
+        // Auto-close paper trade when insider sells
+        if (pnl.status === "sold" || pnl.status === "transferred") {
+          const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
+          if (paperTrade && paperTrade.status === "open") {
+            closeGemPaperTrade(hit.tokenSymbol, hit.chain);
+            console.log(`[InsiderScanner] Auto-close paper trade: ${hit.tokenSymbol} (insider ${pnl.status})`);
+          }
+        }
       } catch (err) {
         console.error(`[InsiderScanner] P&L enrichment failed for ${hit.tokenSymbol}:`, err);
       }
@@ -582,10 +591,6 @@ export async function updateHeldGemPrices(): Promise<void> {
 
     const priceUsd = parseFloat(pair.priceUsd || "0");
     const fdvUsd = pair.fdv || 0;
-
-    if (priceUsd > 0) {
-      updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
-    }
 
     if (fdvUsd > 0) {
       const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
@@ -724,6 +729,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   // Update held gem prices (non-blocking)
   updateHeldGemPrices().catch(err => {
     console.error("[InsiderScanner] Held gem price update error:", err);
+  });
+
+  // Refresh gem paper trade prices (non-blocking)
+  refreshGemPaperPrices().catch(err => {
+    console.error("[InsiderScanner] Paper price refresh error:", err);
   });
 
   // Revalidate held gems for liquidity rugs (non-blocking)
