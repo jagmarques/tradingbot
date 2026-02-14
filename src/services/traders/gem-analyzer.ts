@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, type GemAnalysis } from "./storage.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
@@ -289,5 +289,41 @@ export async function revalidateHeldGems(): Promise<void> {
       closeGemPaperTrade(token.symbol, token.chain);
       console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $500 (rug)`);
     }
+  }
+}
+
+export async function refreshGemPaperPrices(): Promise<void> {
+  const openTrades = getOpenGemPaperTrades();
+  if (openTrades.length === 0) return;
+
+  // Look up token addresses
+  const tokensToFetch: Array<{ chain: string; tokenAddress: string; symbol: string }> = [];
+  for (const trade of openTrades) {
+    const tokenAddress = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
+    if (tokenAddress) {
+      tokensToFetch.push({ chain: trade.chain, tokenAddress, symbol: trade.tokenSymbol });
+    }
+  }
+
+  if (tokensToFetch.length === 0) return;
+
+  // Batch-fetch prices
+  const priceMap = await dexScreenerFetchBatch(tokensToFetch);
+
+  // Update prices in database
+  let updated = 0;
+  for (const token of tokensToFetch) {
+    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    if (!pair) continue;
+
+    const priceUsd = parseFloat(pair.priceUsd || "0");
+    if (priceUsd > 0) {
+      updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
+      updated++;
+    }
+  }
+
+  if (updated > 0) {
+    console.log(`[GemAnalyzer] Refreshed prices for ${updated} open paper trades`);
   }
 }

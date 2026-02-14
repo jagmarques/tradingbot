@@ -28,7 +28,7 @@ import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/ex
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getGemPaperTrade, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
-import { analyzeGemsBackground } from "../traders/gem-analyzer.js";
+import { analyzeGemsBackground, refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -486,6 +486,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     message += `Crypto Copy: ${cryptoCopyPositions.length} open${cryptoCopyPositions.length > 0 ? ` | ${cryptoInvested.toFixed(4)} ETH invested` : ""}\n`;
 
     // Gem paper trades
+    try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
     const gemPaperTrades = getOpenGemPaperTrades();
     if (gemPaperTrades.length > 0) {
       const gemInvested = gemPaperTrades.reduce((sum, t) => sum + t.amountUsd, 0);
@@ -652,6 +653,7 @@ async function handleTrades(ctx: Context): Promise<void> {
     }
 
     // Gem paper trades
+    try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
     const gemPaperTrades = getOpenGemPaperTrades();
     if (gemPaperTrades.length > 0) {
       const totalInvested = gemPaperTrades.reduce((s, t) => s + t.amountUsd, 0);
