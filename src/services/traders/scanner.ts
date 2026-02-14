@@ -35,11 +35,11 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-// GeckoTerminal: only used for pool discovery (~12 calls/cycle), 5s between calls
+// GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented)
 let geckoQueue: Promise<void> = Promise.resolve();
 
 async function geckoRateLimitedFetch(url: string): Promise<Response> {
-  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 5000)));
+  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 10_000)));
   geckoQueue = myTurn;
   await myTurn;
   return fetch(url);
