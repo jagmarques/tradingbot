@@ -410,3 +410,11 @@ export function closeGemPaperTrade(symbol: string, chain: string): void {
 
   db.prepare("UPDATE insider_gem_paper_trades SET status = 'closed' WHERE id = ?").run(id);
 }
+
+export function getTokenAddressForGem(symbol: string, chain: string): string | null {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT token_address FROM insider_gem_hits WHERE token_symbol = ? AND chain = ? LIMIT 1"
+  ).get(symbol, chain) as { token_address: string } | undefined;
+  return row?.token_address ?? null;
+}

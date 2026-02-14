@@ -3,7 +3,7 @@ import { INSIDER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, updateGemPaperTradePrice, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
-import { analyzeGemsBackground } from "./gem-analyzer.js";
+import { analyzeGemsBackground, revalidateHeldGems } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
@@ -724,6 +724,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   // Update held gem prices (non-blocking)
   updateHeldGemPrices().catch(err => {
     console.error("[InsiderScanner] Held gem price update error:", err);
+  });
+
+  // Revalidate held gems for liquidity rugs (non-blocking)
+  revalidateHeldGems().catch(err => {
+    console.error("[InsiderScanner] Revalidation error:", err);
   });
 
   // Auto-score and paper-buy unscored or unbought held gems (non-blocking)
