@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemPaperTrade, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getGemPaperTrade, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { analyzeGemsBackground } from "../traders/gem-analyzer.js";
 
@@ -662,7 +662,9 @@ async function handleTrades(ctx: Context): Promise<void> {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
         const scoreStr = t.aiScore != null ? ` | Score: ${t.aiScore}` : "";
-        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr})\n`;
+        const holders = getGemHolderCount(t.tokenSymbol, t.chain);
+        const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
+        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
