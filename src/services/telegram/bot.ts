@@ -476,18 +476,22 @@ async function handleStatus(ctx: Context): Promise<void> {
     message += `P&L: ${pnlSign}$${status.dailyPnl.toFixed(2)} (${todayTrades.length} trades)\n\n`;
 
     const logOnly = schedulerStatus.logOnly ? " | Log-only" : "";
+    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
     const aiPnlStr = openBets.length > 0 ? ` | ${aiBetUnrealized >= 0 ? "+" : ""}$${aiBetUnrealized.toFixed(2)}` : "";
-    message += `AI Betting: ${schedulerStatus.analysisCacheSize} cached | ${openBets.length} open${aiPnlStr}${logOnly}\n`;
+    message += `AI Betting: ${openBets.length} open | $${aiInvested.toFixed(2)} invested${aiPnlStr}${logOnly}\n`;
+    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
     const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
-    message += `Poly Copy: ${polyStats.openPositions} open${copyPnlStr} | $${polyStats.totalPnl.toFixed(2)} realized\n`;
-    message += `Crypto Copy: ${cryptoCopyPositions.length} open\n`;
+    message += `Poly Copy: ${polyStats.openPositions} open | $${copyInvested.toFixed(2)} invested${copyPnlStr}\n`;
+    const cryptoInvested = cryptoCopyPositions.reduce((sum, p) => sum + p.entryAmountNative, 0);
+    message += `Crypto Copy: ${cryptoCopyPositions.length} open${cryptoCopyPositions.length > 0 ? ` | ${cryptoInvested.toFixed(4)} ETH invested` : ""}\n`;
 
     // Gem paper trades
     const gemPaperTrades = getOpenGemPaperTrades();
     if (gemPaperTrades.length > 0) {
+      const gemInvested = gemPaperTrades.reduce((sum, t) => sum + t.amountUsd, 0);
       const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
       const gemSign = gemTotalPnl >= 0 ? "+" : "";
-      message += `Gem Paper: ${gemPaperTrades.length} open | ${gemSign}$${gemTotalPnl.toFixed(2)}\n`;
+      message += `Gem Paper: ${gemPaperTrades.length} open | $${gemInvested.toFixed(2)} invested | ${gemSign}$${gemTotalPnl.toFixed(2)}\n`;
     }
 
     if (status.pauseReason) {
