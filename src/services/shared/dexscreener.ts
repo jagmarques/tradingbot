@@ -7,6 +7,8 @@ const CHAINS: Record<string, string> = {
   arbitrum: "arbitrum",
   polygon: "polygon",
   optimism: "optimism",
+  avalanche: "avalanche",
+  solana: "solana",
 };
 
 export interface DexPair {
@@ -76,7 +78,9 @@ export async function dexScreenerFetchBatch(
         if (!Array.isArray(pairs)) continue;
 
         for (const pair of pairs) {
-          const addr = pair.baseToken?.address?.toLowerCase();
+          // Solana addresses are base58 (case-sensitive), EVM addresses should be lowercased
+          const raw = pair.baseToken?.address;
+          const addr = raw ? (chain === "solana" ? raw : raw.toLowerCase()) : undefined;
           if (addr && !result.has(addr)) result.set(addr, pair);
         }
       } catch {

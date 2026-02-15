@@ -3,6 +3,8 @@ import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
+import { executeJupiterSwap, executeJupiterSell } from "../solana/jupiter.js";
+import { getSolBalance } from "../solana/wallet.js";
 import type { Chain } from "./types.js";
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
@@ -12,6 +14,7 @@ const GOPLUS_CHAIN_IDS: Record<string, string> = {
   polygon: "137",
   optimism: "10",
   avalanche: "43114",
+  solana: "solana",
 };
 
 export async function fetchGoPlusData(tokenAddress: string, chain: string): Promise<Record<string, unknown> | null> {
@@ -236,6 +239,39 @@ export async function buyGems(
       console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
     } else {
       // Live mode - execute on-chain buy
+      if (token.chain === "solana") {
+        // Solana live buy via Jupiter
+        const solBalance = await getSolBalance();
+        if (solBalance < 10_000_000n) { // 0.01 SOL minimum
+          console.log(`[GemTrader] LIVE: Skip ${token.symbol} - insufficient SOL`);
+          continue;
+        }
+        const solPrice = getApproxUsdValue(1, "solana");
+        const amountSol = 10 / solPrice; // $10 in SOL
+        const result = await executeJupiterSwap(token.tokenAddress, amountSol, 100);
+        if (result.success) {
+          insertGemPaperTrade({
+            tokenSymbol: token.symbol,
+            chain: token.chain,
+            buyTimestamp: Date.now(),
+            amountUsd: 10,
+            pnlPct: 0,
+            aiScore: token.score,
+            status: "open",
+            buyPriceUsd: priceUsd,
+            currentPriceUsd: priceUsd,
+            txHash: result.signature,
+            tokensReceived: result.tokensReceived,
+            isLive: true,
+          });
+          console.log(`[GemTrader] LIVE BUY: ${token.symbol} (solana) tx=${result.signature}`);
+        } else {
+          console.log(`[GemTrader] LIVE BUY FAILED: ${token.symbol} (solana) - ${result.error}`);
+        }
+        continue;
+      }
+
+      // EVM live buy via 1inch
       if (!isChainSupported(token.chain as Chain)) {
         console.log(`[GemTrader] LIVE: Skip ${token.symbol} - chain ${token.chain} not supported by 1inch`);
         continue;
@@ -295,6 +331,20 @@ export async function sellGemPosition(symbol: string, chain: string): Promise<vo
     return;
   }
 
+  // Solana live sell via Jupiter
+  if (chain === "solana" && trade.tokensReceived) {
+    const result = await executeJupiterSell(tokenAddress, trade.tokensReceived);
+    if (result.success) {
+      closeGemPaperTrade(symbol, chain, result.signature);
+      console.log(`[GemTrader] LIVE SELL: ${symbol} (solana) tx=${result.signature}`);
+    } else {
+      closeGemPaperTrade(symbol, chain);
+      console.log(`[GemTrader] LIVE SELL FAILED: ${symbol} (solana) - ${result.error}`);
+    }
+    return;
+  }
+
+  // EVM live sell via 1inch
   const result = await approveAndSell1inch(chain as Chain, tokenAddress, 3);
 
   if (result.success) {
@@ -355,7 +405,8 @@ export async function revalidateHeldGems(): Promise<void> {
 
   // Auto-close trades with low liquidity
   for (const token of tokensToCheck) {
-    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const pair = priceMap.get(addrKey);
     if (!pair) continue;
 
     const liquidityUsd = pair.liquidity?.usd ?? 0;
@@ -387,7 +438,8 @@ export async function refreshGemPaperPrices(): Promise<void> {
   // Update prices in database
   let updated = 0;
   for (const token of tokensToFetch) {
-    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const pair = priceMap.get(addrKey);
     if (!pair) continue;
 
     const priceUsd = parseFloat(pair.priceUsd || "0");

@@ -767,6 +767,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
       ],
+      [
+        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
+      ],
     ];
 
     const heldGems = getAllHeldGemHits(chain);
@@ -992,6 +995,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
+      ],
+      [
+        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
       ],
     ];
     const backButton = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
