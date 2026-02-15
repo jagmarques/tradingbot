@@ -92,6 +92,12 @@ export function initInsiderTables(): void {
   // Delete paper trades with no buy price (failed price fetch)
   db.exec("DELETE FROM insider_gem_paper_trades WHERE buy_price_usd = 0 OR buy_price_usd IS NULL");
 
+  // Add live trade columns (safe if already exist)
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN tokens_received TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
+
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
@@ -323,6 +329,10 @@ export interface GemPaperTrade {
   status: "open" | "closed";
   buyPriceUsd: number;
   currentPriceUsd: number;
+  txHash?: string | null;
+  tokensReceived?: string | null;
+  sellTxHash?: string | null;
+  isLive?: boolean;
 }
 
 export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
@@ -333,8 +343,8 @@ export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
     INSERT OR IGNORE INTO insider_gem_paper_trades (
       id, token_symbol, chain, buy_pump_multiple, current_pump_multiple,
       buy_timestamp, amount_usd, pnl_pct, ai_score, status,
-      buy_price_usd, current_price_usd
-    ) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
+      buy_price_usd, current_price_usd, tx_hash, tokens_received, is_live
+    ) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     trade.tokenSymbol,
@@ -345,7 +355,10 @@ export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
     trade.aiScore,
     trade.status,
     trade.buyPriceUsd,
-    trade.currentPriceUsd
+    trade.currentPriceUsd,
+    trade.txHash ?? null,
+    trade.tokensReceived ?? null,
+    trade.isLive ? 1 : 0
   );
 }
 
@@ -367,6 +380,10 @@ export function getGemPaperTrade(symbol: string, chain: string): GemPaperTrade |
     status: row.status as "open" | "closed",
     buyPriceUsd: (row.buy_price_usd as number) || 0,
     currentPriceUsd: (row.current_price_usd as number) || 0,
+    txHash: (row.tx_hash as string) || null,
+    tokensReceived: (row.tokens_received as string) || null,
+    sellTxHash: (row.sell_tx_hash as string) || null,
+    isLive: (row.is_live as number) === 1,
   };
 }
 
@@ -386,6 +403,10 @@ export function getOpenGemPaperTrades(): GemPaperTrade[] {
     status: row.status as "open" | "closed",
     buyPriceUsd: (row.buy_price_usd as number) || 0,
     currentPriceUsd: (row.current_price_usd as number) || 0,
+    txHash: (row.tx_hash as string) || null,
+    tokensReceived: (row.tokens_received as string) || null,
+    sellTxHash: (row.sell_tx_hash as string) || null,
+    isLive: (row.is_live as number) === 1,
   }));
 }
 
@@ -404,11 +425,15 @@ export function updateGemPaperTradePrice(symbol: string, chain: string, currentP
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
 }
 
-export function closeGemPaperTrade(symbol: string, chain: string): void {
+export function closeGemPaperTrade(symbol: string, chain: string, sellTxHash?: string): void {
   const db = getDb();
   const id = `${symbol.toLowerCase()}_${chain}`;
 
-  db.prepare("UPDATE insider_gem_paper_trades SET status = 'closed' WHERE id = ?").run(id);
+  if (sellTxHash) {
+    db.prepare("UPDATE insider_gem_paper_trades SET status = 'closed', sell_tx_hash = ? WHERE id = ?").run(sellTxHash, id);
+  } else {
+    db.prepare("UPDATE insider_gem_paper_trades SET status = 'closed' WHERE id = ?").run(id);
+  }
 }
 
 export function getTokenAddressForGem(symbol: string, chain: string): string | null {
