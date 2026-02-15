@@ -33,7 +33,7 @@ import { analyzeGemsBackground, refreshGemPaperPrices } from "../traders/gem-ana
 let bot: Bot | null = null;
 let chatId: string | null = null;
 let lastMenuMessageId: number | null = null;
-let lastDataMessageId: number | null = null;
+const dataMessageIds: number[] = [];
 let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
 let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
@@ -361,7 +361,7 @@ export async function sendMainMenu(): Promise<void> {
   try {
     const toDelete: number[] = [];
     if (lastMenuMessageId) toDelete.push(lastMenuMessageId);
-    if (lastDataMessageId) toDelete.push(lastDataMessageId);
+    toDelete.push(...dataMessageIds);
     if (lastPromptMessageId) toDelete.push(lastPromptMessageId);
     if (lastTimezonePromptId) toDelete.push(lastTimezonePromptId);
     toDelete.push(...alertMessageIds);
@@ -372,7 +372,7 @@ export async function sendMainMenu(): Promise<void> {
     Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
 
     lastMenuMessageId = null;
-    lastDataMessageId = null;
+    dataMessageIds.length = 0;
     lastPromptMessageId = null;
     lastTimezonePromptId = null;
     alertMessageIds.length = 0;
@@ -389,20 +389,65 @@ export async function sendMainMenu(): Promise<void> {
   }
 }
 
+function splitLongMessage(text: string): string[] {
+  const MAX_LEN = 4096;
+  if (text.length <= MAX_LEN) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= MAX_LEN) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Find last newline within the limit
+    let splitAt = remaining.lastIndexOf("\n", MAX_LEN);
+    if (splitAt <= 0) {
+      // No newline found, hard-split at limit
+      splitAt = MAX_LEN;
+    }
+
+    let chunk = remaining.slice(0, splitAt);
+    remaining = remaining.slice(splitAt).replace(/^\n/, "");
+
+    // Handle unclosed <b> tags: count opens vs closes
+    const opens = (chunk.match(/<b>/g) || []).length;
+    const closes = (chunk.match(/<\/b>/g) || []).length;
+    if (opens > closes) {
+      chunk += "</b>";
+      remaining = "<b>" + remaining;
+    }
+
+    chunks.push(chunk);
+  }
+
+  return chunks;
+}
+
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
-    if (lastDataMessageId) {
-      await bot.api.deleteMessage(chatId, lastDataMessageId).catch(() => {});
+    // Delete all previous data messages
+    for (const id of dataMessageIds) {
+      await bot.api.deleteMessage(chatId, id).catch(() => {});
     }
-    const options: { parse_mode: "HTML"; reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] } } = {
-      parse_mode: "HTML",
-    };
-    if (inlineKeyboard) {
-      options.reply_markup = { inline_keyboard: inlineKeyboard };
+    dataMessageIds.length = 0;
+
+    const chunks = splitLongMessage(text);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const isLast = i === chunks.length - 1;
+      const options: { parse_mode: "HTML"; reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] } } = {
+        parse_mode: "HTML",
+      };
+      if (isLast && inlineKeyboard) {
+        options.reply_markup = { inline_keyboard: inlineKeyboard };
+      }
+      const msg = await bot.api.sendMessage(chatId, chunks[i], options);
+      dataMessageIds.push(msg.message_id);
     }
-    const msg = await bot.api.sendMessage(chatId, text, options);
-    lastDataMessageId = msg.message_id;
   } catch (err) {
     console.error("[Telegram] Failed to send data message:", err);
   }
@@ -645,10 +690,9 @@ async function handleTrades(ctx: Context): Promise<void> {
     // Crypto copy positions
     if (cryptoCopyPositions.length > 0) {
       message += `<b>Crypto Copy</b> (${cryptoCopyPositions.length} open)\n`;
-      for (const pos of cryptoCopyPositions.slice(0, 5)) {
+      for (const pos of cryptoCopyPositions) {
         message += `  ${pos.tokenSymbol} (${pos.chain}): ${pos.entryAmountNative.toFixed(4)} native\n`;
       }
-      if (cryptoCopyPositions.length > 5) message += `  ...and ${cryptoCopyPositions.length - 5} more\n`;
       message += `\n`;
     }
 
@@ -660,7 +704,7 @@ async function handleTrades(ctx: Context): Promise<void> {
       const totalPnlUsd = gemPaperTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
       const totalSign = totalPnlUsd >= 0 ? "+" : "";
       message += `<b>Gem Paper</b> (${gemPaperTrades.length} open | $${totalInvested.toFixed(0)} invested | ${totalSign}$${totalPnlUsd.toFixed(2)})\n`;
-      for (const t of gemPaperTrades.slice(0, 10)) {
+      for (const t of gemPaperTrades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
         const scoreStr = t.aiScore != null ? ` | Score: ${t.aiScore}` : "";
@@ -670,15 +714,13 @@ async function handleTrades(ctx: Context): Promise<void> {
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
-      if (gemPaperTrades.length > 10) message += `  ...and ${gemPaperTrades.length - 10} more\n`;
       message += `\n`;
     }
 
     // Recent trades
     if (trades.length > 0) {
-      const recentTrades = trades.slice(-10);
       message += `<b>Today</b> (${trades.length} trades)\n`;
-      for (const trade of recentTrades) {
+      for (const trade of trades) {
         const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
         const time = new Date(trade.timestamp).toLocaleTimeString();
         message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
@@ -1055,11 +1097,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
           totalPnl += pnl;
         }
 
-        const titleShort = bet.marketTitle.length > 35
-          ? bet.marketTitle.slice(0, 35) + "..."
-          : bet.marketTitle;
-
-        positionLines += `<b>${titleShort}</b>\n`;
+        positionLines += `<b>${bet.marketTitle}</b>\n`;
         positionLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
 
         if (currentPrice !== null) {
@@ -1080,7 +1118,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       message += positionLines;
 
     } else if (tab === "closed") {
-      const closedBets = loadClosedPositions(10);
+      const closedBets = loadClosedPositions(1000);
       const aiStats = getBettingStats();
 
       if (closedBets.length === 0) {
@@ -1097,9 +1135,6 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       let closedLines = "";
 
       for (const bet of closedBets) {
-        const titleShort = bet.marketTitle.length > 35
-          ? bet.marketTitle.slice(0, 35) + "..."
-          : bet.marketTitle;
         const pnl = bet.pnl ?? 0;
         const pnlPct = bet.size > 0 ? (pnl / bet.size) * 100 : 0;
         const pnlSign = pnl >= 0 ? "+" : "";
@@ -1110,7 +1145,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         closedTotalInvested += bet.size;
         closedTotalPnl += pnl;
 
-        closedLines += `<b>${titleShort}</b>\n`;
+        closedLines += `<b>${bet.marketTitle}</b>\n`;
         closedLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
         if (bet.exitPrice !== undefined) {
           closedLines += ` -> ${(bet.exitPrice * 100).toFixed(0)}c`;
@@ -1147,11 +1182,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       let copyLines = "";
 
       for (const pos of positionsWithValues) {
-        const titleShort = pos.marketTitle.length > 35
-          ? pos.marketTitle.slice(0, 35) + "..."
-          : pos.marketTitle;
-
-        copyLines += `<b>${titleShort}</b>\n`;
+        copyLines += `<b>${pos.marketTitle}</b>\n`;
         copyLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
 
         if (pos.currentPrice !== null) {
@@ -1176,7 +1207,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
 
     } else {
       // Copy Closed tab
-      const closedCopies = getClosedCopiedPositions(10);
+      const closedCopies = getClosedCopiedPositions(1000);
       const polyStats = getCopyStats();
 
       if (closedCopies.length === 0) {
@@ -1194,9 +1225,6 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       let copyClosedLines = "";
 
       for (const pos of closedCopies) {
-        const titleShort = pos.marketTitle.length > 35
-          ? pos.marketTitle.slice(0, 35) + "..."
-          : pos.marketTitle;
         const pnl = pos.pnl ?? 0;
         const pnlPct = pos.size > 0 ? (pnl / pos.size) * 100 : 0;
         const pnlSign = pnl >= 0 ? "+" : "";
@@ -1207,7 +1235,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         copyClosedInvested += pos.size;
         copyClosedPnl += pnl;
 
-        copyClosedLines += `<b>${titleShort}</b>\n`;
+        copyClosedLines += `<b>${pos.marketTitle}</b>\n`;
         copyClosedLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
         if (pos.exitPrice !== undefined) {
           copyClosedLines += ` -> ${(pos.exitPrice * 100).toFixed(0)}c`;
@@ -1429,7 +1457,7 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Closed: ${copyStats.closedPositions}
 - Win rate: ${copyStats.winRate.toFixed(1)}%
 - Total PnL: $${copyStats.totalPnl.toFixed(2)}
-${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p => `  - ${p.marketTitle.slice(0, 40)}... $${p.size} @ ${(p.entryPrice * 100).toFixed(0)}c (copying ${p.traderName})`).join("\n")}` : ""}
+${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p => `  - ${p.marketTitle} $${p.size} @ ${(p.entryPrice * 100).toFixed(0)}c (copying ${p.traderName})`).join("\n")}` : ""}
 
 === AI BETTING (Polymarket) ===
 - Running: ${schedulerStatus.running}
@@ -1446,12 +1474,12 @@ ${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p 
 
 === OPEN POLYMARKET POSITIONS ===
 ${openPositions.length === 0 ? "None" : openPositions.map(p =>
-  `- ${p.marketTitle.slice(0, 50)}...\n  ${p.side} @ ${(p.entryPrice * 100).toFixed(0)}c, $${p.size.toFixed(2)}, AI:${(p.aiProbability * 100).toFixed(0)}%`
+  `- ${p.marketTitle}\n  ${p.side} @ ${(p.entryPrice * 100).toFixed(0)}c, $${p.size.toFixed(2)}, AI:${(p.aiProbability * 100).toFixed(0)}%`
 ).join("\n")}
 
 === RECENT BET OUTCOMES ===
-${recentOutcomes.length === 0 ? "None yet" : recentOutcomes.slice(0, 5).map(o =>
-  `- ${o.actualOutcome.toUpperCase()}: ${o.marketTitle.slice(0, 35)}... $${o.pnl.toFixed(2)}`
+${recentOutcomes.length === 0 ? "None yet" : recentOutcomes.map(o =>
+  `- ${o.actualOutcome.toUpperCase()}: ${o.marketTitle} $${o.pnl.toFixed(2)}`
 ).join("\n")}
 
 === TODAY'S TRADES ===
@@ -1479,10 +1507,9 @@ Be concise. Answer based on the data above. If asked about something not in the 
       lastAIQuestionId = null;
     }
 
-    // Send response with Back button (telegram has 4096 char limit)
-    const truncated = response.length > 4000 ? response.slice(0, 4000) + "..." : response;
+    // Send response with Back button (sendDataMessage handles splitting)
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(truncated, backButton);
+    await sendDataMessage(response, backButton);
   } catch (error) {
     // Always stop animation on error
     await hideThinking();
