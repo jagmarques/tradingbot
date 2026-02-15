@@ -220,7 +220,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
 export function getAllHeldGemHits(chain?: string): GemHit[] {
   const db = getDb();
-  let query = "SELECT * FROM insider_gem_hits WHERE (status = 'holding' OR status IS NULL)";
+  let query = "SELECT * FROM insider_gem_hits WHERE (status = 'holding' OR status = 'unknown' OR status IS NULL)";
   const params: unknown[] = [];
   if (chain) {
     query += " AND chain = ?";

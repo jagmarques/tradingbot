@@ -851,7 +851,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
 
       alive.sort((a, b) => b.currentPump - a.currentPump || b.holders - a.holders || b.launchTs - a.launchTs);
 
-      const tokenBlocks = alive.slice(0, 20).map((t) => {
+      const tokenBlocks = alive.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
       });
@@ -950,7 +950,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         return b.holders - a.holders || a.currentPump - b.currentPump;
       });
 
-      const tokenBlocks = scoredOpps.slice(0, 20).map((t) => {
+      const tokenBlocks = scoredOpps.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         let block = "";
         if (t.aiScore !== undefined) {
