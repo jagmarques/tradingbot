@@ -3,8 +3,8 @@ import type { ParsedTransactionWithMeta } from "@solana/web3.js";
 import { getConnection } from "./wallet.js";
 import { KNOWN_EXCHANGES } from "../traders/types.js";
 
-// Rate limit: 200ms between RPC calls (5 RPS, well under Alchemy's 25 RPS)
-const RPC_INTERVAL_MS = 200;
+// 500ms between RPC calls (2 RPS, safe for Alchemy free tier 330 CU/s)
+const RPC_INTERVAL_MS = 500;
 let rpcQueue: Promise<void> = Promise.resolve();
 
 async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
@@ -12,6 +12,12 @@ async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
   rpcQueue = myTurn;
   await myTurn;
   return fn();
+}
+
+const BASE58_CHARS = /^[1-9A-HJ-NP-Za-km-z]+$/;
+
+function isValidSolanaAddress(addr: string): boolean {
+  return typeof addr === "string" && addr.length >= 32 && addr.length <= 44 && BASE58_CHARS.test(addr);
 }
 
 const SOLANA_STABLECOINS = new Set([
@@ -69,6 +75,10 @@ function getTokenChanges(
 
 export async function findSolanaEarlyBuyers(tokenMint: string): Promise<string[]> {
   try {
+    if (!isValidSolanaAddress(tokenMint)) {
+      console.warn(`[SolanaInsider] Invalid token mint: ${tokenMint.slice(0, 12)}`);
+      return [];
+    }
     const connection = getConnection();
     const mintPubkey = new PublicKey(tokenMint);
 
@@ -133,6 +143,10 @@ export async function getSolanaWalletTokenStatus(
   buyDate: number;
   sellDate: number;
 }> {
+  if (!isValidSolanaAddress(walletAddress) || !isValidSolanaAddress(tokenMint)) {
+    console.warn(`[SolanaInsider] Invalid address: wallet=${walletAddress.slice(0, 12)} mint=${tokenMint.slice(0, 12)}`);
+    return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
+  }
   let currentBalance = 0;
   let buyTokens = 0;
   let sellTokens = 0;
@@ -207,6 +221,10 @@ export async function getSolanaWalletTokenStatus(
 export async function scanSolanaWalletHistory(
   walletAddress: string
 ): Promise<Array<{ tokenAddress: string; symbol: string; firstTx: number }>> {
+  if (!isValidSolanaAddress(walletAddress)) {
+    console.warn(`[SolanaInsider] Invalid wallet address: ${walletAddress.slice(0, 12)}`);
+    return [];
+  }
   try {
     const connection = getConnection();
     const walletPubkey = new PublicKey(walletAddress);
