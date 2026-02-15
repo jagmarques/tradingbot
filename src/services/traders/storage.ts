@@ -110,9 +110,16 @@ export function initInsiderTables(): void {
   console.log("[InsiderScanner] Database tables initialized");
 }
 
+// Solana base58 is case-sensitive; only lowercase EVM hex addresses
+function normalizeAddr(addr: string, chain: string): string {
+  return chain === "solana" ? addr : addr.toLowerCase();
+}
+
 export function upsertGemHit(hit: GemHit): void {
   const db = getDb();
-  const id = `${hit.walletAddress}_${hit.tokenAddress}_${hit.chain}`;
+  const wa = normalizeAddr(hit.walletAddress, hit.chain);
+  const ta = normalizeAddr(hit.tokenAddress, hit.chain);
+  const id = `${wa}_${ta}_${hit.chain}`;
 
   db.prepare(`
     INSERT OR IGNORE INTO insider_gem_hits (
@@ -121,9 +128,9 @@ export function upsertGemHit(hit: GemHit): void {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
-    hit.walletAddress.toLowerCase(),
+    wa,
     hit.chain,
-    hit.tokenAddress.toLowerCase(),
+    ta,
     hit.tokenSymbol,
     hit.buyTxHash,
     hit.buyTimestamp,
@@ -140,7 +147,7 @@ export function upsertInsiderWallet(wallet: InsiderWallet): void {
       first_seen_at, last_seen_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
-    wallet.address.toLowerCase(),
+    normalizeAddr(wallet.address, wallet.chain),
     wallet.chain,
     wallet.gemHitCount,
     JSON.stringify(wallet.gems),
@@ -182,7 +189,7 @@ export function updateGemHitPnl(
   db.prepare(`
     UPDATE insider_gem_hits SET buy_tokens = ?, sell_tokens = ?, status = ?, buy_date = ?, sell_date = ?
     WHERE wallet_address = ? AND token_address = ? AND chain = ?
-  `).run(buyTokens, sellTokens, status, buyDate, sellDate, walletAddress.toLowerCase(), tokenAddress.toLowerCase(), chain);
+  `).run(buyTokens, sellTokens, status, buyDate, sellDate, normalizeAddr(walletAddress, chain), normalizeAddr(tokenAddress, chain), chain);
 }
 
 export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
@@ -190,7 +197,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
   const rows = db.prepare(
     "SELECT * FROM insider_gem_hits WHERE wallet_address = ? AND chain = ?"
-  ).all(address.toLowerCase(), chain) as Record<string, unknown>[];
+  ).all(normalizeAddr(address, chain), chain) as Record<string, unknown>[];
 
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
@@ -260,7 +267,7 @@ export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pu
      SET pump_multiple = ?,
          max_pump_multiple = MAX(COALESCE(max_pump_multiple, 0), ?)
      WHERE token_address = ? AND chain = ?`
-  ).run(pumpMultiple, pumpMultiple, tokenAddress.toLowerCase(), chain);
+  ).run(pumpMultiple, pumpMultiple, normalizeAddr(tokenAddress, chain), chain);
 }
 
 function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
