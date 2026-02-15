@@ -2,24 +2,34 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.j
 import bs58 from "bs58";
 import { loadEnv } from "../../config/env.js";
 
-let connection: Connection | null = null;
-let keypair: Keypair | null = null;
+const SOLANA_RPC = process.env.ALCHEMY_SOLANA_RPC || "https://api.mainnet-beta.solana.com";
 
-function getHeliusUrl(): string {
-  const env = loadEnv();
-  return `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`;
-}
+let connection: Connection | null = null;
+let heliusConnection: Connection | null = null;
+let keypair: Keypair | null = null;
 
 export function getConnection(): Connection {
   if (!connection) {
-    connection = new Connection(getHeliusUrl(), {
+    connection = new Connection(SOLANA_RPC, {
       commitment: "confirmed",
-      wsEndpoint: `wss://mainnet.helius-rpc.com/?api-key=${loadEnv().HELIUS_API_KEY}`,
     });
-    // Note: Don't log connection URL - contains API key
-    console.log("[Solana] Connection established");
+    const provider = process.env.ALCHEMY_SOLANA_RPC ? "Alchemy" : "public";
+    console.log(`[Solana] Connection established (${provider} RPC)`);
   }
   return connection;
+}
+
+/** Helius RPC connection for transaction submission (Jupiter swaps via Jito) */
+export function getHeliusConnection(): Connection {
+  if (!heliusConnection) {
+    const env = loadEnv();
+    heliusConnection = new Connection(
+      `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}`,
+      { commitment: "confirmed" }
+    );
+    console.log("[Solana] Helius connection established (for tx submission)");
+  }
+  return heliusConnection;
 }
 
 export function loadKeypair(): Keypair {
@@ -72,5 +82,6 @@ export async function validateConnection(): Promise<boolean> {
 
 export function resetConnection(): void {
   connection = null;
+  heliusConnection = null;
   console.log("[Solana] Connection reset");
 }

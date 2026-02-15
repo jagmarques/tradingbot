@@ -241,7 +241,7 @@ export async function buyGems(
       // Live mode - execute on-chain buy
       if (token.chain === "solana") {
         // Solana live buy via Jupiter
-        const solBalance = await getSolBalance();
+        const solBalance = await getSolBalance().catch(() => 0n);
         if (solBalance < 10_000_000n) { // 0.01 SOL minimum
           console.log(`[GemTrader] LIVE: Skip ${token.symbol} - insufficient SOL`);
           continue;

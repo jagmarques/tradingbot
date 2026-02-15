@@ -48,9 +48,14 @@ async function main(): Promise<void> {
     }
 
     // Set daily loss baseline to actual wallet balance
-    const balanceLamports = await getSolBalance();
-    const balanceSol = Number(balanceLamports) / 1_000_000_000;
-    setDailyStartBalance(balanceSol);
+    try {
+      const balanceLamports = await getSolBalance();
+      const balanceSol = Number(balanceLamports) / 1_000_000_000;
+      setDailyStartBalance(balanceSol);
+    } catch (err) {
+      console.error("[Bot] Failed to get SOL balance, using 0:", err);
+      setDailyStartBalance(0);
+    }
 
     // Start health server
     startHealthServer(HEALTH_PORT);

@@ -216,9 +216,15 @@ export async function verifyGasBalances(): Promise<{
 }> {
   const env = loadEnv();
 
-  const solLamports = await getSolBalance();
-  const solBalance = Number(solLamports) / LAMPORTS_PER_SOL;
-  const solSufficient = solBalance >= env.MIN_SOL_RESERVE;
+  let solBalance = -1;
+  let solSufficient = false;
+  try {
+    const solLamports = await getSolBalance();
+    solBalance = Number(solLamports) / LAMPORTS_PER_SOL;
+    solSufficient = solBalance >= env.MIN_SOL_RESERVE;
+  } catch (err) {
+    console.warn("[Risk] Failed to fetch SOL balance (rate limited?):", String(err).slice(0, 100));
+  }
 
   const maticWei = await getMaticBalance();
   const maticBalance = Number(maticWei) / 1e18;
