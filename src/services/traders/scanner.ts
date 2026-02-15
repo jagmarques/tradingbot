@@ -1,9 +1,9 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, getCachedGemAnalysis, getGemPaperTrade, closeGemPaperTrade } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
-import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices } from "./gem-analyzer.js";
+import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
@@ -543,7 +543,7 @@ export async function enrichInsiderPnl(): Promise<void> {
         if (pnl.status === "sold" || pnl.status === "transferred") {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
-            closeGemPaperTrade(hit.tokenSymbol, hit.chain);
+            await sellGemPosition(hit.tokenSymbol, hit.chain);
             console.log(`[InsiderScanner] Auto-close paper trade: ${hit.tokenSymbol} (insider ${pnl.status})`);
           }
         }

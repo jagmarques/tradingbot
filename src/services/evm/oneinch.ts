@@ -395,3 +395,77 @@ export async function validateCopyChains(): Promise<{ working: Chain[]; failed: 
 export function getSupportedChains(): Chain[] {
   return Object.keys(CHAIN_IDS) as Chain[];
 }
+
+export async function getTokenBalance(chain: Chain, tokenAddress: string): Promise<string | null> {
+  const wallet = getWallet(chain);
+  if (!wallet) return null;
+
+  try {
+    const token = new ethers.Contract(
+      tokenAddress,
+      ["function balanceOf(address) returns (uint256)"],
+      wallet
+    );
+    const balance = await token.balanceOf(wallet.address);
+    return balance.toString();
+  } catch (err) {
+    console.error(`[1inch] Token balance fetch error on ${chain}:`, err);
+    return null;
+  }
+}
+
+export async function approveAndSell1inch(
+  chain: Chain,
+  tokenAddress: string,
+  slippage: number = 3
+): Promise<OneInchSellResult> {
+  console.log(`[1inch] Approve+Sell: ${tokenAddress.slice(0, 10)}... on ${chain}`);
+
+  // Paper mode - skip approve, just call execute1inchSell
+  if (isPaperMode()) {
+    return await execute1inchSell(chain, tokenAddress, "0", slippage);
+  }
+
+  const wallet = getWallet(chain);
+  if (!wallet) {
+    return { success: false, error: `No wallet configured for ${chain}` };
+  }
+
+  try {
+    // Get token balance
+    const balance = await getTokenBalance(chain, tokenAddress);
+    if (!balance || balance === "0") {
+      return { success: false, error: "No token balance" };
+    }
+
+    console.log(`[1inch] Approve+Sell: balance=${balance}`);
+
+    // Get sell quote to find router address
+    const quote = await get1inchSellQuote(chain, tokenAddress, balance, slippage);
+    if (!quote) {
+      return { success: false, error: "Failed to get sell quote for approval" };
+    }
+
+    const routerAddress = quote.tx.to;
+    console.log(`[1inch] Approve+Sell: approving ${routerAddress} to spend ${balance}`);
+
+    // Approve router to spend tokens
+    const token = new ethers.Contract(
+      tokenAddress,
+      ["function approve(address, uint256) returns (bool)"],
+      wallet
+    );
+
+    const approveTx = await token.approve(routerAddress, balance);
+    console.log(`[1inch] Approve+Sell: approval tx sent ${approveTx.hash}`);
+
+    await approveTx.wait();
+    console.log(`[1inch] Approve+Sell: approval confirmed`);
+
+    // Execute sell
+    return await execute1inchSell(chain, tokenAddress, balance, slippage);
+  } catch (err) {
+    console.error("[1inch] Approve+Sell error:", err);
+    return { success: false, error: String(err) };
+  }
+}

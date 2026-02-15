@@ -1,6 +1,9 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, type GemAnalysis } from "./storage.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
+import { getApproxUsdValue } from "../copy/filter.js";
+import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
+import type { Chain } from "./types.js";
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
   ethereum: "1",
@@ -182,11 +185,9 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
 const MAX_PRICE_FAILURES = 3;
 const priceFetchFailures = new Map<string, number>();
 
-export async function paperBuyGems(
+export async function buyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
-  if (!isPaperMode()) return;
-
   for (const token of tokens) {
     if (token.score < 80) continue;
     const existing = getGemPaperTrade(token.symbol, token.chain);
@@ -216,19 +217,91 @@ export async function paperBuyGems(
 
     priceFetchFailures.delete(failKey);
 
-    insertGemPaperTrade({
-      tokenSymbol: token.symbol,
-      chain: token.chain,
-      buyTimestamp: Date.now(),
-      amountUsd: 10,
-      pnlPct: 0,
-      aiScore: token.score,
-      status: "open",
-      buyPriceUsd: priceUsd,
-      currentPriceUsd: priceUsd,
-    });
+    // Branch: paper mode vs live mode
+    if (isPaperMode()) {
+      // Paper mode - existing behavior
+      insertGemPaperTrade({
+        tokenSymbol: token.symbol,
+        chain: token.chain,
+        buyTimestamp: Date.now(),
+        amountUsd: 10,
+        pnlPct: 0,
+        aiScore: token.score,
+        status: "open",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+      });
 
-    console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
+      console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
+    } else {
+      // Live mode - execute on-chain buy
+      if (!isChainSupported(token.chain as Chain)) {
+        console.log(`[GemTrader] LIVE: Skip ${token.symbol} - chain ${token.chain} not supported by 1inch`);
+        continue;
+      }
+
+      const balance = await getNativeBalance(token.chain as Chain);
+      if (balance === null || balance < 1000000000000000n) { // 0.001 ETH
+        console.log(`[GemTrader] LIVE: Skip ${token.symbol} - insufficient gas on ${token.chain}`);
+        continue;
+      }
+
+      const nativePrice = getApproxUsdValue(1, token.chain as Chain);
+      const amountNative = 10 / nativePrice; // $10 in native tokens
+
+      const result = await execute1inchSwap(token.chain as Chain, token.tokenAddress, amountNative, 3);
+
+      if (result.success) {
+        insertGemPaperTrade({
+          tokenSymbol: token.symbol,
+          chain: token.chain,
+          buyTimestamp: Date.now(),
+          amountUsd: 10,
+          pnlPct: 0,
+          aiScore: token.score,
+          status: "open",
+          buyPriceUsd: priceUsd,
+          currentPriceUsd: priceUsd,
+          txHash: result.txHash,
+          tokensReceived: result.tokensReceived,
+          isLive: true,
+        });
+
+        console.log(`[GemTrader] LIVE BUY: ${token.symbol} (${token.chain}) tx=${result.txHash}`);
+      } else {
+        console.log(`[GemTrader] LIVE BUY FAILED: ${token.symbol} (${token.chain}) - ${result.error}`);
+      }
+    }
+  }
+}
+
+export async function sellGemPosition(symbol: string, chain: string): Promise<void> {
+  const trade = getGemPaperTrade(symbol, chain);
+  if (!trade || trade.status === "closed") return;
+
+  // Paper mode - just close the trade
+  if (!trade.isLive) {
+    closeGemPaperTrade(symbol, chain);
+    console.log(`[GemTrader] Paper close: ${symbol} (${chain})`);
+    return;
+  }
+
+  // Live mode - sell on-chain
+  const tokenAddress = getTokenAddressForGem(symbol, chain);
+  if (!tokenAddress) {
+    console.log(`[GemTrader] LIVE SELL WARNING: ${symbol} (${chain}) - no token address, closing anyway`);
+    closeGemPaperTrade(symbol, chain);
+    return;
+  }
+
+  const result = await approveAndSell1inch(chain as Chain, tokenAddress, 3);
+
+  if (result.success) {
+    console.log(`[GemTrader] LIVE SELL: ${symbol} (${chain}) tx=${result.txHash}`);
+    closeGemPaperTrade(symbol, chain, result.txHash);
+  } else {
+    console.log(`[GemTrader] LIVE SELL FAILED: ${symbol} (${chain}) - ${result.error}. Closing trade anyway.`);
+    closeGemPaperTrade(symbol, chain);
   }
 }
 
@@ -255,7 +328,7 @@ export function analyzeGemsBackground(
       }
     }
 
-    await paperBuyGems(results);
+    await buyGems(results);
   })();
 }
 
@@ -286,7 +359,7 @@ export async function revalidateHeldGems(): Promise<void> {
 
     const liquidityUsd = pair.liquidity?.usd ?? 0;
     if (liquidityUsd < 500) {
-      closeGemPaperTrade(token.symbol, token.chain);
+      await sellGemPosition(token.symbol, token.chain);
       console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $500 (rug)`);
     }
   }
