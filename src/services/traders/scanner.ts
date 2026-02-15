@@ -1,4 +1,4 @@
-import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
+import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
@@ -12,13 +12,14 @@ function stripEmoji(s: string): string {
 
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
-const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
+const GECKO_NETWORK_IDS: Record<ScanChain, string> = {
   ethereum: "eth",
   base: "base",
   arbitrum: "arbitrum",
   polygon: "polygon_pos",
   optimism: "optimism",
   avalanche: "avax",
+  solana: "solana",
 };
 
 // Etherscan V2 API
@@ -79,7 +80,7 @@ interface GeckoPool {
 }
 
 // Find tokens that pumped 3x+ in 24h on a given chain
-export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
+export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]> {
   const networkId = GECKO_NETWORK_IDS[chain];
   const seen = new Set<string>();
   const pumped: PumpedToken[] = [];
@@ -110,7 +111,8 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
       const baseTokenId = pool.relationships.base_token.data.id;
       const parts = baseTokenId.split("_");
       if (parts.length < 2) continue;
-      const tokenAddress = parts.slice(1).join("_").toLowerCase();
+      // Solana addresses are case-sensitive, EVM addresses should be lowercased
+      const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
 
       // Skip duplicates
       if (seen.has(tokenAddress)) continue;
@@ -162,7 +164,7 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
           const baseTokenId = pool.relationships.base_token.data.id;
           const parts = baseTokenId.split("_");
           if (parts.length < 2) continue;
-          const tokenAddress = parts.slice(1).join("_").toLowerCase();
+          const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
 
           if (seen.has(tokenAddress)) continue;
           seen.add(tokenAddress);
@@ -213,7 +215,7 @@ export async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> 
           const baseTokenId = pool.relationships.base_token.data.id;
           const parts = baseTokenId.split("_");
           if (parts.length < 2) continue;
-          const tokenAddress = parts.slice(1).join("_").toLowerCase();
+          const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
 
           if (seen.has(tokenAddress)) continue;
           seen.add(tokenAddress);
@@ -329,7 +331,7 @@ interface WalletTokenPnl {
 }
 
 export async function getWalletTokenPnl(
-  walletAddress: string, tokenAddress: string, chain: EvmChain
+  walletAddress: string, tokenAddress: string, chain: ScanChain
 ): Promise<WalletTokenPnl> {
   // Etherscan V2 free API only supports ethereum mainnet
   if (chain !== "ethereum") {
@@ -562,7 +564,7 @@ export async function updateHeldGemPrices(): Promise<void> {
   const heldGems = getAllHeldGemHits();
 
   // Deduplicate by token+chain (many wallets may hold same token)
-  const uniqueTokens = new Map<string, { tokenAddress: string; chain: EvmChain; symbol: string; oldMultiple: number }>();
+  const uniqueTokens = new Map<string, { tokenAddress: string; chain: ScanChain; symbol: string; oldMultiple: number }>();
   for (const gem of heldGems) {
     const key = `${gem.tokenAddress}_${gem.chain}`;
     if (!uniqueTokens.has(key)) {
@@ -588,7 +590,8 @@ export async function updateHeldGemPrices(): Promise<void> {
   const priceMap = await dexScreenerFetchBatch(tokenArray);
 
   for (const [, token] of uniqueTokens) {
-    const pair = priceMap.get(token.tokenAddress.toLowerCase());
+    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const pair = priceMap.get(addrKey);
     if (!pair) continue;
 
     const priceUsd = parseFloat(pair.priceUsd || "0");
