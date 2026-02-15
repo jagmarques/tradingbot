@@ -730,29 +730,21 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     first_seen: number;
     last_seen: number;
   }): number {
-    // 1. Gem count (25 points max) - logarithmic to avoid saturation
-    const gemCountScore = Math.min(25, Math.round(25 * Math.log2(wallet.gem_count) / Math.log2(50)));
+    // 1. Gem count (30 points max) - need 100+ gems for max, 50=20, 20=13, 10=8
+    const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
 
-    // 2. Average pump multiple (25 points max) - cap at 20x to prevent outlier dominance
-    const avgPumpCapped = Math.min(wallet.avg_pump, 20);
-    const avgPumpScore = Math.min(25, Math.round(25 * avgPumpCapped / 20));
+    // 2. Average pump multiple (30 points max) - need 50x+ for max
+    const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
 
-    // 3. Hold rate (20 points max) - diamond hands vs paper hands
-    const holdRate = wallet.holding_count / wallet.gem_count;
+    // 3. Hold rate (20 points max)
+    const holdRate = wallet.gem_count > 0 ? wallet.holding_count / wallet.gem_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
 
-    // 4. Recency (15 points max) - recent activity matters more
+    // 4. Recency (20 points max) - decays over 30 days (stricter)
     const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
-    const recencyScore = Math.max(0, Math.round(15 * (1 - daysSinceLastSeen / 90)));
+    const recencyScore = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 30)));
 
-    // 5. Consistency (15 points max) - multiple tokens over time
-    const timeSpanDays = (wallet.last_seen - wallet.first_seen) / (24 * 60 * 60 * 1000);
-    let consistencyScore = Math.min(15, Math.round(15 * Math.min(wallet.unique_tokens, 10) / 10));
-    if (timeSpanDays < 7) {
-      consistencyScore = Math.round(consistencyScore / 2); // penalize short time spans
-    }
-
-    const total = gemCountScore + avgPumpScore + holdRateScore + recencyScore + consistencyScore;
+    const total = gemCountScore + avgPumpScore + holdRateScore + recencyScore;
     return Math.min(100, total);
   }
 
