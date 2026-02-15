@@ -812,7 +812,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       [
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
+        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
@@ -1032,7 +1032,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       [
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
+        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
