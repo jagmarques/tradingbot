@@ -761,8 +761,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+      ],
+      [
         { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
+        { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
       ],
     ];
 
@@ -984,8 +987,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+      ],
+      [
         { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
+        { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
       ],
     ];
     const backButton = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
