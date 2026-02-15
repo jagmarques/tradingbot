@@ -101,7 +101,7 @@ export async function startBot(): Promise<void> {
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
   bot.command("insiders", async (ctx) => {
-    await handleInsiders(ctx, "holding");
+    await handleInsiders(ctx, "wallets");
   });
 
   // Callback handlers
@@ -159,7 +159,7 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders", async (ctx) => {
-    await handleInsiders(ctx, "holding");
+    await handleInsiders(ctx, "wallets");
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_holding", async (ctx) => {
@@ -781,7 +781,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" = "holding", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" = "wallets", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -866,7 +866,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
       const showing = alive.length > 20 ? `Top 20 of ${alive.length}` : `${alive.length}`;
-      const footer = `\n${showing} holdings | Scanner: ${scannerStatus}`;
+      const footer = `\n\n${showing} holdings | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
