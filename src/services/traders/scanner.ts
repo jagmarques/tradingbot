@@ -26,6 +26,9 @@ const GECKO_NETWORK_IDS: Record<ScanChain, string> = {
 // Etherscan V2 API
 const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
 
+// Routescan API for Avalanche (Snowtrace)
+const ROUTESCAN_AVAX_URL = "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api";
+
 // Chain IDs for Etherscan V2
 const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   ethereum: 1,
@@ -35,6 +38,20 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   optimism: 10,
   avalanche: 43114,
 };
+
+// Chains with working free explorer APIs (ethereum=Etherscan, avalanche=Routescan)
+const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "avalanche"]);
+
+// Build explorer URL based on chain (Routescan for Avalanche, Etherscan V2 for others)
+function buildExplorerUrl(chain: EvmChain, params: string): string {
+  if (chain === "avalanche") {
+    const apiKey = process.env.SNOWTRACE_API_KEY || "";
+    return `${ROUTESCAN_AVAX_URL}?${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
+  }
+  const chainId = ETHERSCAN_CHAIN_IDS[chain];
+  const apiKey = process.env.ETHERSCAN_API_KEY || "";
+  return `${ETHERSCAN_V2_URL}?chainid=${chainId}&${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
+}
 
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -55,8 +72,9 @@ const etherscanQueueByChain = new Map<string, Promise<void>>();
 
 async function etherscanRateLimitedFetch(url: string, chain: string): Promise<Response> {
   const currentQueue = etherscanQueueByChain.get(chain) || Promise.resolve();
+  const interval = chain === "avalanche" ? 550 : ETHERSCAN_INTERVAL_MS;
   const myTurn = currentQueue.then(async () => {
-    await new Promise((r) => setTimeout(r, ETHERSCAN_INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, interval));
   });
   etherscanQueueByChain.set(chain, myTurn);
   await myTurn;
@@ -252,15 +270,9 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
   if (token.chain === "solana") {
     return findSolanaEarlyBuyers(token.tokenAddress);
   }
-  // Etherscan V2 only supports EVM chains listed in ETHERSCAN_CHAIN_IDS
-  if (!(token.chain in ETHERSCAN_CHAIN_IDS)) {
-    return [];
-  }
+  if (!EXPLORER_SUPPORTED_CHAINS.has(token.chain)) return [];
 
-  const chainId = ETHERSCAN_CHAIN_IDS[token.chain as EvmChain];
-  const apiKey = process.env.ETHERSCAN_API_KEY || "";
-
-  const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&contractaddress=${token.tokenAddress}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+  const url = buildExplorerUrl(token.chain as EvmChain, `module=account&action=tokentx&contractaddress=${token.tokenAddress}&startblock=0&endblock=99999999&sort=asc`);
 
   try {
     const response = await etherscanRateLimitedFetch(url, token.chain);
@@ -340,14 +352,11 @@ export async function getWalletTokenPnl(
   if (chain === "solana") {
     return getSolanaWalletTokenStatus(walletAddress, tokenAddress);
   }
-  if (!(chain in ETHERSCAN_CHAIN_IDS)) {
+  if (!EXPLORER_SUPPORTED_CHAINS.has(chain)) {
     return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
   }
 
-  const chainId = ETHERSCAN_CHAIN_IDS[chain as EvmChain];
-  const apiKey = process.env.ETHERSCAN_API_KEY || "";
-
-  const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${walletAddress}&contractaddress=${tokenAddress}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+  const url = buildExplorerUrl(chain as EvmChain, `module=account&action=tokentx&address=${walletAddress}&contractaddress=${tokenAddress}&startblock=0&endblock=99999999&sort=asc`);
 
   const response = await etherscanRateLimitedFetch(url, chain);
   const data = (await response.json()) as {
@@ -478,15 +487,12 @@ async function _scanWalletHistoryInner(): Promise<void> {
       continue;
     }
 
-    // EVM chains - need Etherscan
-    if (!(wallet.chain in ETHERSCAN_CHAIN_IDS)) continue;
+    // Skip chains without working explorer APIs
+    if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
     try {
-      const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain as EvmChain];
-      const apiKey = process.env.ETHERSCAN_API_KEY || "";
-
       // Query all token transfers for this wallet (no contractaddress filter)
-      const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
+      const url = buildExplorerUrl(wallet.chain as EvmChain, `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc`);
       const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
       const data = (await response.json()) as {
         status: string;

@@ -7,7 +7,7 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { loadEnv } from "../../config/env.js";
-import { getConnection, loadKeypair } from "./wallet.js";
+import { getHeliusConnection, loadKeypair } from "./wallet.js";
 import {
   JITO_MAX_RETRIES,
   JITO_RETRY_BASE_MS,
@@ -144,7 +144,7 @@ export async function getBundleStatus(bundleId: string): Promise<string | null> 
 export async function createAndSubmitBundledTransaction(
   instructions: TransactionInstruction[]
 ): Promise<string | null> {
-  const connection = getConnection();
+  const connection = getHeliusConnection();
   const keypair = loadKeypair();
 
   const tipInstruction = createTipInstruction(keypair.publicKey);

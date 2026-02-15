@@ -758,17 +758,17 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
       ],
       [
-        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
       ],
       [
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
+        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
-        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
+        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
 
@@ -987,17 +987,17 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
       ],
       [
-        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
       ],
       [
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
+        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
-        { text: chain === "solana" ? "* SOL" : "SOL", callback_data: `insiders_chain_solana_${tab}` },
+        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
     const backButton = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1397,8 +1397,8 @@ async function handleAI(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
     const userId = ctx.from?.id?.toString() || "";
     const settings = getSettings(userId);
-    const solBalance = await getSolBalanceFormatted();
-    const usdcBalance = await getUsdcBalanceFormatted();
+    const solBalance = await getSolBalanceFormatted().catch(() => "Error");
+    const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
 
     // Polymarket copy trading stats
     const copyStats = getCopyStats();
