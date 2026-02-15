@@ -50,7 +50,7 @@ const SOLANA_STABLECOINS = new Set([
  */
 export async function findSolanaEarlyBuyers(tokenMint: string): Promise<string[]> {
   const env = loadEnv();
-  const url = `${HELIUS_API_BASE}/addresses/${tokenMint}/transactions?api-key=${env.HELIUS_API_KEY}&type=SWAP`;
+  const url = `${HELIUS_API_BASE}/addresses/${tokenMint}/transactions?api-key=${env.HELIUS_API_KEY}&type=SWAP&sort-order=asc`;
 
   try {
     const response = await heliusRateLimitedFetch(url);
