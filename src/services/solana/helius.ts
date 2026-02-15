@@ -3,8 +3,9 @@ import type { ParsedTransactionWithMeta } from "@solana/web3.js";
 import { getConnection } from "./wallet.js";
 import { KNOWN_EXCHANGES } from "../traders/types.js";
 
-// 500ms between RPC calls (2 RPS, safe for Alchemy free tier 330 CU/s)
-const RPC_INTERVAL_MS = 500;
+// 1s between RPC calls to stay under Alchemy free tier 330 CU/s
+const RPC_INTERVAL_MS = 1000;
+const TX_BATCH_SIZE = 10; // Parse 10 txs at a time (50 at once exceeds CU/s limit)
 let rpcQueue: Promise<void> = Promise.resolve();
 
 async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
@@ -12,6 +13,22 @@ async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
   rpcQueue = myTurn;
   await myTurn;
   return fn();
+}
+
+// Batch getParsedTransactions into small chunks to stay under CU limits
+async function batchGetParsedTransactions(
+  connection: import("@solana/web3.js").Connection,
+  sigs: string[]
+): Promise<(import("@solana/web3.js").ParsedTransactionWithMeta | null)[]> {
+  const results: (import("@solana/web3.js").ParsedTransactionWithMeta | null)[] = [];
+  for (let i = 0; i < sigs.length; i += TX_BATCH_SIZE) {
+    const chunk = sigs.slice(i, i + TX_BATCH_SIZE);
+    const parsed = await rateLimitedCall(() =>
+      connection.getParsedTransactions(chunk, { maxSupportedTransactionVersion: 0 })
+    );
+    results.push(...parsed);
+  }
+  return results;
 }
 
 const BASE58_CHARS = /^[1-9A-HJ-NP-Za-km-z]+$/;
@@ -90,11 +107,9 @@ export async function findSolanaEarlyBuyers(tokenMint: string): Promise<string[]
 
     if (!signatures.length) return [];
 
-    // Parse transactions in batch
+    // Parse transactions in small batches to stay under CU limits
     const sigs = signatures.map((s) => s.signature);
-    const parsed = await rateLimitedCall(() =>
-      connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
-    );
+    const parsed = await batchGetParsedTransactions(connection, sigs);
 
     const buyers = new Set<string>();
     const addressCounts = new Map<string, number>();
@@ -176,9 +191,7 @@ export async function getSolanaWalletTokenStatus(
 
     if (signatures.length > 0) {
       const sigs = signatures.map((s) => s.signature);
-      const parsed = await rateLimitedCall(() =>
-        connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
-      );
+      const parsed = await batchGetParsedTransactions(connection, sigs);
 
       for (let i = 0; i < parsed.length; i++) {
         const tx = parsed[i];
@@ -236,9 +249,7 @@ export async function scanSolanaWalletHistory(
     if (!signatures.length) return [];
 
     const sigs = signatures.map((s) => s.signature);
-    const parsed = await rateLimitedCall(() =>
-      connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
-    );
+    const parsed = await batchGetParsedTransactions(connection, sigs);
 
     const tokenMap = new Map<string, { symbol: string; firstTx: number }>();
 
