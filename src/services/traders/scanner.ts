@@ -18,6 +18,7 @@ const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
   arbitrum: "arbitrum",
   polygon: "polygon_pos",
   optimism: "optimism",
+  avalanche: "avax",
 };
 
 // Etherscan V2 API
@@ -30,6 +31,7 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   arbitrum: 42161,
   polygon: 137,
   optimism: 10,
+  avalanche: 43114,
 };
 
 // Zero address

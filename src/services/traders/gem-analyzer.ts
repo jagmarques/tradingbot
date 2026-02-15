@@ -11,6 +11,7 @@ const GOPLUS_CHAIN_IDS: Record<string, string> = {
   arbitrum: "42161",
   polygon: "137",
   optimism: "10",
+  avalanche: "43114",
 };
 
 export async function fetchGoPlusData(tokenAddress: string, chain: string): Promise<Record<string, unknown> | null> {
