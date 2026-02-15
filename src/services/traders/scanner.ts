@@ -757,7 +757,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
 
     for (const group of walletGroups) {
       const gems = group.token_symbols.split(",").filter(Boolean);
-      const score = group.gem_count * 10;
+      const score = Math.min(100, group.gem_count * 10);
 
       if (score >= 80) {
         upsertInsiderWallet({

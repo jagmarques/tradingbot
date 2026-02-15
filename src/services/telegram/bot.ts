@@ -800,8 +800,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
     const chainButtons = [
       [
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
@@ -854,16 +854,19 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const alive = tokenEntries.filter((t) => t.currentPump >= 1.0);
 
-      alive.sort((a, b) => b.currentPump - a.currentPump || b.holders - a.holders || b.launchTs - a.launchTs);
+      alive.sort((a, b) => b.holders - a.holders || b.currentPump - a.currentPump || b.launchTs - a.launchTs);
 
-      const tokenBlocks = alive.map((t) => {
+      const top20 = alive.slice(0, 20);
+
+      const tokenBlocks = top20.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const footer = `\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+      const showing = alive.length > 20 ? `Top 20 of ${alive.length}` : `${alive.length}`;
+      const footer = `\n${showing} holdings | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
@@ -909,8 +912,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
           ? `${w.address.slice(0, 6)}...${w.address.slice(-4)}`
           : w.address;
         const gainSign = w.avgGainPct >= 0 ? "+" : "";
-        const pnlSign = w.avgPnlUsd >= 0 ? "+" : "";
-        return `<b>${addrShort}</b> - Score: ${w.score}\nGems: ${w.gemHitCount} | Avg Gain: ${gainSign}${w.avgGainPct.toFixed(0)}% | Avg P&L: ${pnlSign}$${w.avgPnlUsd.toFixed(2)}`;
+        return `${addrShort} <b>${w.score}</b>pts | ${w.gemHitCount} gems | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
       const header = `<b>Insider Wallets</b> - Wallets\n\n`;
@@ -925,7 +927,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
           messages.push(current);
           current = "";
         }
-        current += (current && current !== header ? "\n\n" : "") + block;
+        current += (current && current !== header ? "\n" : "") + block;
       }
       current += footer;
       messages.push(current);
@@ -1018,8 +1020,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
     console.error("[Telegram] Insiders error:", err);
     const chainButtons = [
       [
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
