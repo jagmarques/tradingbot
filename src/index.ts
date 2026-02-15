@@ -131,10 +131,12 @@ async function main(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   console.log(`[Bot] Received ${signal}, shutting down...`);
 
-  try {
-    await notifyBotStopped(signal);
-  } catch {
-    // Ignore notification errors during shutdown
+  if (signal !== "SIGTERM") {
+    try {
+      await notifyBotStopped(signal);
+    } catch {
+      // Ignore notification errors during shutdown
+    }
   }
 
   try {
