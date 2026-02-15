@@ -1553,6 +1553,9 @@ async function handleReset(ctx: Context): Promise<void> {
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
   const gemTrades = getOpenGemPaperTrades();
+  const db = (await import("../database/db.js")).getDb();
+  const insiderWalletCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt;
+  const insiderGemHitCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_hits").get() as { cnt: number }).cnt;
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
@@ -1560,8 +1563,8 @@ async function handleReset(ctx: Context): Promise<void> {
   message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
   message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
   message += `  Gem Trades: ${gemTrades.length} open\n`;
-  message += `  Trades + daily stats: all\n`;
-  message += `  Caches (AI + GoPlus scores): all\n\n`;
+  message += `  Insiders: ${insiderWalletCount} wallets + ${insiderGemHitCount} gem hits\n`;
+  message += `  Trades + daily stats + caches: all\n\n`;
   message += "<b>This cannot be undone.</b>";
 
   const buttons = [
