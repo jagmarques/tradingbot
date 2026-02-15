@@ -1,5 +1,5 @@
 import { getDb } from "../database/db.js";
-import type { EvmChain, GemHit, InsiderWallet } from "./types.js";
+import type { GemHit, InsiderWallet, ScanChain } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -157,7 +157,7 @@ export function upsertInsiderWallet(wallet: InsiderWallet): void {
   );
 }
 
-export function getInsiderWallets(chain?: EvmChain, minHits?: number): InsiderWallet[] {
+export function getInsiderWallets(chain?: ScanChain, minHits?: number): InsiderWallet[] {
   const db = getDb();
 
   let query = "SELECT * FROM insider_wallets WHERE 1=1";
@@ -201,7 +201,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
-    chain: row.chain as EvmChain,
+    chain: row.chain as ScanChain,
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
@@ -220,7 +220,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
 export function getAllHeldGemHits(chain?: string): GemHit[] {
   const db = getDb();
-  let query = "SELECT * FROM insider_gem_hits WHERE status = 'holding'";
+  let query = "SELECT * FROM insider_gem_hits WHERE (status = 'holding' OR status IS NULL)";
   const params: unknown[] = [];
   if (chain) {
     query += " AND chain = ?";
@@ -230,7 +230,7 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
-    chain: row.chain as EvmChain,
+    chain: row.chain as ScanChain,
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
@@ -280,7 +280,7 @@ function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
 
   return {
     address: row.address as string,
-    chain: row.chain as EvmChain,
+    chain: row.chain as ScanChain,
     gemHitCount: row.gem_hit_count as number,
     gems,
     score: row.score as number,
