@@ -1,53 +1,17 @@
 import { PublicKey } from "@solana/web3.js";
-import { loadEnv } from "../../config/env.js";
+import type { ParsedTransactionWithMeta } from "@solana/web3.js";
 import { getConnection } from "./wallet.js";
 import { KNOWN_EXCHANGES } from "../traders/types.js";
 
-const HELIUS_API_BASE = "https://api.helius.xyz/v0";
-const HELIUS_INTERVAL_MS = 1000;
-const HELIUS_COOLDOWN_MS = 30 * 60 * 1000; // 30 min backoff on 429
+// Rate limit: 200ms between RPC calls (5 RPS, well under Alchemy's 25 RPS)
+const RPC_INTERVAL_MS = 200;
+let rpcQueue: Promise<void> = Promise.resolve();
 
-let heliusQueue: Promise<void> = Promise.resolve();
-let heliusCooldownUntil = 0;
-
-function isHeliusCoolingDown(): boolean {
-  return Date.now() < heliusCooldownUntil;
-}
-
-async function heliusRateLimitedFetch(url: string): Promise<Response | null> {
-  if (isHeliusCoolingDown()) return null;
-
-  const myTurn = heliusQueue.then(() => new Promise<void>((r) => setTimeout(r, HELIUS_INTERVAL_MS)));
-  heliusQueue = myTurn;
+async function rateLimitedCall<T>(fn: () => Promise<T>): Promise<T> {
+  const myTurn = rpcQueue.then(() => new Promise<void>((r) => setTimeout(r, RPC_INTERVAL_MS)));
+  rpcQueue = myTurn;
   await myTurn;
-
-  const response = await fetch(url);
-  if (response.status === 429) {
-    heliusCooldownUntil = Date.now() + HELIUS_COOLDOWN_MS;
-    const resumeTime = new Date(heliusCooldownUntil).toISOString().slice(11, 16);
-    console.log(`[HeliusInsider] Rate limited, pausing until ${resumeTime} UTC`);
-    return null;
-  }
-  return response;
-}
-
-interface HeliusTokenTransfer {
-  mint: string;
-  fromUserAccount?: string;
-  toUserAccount?: string;
-  tokenAmount: number;
-  tokenStandard?: string;
-}
-
-interface HeliusTransaction {
-  signature: string;
-  timestamp: number;
-  type: string;
-  tokenTransfers?: HeliusTokenTransfer[];
-  description?: string;
-  fee?: number;
-  feePayer?: string;
-  source?: string;
+  return fn();
 }
 
 const SOLANA_STABLECOINS = new Set([
@@ -56,52 +20,105 @@ const SOLANA_STABLECOINS = new Set([
   "So11111111111111111111111111111111111111112", // wSOL
 ]);
 
+// Extract token balance changes from a parsed transaction
+function getTokenChanges(
+  tx: ParsedTransactionWithMeta,
+  filterMint?: string
+): Array<{ owner: string; mint: string; change: number }> {
+  const changes: Array<{ owner: string; mint: string; change: number }> = [];
+  if (!tx.meta) return changes;
+
+  const pre = tx.meta.preTokenBalances || [];
+  const post = tx.meta.postTokenBalances || [];
+
+  // Build pre-balance map: accountIndex -> {owner, mint, amount}
+  const preMap = new Map<number, { owner: string; mint: string; amount: number }>();
+  for (const b of pre) {
+    if (filterMint && b.mint !== filterMint) continue;
+    preMap.set(b.accountIndex, {
+      owner: b.owner || "",
+      mint: b.mint,
+      amount: b.uiTokenAmount?.uiAmount || 0,
+    });
+  }
+
+  // Compare with post-balances
+  for (const b of post) {
+    if (filterMint && b.mint !== filterMint) continue;
+    const owner = b.owner || "";
+    if (!owner) continue;
+    const postAmount = b.uiTokenAmount?.uiAmount || 0;
+    const preEntry = preMap.get(b.accountIndex);
+    const preAmount = preEntry?.amount || 0;
+    const change = postAmount - preAmount;
+    if (Math.abs(change) > 0) {
+      changes.push({ owner, mint: b.mint, change });
+    }
+    preMap.delete(b.accountIndex);
+  }
+
+  // Entries only in pre (account closed = sold everything)
+  for (const [, entry] of preMap) {
+    if (entry.owner && entry.amount > 0) {
+      changes.push({ owner: entry.owner, mint: entry.mint, change: -entry.amount });
+    }
+  }
+
+  return changes;
+}
+
 export async function findSolanaEarlyBuyers(tokenMint: string): Promise<string[]> {
-  const env = loadEnv();
-  const url = `${HELIUS_API_BASE}/addresses/${tokenMint}/transactions?api-key=${env.HELIUS_API_KEY}&type=SWAP&sort-order=asc`;
-
   try {
-    const response = await heliusRateLimitedFetch(url);
-    if (!response || !response.ok) return [];
+    const connection = getConnection();
+    const mintPubkey = new PublicKey(tokenMint);
 
-    const transactions = (await response.json()) as HeliusTransaction[];
-    if (!Array.isArray(transactions)) return [];
+    // Get first 30 signatures (oldest first not supported, so get recent and reverse isn't ideal)
+    // Instead get signatures and parse them
+    const signatures = await rateLimitedCall(() =>
+      connection.getSignaturesForAddress(mintPubkey, { limit: 50 })
+    );
 
-    const earlyTxs = transactions.slice(0, 100);
+    if (!signatures.length) return [];
+
+    // Parse transactions in batch
+    const sigs = signatures.map((s) => s.signature);
+    const parsed = await rateLimitedCall(() =>
+      connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
+    );
+
     const buyers = new Set<string>();
     const addressCounts = new Map<string, number>();
-
-    for (const tx of transactions) {
-      if (!tx.tokenTransfers) continue;
-      for (const transfer of tx.tokenTransfers) {
-        if (transfer.mint === tokenMint && transfer.toUserAccount) {
-          const addr = transfer.toUserAccount;
-          addressCounts.set(addr, (addressCounts.get(addr) || 0) + 1);
-        }
-      }
-    }
-
-    const totalTransfers = transactions.length;
     const solanaExchanges = new Set(KNOWN_EXCHANGES.solana);
 
-    for (const tx of earlyTxs) {
-      if (!tx.tokenTransfers) continue;
-      for (const transfer of tx.tokenTransfers) {
-        if (transfer.mint === tokenMint && transfer.toUserAccount && transfer.tokenAmount > 0) {
-          const buyer = transfer.toUserAccount;
-          if (buyer === tokenMint) continue;
-          if (solanaExchanges.has(buyer)) continue;
-          const count = addressCounts.get(buyer) || 0;
-          if (totalTransfers > 10 && count / totalTransfers > 0.5) continue;
-          buyers.add(buyer);
+    // Count appearances to filter AMM/routers
+    for (const tx of parsed) {
+      if (!tx) continue;
+      for (const change of getTokenChanges(tx, tokenMint)) {
+        if (change.change > 0) {
+          addressCounts.set(change.owner, (addressCounts.get(change.owner) || 0) + 1);
         }
       }
     }
 
-    console.log(`[HeliusInsider] Found ${buyers.size} early buyers for ${tokenMint.slice(0, 8)}`);
+    const totalTxs = parsed.filter(Boolean).length;
+
+    for (const tx of parsed) {
+      if (!tx) continue;
+      for (const change of getTokenChanges(tx, tokenMint)) {
+        if (change.change <= 0) continue;
+        const buyer = change.owner;
+        if (buyer === tokenMint) continue;
+        if (solanaExchanges.has(buyer)) continue;
+        const count = addressCounts.get(buyer) || 0;
+        if (totalTxs > 10 && count / totalTxs > 0.5) continue;
+        buyers.add(buyer);
+      }
+    }
+
+    console.log(`[SolanaInsider] Found ${buyers.size} early buyers for ${tokenMint.slice(0, 8)}`);
     return Array.from(buyers);
   } catch (err) {
-    console.error(`[HeliusInsider] Error finding buyers for ${tokenMint.slice(0, 8)}:`, err);
+    console.error(`[SolanaInsider] Error finding buyers for ${tokenMint.slice(0, 8)}:`, err);
     return [];
   }
 }
@@ -127,42 +144,42 @@ export async function getSolanaWalletTokenStatus(
     const walletPubkey = new PublicKey(walletAddress);
     const mintPubkey = new PublicKey(tokenMint);
 
-    const tokenAccounts = await connection.getTokenAccountsByOwner(walletPubkey, {
-      mint: mintPubkey,
-    });
+    const tokenAccounts = await rateLimitedCall(() =>
+      connection.getTokenAccountsByOwner(walletPubkey, { mint: mintPubkey })
+    );
 
     if (tokenAccounts.value.length > 0) {
-      const accountInfo = await connection.getTokenAccountBalance(tokenAccounts.value[0].pubkey);
+      const accountInfo = await rateLimitedCall(() =>
+        connection.getTokenAccountBalance(tokenAccounts.value[0].pubkey)
+      );
       currentBalance = parseFloat(accountInfo.value.uiAmount?.toString() || "0");
     }
 
-    const env = loadEnv();
-    const url = `${HELIUS_API_BASE}/addresses/${walletAddress}/transactions?api-key=${env.HELIUS_API_KEY}&type=SWAP`;
+    // Get wallet transaction history
+    const signatures = await rateLimitedCall(() =>
+      connection.getSignaturesForAddress(walletPubkey, { limit: 50 })
+    );
 
-    const response = await heliusRateLimitedFetch(url);
-    if (!response || !response.ok) {
-      // Still return balance-based status even if Helius is down
-      if (currentBalance > 0) return { buyTokens: 0, sellTokens: 0, status: "holding", buyDate: 0, sellDate: 0 };
-      return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
-    }
+    if (signatures.length > 0) {
+      const sigs = signatures.map((s) => s.signature);
+      const parsed = await rateLimitedCall(() =>
+        connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
+      );
 
-    const transactions = (await response.json()) as HeliusTransaction[];
-    if (!Array.isArray(transactions)) {
-      return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
-    }
+      for (let i = 0; i < parsed.length; i++) {
+        const tx = parsed[i];
+        if (!tx) continue;
+        const ts = (signatures[i].blockTime || 0) * 1000;
 
-    for (const tx of transactions) {
-      if (!tx.tokenTransfers) continue;
-      for (const transfer of tx.tokenTransfers) {
-        if (transfer.mint !== tokenMint) continue;
-        const amount = transfer.tokenAmount || 0;
-        if (transfer.toUserAccount === walletAddress) {
-          buyTokens += amount;
-          if (!buyDate) buyDate = tx.timestamp * 1000;
-        }
-        if (transfer.fromUserAccount === walletAddress) {
-          sellTokens += amount;
-          sellDate = tx.timestamp * 1000;
+        for (const change of getTokenChanges(tx, tokenMint)) {
+          if (change.owner !== walletAddress) continue;
+          if (change.change > 0) {
+            buyTokens += change.change;
+            if (!buyDate) buyDate = ts;
+          } else {
+            sellTokens += Math.abs(change.change);
+            sellDate = ts;
+          }
         }
       }
     }
@@ -182,7 +199,7 @@ export async function getSolanaWalletTokenStatus(
 
     return { buyTokens, sellTokens, status, buyDate, sellDate };
   } catch (err) {
-    console.error(`[HeliusInsider] Error getting token status for ${walletAddress.slice(0, 8)}:`, err);
+    console.error(`[SolanaInsider] Error getting token status for ${walletAddress.slice(0, 8)}:`, err);
     return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
   }
 }
@@ -190,25 +207,32 @@ export async function getSolanaWalletTokenStatus(
 export async function scanSolanaWalletHistory(
   walletAddress: string
 ): Promise<Array<{ tokenAddress: string; symbol: string; firstTx: number }>> {
-  const env = loadEnv();
-  const url = `${HELIUS_API_BASE}/addresses/${walletAddress}/transactions?api-key=${env.HELIUS_API_KEY}&type=SWAP`;
-
   try {
-    const response = await heliusRateLimitedFetch(url);
-    if (!response || !response.ok) return [];
+    const connection = getConnection();
+    const walletPubkey = new PublicKey(walletAddress);
 
-    const transactions = (await response.json()) as HeliusTransaction[];
-    if (!Array.isArray(transactions)) return [];
+    const signatures = await rateLimitedCall(() =>
+      connection.getSignaturesForAddress(walletPubkey, { limit: 50 })
+    );
+
+    if (!signatures.length) return [];
+
+    const sigs = signatures.map((s) => s.signature);
+    const parsed = await rateLimitedCall(() =>
+      connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 })
+    );
 
     const tokenMap = new Map<string, { symbol: string; firstTx: number }>();
 
-    for (const tx of transactions) {
-      if (!tx.tokenTransfers) continue;
-      for (const transfer of tx.tokenTransfers) {
-        const mint = transfer.mint;
-        if (SOLANA_STABLECOINS.has(mint)) continue;
-        if (!tokenMap.has(mint)) {
-          tokenMap.set(mint, { symbol: "UNKNOWN", firstTx: tx.timestamp * 1000 });
+    for (let i = 0; i < parsed.length; i++) {
+      const tx = parsed[i];
+      if (!tx) continue;
+      const ts = (signatures[i].blockTime || 0) * 1000;
+
+      for (const change of getTokenChanges(tx)) {
+        if (SOLANA_STABLECOINS.has(change.mint)) continue;
+        if (!tokenMap.has(change.mint)) {
+          tokenMap.set(change.mint, { symbol: "UNKNOWN", firstTx: ts });
         }
       }
     }
@@ -219,10 +243,10 @@ export async function scanSolanaWalletHistory(
       firstTx: info.firstTx,
     }));
 
-    console.log(`[HeliusInsider] Wallet ${walletAddress.slice(0, 8)} history: ${result.length} unique tokens`);
+    console.log(`[SolanaInsider] Wallet ${walletAddress.slice(0, 8)} history: ${result.length} unique tokens`);
     return result;
   } catch (err) {
-    console.error(`[HeliusInsider] Error scanning history for ${walletAddress.slice(0, 8)}:`, err);
+    console.error(`[SolanaInsider] Error scanning history for ${walletAddress.slice(0, 8)}:`, err);
     return [];
   }
 }
