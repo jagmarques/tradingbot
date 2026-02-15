@@ -490,3 +490,50 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
 
   return { insiderCount, avgInsiderQuality, holdRate };
 }
+
+export function deleteInsiderWalletsBelow(minScore: number): number {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM insider_wallets WHERE score < ?").run(minScore);
+  return result.changes;
+}
+
+export interface InsiderWalletStats {
+  address: string;
+  chain: ScanChain;
+  score: number;
+  gemHitCount: number;
+  avgGainPct: number;
+  avgPnlUsd: number;
+}
+
+export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStats[] {
+  const db = getDb();
+  let query = `
+    SELECT w.address, w.chain, w.score, w.gem_hit_count,
+           COALESCE(AVG(h.pump_multiple), 0) as avg_pump,
+           COUNT(h.id) as hit_count
+    FROM insider_wallets w
+    LEFT JOIN insider_gem_hits h ON w.address = h.wallet_address AND w.chain = h.chain
+    WHERE 1=1
+  `;
+  const params: unknown[] = [];
+  if (chain) {
+    query += " AND w.chain = ?";
+    params.push(chain);
+  }
+  query += " GROUP BY w.address, w.chain ORDER BY w.score DESC LIMIT 50";
+
+  const rows = db.prepare(query).all(...params) as Array<{
+    address: string; chain: string; score: number; gem_hit_count: number;
+    avg_pump: number; hit_count: number;
+  }>;
+
+  return rows.map(r => ({
+    address: r.address,
+    chain: r.chain as ScanChain,
+    score: r.score,
+    gemHitCount: r.gem_hit_count,
+    avgGainPct: r.avg_pump > 0 ? (r.avg_pump - 1) * 100 : 0,
+    avgPnlUsd: r.avg_pump > 0 ? (r.avg_pump - 1) * 10 : 0,
+  }));
+}

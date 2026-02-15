@@ -757,18 +757,28 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
 
     for (const group of walletGroups) {
       const gems = group.token_symbols.split(",").filter(Boolean);
-      upsertInsiderWallet({
-        address: group.wallet_address,
-        chain: group.chain,
-        gemHitCount: group.gem_count,
-        gems,
-        score: group.gem_count * 10, // Simple scoring
-        firstSeenAt: group.first_seen,
-        lastSeenAt: group.last_seen,
-      });
+      const score = group.gem_count * 10;
+
+      if (score >= 80) {
+        upsertInsiderWallet({
+          address: group.wallet_address,
+          chain: group.chain,
+          gemHitCount: group.gem_count,
+          gems,
+          score,
+          firstSeenAt: group.first_seen,
+          lastSeenAt: group.last_seen,
+        });
+      }
     }
 
-    result.insidersFound = walletGroups.length;
+    const { deleteInsiderWalletsBelow } = await import("./storage.js");
+    const deleted = deleteInsiderWalletsBelow(80);
+    if (deleted > 0) {
+      console.log(`[InsiderScanner] Removed ${deleted} wallets below score 80`);
+    }
+
+    result.insidersFound = walletGroups.filter((g) => g.gem_count * 10 >= 80).length;
   } catch (err) {
     const msg = `Error recalculating insiders: ${err}`;
     console.error(`[InsiderScanner] ${msg}`);

@@ -170,11 +170,15 @@ export async function startBot(): Promise<void> {
     await handleInsiders(ctx, "opps");
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("insiders_wallets", async (ctx) => {
+    await handleInsiders(ctx, "wallets");
+    await ctx.answerCallbackQuery();
+  });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     const match = ctx.match;
     if (!match) return;
     const chainVal = match[1];
-    const tabVal = match[2] as "holding" | "opps";
+    const tabVal = match[2] as "holding" | "wallets" | "opps";
     const resolvedChain = chainVal === "all" ? undefined : chainVal;
     await handleInsiders(ctx, tabVal, resolvedChain);
     await ctx.answerCallbackQuery();
@@ -777,7 +781,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" = "holding", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -797,6 +801,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
     const chainButtons = [
       [
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
+        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
@@ -864,6 +869,58 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       const messages: string[] = [];
       let current = header;
       for (const block of tokenBlocks) {
+        if (current.length + block.length + 2 > maxLen) {
+          messages.push(current);
+          current = "";
+        }
+        current += (current && current !== header ? "\n\n" : "") + block;
+      }
+      current += footer;
+      messages.push(current);
+
+      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      for (let i = 0; i < messages.length; i++) {
+        const isLast = i === messages.length - 1;
+        if (isLast) {
+          await sendDataMessage(messages[i], buttons);
+        } else {
+          if (bot && chatId) {
+            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+            insiderExtraMessageIds.push(overflowMsg.message_id);
+          }
+        }
+      }
+
+      return;
+    }
+
+    if (tab === "wallets") {
+      const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
+      let walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | "solana" | undefined);
+
+      if (walletStats.length === 0) {
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 80).`, buttons);
+        return;
+      }
+
+      const walletBlocks = walletStats.map((w) => {
+        const addrShort = w.address.length > 10
+          ? `${w.address.slice(0, 6)}...${w.address.slice(-4)}`
+          : w.address;
+        const gainSign = w.avgGainPct >= 0 ? "+" : "";
+        const pnlSign = w.avgPnlUsd >= 0 ? "+" : "";
+        return `<b>${addrShort}</b> - Score: ${w.score}\nGems: ${w.gemHitCount} | Avg Gain: ${gainSign}${w.avgGainPct.toFixed(0)}% | Avg P&L: ${pnlSign}$${w.avgPnlUsd.toFixed(2)}`;
+      });
+
+      const header = `<b>Insider Wallets</b> - Wallets\n\n`;
+      const scannerStatus = status.running ? "Running" : "Stopped";
+      const footer = `\nScanner: ${scannerStatus} | ${walletStats.length} qualified insiders`;
+      const maxLen = 3900;
+
+      const messages: string[] = [];
+      let current = header;
+      for (const block of walletBlocks) {
         if (current.length + block.length + 2 > maxLen) {
           messages.push(current);
           current = "";
@@ -962,6 +1019,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
     const chainButtons = [
       [
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
+        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
