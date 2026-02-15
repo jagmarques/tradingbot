@@ -109,6 +109,9 @@ export function initInsiderTables(): void {
     db.exec("DELETE FROM insider_wallets WHERE chain = 'solana'");
   }
 
+  // Clear fake score=50 Solana analyses (GoPlus had no data, old code cached 50)
+  db.exec("DELETE FROM insider_gem_analyses WHERE chain = 'solana' AND score = 50");
+
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
