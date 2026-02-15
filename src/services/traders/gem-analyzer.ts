@@ -45,10 +45,11 @@ export async function fetchGoPlusData(tokenAddress: string, chain: string): Prom
       result: Record<string, Record<string, unknown>>;
     };
 
-    if (data.code !== 1 || !data.result) {
-      console.warn(`[GemAnalyzer] GoPlus returned code ${data.code}`);
+    if (data.code !== 1) {
+      console.warn(`[GemAnalyzer] GoPlus error code ${data.code}`);
       return null;
     }
+    if (!data.result) return null;
 
     // EVM chains: GoPlus returns lowercase hex keys; Solana: original base58 case
     const key = chain === "solana" ? tokenAddress : tokenAddress.toLowerCase();
