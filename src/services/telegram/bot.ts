@@ -26,9 +26,9 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getGemPaperTrade, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
-import { analyzeGemsBackground, refreshGemPaperPrices } from "../traders/gem-analyzer.js";
+import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -890,107 +890,41 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
     }
 
     if (tab === "opps") {
-      const heldGems = getAllHeldGemHits(chain);
+      // Get open paper trades (gems we actually bought)
+      let openPaperTrades = getOpenGemPaperTrades();
 
-      if (heldGems.length === 0) {
+      // Apply chain filter if set
+      if (chain) {
+        openPaperTrades = openPaperTrades.filter((trade) => trade.chain === chain);
+      }
+
+      if (openPaperTrades.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Gems\n\nNo insiders currently holding gems.`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Gems\n\nNo gem paper trades yet.`, buttons);
         return;
       }
 
-      // Group by token+chain (same as Holding)
-      const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
-      for (const gem of heldGems) {
-        const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
-        if (!tokenMap.has(key)) {
-          tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
-        }
-        tokenMap.get(key)!.gems.push(gem);
-      }
+      // Build token blocks from paper trades
+      const tokenBlocks = openPaperTrades.map((trade) => {
+        const chainTag = trade.chain.toUpperCase().slice(0, 3);
+        const scoreDisplay = trade.aiScore !== null && trade.aiScore !== -1 ? `${trade.aiScore}/100` : "N/A";
+        const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
+        const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
+        const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
+        const sign = pnlUsd >= 0 ? "+" : "";
 
-      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
-        const holders = t.gems.length;
-        const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
-        const currentPump = Math.max(...currentPumps);
-        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
-        const peakPump = Math.max(...peakPumps);
-        const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
-        const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy, tokenAddress: t.gems[0].tokenAddress };
+        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
       });
-
-      // Filter: only tokens that haven't rallied hard yet (< 5x) and are alive (>= 1.0x)
-      const opportunities = tokenEntries.filter((t) => t.currentPump >= 1.0 && t.currentPump < 5);
-
-      if (opportunities.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Gems\n\nNo opportunities found (all held tokens above 5x).`, buttons);
-        return;
-      }
-
-      // Look up cached AI analysis for each opportunity
-      const scoredOpps: Array<typeof opportunities[0] & { aiScore?: number }> = [];
-      const unscored: Array<{symbol: string, chain: string, currentPump: number, tokenAddress: string}> = [];
-
-      for (const t of opportunities) {
-        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
-        if (analysis) {
-          scoredOpps.push({ ...t, aiScore: analysis.score });
-        } else {
-          scoredOpps.push(t);
-          unscored.push({ symbol: t.symbol, chain: t.chain, currentPump: t.currentPump, tokenAddress: t.tokenAddress });
-        }
-      }
-
-      // Sort: scored tokens first (by score descending), then unscored at bottom
-      scoredOpps.sort((a, b) => {
-        if (a.aiScore !== undefined && b.aiScore !== undefined) return b.aiScore - a.aiScore;
-        if (a.aiScore !== undefined) return -1;
-        if (b.aiScore !== undefined) return 1;
-        return b.holders - a.holders || a.currentPump - b.currentPump;
-      });
-
-      const tokenBlocks = scoredOpps.map((t) => {
-        const chainTag = t.chain.toUpperCase().slice(0, 3);
-        let block = "";
-        if (t.aiScore !== undefined && t.aiScore >= 0) {
-          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
-        } else if (t.aiScore === -1) {
-          block = `<b>${t.symbol}</b> (${chainTag}) - Score: N/A\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
-        } else {
-          block = `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
-        }
-
-        // Add paper trade P&L if exists
-        const paperTrade = getGemPaperTrade(t.symbol, t.chain);
-        if (paperTrade && paperTrade.status === "open") {
-          const pnlUsd = (paperTrade.pnlPct / 100) * paperTrade.amountUsd;
-          const sign = pnlUsd >= 0 ? "+" : "";
-          const entryStr = formatTokenPrice(paperTrade.buyPriceUsd);
-          block += `\nPaper: $${paperTrade.amountUsd.toFixed(0)} @ ${entryStr} | P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${paperTrade.pnlPct.toFixed(0)}%)`;
-        }
-
-        return block;
-      });
-
-      // Trigger background analysis for unscored tokens (non-blocking)
-      if (unscored.length > 0) {
-        analyzeGemsBackground(unscored);
-      }
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
 
       // Paper portfolio summary
-      const openPaperTrades = getOpenGemPaperTrades();
-      let paperSummary = "";
-      if (openPaperTrades.length > 0) {
-        const totalPnlUsd = openPaperTrades.reduce((sum, trade) => sum + (trade.pnlPct / 100) * trade.amountUsd, 0);
-        const avgPnlPct = openPaperTrades.reduce((sum, trade) => sum + trade.pnlPct, 0) / openPaperTrades.length;
-        const sign = totalPnlUsd >= 0 ? "+" : "";
-        const avgSign = avgPnlPct >= 0 ? "+" : "";
-        paperSummary = `\nPaper Portfolio: ${openPaperTrades.length} positions | P&L: ${sign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
-      }
+      const totalPnlUsd = openPaperTrades.reduce((sum, trade) => sum + (trade.pnlPct / 100) * trade.amountUsd, 0);
+      const avgPnlPct = openPaperTrades.reduce((sum, trade) => sum + trade.pnlPct, 0) / openPaperTrades.length;
+      const sign = totalPnlUsd >= 0 ? "+" : "";
+      const avgSign = avgPnlPct >= 0 ? "+" : "";
+      const paperSummary = `\nPaper Portfolio: ${openPaperTrades.length} positions | P&L: ${sign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
 
       const footer = `${paperSummary}\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
       const maxLen = 3900;
