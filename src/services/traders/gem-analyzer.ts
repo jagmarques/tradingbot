@@ -107,34 +107,22 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
 export function scoreByInsiders(tokenAddress: string, chain: string): number {
   const stats = getInsiderStatsForToken(tokenAddress, chain);
 
-  let score = 25; // Base score
+  let score = 0;
 
-  // Insider count scoring
-  if (stats.insiderCount >= 20) {
-    score += 25;
-  } else if (stats.insiderCount >= 10) {
-    score += 15;
-  } else if (stats.insiderCount >= 5) {
-    score += 10;
-  }
+  // Insider count (40pts - most important signal)
+  if (stats.insiderCount >= 20) score += 40;
+  else if (stats.insiderCount >= 10) score += 25;
+  else if (stats.insiderCount >= 5) score += 15;
 
-  // Avg insider quality scoring
-  if (stats.avgInsiderQuality >= 8) {
-    score += 25;
-  } else if (stats.avgInsiderQuality >= 5) {
-    score += 15;
-  } else if (stats.avgInsiderQuality >= 3) {
-    score += 10;
-  }
+  // Hold rate (30pts)
+  if (stats.holdRate >= 80) score += 30;
+  else if (stats.holdRate >= 60) score += 20;
+  else if (stats.holdRate >= 40) score += 10;
 
-  // Hold rate scoring
-  if (stats.holdRate >= 80) {
-    score += 25;
-  } else if (stats.holdRate >= 60) {
-    score += 15;
-  } else if (stats.holdRate >= 40) {
-    score += 10;
-  }
+  // Avg insider quality (30pts)
+  if (stats.avgInsiderQuality >= 8) score += 30;
+  else if (stats.avgInsiderQuality >= 5) score += 20;
+  else if (stats.avgInsiderQuality >= 3) score += 10;
 
   // Clamp to 0-100
   return Math.max(0, Math.min(100, score));
