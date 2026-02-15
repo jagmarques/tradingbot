@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, type GemAnalysis } from "./storage.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -61,9 +61,7 @@ export async function fetchGoPlusData(tokenAddress: string, chain: string): Prom
   }
 }
 
-export function scoreToken(data: Record<string, unknown>): number {
-  let score = 70;
-
+export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
   // KILL FLAGS - any of these = instant 0
   if (
     data.is_honeypot === "1" ||
@@ -83,87 +81,62 @@ export function scoreToken(data: Record<string, unknown>): number {
     data.is_airdrop_scam === "1" ||
     (typeof data.is_true_token === "string" && data.is_true_token === "0")
   ) {
-    return 0;
+    return true;
   }
 
   // Creator history kill flag
   if (typeof data.honeypot_with_same_creator === "string") {
     const count = parseInt(data.honeypot_with_same_creator, 10);
-    if (!isNaN(count) && count > 0) return 0;
+    if (!isNaN(count) && count > 0) return true;
   }
 
   // Tax kill flags (>10%)
   if (typeof data.buy_tax === "string" && data.buy_tax !== "") {
     const buyTaxPct = parseFloat(data.buy_tax) * 100;
-    if (!isNaN(buyTaxPct) && buyTaxPct > 10) return 0;
-    // Gradual penalty for taxes <= 10%
-    if (!isNaN(buyTaxPct)) score -= Math.floor(buyTaxPct / 5) * 10;
+    if (!isNaN(buyTaxPct) && buyTaxPct > 10) return true;
   }
 
   if (typeof data.sell_tax === "string" && data.sell_tax !== "") {
     const sellTaxPct = parseFloat(data.sell_tax) * 100;
-    if (!isNaN(sellTaxPct) && sellTaxPct > 10) return 0;
-    // Gradual penalty for taxes <= 10%
-    if (!isNaN(sellTaxPct)) score -= Math.floor(sellTaxPct / 5) * 10;
+    if (!isNaN(sellTaxPct) && sellTaxPct > 10) return true;
   }
 
-  // PENALTIES
-  if (data.is_open_source !== "1") {
-    score -= 20;
+  return false;
+}
+
+export function scoreByInsiders(tokenAddress: string, chain: string): number {
+  const stats = getInsiderStatsForToken(tokenAddress, chain);
+
+  let score = 25; // Base score
+
+  // Insider count scoring
+  if (stats.insiderCount >= 20) {
+    score += 25;
+  } else if (stats.insiderCount >= 10) {
+    score += 15;
+  } else if (stats.insiderCount >= 5) {
+    score += 10;
   }
 
-  // External call penalty (risky but not necessarily modifiable)
-  if (data.external_call === "1") {
-    score -= 10;
+  // Avg insider quality scoring
+  if (stats.avgInsiderQuality >= 8) {
+    score += 25;
+  } else if (stats.avgInsiderQuality >= 5) {
+    score += 15;
+  } else if (stats.avgInsiderQuality >= 3) {
+    score += 10;
   }
 
-  // BONUSES
-  // LP lock bonus
-  if (Array.isArray(data.lp_holders)) {
-    const lockedPercent = (data.lp_holders as Array<{ is_locked?: number; percent?: string }>).reduce((sum, holder) => {
-      if (holder.is_locked === 1 && typeof holder.percent === "string") {
-        return sum + parseFloat(holder.percent);
-      }
-      return sum;
-    }, 0);
-
-    if (lockedPercent > 0.9) {
-      score += 10;
-    } else if (lockedPercent > 0.5) {
-      score += 5;
-    }
+  // Hold rate scoring
+  if (stats.holdRate >= 80) {
+    score += 25;
+  } else if (stats.holdRate >= 60) {
+    score += 15;
+  } else if (stats.holdRate >= 40) {
+    score += 10;
   }
 
-  // Holder count bonus
-  if (typeof data.holder_count === "string") {
-    const holderCount = parseInt(data.holder_count, 10);
-    if (holderCount > 200) {
-      score += 10;
-    } else if (holderCount > 50) {
-      score += 5;
-    }
-  }
-
-  // CONCENTRATION PENALTY
-  if (Array.isArray(data.holders)) {
-    const maxNonContractPercent = (data.holders as Array<{ is_contract?: number; percent?: string }>).reduce(
-      (max, holder) => {
-        if (holder.is_contract === 0 && typeof holder.percent === "string") {
-          return Math.max(max, parseFloat(holder.percent));
-        }
-        return max;
-      },
-      0
-    );
-
-    if (maxNonContractPercent > 0.2) {
-      score -= 15;
-    } else if (maxNonContractPercent > 0.1) {
-      score -= 10;
-    }
-  }
-
-  // Clamp to 0-100 range
+  // Clamp to 0-100
   return Math.max(0, Math.min(100, score));
 }
 
@@ -171,9 +144,16 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   const cached = getCachedGemAnalysis(symbol, chain);
   if (cached) return cached;
 
-  const goPlusData = await fetchGoPlusData(tokenAddress, chain);
-  const rawScore = goPlusData ? scoreToken(goPlusData) : -1;
-  const score = Number.isFinite(rawScore) ? rawScore : -1;
+  // Score primarily by insider stats
+  let score = scoreByInsiders(tokenAddress, chain);
+
+  // GoPlus kill-switch (EVM only - no Solana coverage)
+  if (chain !== "solana") {
+    const goPlusData = await fetchGoPlusData(tokenAddress, chain);
+    if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+      score = 0;
+    }
+  }
 
   const analysis: GemAnalysis = {
     tokenSymbol: symbol,

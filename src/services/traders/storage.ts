@@ -98,19 +98,12 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
-  // Fix corrupted lowercased Solana addresses
-  const corruptedSolana = db.prepare(
-    "SELECT COUNT(*) as cnt FROM insider_gem_hits WHERE chain = 'solana' AND token_address = LOWER(token_address)"
-  ).get() as { cnt: number };
-  if (corruptedSolana.cnt > 0) {
-    console.log(`[InsiderScanner] Clearing ${corruptedSolana.cnt} corrupted Solana entries (lowercased addresses)`);
-    db.exec("DELETE FROM insider_gem_hits WHERE chain = 'solana'");
-    db.exec("DELETE FROM insider_gem_analyses WHERE chain = 'solana'");
-    db.exec("DELETE FROM insider_wallets WHERE chain = 'solana'");
+  // One-time: clear old GoPlus-based analyses so insider scoring takes over
+  const oldAnalyses = db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_analyses WHERE score = -1 OR score = 50").get() as { cnt: number };
+  if (oldAnalyses.cnt > 0) {
+    db.exec("DELETE FROM insider_gem_analyses");
+    console.log(`[InsiderScanner] Cleared ${oldAnalyses.cnt} old GoPlus-based analyses`);
   }
-
-  // Clear fake score=50 Solana analyses (GoPlus had no data, old code cached 50)
-  db.exec("DELETE FROM insider_gem_analyses WHERE chain = 'solana' AND score = 50");
 
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
@@ -463,4 +456,37 @@ export function getTokenAddressForGem(symbol: string, chain: string): string | n
     "SELECT token_address FROM insider_gem_hits WHERE token_symbol = ? AND chain = ? LIMIT 1"
   ).get(symbol, chain) as { token_address: string } | undefined;
   return row?.token_address ?? null;
+}
+
+export function getInsiderStatsForToken(tokenAddress: string, chain: string): { insiderCount: number; avgInsiderQuality: number; holdRate: number } {
+  const db = getDb();
+  const ta = normalizeAddr(tokenAddress, chain);
+
+  // Get insider count and avg quality
+  const statsRow = db.prepare(`
+    SELECT COUNT(DISTINCT h.wallet_address) as insider_count,
+           COALESCE(AVG(w.gem_hit_count), 0) as avg_quality
+    FROM insider_gem_hits h
+    JOIN insider_wallets w ON h.wallet_address = w.address AND h.chain = w.chain
+    WHERE h.token_address = ? AND h.chain = ?
+      AND w.gem_hit_count >= 5
+  `).get(ta, chain) as { insider_count: number; avg_quality: number } | undefined;
+
+  const insiderCount = statsRow?.insider_count ?? 0;
+  const avgInsiderQuality = statsRow?.avg_quality ?? 0;
+
+  // Get hold rate
+  const holdRow = db.prepare(`
+    SELECT
+      SUM(CASE WHEN status = 'holding' OR status IS NULL OR status = 'unknown' THEN 1 ELSE 0 END) as holding_count,
+      COUNT(*) as total_count
+    FROM insider_gem_hits
+    WHERE token_address = ? AND chain = ?
+  `).get(ta, chain) as { holding_count: number; total_count: number } | undefined;
+
+  const holdingCount = holdRow?.holding_count ?? 0;
+  const totalCount = holdRow?.total_count ?? 0;
+  const holdRate = totalCount > 0 ? (holdingCount / totalCount) * 100 : 0;
+
+  return { insiderCount, avgInsiderQuality, holdRate };
 }
