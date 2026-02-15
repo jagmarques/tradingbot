@@ -172,8 +172,8 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   if (cached) return cached;
 
   const goPlusData = await fetchGoPlusData(tokenAddress, chain);
-  const rawScore = goPlusData ? scoreToken(goPlusData) : 50;
-  const score = Number.isFinite(rawScore) ? rawScore : 50;
+  const rawScore = goPlusData ? scoreToken(goPlusData) : -1;
+  const score = Number.isFinite(rawScore) ? rawScore : -1;
 
   const analysis: GemAnalysis = {
     tokenSymbol: symbol,

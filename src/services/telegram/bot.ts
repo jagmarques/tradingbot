@@ -953,8 +953,10 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       const tokenBlocks = scoredOpps.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         let block = "";
-        if (t.aiScore !== undefined) {
+        if (t.aiScore !== undefined && t.aiScore >= 0) {
           block = `<b>${t.symbol}</b> (${chainTag}) - Score: ${t.aiScore}/100\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+        } else if (t.aiScore === -1) {
+          block = `<b>${t.symbol}</b> (${chainTag}) - Score: N/A\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
         } else {
           block = `<b>${t.symbol}</b> (${chainTag}) - Score: ...\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
         }
