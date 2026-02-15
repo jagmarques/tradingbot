@@ -796,8 +796,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
 
     const chainButtons = [
       [
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
-        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
+        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
@@ -1025,8 +1025,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
     console.error("[Telegram] Insiders error:", err);
     const chainButtons = [
       [
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
-        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: "insiders_opps" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
+        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
