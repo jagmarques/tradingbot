@@ -926,7 +926,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "opps" = "holding",
       const avgSign = avgPnlPct >= 0 ? "+" : "";
       const paperSummary = `\nPaper Portfolio: ${openPaperTrades.length} positions | P&L: ${sign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
 
-      const footer = `${paperSummary}\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+      const footer = `\n${paperSummary}\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
       const maxLen = 3900;
 
       const messages: string[] = [];
