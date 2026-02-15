@@ -721,6 +721,41 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     }
   }
 
+  // Multi-factor wallet scoring (0-100)
+  function computeWalletScore(wallet: {
+    gem_count: number;
+    avg_pump: number;
+    holding_count: number;
+    unique_tokens: number;
+    first_seen: number;
+    last_seen: number;
+  }): number {
+    // 1. Gem count (25 points max) - logarithmic to avoid saturation
+    const gemCountScore = Math.min(25, Math.round(25 * Math.log2(wallet.gem_count) / Math.log2(50)));
+
+    // 2. Average pump multiple (25 points max) - cap at 20x to prevent outlier dominance
+    const avgPumpCapped = Math.min(wallet.avg_pump, 20);
+    const avgPumpScore = Math.min(25, Math.round(25 * avgPumpCapped / 20));
+
+    // 3. Hold rate (20 points max) - diamond hands vs paper hands
+    const holdRate = wallet.holding_count / wallet.gem_count;
+    const holdRateScore = Math.round(20 * holdRate);
+
+    // 4. Recency (15 points max) - recent activity matters more
+    const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
+    const recencyScore = Math.max(0, Math.round(15 * (1 - daysSinceLastSeen / 90)));
+
+    // 5. Consistency (15 points max) - multiple tokens over time
+    const timeSpanDays = (wallet.last_seen - wallet.first_seen) / (24 * 60 * 60 * 1000);
+    let consistencyScore = Math.min(15, Math.round(15 * Math.min(wallet.unique_tokens, 10) / 10));
+    if (timeSpanDays < 7) {
+      consistencyScore = Math.round(consistencyScore / 2); // penalize short time spans
+    }
+
+    const total = gemCountScore + avgPumpScore + holdRateScore + recencyScore + consistencyScore;
+    return Math.min(100, total);
+  }
+
   // Recalculate insider wallets from gem_hits
   try {
     const db = getDb();
@@ -740,7 +775,10 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       SELECT wallet_address, chain, COUNT(*) as gem_count,
              GROUP_CONCAT(DISTINCT token_symbol) as token_symbols,
              MIN(buy_timestamp) as first_seen,
-             MAX(buy_timestamp) as last_seen
+             MAX(buy_timestamp) as last_seen,
+             AVG(pump_multiple) as avg_pump,
+             SUM(CASE WHEN (status = 'holding' OR status IS NULL OR status = 'unknown') THEN 1 ELSE 0 END) as holding_count,
+             COUNT(DISTINCT token_address) as unique_tokens
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
@@ -753,11 +791,18 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       token_symbols: string;
       first_seen: number;
       last_seen: number;
+      avg_pump: number;
+      holding_count: number;
+      unique_tokens: number;
     }>;
+
+    const scores: number[] = [];
+    let qualifiedCount = 0;
 
     for (const group of walletGroups) {
       const gems = group.token_symbols.split(",").filter(Boolean);
-      const score = Math.min(100, group.gem_count * 10);
+      const score = computeWalletScore(group);
+      scores.push(score);
 
       if (score >= 80) {
         upsertInsiderWallet({
@@ -769,6 +814,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
           firstSeenAt: group.first_seen,
           lastSeenAt: group.last_seen,
         });
+        qualifiedCount++;
       }
     }
 
@@ -778,7 +824,14 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.log(`[InsiderScanner] Removed ${deleted} wallets below score 80`);
     }
 
-    result.insidersFound = walletGroups.filter((g) => g.gem_count * 10 >= 80).length;
+    if (scores.length > 0) {
+      const min = Math.min(...scores);
+      const max = Math.max(...scores);
+      const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      console.log(`[InsiderScanner] Wallet scores: min=${min}, max=${max}, avg=${avg}, count=${scores.length}`);
+    }
+
+    result.insidersFound = qualifiedCount;
   } catch (err) {
     const msg = `Error recalculating insiders: ${err}`;
     console.error(`[InsiderScanner] ${msg}`);
