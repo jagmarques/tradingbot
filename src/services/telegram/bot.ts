@@ -907,12 +907,14 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return;
       }
 
+      walletStats.sort((a, b) => b.gemHitCount - a.gemHitCount || b.score - a.score);
+
       const walletBlocks = walletStats.map((w) => {
         const addrShort = w.address.length > 10
           ? `${w.address.slice(0, 6)}...${w.address.slice(-4)}`
           : w.address;
         const gainSign = w.avgGainPct >= 0 ? "+" : "";
-        return `${addrShort} <b>${w.score}</b>pts | ${w.gemHitCount} gems | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
+        return `${addrShort} <b>${w.score}/100</b> | ${w.gemHitCount} gems | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
       const header = `<b>Insider Wallets</b> - Wallets\n\n`;
