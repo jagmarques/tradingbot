@@ -5,6 +5,7 @@ import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
+import { findSolanaEarlyBuyers, getSolanaWalletTokenStatus, scanSolanaWalletHistory } from "../solana/helius.js";
 
 function stripEmoji(s: string): string {
   return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
@@ -248,12 +249,15 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
 
 // Find wallets that bought a token early (within first 50-100 transfers)
 export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
-  // Etherscan V2 free API only supports ethereum mainnet
-  if (token.chain !== "ethereum") {
+  if (token.chain === "solana") {
+    return findSolanaEarlyBuyers(token.tokenAddress);
+  }
+  // Etherscan V2 only supports EVM chains listed in ETHERSCAN_CHAIN_IDS
+  if (!(token.chain in ETHERSCAN_CHAIN_IDS)) {
     return [];
   }
 
-  const chainId = ETHERSCAN_CHAIN_IDS[token.chain];
+  const chainId = ETHERSCAN_CHAIN_IDS[token.chain as EvmChain];
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
 
   const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&contractaddress=${token.tokenAddress}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
@@ -333,12 +337,14 @@ interface WalletTokenPnl {
 export async function getWalletTokenPnl(
   walletAddress: string, tokenAddress: string, chain: ScanChain
 ): Promise<WalletTokenPnl> {
-  // Etherscan V2 free API only supports ethereum mainnet
-  if (chain !== "ethereum") {
+  if (chain === "solana") {
+    return getSolanaWalletTokenStatus(walletAddress, tokenAddress);
+  }
+  if (!(chain in ETHERSCAN_CHAIN_IDS)) {
     return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
   }
 
-  const chainId = ETHERSCAN_CHAIN_IDS[chain];
+  const chainId = ETHERSCAN_CHAIN_IDS[chain as EvmChain];
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
 
   const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${walletAddress}&contractaddress=${tokenAddress}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
@@ -430,16 +436,58 @@ async function _scanWalletHistoryInner(): Promise<void> {
   console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
 
   for (const wallet of insiders) {
-    // Etherscan V2 free API only supports ethereum mainnet
-    if (wallet.chain !== "ethereum") continue;
+    if (wallet.chain === "solana") {
+      try {
+        const tokens = await scanSolanaWalletHistory(wallet.address);
+        const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
+        const existingTokens = new Set(existingGems.map(g => g.tokenAddress));
+        let newGemsCount = 0;
+
+        for (const token of tokens.slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS)) {
+          if (existingTokens.has(token.tokenAddress)) continue;
+
+          const pair = await dexScreenerFetch(wallet.chain, token.tokenAddress);
+          if (!pair) continue;
+
+          const fdvUsd = pair.fdv || 0;
+          const reserveUsd = pair.liquidity?.usd || 0;
+          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) continue;
+
+          const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+          const symbol = pair.baseToken?.symbol || token.symbol;
+
+          const hit: GemHit = {
+            walletAddress: wallet.address,
+            chain: wallet.chain,
+            tokenAddress: token.tokenAddress,
+            tokenSymbol: stripEmoji(symbol),
+            buyTxHash: "",
+            buyTimestamp: token.firstTx,
+            buyBlockNumber: 0,
+            pumpMultiple,
+          };
+          upsertGemHit(hit);
+          newGemsCount++;
+        }
+
+        console.log(`[InsiderScanner] History: ${wallet.address.slice(0, 8)} (solana) - found ${newGemsCount} new gems`);
+        await new Promise((r) => setTimeout(r, 500));
+      } catch (err) {
+        console.error(`[InsiderScanner] Solana history error for ${wallet.address}:`, err);
+      }
+      continue;
+    }
+
+    // EVM chains - need Etherscan
+    if (!(wallet.chain in ETHERSCAN_CHAIN_IDS)) continue;
 
     try {
-      const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain];
+      const chainId = ETHERSCAN_CHAIN_IDS[wallet.chain as EvmChain];
       const apiKey = process.env.ETHERSCAN_API_KEY || "";
 
       // Query all token transfers for this wallet (no contractaddress filter)
       const url = `${ETHERSCAN_V2_URL}?chainid=${chainId}&module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc${apiKey ? `&apikey=${apiKey}` : ""}`;
-      const response = await etherscanRateLimitedFetch(url, wallet.chain);
+      const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
       const data = (await response.json()) as {
         status: string;
         result: Array<{
