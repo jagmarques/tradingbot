@@ -1626,12 +1626,17 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 12. Whale trades
     const whaleResult = db.prepare("DELETE FROM whale_trades").run();
 
+    // 13. Insider data
+    const insiderWalletsResult = db.prepare("DELETE FROM insider_wallets").run();
+    const insiderGemHitsResult = db.prepare("DELETE FROM insider_gem_hits").run();
+
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
       + polyCopiesDeleted + cryptoResult.changes + tradesResult.changes
       + positionsResult.changes + dailyResult.changes + arbResult.changes
       + gemTradesResult.changes + gemAnalysesResult.changes
       + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
-      + calLogResult.changes + whaleResult.changes;
+      + calLogResult.changes + whaleResult.changes
+      + insiderWalletsResult.changes + insiderGemHitsResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
 
@@ -1640,6 +1645,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
     message += `Gem trades: ${gemTradesResult.changes} + ${gemAnalysesResult.changes} scores\n`;
+    message += `Insiders: ${insiderWalletsResult.changes} wallets + ${insiderGemHitsResult.changes} gem hits\n`;
     message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
     message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
     message += `<b>Total: ${totalDeleted} records deleted</b>\n`;
