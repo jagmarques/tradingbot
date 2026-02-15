@@ -1,84 +1,101 @@
 # Trading Bot
 
-Polymarket trading bot with AI betting, copy trading, and Telegram controls. TypeScript, Docker, Coolify.
+Polymarket AI betting, copy trading, and insider gem scanner. TypeScript, Docker, Coolify.
 
 ## Strategies
 
 ### AI Betting (Polymarket)
 
-Scans Polymarket markets, fetches news via GDELT, extracts article content with Mozilla Readability, runs blind probability estimation with DeepSeek R1 (chain-of-thought reasoning), applies edge modifiers, evaluates with Kelly criterion, and places bets.
+Scans markets, fetches news via GDELT, runs blind probability estimation with DeepSeek R1, evaluates with Kelly criterion, places bets.
 
-**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1) -> Evaluator (Kelly + edge modifiers) -> Executor (CLOB/Paper)
+**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1 x2 ensemble) -> Evaluator (Kelly + Bayesian) -> Executor (CLOB/Paper)
 
-| Config | Default | Description |
-|--------|---------|-------------|
-| `AIBETTING_ENABLED` | `false` | Enable/disable |
-| `AIBETTING_MAX_BET` | `$10` | Max per position |
-| `AIBETTING_MAX_EXPOSURE` | `$50` | Total open exposure |
-| `AIBETTING_MAX_POSITIONS` | `5` | Concurrent positions |
-| `AIBETTING_MIN_CONFIDENCE` | `60%` | Min AI confidence to bet |
-| `AIBETTING_MIN_EDGE` | `12%` | Min edge vs market price |
-| `AIBETTING_SCAN_INTERVAL` | `30min` | Time between scan cycles |
+- Blind probability: market prices hidden from AI to prevent anchoring
+- Round-number debiasing: R1 avoids 40%, 35%, uses 37%, 43%
+- Sibling detection: injects competitor names for multi-candidate markets
+- 8h analysis cache, auto-invalidated on new news
+- Prediction market article filter: drops Polymarket/Kalshi articles
 
-**Blind probability:** Market prices are not shown to the AI. R1 estimates probability independently from news evidence only. This prevents anchoring on market consensus.
+**Edge modifiers:** extremization 1.3x, category bonuses, NO-side +1.5% bias
 
-**Round-number debiasing:** Prompt instructs R1 to avoid round numbers (40%, 35%, 50%) and use precise estimates (37%, 43%, 52%). Multi-candidate races include sibling market context to differentiate between similar markets.
+**Exit rules:** stop-loss -15%, take-profit +40%, conviction flip, settlement risk <6h
 
-**Edge modifiers:**
-- Extremization (1.3x): pushes AI estimates away from center
-- Category bonuses: entertainment +3%, other +2%, politics +1%, crypto -3%
-- NO-side bias (+1.5%): corrects for retail YES overpricing
+### Copy Trading (Polymarket)
 
-**Filters:**
-- Pre-filter: skip if scanner price makes edge mathematically impossible
-- Market disagreement cap: 30pp (if AI disagrees with market by >30pp, skip)
-- Correlated bet limit: 1 per event group
-- Dynamic confidence floor: edge >= 20% lowers confidence requirement to 50%
-- 8-hour cache on analyses, auto-invalidated when new news matches open positions
-- Prediction market article filter: drops articles about Polymarket/Kalshi odds to prevent circular contamination
+Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with avg entry >90c or <10c. 30-minute buffer before market end.
 
-**Exit rules:**
-- Stop-loss at -25%
-- AI re-analysis when price moves >15% against position
-- Exit on negative EV or conviction flip
-- Settlement risk exit <6h before resolution
-- Auto-resolve on market settlement
+### Insider Gem Scanner
 
-### Copy Trading
+Scans 5 chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
 
-Copy profitable wallets on Solana + EVM chains (Base, BNB, Arbitrum, Avalanche). Includes wash trade detection.
+**Chains:** Ethereum, Base, Arbitrum, Avalanche, Solana
 
-### Polymarket Tracker
+**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan/Alchemy RPC) -> Wallet tracking -> Insider scoring -> Paper/live buy
 
-Monitor top Polymarket bettors and copy their positions. 30-minute buffer before market end, 90-second trade age window. Resolved market cache prevents repeated attempts on closed markets. Filters out penny-collector traders (average entry price >90c or <10c) to track only actionable signals.
+**Insider qualification:** 5+ gem hits (found early in 5+ different pumped tokens), sniper bot filter (<24h hold excluded)
 
-## Telegram Commands
+**Scoring (0-100):**
+
+| Factor | Weight | Tiers |
+|--------|--------|-------|
+| Insider count | 40pts | 20+=40, 10+=25, 5+=15 |
+| Hold rate | 30pts | 80%+=30, 60%+=20, 40%+=10 |
+| Avg insider quality | 30pts | 8+=30, 5+=20, 3+=10 |
+
+GoPlus kill-switch (EVM only): honeypot, mintable, hidden owner, high tax = score 0.
+
+**Buy threshold:** score >= 80, paper $10 per position, min liquidity $1k.
+
+**Price tracking:** DexScreener batch pricing, auto-close on rug (liquidity < $500).
+
+## Telegram
 
 | Command | Description |
 |---------|-------------|
-| `/status` | Open positions across all strategies |
+| `/status` | Positions across all strategies |
 | `/balance` | Wallet balances |
-| `/pnl` | P&L breakdown (daily/7d/30d/all-time) |
-| `/bets` | AI bet positions (Open/Closed tabs) |
+| `/pnl` | P&L (daily/7d/30d/all-time) |
+| `/bets` | AI bets (Open/Closed/Copy tabs) |
 | `/trades` | Recent trades |
-| `/traders` | Top tracked wallets |
-| `/bettors` | Copied Polymarket bettors |
+| `/insiders` | Insider wallets, holdings, gems |
+| `/stop` / `/resume` | Kill switch |
+| `/mode` | Switch paper/live |
 | `/settings` | Auto-copy config |
-| `/stop` / `/resume` | Kill switch (all strategies) |
-| `Manage` button | Close bets, copy bets, or reset paper data |
-| `/resetpaper` | Wipe paper trading data |
-| `/ai <question>` | Query bot data with DeepSeek |
+| `/resetpaper` | Wipe paper data |
+| `/ai <question>` | Query bot with DeepSeek |
 
-## Paper vs Live Mode
+**Insider tabs:** Wallets (address, score, gem count, avg gain) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
+
+**Chain filter:** persists across tab switches (Base, Arb, Poly, Opt, Avax, SOL, All)
+
+## Paper vs Live
 
 | | Paper | Live |
 |---|-------|------|
-| Bankroll | Virtual $10k | Real USDC balance |
+| Bankroll | Virtual $10k | Real USDC/SOL |
 | Position limits | None | 5 |
 | Exposure limit | None | $50 |
-| Copy limit | None | 10/day |
-| Orders | Midpoint prices | Real CLOB orderbook |
+| Orders | Midpoint prices | Real orderbook (CLOB/Jupiter/1inch) |
+| Gem trades | DexScreener prices | Jupiter (SOL) / 1inch (EVM) |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
+
+## Config
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRADING_MODE` | `paper` | paper or live |
+| `AIBETTING_ENABLED` | `false` | Enable AI betting |
+| `AIBETTING_MAX_BET` | `$10` | Max per position |
+| `AIBETTING_MAX_EXPOSURE` | `$50` | Total open exposure |
+| `AIBETTING_MIN_EDGE` | `8%` | Min edge vs market |
+| `AIBETTING_MIN_CONFIDENCE` | `60%` | Min AI confidence |
+| `AIBETTING_SCAN_INTERVAL` | `30min` | Scan cycle interval |
+| `AIBETTING_STOP_LOSS` | `15%` | Stop-loss threshold |
+| `AIBETTING_TAKE_PROFIT` | `40%` | Take-profit threshold |
+| `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
+| `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
+
+**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYGON_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ALCHEMY_SOLANA_RPC`, `DEEPSEEK_API_KEY`
 
 ## Setup
 
