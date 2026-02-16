@@ -748,9 +748,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const holdRate = wallet.gem_count > 0 ? wallet.holding_count / wallet.gem_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
 
-    // 4. Recency (20 points max) - decays over 30 days (stricter)
+    // 4. Recency (20 points max) - decays over 90 days
     const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
-    const recencyScore = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 30)));
+    const recencyScore = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 90)));
 
     const total = gemCountScore + avgPumpScore + holdRateScore + recencyScore;
     return Math.min(100, total);

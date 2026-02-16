@@ -41,7 +41,7 @@ Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners
 | Gem count | 30pts | Log-scaled, need 100+ for max |
 | Avg pump | 30pts | Sqrt curve, need 50x+ for max |
 | Hold rate | 20pts | % of gems still held |
-| Recency | 20pts | Decays over 30 days |
+| Recency | 20pts | Decays over 90 days |
 
 **Gem scoring (0-100):**
 
