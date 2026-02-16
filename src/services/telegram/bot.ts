@@ -707,15 +707,19 @@ async function handleTrades(ctx: Context): Promise<void> {
       const totalInvested = gemPaperTrades.reduce((s, t) => s + t.amountUsd, 0);
       const totalPnlUsd = gemPaperTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
       const totalSign = totalPnlUsd >= 0 ? "+" : "";
-      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open | $${totalInvested.toFixed(0)} invested | ${totalSign}$${totalPnlUsd.toFixed(2)})\n`;
+      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open | $${totalInvested.toFixed(0)} invested | ${totalSign}$${totalPnlUsd.toFixed(2)})\n\n`;
       for (const t of gemPaperTrades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
         const scoreStr = t.aiScore != null ? ` | Score: ${t.aiScore}` : "";
         const holders = getGemHolderCount(t.tokenSymbol, t.chain);
         const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
+        const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
+        const launchPump = getMaxPumpForToken(t.tokenSymbol, t.chain);
+        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x` + (launchPump ? ` | Since launch: ${launchPump.toFixed(1)}x` : "");
         message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
+        message += `${pumpLine}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
       message += `\n`;
