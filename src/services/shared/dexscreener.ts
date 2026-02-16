@@ -17,6 +17,7 @@ export interface DexPair {
   liquidity?: { usd?: number };
   baseToken?: { symbol?: string; address?: string };
   chainId?: string;
+  pairAddress?: string;
 }
 
 function enqueue(): Promise<void> {

@@ -135,6 +135,7 @@ export interface GemHit {
   status?: "holding" | "sold" | "partial" | "transferred" | "unknown";
   buyDate?: number;
   sellDate?: number;
+  launchPriceUsd?: number;
 }
 
 export interface InsiderWallet {

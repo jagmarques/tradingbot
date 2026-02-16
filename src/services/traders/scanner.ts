@@ -1,6 +1,6 @@
 import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
@@ -64,6 +64,27 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   geckoQueue = myTurn;
   await myTurn;
   return fetch(url);
+}
+
+// Fetch launch price from GeckoTerminal OHLCV (earliest daily candle open)
+async function fetchLaunchPrice(chain: ScanChain, pairAddress: string): Promise<number> {
+  if (!pairAddress) return 0;
+  const network = GECKO_NETWORK_IDS[chain];
+  if (!network) return 0;
+  try {
+    const url = `${GECKO_BASE}/networks/${network}/pools/${pairAddress}/ohlcv/day?limit=200&currency=usd`;
+    const resp = await geckoRateLimitedFetch(url);
+    if (!resp.ok) return 0;
+    const data = await resp.json() as { data?: { attributes?: { ohlcv_list?: number[][] } } };
+    const candles = data?.data?.attributes?.ohlcv_list;
+    if (!candles || candles.length === 0) return 0;
+    // Candles are newest-first; last = earliest
+    const earliest = candles[candles.length - 1];
+    const openPrice = earliest[1];
+    return openPrice > 0 ? openPrice : 0;
+  } catch {
+    return 0;
+  }
 }
 
 // Rate limiting for Etherscan (220ms between requests, per chain)
@@ -464,8 +485,12 @@ async function _scanWalletHistoryInner(): Promise<void> {
           if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) continue;
           const isPumpFun = token.tokenAddress.endsWith("pump");
           if (fdvUsd > 10_000_000 && !isPumpFun) continue;
-          const pumpMultiple = wallet.chain === "solana" && priceUsd > 0 && isPumpFun
-            ? priceUsd / 0.000069
+          let launchPriceUsd = isPumpFun ? 0.000069 : 0;
+          if (!isPumpFun && pair.pairAddress) {
+            launchPriceUsd = await fetchLaunchPrice(wallet.chain, pair.pairAddress);
+          }
+          const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
+            ? priceUsd / launchPriceUsd
             : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
           const symbol = pair.baseToken?.symbol || token.symbol;
 
@@ -478,6 +503,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
             buyTimestamp: token.firstTx,
             buyBlockNumber: 0,
             pumpMultiple,
+            launchPriceUsd,
           };
           upsertGemHit(hit);
           newGemsCount++;
@@ -554,8 +580,15 @@ async function _scanWalletHistoryInner(): Promise<void> {
           }
           if (fdvUsd > 10_000_000) continue;
 
-          // EVM only - FDV ratio as pump proxy
-          const pumpMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
+          // Fetch launch price from OHLCV for accurate pump
+          let launchPriceUsd = 0;
+          const priceUsd = parseFloat(pair.priceUsd || "0");
+          if (pair.pairAddress) {
+            launchPriceUsd = await fetchLaunchPrice(wallet.chain, pair.pairAddress);
+          }
+          const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
+            ? priceUsd / launchPriceUsd
+            : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
           const symbol = pair.baseToken?.symbol || tokenInfo.symbol;
 
           const hit: GemHit = {
@@ -567,6 +600,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
             buyTimestamp: tokenInfo.firstTx,
             buyBlockNumber: 0,
             pumpMultiple,
+            launchPriceUsd,
           };
           upsertGemHit(hit);
           newGemsCount++;
@@ -624,7 +658,7 @@ export async function updateHeldGemPrices(): Promise<void> {
   const heldGems = getAllHeldGemHits();
 
   // Deduplicate by token+chain (many wallets may hold same token)
-  const uniqueTokens = new Map<string, { tokenAddress: string; chain: ScanChain; symbol: string; oldMultiple: number }>();
+  const uniqueTokens = new Map<string, { tokenAddress: string; chain: ScanChain; symbol: string; oldMultiple: number; launchPrice: number }>();
   for (const gem of heldGems) {
     const key = `${gem.tokenAddress}_${gem.chain}`;
     if (!uniqueTokens.has(key)) {
@@ -633,6 +667,7 @@ export async function updateHeldGemPrices(): Promise<void> {
         chain: gem.chain,
         symbol: gem.tokenSymbol,
         oldMultiple: gem.pumpMultiple,
+        launchPrice: gem.launchPriceUsd || 0,
       });
     }
   }
@@ -649,6 +684,23 @@ export async function updateHeldGemPrices(): Promise<void> {
   }));
   const priceMap = await dexScreenerFetchBatch(tokenArray);
 
+  // Backfill launch prices for tokens missing them (max 3 per cycle)
+  let backfilled = 0;
+  for (const [, token] of uniqueTokens) {
+    if (token.launchPrice > 0 || token.tokenAddress.endsWith("pump") || backfilled >= 3) continue;
+    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const pair = priceMap.get(addrKey);
+    if (pair?.pairAddress) {
+      const lp = await fetchLaunchPrice(token.chain, pair.pairAddress);
+      if (lp > 0) {
+        token.launchPrice = lp;
+        setLaunchPrice(token.tokenAddress, token.chain, lp);
+        console.log(`[InsiderScanner] Launch price: ${token.symbol} = $${lp.toFixed(8)}`);
+        backfilled++;
+      }
+    }
+  }
+
   for (const [, token] of uniqueTokens) {
     const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
     const pair = priceMap.get(addrKey);
@@ -660,9 +712,15 @@ export async function updateHeldGemPrices(): Promise<void> {
     if (priceUsd > 0 || fdvUsd > 0) {
       const isPumpFun = token.tokenAddress.endsWith("pump");
       if (fdvUsd > 10_000_000 && !isPumpFun) continue;
-      const newMultiple = token.chain === "solana" && priceUsd > 0 && isPumpFun
-        ? priceUsd / 0.000069
-        : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
+      // Use launch price when available, fall back to Pump.fun formula or FDV ratio
+      let newMultiple: number;
+      if (token.launchPrice > 0 && priceUsd > 0) {
+        newMultiple = priceUsd / token.launchPrice;
+      } else if (isPumpFun && priceUsd > 0) {
+        newMultiple = priceUsd / 0.000069;
+      } else {
+        newMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
+      }
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
         updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);

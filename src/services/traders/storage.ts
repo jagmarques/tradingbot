@@ -56,8 +56,11 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN buy_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN max_pump_multiple REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN launch_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
   // Seed max_pump_multiple from existing pump_multiple for old records
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
+  // Seed launch price for Pump.fun tokens
+  db.prepare("UPDATE insider_gem_hits SET launch_price_usd = 0.000069 WHERE launch_price_usd = 0 AND token_address LIKE '%pump'").run();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_gem_analyses (
@@ -131,8 +134,8 @@ export function upsertGemHit(hit: GemHit): void {
   db.prepare(`
     INSERT OR IGNORE INTO insider_gem_hits (
       id, wallet_address, chain, token_address, token_symbol,
-      buy_tx_hash, buy_timestamp, pump_multiple, max_pump_multiple
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      buy_tx_hash, buy_timestamp, pump_multiple, max_pump_multiple, launch_price_usd
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -142,7 +145,8 @@ export function upsertGemHit(hit: GemHit): void {
     hit.buyTxHash,
     hit.buyTimestamp,
     hit.pumpMultiple,
-    hit.pumpMultiple
+    hit.pumpMultiple,
+    hit.launchPriceUsd || 0
   );
 }
 
@@ -222,6 +226,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
     status: (row.status as GemHit["status"]) || undefined,
     buyDate: (row.buy_date as number) || undefined,
     sellDate: (row.sell_date as number) || undefined,
+    launchPriceUsd: (row.launch_price_usd as number) || undefined,
   }));
 }
 
@@ -251,6 +256,7 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
     status: (row.status as GemHit["status"]) || undefined,
     buyDate: (row.buy_date as number) || undefined,
     sellDate: (row.sell_date as number) || undefined,
+    launchPriceUsd: (row.launch_price_usd as number) || undefined,
   }));
 }
 
@@ -276,6 +282,13 @@ export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pu
          max_pump_multiple = MAX(COALESCE(max_pump_multiple, 0), ?)
      WHERE token_address = ? AND chain = ?`
   ).run(pumpMultiple, pumpMultiple, normalizeAddr(tokenAddress, chain), chain);
+}
+
+export function setLaunchPrice(tokenAddress: string, chain: string, launchPriceUsd: number): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE insider_gem_hits SET launch_price_usd = ? WHERE token_address = ? AND chain = ? AND launch_price_usd = 0"
+  ).run(launchPriceUsd, normalizeAddr(tokenAddress, chain), chain);
 }
 
 function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
