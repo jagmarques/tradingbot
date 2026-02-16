@@ -165,6 +165,10 @@ export async function buyGems(
 ): Promise<void> {
   for (const token of tokens) {
     if (token.score < 80) continue;
+    if (token.currentPump >= 50) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
+      continue;
+    }
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing) continue;
 

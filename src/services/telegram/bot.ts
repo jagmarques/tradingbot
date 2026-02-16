@@ -855,7 +855,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const alive = tokenEntries.filter((t) => t.currentPump >= 1.0);
 
-      alive.sort((a, b) => b.holders - a.holders || b.currentPump - a.currentPump || b.launchTs - a.launchTs);
+      alive.sort((a, b) => a.currentPump - b.currentPump || b.launchTs - a.launchTs);
 
       const top20 = alive.slice(0, 20);
 
