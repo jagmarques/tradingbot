@@ -869,7 +869,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         const scoreDisplay = `${t.score}/100`;
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        const peakStr = t.peakPump > t.currentPump ? ` | Peak: ${t.peakPump.toFixed(1)}x` : "";
+        const peak = Math.max(t.peakPump, t.currentPump);
+        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(1)}x` : "";
         return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Insiders: ${t.holders} | ${discoveryDate}`;
       });
 
@@ -994,7 +995,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
           : null;
         const peakPump = getPeakPumpForToken(trade.tokenSymbol, trade.chain);
         const launchStr = launchPump && launchPump < 100000 ? ` | Launch: ${launchPump.toFixed(0)}x` : "";
-        const peakStr = peakPump > 0 && peakPump > (launchPump || 0) ? ` | Peak: ${peakPump.toFixed(0)}x` : "";
+        const peakStr = peakPump > 0 ? ` | Peak: ${peakPump.toFixed(0)}x` : "";
         const pumpStr = `Since buy: ${sinceBuyPump}${launchStr}${peakStr}`;
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
