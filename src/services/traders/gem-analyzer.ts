@@ -165,7 +165,7 @@ export async function buyGems(
 ): Promise<void> {
   for (const token of tokens) {
     if (token.score < 80) continue;
-    if (token.currentPump >= 50) {
+    if (token.currentPump >= 10) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
       continue;
     }
@@ -189,8 +189,8 @@ export async function buyGems(
       continue;
     }
 
-    if (liquidityUsd < 1000) {
-      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $1000 (likely clone)`);
+    if (liquidityUsd < 2000) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $2000 (likely clone)`);
       continue;
     }
 
@@ -432,5 +432,17 @@ export async function refreshGemPaperPrices(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[GemAnalyzer] Refreshed prices for ${updated} open paper trades`);
+  }
+
+  // Auto take-profit (3x) and stop-loss (-70%)
+  const refreshedTrades = getOpenGemPaperTrades();
+  for (const trade of refreshedTrades) {
+    if (trade.pnlPct >= 200) {
+      console.log(`[GemAnalyzer] TAKE PROFIT: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (3x)`);
+      await sellGemPosition(trade.tokenSymbol, trade.chain);
+    } else if (trade.pnlPct <= -70) {
+      console.log(`[GemAnalyzer] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}%`);
+      await sellGemPosition(trade.tokenSymbol, trade.chain);
+    }
   }
 }
