@@ -597,12 +597,12 @@ export async function enrichInsiderPnl(): Promise<void> {
         updateGemHitPnl(hit.walletAddress, hit.tokenAddress, hit.chain, pnl.buyTokens, pnl.sellTokens, pnl.status, pnl.buyDate, pnl.sellDate);
         console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
 
-        // Auto-close paper trade when insider sells
-        if (pnl.status === "sold" || pnl.status === "transferred") {
+        // Auto-close paper trade when high-score insider sells
+        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= 80) {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
             await sellGemPosition(hit.tokenSymbol, hit.chain);
-            console.log(`[InsiderScanner] Auto-close paper trade: ${hit.tokenSymbol} (insider ${pnl.status})`);
+            console.log(`[InsiderScanner] Auto-close: ${hit.tokenSymbol} (insider score ${wallet.score} ${pnl.status})`);
           }
         }
       } catch (err) {

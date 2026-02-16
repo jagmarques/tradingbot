@@ -434,13 +434,10 @@ export async function refreshGemPaperPrices(): Promise<void> {
     console.log(`[GemAnalyzer] Refreshed prices for ${updated} open paper trades`);
   }
 
-  // Auto take-profit (3x) and stop-loss (-70%)
+  // Stop-loss at -70% (take-profit follows insider sells in scanner.ts)
   const refreshedTrades = getOpenGemPaperTrades();
   for (const trade of refreshedTrades) {
-    if (trade.pnlPct >= 200) {
-      console.log(`[GemAnalyzer] TAKE PROFIT: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (3x)`);
-      await sellGemPosition(trade.tokenSymbol, trade.chain);
-    } else if (trade.pnlPct <= -70) {
+    if (trade.pnlPct <= -70) {
       console.log(`[GemAnalyzer] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}%`);
       await sellGemPosition(trade.tokenSymbol, trade.chain);
     }
