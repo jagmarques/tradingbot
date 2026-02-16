@@ -131,8 +131,8 @@ export function upsertGemHit(hit: GemHit): void {
   db.prepare(`
     INSERT OR IGNORE INTO insider_gem_hits (
       id, wallet_address, chain, token_address, token_symbol,
-      buy_tx_hash, buy_timestamp, pump_multiple
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      buy_tx_hash, buy_timestamp, pump_multiple, max_pump_multiple
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -141,6 +141,7 @@ export function upsertGemHit(hit: GemHit): void {
     hit.tokenSymbol,
     hit.buyTxHash,
     hit.buyTimestamp,
+    hit.pumpMultiple,
     hit.pumpMultiple
   );
 }
