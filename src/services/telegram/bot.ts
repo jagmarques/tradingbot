@@ -926,7 +926,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const header = `<b>Insider Wallets</b> - Wallets\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const footer = `\nScanner: ${scannerStatus} | ${walletStats.length} qualified insiders`;
+      const footer = `\n\nScanner: ${scannerStatus} | ${walletStats.length} qualified insiders`;
       const maxLen = 3900;
 
       const messages: string[] = [];
