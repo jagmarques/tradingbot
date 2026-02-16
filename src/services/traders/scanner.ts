@@ -459,10 +459,14 @@ async function _scanWalletHistoryInner(): Promise<void> {
           if (!pair) continue;
 
           const fdvUsd = pair.fdv || 0;
+          const priceUsd = parseFloat(pair.priceUsd || "0");
           const reserveUsd = pair.liquidity?.usd || 0;
           if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) continue;
 
-          const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+          // Solana: pump from Pump.fun graduation ($0.000069/token). EVM: FDV ratio
+          const pumpMultiple = wallet.chain === "solana" && priceUsd > 0
+            ? priceUsd / 0.000069
+            : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
           const symbol = pair.baseToken?.symbol || token.symbol;
 
           const hit: GemHit = {
@@ -549,7 +553,8 @@ async function _scanWalletHistoryInner(): Promise<void> {
             continue;
           }
 
-          const pumpMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+          // EVM only - FDV ratio as pump proxy
+          const pumpMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
           const symbol = pair.baseToken?.symbol || tokenInfo.symbol;
 
           const hit: GemHit = {
@@ -651,8 +656,11 @@ export async function updateHeldGemPrices(): Promise<void> {
     const priceUsd = parseFloat(pair.priceUsd || "0");
     const fdvUsd = pair.fdv || 0;
 
-    if (fdvUsd > 0) {
-      const newMultiple = Math.min(fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD, 100);
+    if (priceUsd > 0 || fdvUsd > 0) {
+      // Solana: pump from Pump.fun graduation. EVM: FDV ratio
+      const newMultiple = token.chain === "solana" && priceUsd > 0
+        ? priceUsd / 0.000069
+        : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
         updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);

@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getGemHolderCount, getMaxPumpForToken, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -715,8 +715,9 @@ async function handleTrades(ctx: Context): Promise<void> {
         const holders = getGemHolderCount(t.tokenSymbol, t.chain);
         const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
         const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
-        const launchPump = getMaxPumpForToken(t.tokenSymbol, t.chain);
-        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x` + (launchPump ? ` | Since launch: ${launchPump.toFixed(1)}x` : "");
+        // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
+        const launchPump = t.chain === "solana" && t.currentPriceUsd > 0 ? t.currentPriceUsd / 0.000069 : null;
+        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x` + (launchPump ? ` | Launch: ${launchPump.toFixed(0)}x` : "");
         message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `${pumpLine}\n`;
@@ -979,14 +980,16 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
 
-        // Show both pumps: since our buy and since launch
-        const launchPump = getMaxPumpForToken(trade.tokenSymbol, trade.chain);
-        const sinceBuyPump = trade.currentPumpMultiple && trade.currentPumpMultiple > 0
-          ? `${trade.currentPumpMultiple.toFixed(1)}x`
+        const sinceBuyPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
+          ? `${(trade.currentPriceUsd / trade.buyPriceUsd).toFixed(1)}x`
           : "0.0x";
-        const launchPumpStr = launchPump && launchPump > 0 ? `${launchPump.toFixed(1)}x` : "N/A";
+        // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
+        const launchPump = trade.chain === "solana" && trade.currentPriceUsd > 0
+          ? `${(trade.currentPriceUsd / 0.000069).toFixed(0)}x`
+          : null;
+        const pumpStr = `Since buy: ${sinceBuyPump}` + (launchPump ? ` | Launch: ${launchPump}` : "");
 
-        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nSince buy: ${sinceBuyPump} | Since launch: ${launchPumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
+        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\n${pumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;

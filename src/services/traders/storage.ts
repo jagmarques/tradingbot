@@ -267,14 +267,6 @@ export function getGemHolderCount(symbol: string, chain: string): number {
   return row.count;
 }
 
-export function getMaxPumpForToken(symbol: string, chain: string): number | null {
-  const db = getDb();
-  const row = db.prepare(
-    "SELECT MAX(pump_multiple) as max_pump FROM insider_gem_hits WHERE token_symbol = ? AND chain = ?"
-  ).get(symbol, chain) as { max_pump: number | null } | undefined;
-  return row?.max_pump ?? null;
-}
-
 export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
   const db = getDb();
   db.prepare(

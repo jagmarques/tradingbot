@@ -4,7 +4,8 @@ import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.j
 import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
 import { executeJupiterSwap, executeJupiterSell } from "../solana/jupiter.js";
-import { getSolBalance } from "../solana/wallet.js";
+import { getSolBalance, getConnection } from "../solana/wallet.js";
+import { PublicKey } from "@solana/web3.js";
 import type { Chain } from "./types.js";
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
@@ -104,6 +105,25 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
   return false;
 }
 
+// Check Solana SPL token freeze/mint authority on-chain
+async function checkSolanaTokenAuthorities(mintAddress: string): Promise<{ freezeAuthority: boolean; mintAuthority: boolean }> {
+  try {
+    const conn = getConnection();
+    const info = await conn.getParsedAccountInfo(new PublicKey(mintAddress));
+    const data = info.value?.data;
+    if (data && typeof data === "object" && "parsed" in data) {
+      const parsed = data.parsed as { info?: { freezeAuthority?: string | null; mintAuthority?: string | null } };
+      return {
+        freezeAuthority: !!parsed.info?.freezeAuthority,
+        mintAuthority: !!parsed.info?.mintAuthority,
+      };
+    }
+    return { freezeAuthority: false, mintAuthority: false };
+  } catch {
+    return { freezeAuthority: false, mintAuthority: false };
+  }
+}
+
 export function scoreByInsiders(tokenAddress: string, chain: string): number {
   const stats = getInsiderStatsForToken(tokenAddress, chain);
 
@@ -135,10 +155,17 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   // Score primarily by insider stats
   let score = scoreByInsiders(tokenAddress, chain);
 
-  // GoPlus kill-switch (EVM only - no Solana coverage)
-  if (chain !== "solana") {
-    const goPlusData = await fetchGoPlusData(tokenAddress, chain);
-    if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+  // GoPlus kill-switch (all chains including Solana)
+  const goPlusData = await fetchGoPlusData(tokenAddress, chain);
+  if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+    score = 0;
+  }
+
+  // Solana: on-chain freeze/mint authority check
+  if (chain === "solana" && score > 0) {
+    const authorities = await checkSolanaTokenAuthorities(tokenAddress);
+    if (authorities.freezeAuthority || authorities.mintAuthority) {
+      console.log(`[GemAnalyzer] ${symbol}: blocked (freeze=${authorities.freezeAuthority}, mint=${authorities.mintAuthority})`);
       score = 0;
     }
   }
@@ -191,6 +218,13 @@ export async function buyGems(
 
     if (liquidityUsd < 2000) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $2000 (likely clone)`);
+      continue;
+    }
+
+    // Max FDV $500k
+    const pairFdv = pair?.fdv || 0;
+    if (pairFdv > 500_000) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - FDV $${(pairFdv / 1000).toFixed(0)}k > $500k`);
       continue;
     }
 

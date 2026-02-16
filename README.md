@@ -26,15 +26,24 @@ Tracks top Polymarket bettors by ROI, copies their trades with configurable sizi
 
 ### Insider Gem Scanner
 
-Scans 5 chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
+Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
 
-**Chains:** Ethereum, Base, Arbitrum, Avalanche, Solana
+**Chains:** Ethereum, Base, Arbitrum, Polygon, Optimism, Avalanche, Solana
 
-**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan/Alchemy RPC) -> Wallet tracking -> Insider scoring -> Paper/live buy
+**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan/Helius RPC) -> Wallet tracking -> Insider scoring -> Security checks -> Paper/live buy
 
-**Insider qualification:** 5+ gem hits (found early in 5+ different pumped tokens), sniper bot filter (<24h hold excluded)
+**Insider qualification:** 5+ gem hits, sniper bot filter (<24h hold excluded)
 
-**Scoring (0-100):**
+**Wallet scoring (0-100):**
+
+| Factor | Weight | Description |
+|--------|--------|-------------|
+| Gem count | 30pts | Log-scaled, need 100+ for max |
+| Avg pump | 30pts | Sqrt curve, need 50x+ for max |
+| Hold rate | 20pts | % of gems still held |
+| Recency | 20pts | Decays over 30 days |
+
+**Gem scoring (0-100):**
 
 | Factor | Weight | Tiers |
 |--------|--------|-------|
@@ -42,11 +51,13 @@ Scans 5 chains for pumped tokens, identifies early buyers, tracks repeat winners
 | Hold rate | 30pts | 80%+=30, 60%+=20, 40%+=10 |
 | Avg insider quality | 30pts | 8+=30, 5+=20, 3+=10 |
 
-GoPlus kill-switch (EVM only): honeypot, mintable, hidden owner, high tax = score 0.
+**Security checks:** GoPlus kill-switch (all chains): honeypot, mintable, hidden owner, high tax = score 0. Solana: on-chain freeze/mint authority check (revoked = safe, active = blocked).
 
-**Buy threshold:** score >= 80, paper $10 per position, min liquidity $1k.
+**Buy filters:** score >= 80, min liquidity $2k, max FDV $500k, max 24h pump 10x, no duplicates.
 
-**Price tracking:** DexScreener batch pricing, auto-close on rug (liquidity < $500).
+**Exit rules:** stop-loss -70%, auto-sell when high-score insider (80+) sells, auto-close on rug (liquidity < $500).
+
+**Display:** Pump from Pump.fun graduation ($69k FDV) for Solana tokens. DexScreener batch pricing.
 
 ## Telegram
 
@@ -66,7 +77,7 @@ GoPlus kill-switch (EVM only): honeypot, mintable, hidden owner, high tax = scor
 
 **Insider tabs:** Wallets (address, score, gem count, avg gain) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
 
-**Chain filter:** persists across tab switches (Base, Arb, Poly, Opt, Avax, SOL, All)
+**Chain filter:** persists across tab switches (ETH, Base, Arb, Poly, Opt, Avax, SOL, All)
 
 ## Paper vs Live
 
