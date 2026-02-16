@@ -874,10 +874,12 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${launchStr} | Insiders: ${t.holders} | ${discoveryDate}`;
       });
 
-      const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
-      const footer = `\n\n${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
+      const header = top30.length > 0
+        ? `<b>Insider Wallets</b> - Currently Holding\n\n`
+        : `<b>Insider Wallets</b> - Currently Holding\n`;
+      const footer = `\n${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
@@ -914,7 +916,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 80).`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 60).`, buttons);
         return;
       }
 
