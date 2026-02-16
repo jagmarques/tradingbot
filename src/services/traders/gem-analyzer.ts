@@ -205,6 +205,8 @@ export async function buyGems(
         status: "open",
         buyPriceUsd: priceUsd,
         currentPriceUsd: priceUsd,
+        buyPumpMultiple: token.currentPump,
+        currentPumpMultiple: token.currentPump,
       });
 
       console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
@@ -234,6 +236,8 @@ export async function buyGems(
             txHash: result.signature,
             tokensReceived: result.tokensReceived,
             isLive: true,
+            buyPumpMultiple: token.currentPump,
+            currentPumpMultiple: token.currentPump,
           });
           console.log(`[GemTrader] LIVE BUY: ${token.symbol} (solana) tx=${result.signature}`);
         } else {
@@ -273,6 +277,8 @@ export async function buyGems(
           txHash: result.txHash,
           tokensReceived: result.tokensReceived,
           isLive: true,
+          buyPumpMultiple: token.currentPump,
+          currentPumpMultiple: token.currentPump,
         });
 
         console.log(`[GemTrader] LIVE BUY: ${token.symbol} (${token.chain}) tx=${result.txHash}`);

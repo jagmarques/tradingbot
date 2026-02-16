@@ -347,6 +347,8 @@ export interface GemPaperTrade {
   tokensReceived?: string | null;
   sellTxHash?: string | null;
   isLive?: boolean;
+  buyPumpMultiple?: number;
+  currentPumpMultiple?: number;
 }
 
 export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
@@ -358,11 +360,13 @@ export function insertGemPaperTrade(trade: Omit<GemPaperTrade, "id">): void {
       id, token_symbol, chain, buy_pump_multiple, current_pump_multiple,
       buy_timestamp, amount_usd, pnl_pct, ai_score, status,
       buy_price_usd, current_price_usd, tx_hash, tokens_received, is_live
-    ) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     trade.tokenSymbol,
     trade.chain,
+    trade.buyPumpMultiple ?? 0,
+    trade.currentPumpMultiple ?? 0,
     trade.buyTimestamp,
     trade.amountUsd,
     trade.pnlPct,
@@ -398,6 +402,8 @@ export function getGemPaperTrade(symbol: string, chain: string): GemPaperTrade |
     tokensReceived: (row.tokens_received as string) || null,
     sellTxHash: (row.sell_tx_hash as string) || null,
     isLive: (row.is_live as number) === 1,
+    buyPumpMultiple: (row.buy_pump_multiple as number) || 0,
+    currentPumpMultiple: (row.current_pump_multiple as number) || 0,
   };
 }
 
@@ -421,6 +427,8 @@ export function getOpenGemPaperTrades(): GemPaperTrade[] {
     tokensReceived: (row.tokens_received as string) || null,
     sellTxHash: (row.sell_tx_hash as string) || null,
     isLive: (row.is_live as number) === 1,
+    buyPumpMultiple: (row.buy_pump_multiple as number) || 0,
+    currentPumpMultiple: (row.current_pump_multiple as number) || 0,
   }));
 }
 
@@ -431,12 +439,16 @@ export function updateGemPaperTradePrice(symbol: string, chain: string, currentP
   db.prepare(`
     UPDATE insider_gem_paper_trades
     SET current_price_usd = ?,
+        current_pump_multiple = CASE
+          WHEN buy_price_usd > 0 AND ? > 0 THEN (? / buy_price_usd)
+          ELSE current_pump_multiple
+        END,
         pnl_pct = CASE
           WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100)
           ELSE 0
         END
     WHERE id = ?
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
 }
 
 export function closeGemPaperTrade(symbol: string, chain: string, sellTxHash?: string): void {
