@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getTokenAddressForGem } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -716,7 +716,9 @@ async function handleTrades(ctx: Context): Promise<void> {
         const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
         const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
         // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
-        const launchPump = t.chain === "solana" && t.currentPriceUsd > 0 ? t.currentPriceUsd / 0.000069 : null;
+        const tokenAddr = getTokenAddressForGem(t.tokenSymbol, t.chain);
+        const isPumpFun = tokenAddr ? tokenAddr.endsWith("pump") : false;
+        const launchPump = t.chain === "solana" && t.currentPriceUsd > 0 && isPumpFun ? t.currentPriceUsd / 0.000069 : null;
         const pumpLine = `Since buy: ${buyPump.toFixed(1)}x` + (launchPump ? ` | Launch: ${launchPump.toFixed(0)}x` : "");
         message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
@@ -856,7 +858,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       tokenEntries.sort((a, b) => b.currentPump - a.currentPump || a.launchTs - b.launchTs);
 
-      const top30 = tokenEntries.slice(0, 30);
+      // Filter out corrupted data from before Pump.fun detection fix
+      const filteredEntries = tokenEntries.filter(t => t.currentPump < 100_000);
+      const top30 = filteredEntries.slice(0, 30);
 
       const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
@@ -868,7 +872,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const showing = tokenEntries.length > 30 ? `Top 30 of ${tokenEntries.length}` : `${tokenEntries.length}`;
+      const showing = filteredEntries.length > 30 ? `Top 30 of ${filteredEntries.length}` : `${filteredEntries.length}`;
       const footer = `\n\n${showing} holdings | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
@@ -981,7 +985,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
           ? `${(trade.currentPriceUsd / trade.buyPriceUsd).toFixed(1)}x`
           : "0.0x";
         // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
-        const launchPump = trade.chain === "solana" && trade.currentPriceUsd > 0
+        const tokenAddr = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
+        const isPumpFun = tokenAddr ? tokenAddr.endsWith("pump") : false;
+        const launchPump = trade.chain === "solana" && trade.currentPriceUsd > 0 && isPumpFun
           ? `${(trade.currentPriceUsd / 0.000069).toFixed(0)}x`
           : null;
         const pumpStr = `Since buy: ${sinceBuyPump}` + (launchPump ? ` | Launch: ${launchPump}` : "");
