@@ -292,7 +292,7 @@ export async function notifyTopTraderCopy(params: {
 }): Promise<void> {
   const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
   const message =
-    `${modeTag} <b>COPIED TRADE</b>\n\n` +
+    `${modeTag} <b>COPIED BET</b>\n\n` +
     `Copying: ${escapeHtml(params.traderName)}\n\n` +
     `<b>${escapeHtml(params.marketTitle)}</b>\n` +
     `Side: ${params.side}\n` +
@@ -312,7 +312,7 @@ export async function notifyTopTraderCopyClose(params: {
   const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
   const pnlEmoji = params.pnl >= 0 ? "+" : "";
   const message =
-    `${modeTag} <b>COPY CLOSED</b>\n\n` +
+    `${modeTag} <b>COPY BET CLOSED</b>\n\n` +
     `Trader: ${escapeHtml(params.traderName)}\n\n` +
     `<b>${escapeHtml(params.marketTitle)}</b>\n` +
     `PnL: ${pnlEmoji}$${params.pnl.toFixed(2)} (${pnlEmoji}${params.pnlPct.toFixed(1)}%)`;

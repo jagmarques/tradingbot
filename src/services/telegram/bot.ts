@@ -1475,7 +1475,7 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Today's copies: ${settings.dailyCopyCount}
 
 
-=== POLYMARKET COPY TRADING ===
+=== POLYMARKET COPY BETTING ===
 - Total copies: ${copyStats.totalCopies}
 - Open copied positions: ${copyStats.openPositions}
 - Closed: ${copyStats.closedPositions}
