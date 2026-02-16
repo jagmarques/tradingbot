@@ -805,16 +805,17 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
+        { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
       ],
       [
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
+        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
@@ -973,8 +974,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
         const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
+        const pumpDisplay = trade.currentPumpMultiple && trade.currentPumpMultiple > 0
+          ? ` | ${trade.currentPumpMultiple.toFixed(1)}x`
+          : "";
 
-        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
+        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}${pumpDisplay}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
@@ -1027,16 +1031,17 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
       [
+        { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
         { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
         { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
       ],
       [
+        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
         { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
       ],
       [
+        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
