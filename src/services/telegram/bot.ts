@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -850,28 +850,25 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         // pumpMultiple = current value (updated by updateHeldGemPrices)
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
         const currentPump = Math.max(...currentPumps);
-        // maxPumpMultiple = historical peak
-        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
-        const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
-        const launchStr = new Date(earliestBuy).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchStr, launchTs: earliestBuy };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, launchTs: earliestBuy };
       });
 
-      const alive = tokenEntries.filter((t) => t.currentPump >= 1.0);
+      tokenEntries.sort((a, b) => b.currentPump - a.currentPump || a.launchTs - b.launchTs);
 
-      alive.sort((a, b) => a.currentPump - b.currentPump || b.launchTs - a.launchTs);
+      const top30 = tokenEntries.slice(0, 30);
 
-      const top20 = alive.slice(0, 20);
-
-      const tokenBlocks = top20.map((t) => {
+      const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        return `<b>${t.symbol}</b> (${chainTag}) - Launched: ${t.launchStr}\nPeak: ${t.peakPump.toFixed(1)}x | Now: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders}`;
+        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
+        const scoreDisplay = analysis && analysis.score !== -1 ? `${analysis.score}/100` : "N/A";
+        const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nLaunch: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders} | ${discoveryDate}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const showing = alive.length > 20 ? `Top 20 of ${alive.length}` : `${alive.length}`;
+      const showing = tokenEntries.length > 30 ? `Top 30 of ${tokenEntries.length}` : `${tokenEntries.length}`;
       const footer = `\n\n${showing} holdings | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
@@ -988,8 +985,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
           ? `${(trade.currentPriceUsd / 0.000069).toFixed(0)}x`
           : null;
         const pumpStr = `Since buy: ${sinceBuyPump}` + (launchPump ? ` | Launch: ${launchPump}` : "");
+        const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\n${pumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
+        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\n${pumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | Bought: ${buyDate}`;
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
