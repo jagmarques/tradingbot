@@ -870,8 +870,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const scoreDisplay = `${t.score}/100`;
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         const peak = Math.max(t.peakPump, t.currentPump);
-        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(1)}x` : "";
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Insiders: ${t.holders} | ${discoveryDate}`;
+        const launchStr = peak > 0 ? ` | Launch: ${peak.toFixed(0)}x` : "";
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${launchStr} | Insiders: ${t.holders} | ${discoveryDate}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
