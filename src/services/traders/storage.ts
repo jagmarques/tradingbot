@@ -470,6 +470,14 @@ export function getTokenAddressForGem(symbol: string, chain: string): string | n
   return row?.token_address ?? null;
 }
 
+export function getPeakPumpForToken(symbol: string, chain: string): number {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT MAX(COALESCE(max_pump_multiple, pump_multiple)) as peak FROM insider_gem_hits WHERE token_symbol = ? AND chain = ?"
+  ).get(symbol, chain) as { peak: number } | undefined;
+  return row?.peak || 0;
+}
+
 export function getInsiderStatsForToken(tokenAddress: string, chain: string): { insiderCount: number; avgInsiderQuality: number; holdRate: number } {
   const db = getDb();
   const ta = normalizeAddr(tokenAddress, chain);

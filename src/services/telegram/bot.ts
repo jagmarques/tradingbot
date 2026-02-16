@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getTokenAddressForGem } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getTokenAddressForGem } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -851,28 +851,32 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const holders = t.gems.length;
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
         const currentPump = Math.max(...currentPumps);
+        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
+        const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
         const analysis = getCachedGemAnalysis(t.symbol, t.chain);
         const score = analysis && analysis.score !== -1 ? analysis.score : -1;
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, launchTs: earliestBuy, score };
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchTs: earliestBuy, score };
       });
 
-      // Sort: highest score first, then most recent discovery
       const filteredEntries = tokenEntries.filter(t => t.currentPump < 100_000);
       filteredEntries.sort((a, b) => b.score - a.score || b.launchTs - a.launchTs);
-      const top30 = filteredEntries.slice(0, 30);
+      const qualifiedEntries = filteredEntries.filter(t => t.score >= 50);
+      const hiddenCount = filteredEntries.length - qualifiedEntries.length;
+      const top30 = qualifiedEntries.slice(0, 30);
 
       const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        const scoreDisplay = t.score >= 0 ? `${t.score}/100` : "N/A";
+        const scoreDisplay = `${t.score}/100`;
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nLaunch: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders} | ${discoveryDate}`;
+        const peakStr = t.peakPump > t.currentPump ? ` | Peak: ${t.peakPump.toFixed(1)}x` : "";
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Insiders: ${t.holders} | ${discoveryDate}`;
       });
 
       const header = `<b>Insider Wallets</b> - Currently Holding\n\n`;
       const scannerStatus = status.running ? "Running" : "Stopped";
-      const showing = filteredEntries.length > 30 ? `Top 30 of ${filteredEntries.length}` : `${filteredEntries.length}`;
-      const footer = `\n\n${showing} holdings | Scanner: ${scannerStatus}`;
+      const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
+      const footer = `\n\n${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
@@ -983,13 +987,15 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const sinceBuyPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
           ? `${(trade.currentPriceUsd / trade.buyPriceUsd).toFixed(1)}x`
           : "0.0x";
-        // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
         const tokenAddr = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
         const isPumpFun = tokenAddr ? tokenAddr.endsWith("pump") : false;
         const launchPump = trade.chain === "solana" && trade.currentPriceUsd > 0 && isPumpFun
-          ? `${(trade.currentPriceUsd / 0.000069).toFixed(0)}x`
+          ? (trade.currentPriceUsd / 0.000069)
           : null;
-        const pumpStr = `Since buy: ${sinceBuyPump}` + (launchPump ? ` | Launch: ${launchPump}` : "");
+        const peakPump = getPeakPumpForToken(trade.tokenSymbol, trade.chain);
+        const launchStr = launchPump && launchPump < 100000 ? ` | Launch: ${launchPump.toFixed(0)}x` : "";
+        const peakStr = peakPump > 0 && peakPump > (launchPump || 0) ? ` | Peak: ${peakPump.toFixed(0)}x` : "";
+        const pumpStr = `Since buy: ${sinceBuyPump}${launchStr}${peakStr}`;
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
         return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\n${pumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | Bought: ${buyDate}`;
