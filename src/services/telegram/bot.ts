@@ -849,23 +849,22 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const tokenEntries = Array.from(tokenMap.values()).map((t) => {
         const holders = t.gems.length;
-        // pumpMultiple = current value (updated by updateHeldGemPrices)
         const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
         const currentPump = Math.max(...currentPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, launchTs: earliestBuy };
+        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
+        const score = analysis && analysis.score !== -1 ? analysis.score : -1;
+        return { symbol: t.symbol, chain: t.chain, holders, currentPump, launchTs: earliestBuy, score };
       });
 
-      tokenEntries.sort((a, b) => b.currentPump - a.currentPump || a.launchTs - b.launchTs);
-
-      // Filter out corrupted data from before Pump.fun detection fix
+      // Sort: highest score first, then most recent discovery
       const filteredEntries = tokenEntries.filter(t => t.currentPump < 100_000);
+      filteredEntries.sort((a, b) => b.score - a.score || b.launchTs - a.launchTs);
       const top30 = filteredEntries.slice(0, 30);
 
       const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
-        const scoreDisplay = analysis && analysis.score !== -1 ? `${analysis.score}/100` : "N/A";
+        const scoreDisplay = t.score >= 0 ? `${t.score}/100` : "N/A";
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nLaunch: ${t.currentPump.toFixed(1)}x | Insiders: ${t.holders} | ${discoveryDate}`;
       });
