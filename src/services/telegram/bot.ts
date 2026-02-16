@@ -26,7 +26,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getGemHolderCount, getOpenGemPaperTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getGemHolderCount, getMaxPumpForToken, getOpenGemPaperTrades } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -974,11 +974,15 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
         const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
-        const pumpDisplay = trade.currentPumpMultiple && trade.currentPumpMultiple > 0
-          ? ` | ${trade.currentPumpMultiple.toFixed(1)}x`
-          : "";
 
-        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}${pumpDisplay}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
+        // Show both pumps: since our buy and since launch
+        const launchPump = getMaxPumpForToken(trade.tokenSymbol, trade.chain);
+        const sinceBuyPump = trade.currentPumpMultiple && trade.currentPumpMultiple > 0
+          ? `${trade.currentPumpMultiple.toFixed(1)}x`
+          : "0.0x";
+        const launchPumpStr = launchPump && launchPump > 0 ? `${launchPump.toFixed(1)}x` : "N/A";
+
+        return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nSince buy: ${sinceBuyPump} | Since launch: ${launchPumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%)`;
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
