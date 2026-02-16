@@ -462,10 +462,8 @@ async function _scanWalletHistoryInner(): Promise<void> {
           const priceUsd = parseFloat(pair.priceUsd || "0");
           const reserveUsd = pair.liquidity?.usd || 0;
           if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) continue;
-          if (fdvUsd > 10_000_000) continue;
-
-          // Solana: pump from Pump.fun graduation ($0.000069/token). EVM: FDV ratio
           const isPumpFun = token.tokenAddress.endsWith("pump");
+          if (fdvUsd > 10_000_000 && !isPumpFun) continue;
           const pumpMultiple = wallet.chain === "solana" && priceUsd > 0 && isPumpFun
             ? priceUsd / 0.000069
             : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
@@ -660,9 +658,8 @@ export async function updateHeldGemPrices(): Promise<void> {
     const fdvUsd = pair.fdv || 0;
 
     if (priceUsd > 0 || fdvUsd > 0) {
-      if (fdvUsd > 10_000_000) continue;
-      // Pump.fun: price / graduation. Others: FDV ratio
       const isPumpFun = token.tokenAddress.endsWith("pump");
+      if (fdvUsd > 10_000_000 && !isPumpFun) continue;
       const newMultiple = token.chain === "solana" && priceUsd > 0 && isPumpFun
         ? priceUsd / 0.000069
         : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
