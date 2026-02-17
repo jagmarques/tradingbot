@@ -638,7 +638,7 @@ export async function enrichInsiderPnl(): Promise<void> {
         console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
 
         // Auto-close paper trade when high-score insider sells
-        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= 70) {
+        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= 80) {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
             await sellGemPosition(hit.tokenSymbol, hit.chain);
@@ -864,7 +864,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const score = computeWalletScore(group);
       scores.push(score);
 
-      if (score >= 70) {
+      if (score >= 80) {
         upsertInsiderWallet({
           address: group.wallet_address,
           chain: group.chain,
@@ -879,9 +879,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     }
 
     const { deleteInsiderWalletsBelow } = await import("./storage.js");
-    const deleted = deleteInsiderWalletsBelow(70);
+    const deleted = deleteInsiderWalletsBelow(80);
     if (deleted > 0) {
-      console.log(`[InsiderScanner] Removed ${deleted} wallets below score 70`);
+      console.log(`[InsiderScanner] Removed ${deleted} wallets below score 80`);
     }
 
     if (scores.length > 0) {
@@ -932,7 +932,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       if (tokensToProcess.has(key)) continue;
       const cached = getCachedGemAnalysis(gem.tokenSymbol, gem.chain);
       // Process if: no score yet, OR scored >= 80 but no paper trade exists
-      if (!cached || (cached.score >= 70 && !getGemPaperTrade(gem.tokenSymbol, gem.chain))) {
+      if (!cached || (cached.score >= 80 && !getGemPaperTrade(gem.tokenSymbol, gem.chain))) {
         tokensToProcess.set(key, {
           symbol: gem.tokenSymbol,
           chain: gem.chain,
