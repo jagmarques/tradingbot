@@ -1,8 +1,8 @@
 import type { EvmChain, GemHit } from "./types.js";
 import { WATCHER_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit } from "./storage.js";
+import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
-import { analyzeGem, buyGems } from "./gem-analyzer.js";
+import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyInsiderBuyDetected } from "../telegram/notifications.js";
 
@@ -91,6 +91,22 @@ async function watchInsiderWallets(): Promise<void> {
         const ts = parseInt(tx.timeStamp);
         return ts > lastSeenTs && tx.to.toLowerCase() === wallet.address.toLowerCase();
       });
+
+      // Detect sells: outgoing transfers of tokens we have paper positions on
+      const recentOutgoing = data.result.filter((tx) => {
+        const ts = parseInt(tx.timeStamp);
+        return ts > lastSeenTs && tx.from.toLowerCase() === wallet.address.toLowerCase();
+      });
+
+      for (const tx of recentOutgoing) {
+        const symbol = tx.tokenSymbol || "";
+        const chain = wallet.chain;
+        const paperTrade = getGemPaperTrade(symbol, chain);
+        if (paperTrade && paperTrade.status === "open") {
+          await sellGemPosition(symbol, chain);
+          console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
+        }
+      }
 
       if (recentIncoming.length === 0) continue;
 
