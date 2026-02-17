@@ -1050,7 +1050,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const tradeBlocks = recentHits.map((hit) => {
         const chainTag = hit.chain.toUpperCase().slice(0, 3);
-        const statusStr = hit.status === "holding" ? "BUY" : "SELL";
+        const statusStr = hit.status === "sold" ? "SELL" : "BUY";
         const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain, true);
         const scoreStr = analysis && analysis.score !== -1 ? ` - Score: ${analysis.score}/100` : "";
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
