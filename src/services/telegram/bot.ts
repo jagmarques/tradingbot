@@ -826,16 +826,15 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       ],
     ];
 
-    const heldGems = getAllHeldGemHits(chain);
-
-    if (heldGems.length === 0) {
-      const scannerStatus = status.running ? "Running" : "Stopped";
-      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(`<b>Insider Wallets</b>\n\nNo insiders currently holding gems.\nScanner: ${scannerStatus}`, buttons);
-      return;
-    }
-
     if (tab === "holding") {
+      const heldGems = getAllHeldGemHits(chain);
+
+      if (heldGems.length === 0) {
+        const scannerStatus = status.running ? "Running" : "Stopped";
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.\nScanner: ${scannerStatus}`, buttons);
+        return;
+      }
 
       const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
       for (const gem of heldGems) {
