@@ -3,6 +3,7 @@ import { getInsiderCount } from "./storage.js";
 import { runInsiderScan } from "./scanner.js";
 import type { InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
+import { startInsiderWatcher, stopInsiderWatcher, isInsiderWatcherRunning } from "./watcher.js";
 
 let running = false;
 let scanning = false;
@@ -44,11 +45,14 @@ export function startInsiderScanner(): void {
       console.error("[InsiderScanner] Loop crashed:", err)
     );
   }, 10000);
+
+  startInsiderWatcher();
 }
 
 export function stopInsiderScanner(): void {
   if (!running) return;
   running = false;
+  stopInsiderWatcher();
   console.log("[InsiderScanner] Stopped");
 }
 
@@ -75,12 +79,14 @@ export function isInsiderScannerRunning(): boolean {
 
 export function getInsiderScannerStatus(): {
   running: boolean;
+  watcherRunning: boolean;
   lastScanAt: number | null;
   insiderCount: number;
   lastResult: InsiderScanResult | null;
 } {
   return {
     running,
+    watcherRunning: isInsiderWatcherRunning(),
     lastScanAt,
     insiderCount: running ? getInsiderCount() : 0,
     lastResult,

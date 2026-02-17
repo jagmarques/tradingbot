@@ -40,10 +40,10 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
 };
 
 // Chains with working free explorer APIs (ethereum=Etherscan, avalanche=Routescan)
-const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "avalanche"]);
+export const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "avalanche"]);
 
 // Build explorer URL based on chain (Routescan for Avalanche, Etherscan V2 for others)
-function buildExplorerUrl(chain: EvmChain, params: string): string {
+export function buildExplorerUrl(chain: EvmChain, params: string): string {
   if (chain === "avalanche") {
     const apiKey = process.env.SNOWTRACE_API_KEY || "";
     return `${ROUTESCAN_AVAX_URL}?${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
@@ -91,7 +91,7 @@ async function fetchLaunchPrice(chain: ScanChain, pairAddress: string): Promise<
 const ETHERSCAN_INTERVAL_MS = 220;
 const etherscanQueueByChain = new Map<string, Promise<void>>();
 
-async function etherscanRateLimitedFetch(url: string, chain: string): Promise<Response> {
+export async function etherscanRateLimitedFetch(url: string, chain: string): Promise<Response> {
   const currentQueue = etherscanQueueByChain.get(chain) || Promise.resolve();
   const interval = chain === "avalanche" ? 550 : ETHERSCAN_INTERVAL_MS;
   const myTurn = currentQueue.then(async () => {

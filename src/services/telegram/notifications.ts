@@ -319,6 +319,28 @@ export async function notifyTopTraderCopyClose(params: {
   await sendMessage(message);
 }
 
+// Insider Buy Detected notification
+export async function notifyInsiderBuyDetected(params: {
+  walletAddress: string;
+  walletScore: number;
+  tokenSymbol: string;
+  tokenAddress: string;
+  chain: string;
+  gemScore?: number;
+  action: string;
+}): Promise<void> {
+  const scoreStr = params.gemScore !== undefined ? ` (gem score: ${params.gemScore})` : "";
+  const message =
+    `👀 <b>INSIDER BUY DETECTED</b>\n\n` +
+    `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
+    `Wallet score: ${params.walletScore}\n` +
+    `Chain: ${escapeHtml(params.chain)}\n\n` +
+    `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
+    `Address: <code>${escapeHtml(params.tokenAddress.slice(0, 10))}...</code>${scoreStr}\n\n` +
+    `Action: ${escapeHtml(params.action)}`;
+  await sendMessage(message);
+}
+
 // Helper to escape HTML
 function escapeHtml(text: string): string {
   return text
