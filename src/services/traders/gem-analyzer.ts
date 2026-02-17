@@ -252,7 +252,7 @@ function scoreGrowthPotential(pair: import("../shared/dexscreener.js").DexPair):
   if (fdv >= 10_000 && fdv <= 100_000) pts += 7;
   else if (fdv > 100_000 && fdv <= 500_000) pts += 5;
   else if (fdv > 0 && fdv < 10_000) pts += 3;
-  else if (fdv > 500_000) pts += 1;
+  // fdv > 500_000: 0 points (large-cap, no growth potential)
 
   const createdAt = pair.pairCreatedAt ?? 0;
   if (createdAt > 0) {
@@ -261,7 +261,7 @@ function scoreGrowthPotential(pair: import("../shared/dexscreener.js").DexPair):
     if (ageDays >= 1 && ageDays <= 7) pts += 7;
     else if (ageDays > 7 && ageDays <= 30) pts += 5;
     else if (ageDays < 1) pts += 3;
-    else pts += 1; // > 30 days
+    // > 30 days: 0 points (old token, no meme gem upside)
   }
 
   const change24h = pair.priceChange?.h24 ?? null;
@@ -298,6 +298,13 @@ export function scoreGemQuality(
   const insider = Math.round(insiderRaw / 10); // 0-10
 
   const total = safety + liquidity + holders + growth + insider;
+
+  // If growth potential is 0 (old token or high FDV), cap total at 45.
+  // Prevents established tokens from scoring above the buy threshold despite good liquidity/safety.
+  if (growth === 0) {
+    return Math.min(total, 45);
+  }
+
   return Math.max(0, Math.min(100, total));
 }
 
@@ -345,7 +352,10 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   };
 
   saveGemAnalysis(analysis);
-  console.log(`[GemAnalyzer] ${symbol} (${chain}): score=${score}`);
+  const ageDays = pair?.pairCreatedAt ? Math.round((Date.now() - pair.pairCreatedAt) / 86_400_000) : -1;
+  const fdvK = pair?.fdv ? (pair.fdv / 1000).toFixed(0) : "?";
+  const liqK = pair?.liquidity?.usd ? (pair.liquidity.usd / 1000).toFixed(0) : "?";
+  console.log(`[GemAnalyzer] ${symbol} (${chain}): score=${score} age=${ageDays}d fdv=$${fdvK}k liq=$${liqK}k`);
 
   return analysis;
 }
@@ -358,7 +368,7 @@ export async function buyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
   for (const token of tokens) {
-    if (token.score < 80) continue;
+    if (token.score < 70) continue;
     if (token.currentPump >= 10) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
       continue;
