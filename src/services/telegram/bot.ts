@@ -25,7 +25,6 @@ import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../a
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
-import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
 let bot: Bot | null = null;
@@ -815,7 +814,6 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       insiderExtraMessageIds.length = 0;
     }
 
-    const status = getInsiderScannerStatus();
 
     const chainButtons = [
       [
@@ -843,9 +841,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const heldGems = getAllHeldGemHits(chain);
 
       if (heldGems.length === 0) {
-        const scannerStatus = status.running ? "Running" : "Stopped";
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.\nScanner: ${scannerStatus}`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Currently Holding\n\nNo insiders currently holding gems.`, buttons);
         return;
       }
 
@@ -885,13 +882,12 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
       });
 
-      const scannerStatus = status.running ? "Running" : "Stopped";
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
       const header = top30.length > 0
         ? `<b>Insider Wallets</b> - Currently Holding\n\n`
         : `<b>Insider Wallets</b> - Currently Holding\n`;
       const footerBreak = top30.length > 0 ? "\n\n" : "\n";
-      const footer = `${footerBreak}${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
+      const footer = `${footerBreak}${qualifiedEntries.length} holdings${hiddenStr}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
@@ -943,8 +939,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       });
 
       const header = `<b>Insider Wallets</b> - Wallets\n\n`;
-      const scannerStatus = status.running ? "Running" : "Stopped";
-      const footer = `\n\nScanner: ${scannerStatus} | ${walletStats.length} qualified insiders`;
+      const footer = `\n\n${walletStats.length} qualified insiders`;
       const maxLen = 3900;
 
       const messages: string[] = [];
@@ -1013,7 +1008,6 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       });
 
       const header = `<b>Insider Wallets</b> - Gems\n\n`;
-      const scannerStatus = status.running ? "Running" : "Stopped";
 
       // Paper portfolio summary
       const totalPnlUsd = openPaperTrades.reduce((sum, trade) => sum + (trade.pnlPct / 100) * trade.amountUsd, 0);
@@ -1022,7 +1016,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const avgSign = avgPnlPct >= 0 ? "+" : "";
       const paperSummary = `\nPaper Portfolio: ${openPaperTrades.length} positions | P&L: ${sign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
 
-      const footer = `\n${paperSummary}\nScanner: ${scannerStatus} | ${status.insiderCount} insiders found`;
+      const footer = `\n${paperSummary}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
