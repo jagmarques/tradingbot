@@ -916,7 +916,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 60).`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 80).`, buttons);
         return;
       }
 
