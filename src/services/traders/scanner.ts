@@ -931,8 +931,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
       if (tokensToProcess.has(key)) continue;
       const cached = getCachedGemAnalysis(gem.tokenSymbol, gem.chain);
-      // Process if: no score yet, OR scored >= 80 but no paper trade exists
-      if (!cached || (cached.score >= 80 && !getGemPaperTrade(gem.tokenSymbol, gem.chain))) {
+      // Process if: no score yet, OR scored >= 70 but no paper trade exists
+      if (!cached || (cached.score >= 70 && !getGemPaperTrade(gem.tokenSymbol, gem.chain))) {
         tokensToProcess.set(key, {
           symbol: gem.tokenSymbol,
           chain: gem.chain,
