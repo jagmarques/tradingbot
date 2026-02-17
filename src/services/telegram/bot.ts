@@ -860,7 +860,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       });
 
       const filteredEntries = tokenEntries.filter(t => t.currentPump < 100_000);
-      filteredEntries.sort((a, b) => b.score - a.score || b.launchTs - a.launchTs);
+      filteredEntries.sort((a, b) => a.currentPump - b.currentPump || b.launchTs - a.launchTs);
       const qualifiedEntries = filteredEntries.filter(t => t.score >= 50);
       const hiddenCount = filteredEntries.length - qualifiedEntries.length;
       const top30 = qualifiedEntries.slice(0, 30);
