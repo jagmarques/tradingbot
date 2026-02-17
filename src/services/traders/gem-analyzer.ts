@@ -129,46 +129,216 @@ export function scoreByInsiders(tokenAddress: string, chain: string): number {
 
   let score = 0;
 
-  // Insider count (40pts - most important signal)
-  if (stats.insiderCount >= 20) score += 40;
-  else if (stats.insiderCount >= 10) score += 25;
+  // Insider count (20pts)
+  if (stats.insiderCount >= 10) score += 20;
   else if (stats.insiderCount >= 5) score += 15;
+  else if (stats.insiderCount >= 2) score += 10;
+  else if (stats.insiderCount >= 1) score += 5;
 
-  // Hold rate (30pts)
-  if (stats.holdRate >= 80) score += 30;
-  else if (stats.holdRate >= 60) score += 20;
-  else if (stats.holdRate >= 40) score += 10;
+  // Hold rate (40pts - most important signal)
+  if (stats.holdRate >= 80) score += 40;
+  else if (stats.holdRate >= 60) score += 30;
+  else if (stats.holdRate >= 40) score += 20;
+  else if (stats.holdRate >= 20) score += 10;
 
-  // Avg insider quality (30pts)
-  if (stats.avgInsiderQuality >= 8) score += 30;
-  else if (stats.avgInsiderQuality >= 5) score += 20;
-  else if (stats.avgInsiderQuality >= 3) score += 10;
+  // Avg insider quality (40pts)
+  if (stats.avgInsiderQuality >= 8) score += 40;
+  else if (stats.avgInsiderQuality >= 5) score += 30;
+  else if (stats.avgInsiderQuality >= 3) score += 20;
+  else if (stats.avgInsiderQuality >= 1) score += 10;
 
   // Clamp to 0-100
   return Math.max(0, Math.min(100, score));
 }
 
+function scoreContractSafety(data: Record<string, unknown>): number {
+  let pts = 0;
+
+  if (data.is_open_source === "1") pts += 8;
+
+  const owner = data.owner_address;
+  if (owner === "" || owner === null || owner === "0x0000000000000000000000000000000000000000") pts += 8;
+
+  if (typeof data.buy_tax === "string" && data.buy_tax !== "") {
+    const bt = parseFloat(data.buy_tax);
+    if (!isNaN(bt)) {
+      if (bt <= 0.01) pts += 4;
+      else if (bt <= 0.05) pts += 2;
+    }
+  }
+
+  if (typeof data.sell_tax === "string" && data.sell_tax !== "") {
+    const st = parseFloat(data.sell_tax);
+    if (!isNaN(st)) {
+      if (st <= 0.01) pts += 4;
+      else if (st <= 0.05) pts += 2;
+    }
+  }
+
+  if (data.trust_list === "1") pts += 3;
+  if (data.external_call === "0") pts += 3;
+
+  return pts; // max 30
+}
+
+function scoreLiquidityHealth(pair: import("../shared/dexscreener.js").DexPair): number {
+  let pts = 0;
+
+  const liqUsd = pair.liquidity?.usd ?? 0;
+  if (liqUsd >= 50_000) pts += 10;
+  else if (liqUsd >= 20_000) pts += 7;
+  else if (liqUsd >= 5_000) pts += 4;
+  else if (liqUsd >= 2_000) pts += 2;
+
+  const fdv = pair.fdv ?? 0;
+  if (fdv > 0 && liqUsd > 0) {
+    const ratio = liqUsd / fdv;
+    if (ratio >= 0.10) pts += 8;
+    else if (ratio >= 0.05) pts += 5;
+    else if (ratio >= 0.02) pts += 3;
+  }
+
+  const vol24h = pair.volume?.h24 ?? 0;
+  if (liqUsd > 0 && vol24h > 0) {
+    const volRatio = vol24h / liqUsd;
+    if (volRatio >= 1.0) pts += 7;
+    else if (volRatio >= 0.5) pts += 5;
+    else if (volRatio >= 0.1) pts += 3;
+  }
+
+  return pts; // max 25
+}
+
+function scoreHolderDistribution(data: Record<string, unknown>): number {
+  let pts = 0;
+
+  const holders = Array.isArray(data.holders) ? (data.holders as Array<{ percent?: number | string; is_locked?: number }>) : [];
+
+  if (holders.length >= 100) pts += 5;
+  else if (holders.length >= 50) pts += 3;
+  else if (holders.length >= 20) pts += 2;
+
+  if (holders.length > 0) {
+    const top10 = holders.slice(0, 10);
+    const concentration = top10.reduce((sum, h) => {
+      const pct = typeof h.percent === "string" ? parseFloat(h.percent) : (h.percent ?? 0);
+      return sum + (isNaN(pct as number) ? 0 : (pct as number));
+    }, 0);
+    // GoPlus returns percent as decimal (0-1) for some chains, percentage (0-100) for others
+    // Normalise: if sum > 1.5 assume it's already a percentage, else multiply by 100
+    const concPct = concentration > 1.5 ? concentration : concentration * 100;
+    if (concPct <= 30) pts += 8;
+    else if (concPct <= 50) pts += 5;
+    else if (concPct <= 70) pts += 3;
+  }
+
+  const creatorPctRaw = data.creator_percent;
+  if (creatorPctRaw !== undefined && creatorPctRaw !== null) {
+    const cp = typeof creatorPctRaw === "string" ? parseFloat(creatorPctRaw) : (creatorPctRaw as number);
+    if (!isNaN(cp)) {
+      const cpPct = cp > 1.5 ? cp : cp * 100;
+      if (cpPct <= 5) pts += 4;
+      else if (cpPct <= 10) pts += 2;
+    }
+  }
+
+  const lpHolders = Array.isArray(data.lp_holders) ? (data.lp_holders as Array<{ is_locked?: number }>) : [];
+  if (lpHolders.some((lp) => lp.is_locked === 1)) pts += 3;
+
+  return pts; // max 20
+}
+
+function scoreGrowthPotential(pair: import("../shared/dexscreener.js").DexPair): number {
+  let pts = 0;
+
+  const fdv = pair.fdv ?? 0;
+  if (fdv >= 10_000 && fdv <= 100_000) pts += 5;
+  else if (fdv > 100_000 && fdv <= 500_000) pts += 3;
+  else if (fdv > 0 && fdv < 10_000) pts += 2;
+  else if (fdv > 500_000) pts += 1;
+
+  const createdAt = pair.pairCreatedAt ?? 0;
+  if (createdAt > 0) {
+    const ageMs = Date.now() - createdAt;
+    const ageDays = ageMs / 86_400_000;
+    if (ageDays >= 1 && ageDays <= 7) pts += 5;
+    else if (ageDays > 7 && ageDays <= 30) pts += 3;
+    else if (ageDays < 1) pts += 2;
+    else pts += 1; // > 30 days
+  }
+
+  const change24h = pair.priceChange?.h24 ?? null;
+  if (change24h !== null) {
+    if (change24h >= 50) pts += 5;
+    else if (change24h >= 20) pts += 3;
+    else if (change24h >= 0) pts += 1;
+    // negative -> 0pts
+  }
+
+  return pts; // max 15
+}
+
+export function scoreGemQuality(
+  goPlusData: Record<string, unknown> | null,
+  pair: import("../shared/dexscreener.js").DexPair | null,
+  tokenAddress: string,
+  chain: string
+): number {
+  // Category 1: Contract Safety (30pts)
+  const safety = goPlusData ? scoreContractSafety(goPlusData) : 0;
+
+  // Category 2: Liquidity Health (25pts)
+  const liquidity = pair ? scoreLiquidityHealth(pair) : 0;
+
+  // Category 3: Holder Distribution (20pts)
+  const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 0;
+
+  // Category 4: Growth Potential (15pts)
+  const growth = pair ? scoreGrowthPotential(pair) : 0;
+
+  // Category 5: Insider Signal (10pts) - mapped from 0-100 scoreByInsiders
+  const insiderRaw = scoreByInsiders(tokenAddress, chain);
+  const insider = Math.round(insiderRaw / 10); // 0-10
+
+  const total = safety + liquidity + holders + growth + insider;
+  return Math.max(0, Math.min(100, total));
+}
+
+// In-memory cache so analyzeGem and buyGems share the same DexPair fetch
+const gemDexCache = new Map<string, import("../shared/dexscreener.js").DexPair>();
+
 export async function analyzeGem(symbol: string, chain: string, tokenAddress: string): Promise<GemAnalysis> {
   const cached = getCachedGemAnalysis(symbol, chain);
   if (cached) return cached;
 
-  // Score primarily by insider stats
-  let score = scoreByInsiders(tokenAddress, chain);
-
   // GoPlus kill-switch (all chains including Solana)
   const goPlusData = await fetchGoPlusData(tokenAddress, chain);
   if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
-    score = 0;
+    const analysis: GemAnalysis = { tokenSymbol: symbol, chain, score: 0, analyzedAt: Date.now() };
+    saveGemAnalysis(analysis);
+    console.log(`[GemAnalyzer] ${symbol} (${chain}): score=0 (GoPlus kill-switch)`);
+    return analysis;
   }
 
   // Solana: on-chain freeze/mint authority check
-  if (chain === "solana" && score > 0) {
+  if (chain === "solana") {
     const authorities = await checkSolanaTokenAuthorities(tokenAddress);
     if (authorities.freezeAuthority || authorities.mintAuthority) {
       console.log(`[GemAnalyzer] ${symbol}: blocked (freeze=${authorities.freezeAuthority}, mint=${authorities.mintAuthority})`);
-      score = 0;
+      const analysis: GemAnalysis = { tokenSymbol: symbol, chain, score: 0, analyzedAt: Date.now() };
+      saveGemAnalysis(analysis);
+      return analysis;
     }
   }
+
+  // Fetch DexScreener data (cached for buyGems to reuse)
+  const pair = await dexScreenerFetch(chain, tokenAddress);
+  if (pair) {
+    gemDexCache.set(`${tokenAddress}_${chain}`, pair);
+  }
+
+  // Compute multi-category score
+  const score = scoreGemQuality(goPlusData, pair, tokenAddress, chain);
 
   const analysis: GemAnalysis = {
     tokenSymbol: symbol,
@@ -203,7 +373,11 @@ export async function buyGems(
     const failures = priceFetchFailures.get(failKey) ?? 0;
     if (failures >= MAX_PRICE_FAILURES) continue;
 
-    const pair = await dexScreenerFetch(token.chain, token.tokenAddress);
+    // Use cached DexPair from analyzeGem if available, otherwise fetch
+    const cacheKey = `${token.tokenAddress}_${token.chain}`;
+    const cachedPair = gemDexCache.get(cacheKey);
+    gemDexCache.delete(cacheKey);
+    const pair = cachedPair ?? (await dexScreenerFetch(token.chain, token.tokenAddress));
     const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
 

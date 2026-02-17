@@ -45,13 +45,15 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 **Gem scoring (0-100):**
 
-| Factor | Weight | Tiers |
-|--------|--------|-------|
-| Insider count | 40pts | 20+=40, 10+=25, 5+=15 |
-| Hold rate | 30pts | 80%+=30, 60%+=20, 40%+=10 |
-| Avg insider quality | 30pts | 8+=30, 5+=20, 3+=10 |
+| Category | Weight | Source | Criteria |
+|----------|--------|--------|----------|
+| Contract Safety | 30pts | GoPlus | Open source 8, ownership renounced 8, low buy tax 4, low sell tax 4, trust list 3, no external calls 3 |
+| Liquidity Health | 25pts | DexScreener | Absolute liquidity 10, liquidity/FDV ratio 8, volume/liquidity ratio 7 |
+| Holder Distribution | 20pts | GoPlus | Holder count 5, top 10 concentration 8, creator holdings 4, LP locked 3 |
+| Growth Potential | 15pts | DexScreener | FDV sweet spot 5, token age 5, price momentum 5 |
+| Insider Signal | 10pts | On-chain | Mapped from insider count, hold rate, quality (0-100 -> 0-10) |
 
-**Security checks:** GoPlus kill-switch (all chains): honeypot, mintable, hidden owner, high tax = score 0.
+**Security checks:** GoPlus kill-switch (honeypot, mintable, hidden owner, high tax = score 0). GoPlus data also feeds Contract Safety and Holder Distribution scores.
 
 **Buy filters:** score >= 80, min liquidity $2k, max FDV $500k, max 24h pump 10x, no duplicates.
 

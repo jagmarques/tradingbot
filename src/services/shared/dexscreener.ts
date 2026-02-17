@@ -18,6 +18,10 @@ export interface DexPair {
   baseToken?: { symbol?: string; address?: string };
   chainId?: string;
   pairAddress?: string;
+  volume?: { h24?: number };
+  priceChange?: { h24?: number };
+  pairCreatedAt?: number;
+  txns?: { h24?: { buys?: number; sells?: number } };
 }
 
 function enqueue(): Promise<void> {
