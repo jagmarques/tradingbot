@@ -24,7 +24,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -52,6 +52,17 @@ function formatTokenPrice(price: number): string {
   if (price >= 0.01) return `$${price.toFixed(4)}`;
   if (price >= 0.000001) return `$${price.toFixed(6)}`;
   return `$${price.toExponential(2)}`;
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const diffMs = Date.now() - timestamp;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 const MAIN_MENU_BUTTONS = [
@@ -172,11 +183,15 @@ export async function startBot(): Promise<void> {
     await handleInsiders(ctx, "wallets");
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("insiders_activity", async (ctx) => {
+    await handleInsiders(ctx, "activity");
+    await ctx.answerCallbackQuery();
+  });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     const match = ctx.match;
     if (!match) return;
     const chainVal = match[1];
-    const tabVal = match[2] as "holding" | "wallets" | "opps";
+    const tabVal = match[2] as "holding" | "wallets" | "opps" | "activity";
     const resolvedChain = chainVal === "all" ? undefined : chainVal;
     await handleInsiders(ctx, tabVal, resolvedChain);
     await ctx.answerCallbackQuery();
@@ -772,7 +787,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" = "wallets", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" | "activity" = "wallets", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -792,6 +807,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
     const chainButtons = [
       [
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
+        { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],
@@ -1023,11 +1039,39 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       return;
     }
 
+    if (tab === "activity") {
+      const recentHits = getRecentGemHits(10, chain);
+
+      if (recentHits.length === 0) {
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Recent Activity\n\nNo insider activity detected yet.`, buttons);
+        return;
+      }
+
+      const tradeBlocks = recentHits.map((hit) => {
+        const chainTag = hit.chain.toUpperCase().slice(0, 3);
+        const addrShort = `${hit.walletAddress.slice(0, 6)}...${hit.walletAddress.slice(-4)}`;
+        const statusStr = hit.status === "holding" ? "BUY" : "SELL";
+        const pumpStr = hit.pumpMultiple > 0 ? `${hit.pumpMultiple.toFixed(1)}x` : "?";
+        const ts = hit.buyTimestamp || hit.buyDate || 0;
+        const timeAgo = ts > 0 ? formatTimeAgo(ts) : "unknown";
+
+        return `${addrShort} <b>${hit.tokenSymbol}</b> (${chainTag})\n${statusStr} | ${pumpStr} | ${timeAgo}`;
+      });
+
+      const header = `<b>Insider Wallets</b> - Recent Activity\n\n`;
+      const body = tradeBlocks.join("\n\n");
+      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      await sendDataMessage(header + body, buttons);
+      return;
+    }
+
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
     const chainButtons = [
       [
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
+        { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
       ],

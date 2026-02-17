@@ -259,6 +259,36 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
   }));
 }
 
+export function getRecentGemHits(limit: number = 10, chain?: string): GemHit[] {
+  const db = getDb();
+  let query = "SELECT * FROM insider_gem_hits WHERE status IN ('holding', 'sold') AND pump_multiple > 0";
+  const params: unknown[] = [];
+  if (chain) {
+    query += " AND chain = ?";
+    params.push(chain);
+  }
+  query += " ORDER BY buy_timestamp DESC LIMIT ?";
+  params.push(limit);
+  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    walletAddress: row.wallet_address as string,
+    chain: row.chain as ScanChain,
+    tokenAddress: row.token_address as string,
+    tokenSymbol: row.token_symbol as string,
+    buyTxHash: row.buy_tx_hash as string,
+    buyTimestamp: row.buy_timestamp as number,
+    buyBlockNumber: 0,
+    pumpMultiple: row.pump_multiple as number,
+    maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
+    buyTokens: (row.buy_tokens as number) || undefined,
+    sellTokens: (row.sell_tokens as number) || undefined,
+    status: (row.status as GemHit["status"]) || undefined,
+    buyDate: (row.buy_date as number) || undefined,
+    sellDate: (row.sell_date as number) || undefined,
+    launchPriceUsd: (row.launch_price_usd as number) || undefined,
+  }));
+}
+
 export function getInsiderCount(): number {
   const db = getDb();
   const row = db.prepare("SELECT COUNT(*) as count FROM insider_wallets").get() as { count: number };

@@ -315,7 +315,7 @@ export async function buyGems(
 ): Promise<void> {
   for (const token of tokens) {
     if (token.score < 70) continue;
-    if (token.currentPump >= 10) {
+    if (token.currentPump >= 20) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
       continue;
     }
