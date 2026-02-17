@@ -27,6 +27,9 @@ export function initInsiderTables(): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_insider_gem_hits_token ON insider_gem_hits(token_address)
   `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_insider_gem_hits_symbol_chain ON insider_gem_hits(token_symbol, chain)
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_wallets (
@@ -293,7 +296,7 @@ export function getInsiderCount(): number {
 export function getGemHolderCount(symbol: string, chain: string): number {
   const db = getDb();
   const row = db.prepare(
-    "SELECT COUNT(DISTINCT wallet_address) as count FROM insider_gem_hits WHERE token_symbol = ? AND chain = ? AND status = 'holding'"
+    "SELECT COUNT(DISTINCT wallet_address) as count FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ? AND status = 'holding'"
   ).get(symbol, chain) as { count: number };
   return row.count;
 }
@@ -503,7 +506,7 @@ export function closeGemPaperTrade(symbol: string, chain: string, sellTxHash?: s
 export function getTokenAddressForGem(symbol: string, chain: string): string | null {
   const db = getDb();
   const row = db.prepare(
-    "SELECT token_address FROM insider_gem_hits WHERE token_symbol = ? AND chain = ? LIMIT 1"
+    "SELECT token_address FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ? LIMIT 1"
   ).get(symbol, chain) as { token_address: string } | undefined;
   return row?.token_address ?? null;
 }
@@ -511,7 +514,7 @@ export function getTokenAddressForGem(symbol: string, chain: string): string | n
 export function getPeakPumpForToken(symbol: string, chain: string): number {
   const db = getDb();
   const row = db.prepare(
-    "SELECT MAX(COALESCE(max_pump_multiple, pump_multiple)) as peak FROM insider_gem_hits WHERE token_symbol = ? AND chain = ?"
+    "SELECT MAX(COALESCE(max_pump_multiple, pump_multiple)) as peak FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ?"
   ).get(symbol, chain) as { peak: number } | undefined;
   return row?.peak || 0;
 }

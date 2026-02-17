@@ -570,7 +570,7 @@ export async function enrichInsiderPnl(): Promise<void> {
     const hits = getGemHitsForWallet(wallet.address, wallet.chain);
 
     for (const hit of hits) {
-      if (hit.status) continue; // Already enriched
+      if (hit.status === 'sold' || hit.status === 'transferred') continue; // Terminal status, skip
 
       try {
         const pnl = await getWalletTokenPnl(hit.walletAddress, hit.tokenAddress, hit.chain);
