@@ -261,7 +261,7 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
 
 export function getRecentGemHits(limit: number = 10, chain?: string): GemHit[] {
   const db = getDb();
-  let query = "SELECT * FROM insider_gem_hits WHERE status IN ('holding', 'sold') AND pump_multiple > 0";
+  let query = "SELECT * FROM insider_gem_hits WHERE status IN ('holding', 'sold') AND pump_multiple >= 0.1";
   const params: unknown[] = [];
   if (chain) {
     query += " AND chain = ?";

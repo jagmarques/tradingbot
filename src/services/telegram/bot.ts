@@ -1052,11 +1052,17 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const chainTag = hit.chain.toUpperCase().slice(0, 3);
         const addrShort = `${hit.walletAddress.slice(0, 6)}...${hit.walletAddress.slice(-4)}`;
         const statusStr = hit.status === "holding" ? "BUY" : "SELL";
-        const pumpStr = hit.pumpMultiple > 0 ? `${hit.pumpMultiple.toFixed(1)}x` : "?";
+        const pumpStr = `${hit.pumpMultiple.toFixed(1)}x`;
+        const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
+        const launchStr = peak > 0 ? `Launch: ${peak.toFixed(0)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
+        const discoveryDate = ts > 0 ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
         const timeAgo = ts > 0 ? formatTimeAgo(ts) : "unknown";
+        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain);
+        const scoreStr = analysis && analysis.score !== -1 ? `Score: ${analysis.score}/100` : "";
+        const parts = [statusStr, pumpStr, launchStr, scoreStr, discoveryDate, timeAgo].filter(Boolean);
 
-        return `${addrShort} <b>${hit.tokenSymbol}</b> (${chainTag})\n${statusStr} | ${pumpStr} | ${timeAgo}`;
+        return `${addrShort} <b>${hit.tokenSymbol}</b> (${chainTag})\n${parts.join(" | ")}`;
       });
 
       const header = `<b>Insider Wallets</b> - Recent Activity\n\n`;
