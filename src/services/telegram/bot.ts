@@ -442,13 +442,26 @@ function splitLongMessage(text: string): string[] {
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
+    const chunks = splitLongMessage(text);
+
+    // Edit in-place when we have exactly one existing message and one new chunk
+    if (dataMessageIds.length === 1 && chunks.length === 1) {
+      try {
+        await bot.api.editMessageText(chatId, dataMessageIds[0], chunks[0], {
+          parse_mode: "HTML",
+          reply_markup: inlineKeyboard ? { inline_keyboard: inlineKeyboard } : undefined,
+        });
+        return;
+      } catch {
+        // Edit failed (message too old, deleted, etc.) - fall through to delete+send
+      }
+    }
+
     // Delete all previous data messages
     for (const id of dataMessageIds) {
       await bot.api.deleteMessage(chatId, id).catch(() => {});
     }
     dataMessageIds.length = 0;
-
-    const chunks = splitLongMessage(text);
 
     for (let i = 0; i < chunks.length; i++) {
       const isLast = i === chunks.length - 1;
