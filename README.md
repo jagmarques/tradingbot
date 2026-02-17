@@ -47,10 +47,10 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 | Category | Weight | Source | Criteria |
 |----------|--------|--------|----------|
-| Contract Safety | 30pts | GoPlus | Open source 8, ownership renounced 8, low buy tax 4, low sell tax 4, trust list 3, no external calls 3 |
-| Liquidity Health | 25pts | DexScreener | Absolute liquidity 10, liquidity/FDV ratio 8, volume/liquidity ratio 7 |
-| Holder Distribution | 20pts | GoPlus | Holder count 5, top 10 concentration 8, creator holdings 4, LP locked 3 |
-| Growth Potential | 15pts | DexScreener | FDV sweet spot 5, token age 5, price momentum 5 |
+| Liquidity Health | 35pts | DexScreener | Absolute liquidity 15, liquidity/FDV ratio 12, volume/liquidity ratio 8 |
+| Contract Safety | 20pts | GoPlus | Ownership renounced 8, low buy tax 4, low sell tax 4, no external calls 4 |
+| Growth Potential | 20pts | DexScreener | FDV sweet spot 7, token age 7, price momentum 6 |
+| Holder Distribution | 15pts | GoPlus | Top 10 concentration 6, holder count 4, creator holdings 3, LP locked 2 |
 | Insider Signal | 10pts | On-chain | Mapped from insider count, hold rate, quality (0-100 -> 0-10) |
 
 **Security checks:** GoPlus kill-switch (honeypot, mintable, hidden owner, high tax = score 0). GoPlus data also feeds Contract Safety and Holder Distribution scores.

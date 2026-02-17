@@ -154,8 +154,6 @@ export function scoreByInsiders(tokenAddress: string, chain: string): number {
 function scoreContractSafety(data: Record<string, unknown>): number {
   let pts = 0;
 
-  if (data.is_open_source === "1") pts += 8;
-
   const owner = data.owner_address;
   if (owner === "" || owner === null || owner === "0x0000000000000000000000000000000000000000") pts += 8;
 
@@ -175,38 +173,37 @@ function scoreContractSafety(data: Record<string, unknown>): number {
     }
   }
 
-  if (data.trust_list === "1") pts += 3;
-  if (data.external_call === "0") pts += 3;
+  if (data.external_call === "0") pts += 4;
 
-  return pts; // max 30
+  return pts; // max 20
 }
 
 function scoreLiquidityHealth(pair: import("../shared/dexscreener.js").DexPair): number {
   let pts = 0;
 
   const liqUsd = pair.liquidity?.usd ?? 0;
-  if (liqUsd >= 50_000) pts += 10;
-  else if (liqUsd >= 20_000) pts += 7;
-  else if (liqUsd >= 5_000) pts += 4;
-  else if (liqUsd >= 2_000) pts += 2;
+  if (liqUsd >= 50_000) pts += 15;
+  else if (liqUsd >= 20_000) pts += 10;
+  else if (liqUsd >= 5_000) pts += 6;
+  else if (liqUsd >= 2_000) pts += 3;
 
   const fdv = pair.fdv ?? 0;
   if (fdv > 0 && liqUsd > 0) {
     const ratio = liqUsd / fdv;
-    if (ratio >= 0.10) pts += 8;
-    else if (ratio >= 0.05) pts += 5;
-    else if (ratio >= 0.02) pts += 3;
+    if (ratio >= 0.10) pts += 12;
+    else if (ratio >= 0.05) pts += 8;
+    else if (ratio >= 0.02) pts += 4;
   }
 
   const vol24h = pair.volume?.h24 ?? 0;
   if (liqUsd > 0 && vol24h > 0) {
     const volRatio = vol24h / liqUsd;
-    if (volRatio >= 1.0) pts += 7;
+    if (volRatio >= 1.0) pts += 8;
     else if (volRatio >= 0.5) pts += 5;
     else if (volRatio >= 0.1) pts += 3;
   }
 
-  return pts; // max 25
+  return pts; // max 35
 }
 
 function scoreHolderDistribution(data: Record<string, unknown>): number {
@@ -214,7 +211,7 @@ function scoreHolderDistribution(data: Record<string, unknown>): number {
 
   const holders = Array.isArray(data.holders) ? (data.holders as Array<{ percent?: number | string; is_locked?: number }>) : [];
 
-  if (holders.length >= 100) pts += 5;
+  if (holders.length >= 100) pts += 4;
   else if (holders.length >= 50) pts += 3;
   else if (holders.length >= 20) pts += 2;
 
@@ -227,9 +224,9 @@ function scoreHolderDistribution(data: Record<string, unknown>): number {
     // GoPlus returns percent as decimal (0-1) for some chains, percentage (0-100) for others
     // Normalise: if sum > 1.5 assume it's already a percentage, else multiply by 100
     const concPct = concentration > 1.5 ? concentration : concentration * 100;
-    if (concPct <= 30) pts += 8;
-    else if (concPct <= 50) pts += 5;
-    else if (concPct <= 70) pts += 3;
+    if (concPct <= 30) pts += 6;
+    else if (concPct <= 50) pts += 4;
+    else if (concPct <= 70) pts += 2;
   }
 
   const creatorPctRaw = data.creator_percent;
@@ -237,45 +234,45 @@ function scoreHolderDistribution(data: Record<string, unknown>): number {
     const cp = typeof creatorPctRaw === "string" ? parseFloat(creatorPctRaw) : (creatorPctRaw as number);
     if (!isNaN(cp)) {
       const cpPct = cp > 1.5 ? cp : cp * 100;
-      if (cpPct <= 5) pts += 4;
+      if (cpPct <= 5) pts += 3;
       else if (cpPct <= 10) pts += 2;
     }
   }
 
   const lpHolders = Array.isArray(data.lp_holders) ? (data.lp_holders as Array<{ is_locked?: number }>) : [];
-  if (lpHolders.some((lp) => lp.is_locked === 1)) pts += 3;
+  if (lpHolders.some((lp) => lp.is_locked === 1)) pts += 2;
 
-  return pts; // max 20
+  return pts; // max 15
 }
 
 function scoreGrowthPotential(pair: import("../shared/dexscreener.js").DexPair): number {
   let pts = 0;
 
   const fdv = pair.fdv ?? 0;
-  if (fdv >= 10_000 && fdv <= 100_000) pts += 5;
-  else if (fdv > 100_000 && fdv <= 500_000) pts += 3;
-  else if (fdv > 0 && fdv < 10_000) pts += 2;
+  if (fdv >= 10_000 && fdv <= 100_000) pts += 7;
+  else if (fdv > 100_000 && fdv <= 500_000) pts += 5;
+  else if (fdv > 0 && fdv < 10_000) pts += 3;
   else if (fdv > 500_000) pts += 1;
 
   const createdAt = pair.pairCreatedAt ?? 0;
   if (createdAt > 0) {
     const ageMs = Date.now() - createdAt;
     const ageDays = ageMs / 86_400_000;
-    if (ageDays >= 1 && ageDays <= 7) pts += 5;
-    else if (ageDays > 7 && ageDays <= 30) pts += 3;
-    else if (ageDays < 1) pts += 2;
+    if (ageDays >= 1 && ageDays <= 7) pts += 7;
+    else if (ageDays > 7 && ageDays <= 30) pts += 5;
+    else if (ageDays < 1) pts += 3;
     else pts += 1; // > 30 days
   }
 
   const change24h = pair.priceChange?.h24 ?? null;
   if (change24h !== null) {
-    if (change24h >= 50) pts += 5;
-    else if (change24h >= 20) pts += 3;
+    if (change24h >= 50) pts += 6;
+    else if (change24h >= 20) pts += 4;
     else if (change24h >= 0) pts += 1;
     // negative -> 0pts
   }
 
-  return pts; // max 15
+  return pts; // max 20
 }
 
 export function scoreGemQuality(
@@ -284,17 +281,17 @@ export function scoreGemQuality(
   tokenAddress: string,
   chain: string
 ): number {
-  // Category 1: Contract Safety (30pts)
-  const safety = goPlusData ? scoreContractSafety(goPlusData) : 0;
-
-  // Category 2: Liquidity Health (25pts)
+  // Category 1: Liquidity Health (35pts)
   const liquidity = pair ? scoreLiquidityHealth(pair) : 0;
 
-  // Category 3: Holder Distribution (20pts)
-  const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 0;
+  // Category 2: Contract Safety (20pts)
+  const safety = goPlusData ? scoreContractSafety(goPlusData) : 0;
 
-  // Category 4: Growth Potential (15pts)
+  // Category 3: Growth Potential (20pts)
   const growth = pair ? scoreGrowthPotential(pair) : 0;
+
+  // Category 4: Holder Distribution (15pts)
+  const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 0;
 
   // Category 5: Insider Signal (10pts) - mapped from 0-100 scoreByInsiders
   const insiderRaw = scoreByInsiders(tokenAddress, chain);
