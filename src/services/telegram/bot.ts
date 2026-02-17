@@ -853,7 +853,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
         const peakPump = Math.max(...peakPumps);
         const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
-        const analysis = getCachedGemAnalysis(t.symbol, t.chain);
+        const analysis = getCachedGemAnalysis(t.symbol, t.chain, true);
         const score = analysis && analysis.score !== -1 ? analysis.score : -1;
         return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchTs: earliestBuy, score };
       });
@@ -1051,7 +1051,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const tradeBlocks = recentHits.map((hit) => {
         const chainTag = hit.chain.toUpperCase().slice(0, 3);
         const statusStr = hit.status === "holding" ? "BUY" : "SELL";
-        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain);
+        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain, true);
         const scoreStr = analysis && analysis.score !== -1 ? ` - Score: ${analysis.score}/100` : "";
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
         const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";

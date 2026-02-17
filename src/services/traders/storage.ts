@@ -346,7 +346,7 @@ export interface GemAnalysis {
   analyzedAt: number;
 }
 
-export function getCachedGemAnalysis(symbol: string, chain: string): GemAnalysis | null {
+export function getCachedGemAnalysis(symbol: string, chain: string, skipTtl = false): GemAnalysis | null {
   const db = getDb();
   const id = `${symbol.toLowerCase()}_${chain}`;
   const CACHE_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
@@ -355,7 +355,7 @@ export function getCachedGemAnalysis(symbol: string, chain: string): GemAnalysis
   if (!row) return null;
 
   const analyzedAt = row.analyzed_at as number;
-  if (Date.now() - analyzedAt > CACHE_TTL_MS) return null;
+  if (!skipTtl && Date.now() - analyzedAt > CACHE_TTL_MS) return null;
 
   return {
     tokenSymbol: row.token_symbol as string,
