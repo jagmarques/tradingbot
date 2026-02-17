@@ -20,19 +20,19 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 
 **Exit rules:** stop-loss -15%, take-profit +40%, conviction flip, settlement risk <6h
 
-### Copy Trading (Polymarket)
+### Copy Betting (Polymarket)
 
 Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with avg entry >90c or <10c. 30-minute buffer before market end.
 
 ### Insider Gem Scanner
 
-Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
+Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
 
-**Chains:** Ethereum, Base, Arbitrum, Polygon, Optimism, Avalanche, Solana
+**Chains:** Ethereum, Base, Arbitrum, Polygon, Optimism, Avalanche
 
-**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan/Helius RPC) -> Wallet tracking -> Insider scoring -> Security checks -> Paper/live buy
+**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan) -> Wallet tracking -> Insider scoring -> Security checks -> Paper/live buy
 
-**Insider qualification:** 5+ gem hits, sniper bot filter (<24h hold excluded)
+**Insider qualification:** 3+ gem hits, sniper bot filter (<24h hold excluded)
 
 **Wallet scoring (0-100):**
 
@@ -51,13 +51,13 @@ Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners
 | Hold rate | 30pts | 80%+=30, 60%+=20, 40%+=10 |
 | Avg insider quality | 30pts | 8+=30, 5+=20, 3+=10 |
 
-**Security checks:** GoPlus kill-switch (all chains): honeypot, mintable, hidden owner, high tax = score 0. Solana: on-chain freeze/mint authority check (revoked = safe, active = blocked).
+**Security checks:** GoPlus kill-switch (all chains): honeypot, mintable, hidden owner, high tax = score 0.
 
 **Buy filters:** score >= 80, min liquidity $2k, max FDV $500k, max 24h pump 10x, no duplicates.
 
 **Exit rules:** stop-loss -70%, auto-sell when high-score insider (80+) sells, auto-close on rug (liquidity < $500).
 
-**Display:** Pump from Pump.fun graduation ($69k FDV) for Solana tokens. DexScreener batch pricing.
+**Display:** Launch price from GeckoTerminal OHLCV candles. DexScreener batch pricing.
 
 ## Telegram
 
@@ -77,7 +77,7 @@ Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners
 
 **Insider tabs:** Wallets (address, score, gem count, avg gain) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
 
-**Chain filter:** persists across tab switches (ETH, Base, Arb, Poly, Opt, Avax, SOL, All)
+**Chain filter:** persists across tab switches (ETH, Base, Arb, Poly, Opt, Avax, All)
 
 ## Paper vs Live
 
@@ -87,7 +87,7 @@ Scans 7 chains for pumped tokens, identifies early buyers, tracks repeat winners
 | Position limits | None | 5 |
 | Exposure limit | None | $50 |
 | Orders | Midpoint prices | Real orderbook (CLOB/Jupiter/1inch) |
-| Gem trades | DexScreener prices | Jupiter (SOL) / 1inch (EVM) |
+| Gem trades | DexScreener prices | 1inch (EVM) |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 
 ## Config
