@@ -259,6 +259,7 @@ export function getRecentGemHits(limit: number = 10, chain?: string): GemHit[] {
   const db = getDb();
   let query = `SELECT h.* FROM insider_gem_hits h
     INNER JOIN insider_gem_analyses a ON a.id = LOWER(h.token_symbol) || '_' || h.chain
+    INNER JOIN insider_wallets w ON LOWER(h.wallet_address) = LOWER(w.address) AND h.chain = w.chain
     WHERE h.status IN ('holding', 'sold') AND h.pump_multiple >= 0.1 AND a.score >= 50`;
   const params: unknown[] = [];
   if (chain) {
