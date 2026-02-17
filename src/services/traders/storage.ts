@@ -101,13 +101,6 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
-  // One-time: clear old GoPlus-based analyses so insider scoring takes over
-  const oldAnalyses = db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_analyses WHERE score = -1 OR score = 50").get() as { cnt: number };
-  if (oldAnalyses.cnt > 0) {
-    db.exec("DELETE FROM insider_gem_analyses");
-    console.log(`[InsiderScanner] Cleared ${oldAnalyses.cnt} old GoPlus-based analyses`);
-  }
-
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
