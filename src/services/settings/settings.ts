@@ -8,7 +8,6 @@ export interface BotSettings {
   maxCopyPerDay: number;
   dailyCopyCount: number;
   // Fixed copy amounts per chain (in native token)
-  copyAmountSol: number;
   copyAmountEth: number;
   copyAmountMatic: number;
   copyAmountDefault: number;
@@ -21,7 +20,6 @@ const DEFAULT_SETTINGS: BotSettings = {
   minTraderScore: 70,
   maxCopyPerDay: 10,
   dailyCopyCount: 0,
-  copyAmountSol: 0.02, // ~$2-4
   copyAmountEth: 0.001, // ~$3
   copyAmountMatic: 2, // ~$1.50
   copyAmountDefault: 0.005, // ~$2-5
@@ -39,7 +37,6 @@ export function getSettings(telegramUserId: string): BotSettings {
       max_copy_per_day: number;
       daily_copy_count: number;
       daily_copy_reset: string | null;
-      copy_amount_sol: number | null;
       copy_amount_eth: number | null;
       copy_amount_matic: number | null;
       copy_amount_default: number | null;
@@ -69,7 +66,6 @@ export function getSettings(telegramUserId: string): BotSettings {
     minTraderScore: row.min_trader_score,
     maxCopyPerDay: row.max_copy_per_day,
     dailyCopyCount: dailyCount,
-    copyAmountSol: row.copy_amount_sol ?? DEFAULT_SETTINGS.copyAmountSol,
     copyAmountEth: row.copy_amount_eth ?? DEFAULT_SETTINGS.copyAmountEth,
     copyAmountMatic: row.copy_amount_matic ?? DEFAULT_SETTINGS.copyAmountMatic,
     copyAmountDefault: row.copy_amount_default ?? DEFAULT_SETTINGS.copyAmountDefault,
@@ -113,7 +109,6 @@ export function updateSetting<K extends keyof BotSettings>(
     minTraderScore: "min_trader_score",
     maxCopyPerDay: "max_copy_per_day",
     dailyCopyCount: "daily_copy_count",
-    copyAmountSol: "copy_amount_sol",
     copyAmountEth: "copy_amount_eth",
     copyAmountMatic: "copy_amount_matic",
     copyAmountDefault: "copy_amount_default",

@@ -12,7 +12,7 @@ import {
 function makeTrader(overrides: Partial<Trader> = {}): Trader {
   return {
     address: "0xTestTrader123456789",
-    chain: "solana",
+    chain: "base",
     score: 80,
     winRate: 0.7,
     profitFactor: 2.0,
@@ -33,7 +33,7 @@ function makeTrade(overrides: Partial<TraderTrade> = {}): TraderTrade {
   return {
     id: "trade_1",
     walletAddress: "0xTestTrader123456789",
-    chain: "solana",
+    chain: "base",
     tokenAddress: "TokenMint123",
     tokenSymbol: "TEST",
     type: "BUY",
@@ -51,7 +51,6 @@ function makeSettings(overrides: Partial<BotSettings> = {}): BotSettings {
     minTraderScore: 50,
     maxCopyPerDay: 10,
     dailyCopyCount: 0,
-    copyAmountSol: 0.02,
     copyAmountEth: 0.001,
     copyAmountMatic: 2,
     copyAmountDefault: 0.005,
@@ -115,22 +114,22 @@ describe("Copy Filter", () => {
     it("size is capped at 3x default", () => {
       const trader = makeTrader({ score: 95 }); // 1.5x
       const trade = makeTrade();
-      const settings = makeSettings({ copyAmountSol: 0.02 });
+      const settings = makeSettings();
 
       const result = filterCryptoCopy(trader, trade, settings);
 
-      const baseUsd = 0.02 * 150; // $3
+      const baseUsd = 0.005 * 3000; // $15
       expect(result.recommendedSizeUsd).toBeLessThanOrEqual(baseUsd * 3);
     });
 
     it("size has floor at 0.3x default", () => {
       const trader = makeTrader({ score: 65 }); // 0.7x
       const trade = makeTrade();
-      const settings = makeSettings({ copyAmountSol: 0.02 });
+      const settings = makeSettings();
 
       const result = filterCryptoCopy(trader, trade, settings);
 
-      const baseUsd = 0.02 * 150; // $3
+      const baseUsd = 0.005 * 3000; // $15
       expect(result.shouldCopy).toBe(true);
       expect(result.recommendedSizeUsd).toBeGreaterThanOrEqual(baseUsd * 0.3 - 0.01);
     });
@@ -168,11 +167,11 @@ describe("Copy Filter", () => {
     });
 
     it("standard ROI (10%) with decent conviction", () => {
-      const result = filterPolyCopy(0.10, 800, 0.55);
+      const result = filterPolyCopy(0.10, 1200, 0.55);
 
       expect(result.shouldCopy).toBe(true);
       expect(result.traderQualityMultiplier).toBe(1.0);
-      expect(result.recommendedSizeUsd).toBe(4);
+      expect(result.recommendedSizeUsd).toBe(6);
     });
 
     it("low ROI (< 5%) gets rejected", () => {
@@ -192,8 +191,8 @@ describe("Copy Filter", () => {
   });
 
   describe("getApproxUsdValue", () => {
-    it("converts SOL to USD", () => {
-      expect(getApproxUsdValue(0.02, "solana")).toBe(3);
+    it("converts BASE ETH to USD", () => {
+      expect(getApproxUsdValue(0.001, "base")).toBe(3);
     });
 
     it("converts ETH to USD", () => {

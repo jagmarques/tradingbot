@@ -115,7 +115,6 @@ export function initDb(dbPath?: string): Database.Database {
       max_copy_per_day INTEGER DEFAULT 10,
       daily_copy_count INTEGER DEFAULT 0,
       daily_copy_reset TEXT,
-      copy_amount_sol REAL DEFAULT 0.02,
       copy_amount_eth REAL DEFAULT 0.001,
       copy_amount_matic REAL DEFAULT 2,
       copy_amount_default REAL DEFAULT 0.005,
@@ -231,9 +230,8 @@ export function initDb(dbPath?: string): Database.Database {
   const botSettingsColumns = db.pragma("table_info(bot_settings)") as Array<{ name: string }>;
   const botSettingsColumnNames = botSettingsColumns.map((c) => c.name);
 
-  if (!botSettingsColumnNames.includes("copy_amount_sol")) {
+  if (!botSettingsColumnNames.includes("copy_amount_eth")) {
     db.exec(`
-      ALTER TABLE bot_settings ADD COLUMN copy_amount_sol REAL DEFAULT 0.02;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_eth REAL DEFAULT 0.001;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_matic REAL DEFAULT 2;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_default REAL DEFAULT 0.005;

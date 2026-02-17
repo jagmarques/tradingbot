@@ -1,7 +1,5 @@
 import { loadEnv, isPaperMode } from "../../config/env.js";
-import { getSolBalance } from "../solana/wallet.js";
 import { getMaticBalance } from "../polygon/wallet.js";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   CAPITAL_LOSS_PAUSE_PERCENTAGE,
   STARTING_CAPITAL_USD,
@@ -17,7 +15,6 @@ export interface RiskStatus {
   killSwitchActive: boolean;
   dailyPnl: number;
   dailyPnlPercentage: number;
-  solBalance: number;
   maticBalance: number;
   hasMinGas: boolean;
   isPaperMode: boolean;
@@ -26,7 +23,7 @@ export interface RiskStatus {
 
 export interface Trade {
   id: string;
-  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amount: number;
   price: number;
@@ -55,7 +52,7 @@ function checkDayReset(): void {
 // Set initial balance (call once at startup)
 export function setDailyStartBalance(balanceSol: number): void {
   dailyStartBalance = balanceSol;
-  console.log(`[Risk] Daily balance baseline set to ${balanceSol} SOL`);
+  console.log(`[Risk] Daily balance baseline set to ${balanceSol}`);
 }
 
 // Calculate daily P&L (from database)
@@ -77,11 +74,11 @@ export function getDailyPnlBreakdown(): {
   const today = new Date().toISOString().split("T")[0];
   const startOfDay = today + "T00:00:00.000Z";
 
-  // Crypto copy (base, bnb, arbitrum, avalanche from trades table)
+  // Crypto copy (base, arbitrum, avalanche from trades table)
   const cryptoCopyResult = db.prepare(`
     SELECT SUM(pnl) as total
     FROM trades
-    WHERE strategy IN ('base', 'bnb', 'arbitrum', 'avalanche')
+    WHERE strategy IN ('base', 'arbitrum', 'avalanche')
       AND created_at >= ?
   `).get(startOfDay) as { total: number | null };
   const cryptoCopy = cryptoCopyResult.total || 0;
@@ -211,27 +208,13 @@ export function checkSlippage(
 
 // Verify gas balance
 export async function verifyGasBalances(): Promise<{
-  sol: { balance: number; sufficient: boolean };
   matic: { balance: number; sufficient: boolean };
 }> {
-  const env = loadEnv();
-
-  let solBalance = -1;
-  let solSufficient = false;
-  try {
-    const solLamports = await getSolBalance();
-    solBalance = Number(solLamports) / LAMPORTS_PER_SOL;
-    solSufficient = solBalance >= env.MIN_SOL_RESERVE;
-  } catch (err) {
-    console.warn("[Risk] Failed to fetch SOL balance (rate limited?):", String(err).slice(0, 100));
-  }
-
   const maticWei = await getMaticBalance();
   const maticBalance = Number(maticWei) / 1e18;
   const maticSufficient = maticBalance >= 0.1; // Min 0.1 MATIC for gas
 
   return {
-    sol: { balance: solBalance, sufficient: solSufficient },
     matic: { balance: maticBalance, sufficient: maticSufficient },
   };
 }
@@ -249,9 +232,8 @@ export async function getRiskStatus(): Promise<RiskStatus> {
     killSwitchActive,
     dailyPnl,
     dailyPnlPercentage,
-    solBalance: gasBalances.sol.balance,
     maticBalance: gasBalances.matic.balance,
-    hasMinGas: gasBalances.sol.sufficient && gasBalances.matic.sufficient,
+    hasMinGas: gasBalances.matic.sufficient,
     isPaperMode: isPaperMode(),
     pauseReason,
   };
@@ -259,7 +241,7 @@ export async function getRiskStatus(): Promise<RiskStatus> {
 
 // Pre-trade validation
 export async function validateTrade(params: {
-  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   amountUsd: number;
   expectedPrice: number;
@@ -300,7 +282,7 @@ export async function validateTrade(params: {
       reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
     };
   }
-  // EVM chains (base, bnb, arbitrum, avalanche) use native gas tokens
+  // EVM chains (base, arbitrum, avalanche) use native gas tokens
   // Gas check handled in executor before trade
 
   return { allowed: true };

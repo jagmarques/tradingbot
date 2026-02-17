@@ -11,10 +11,8 @@ const CHAIN_IDS: Partial<Record<Chain, number>> = {
   polygon: 137,
   arbitrum: 42161,
   base: 8453,
-  bsc: 56,
   optimism: 10,
   avalanche: 43114,
-  sonic: 146,
 };
 
 // Native token address (same across all chains)
@@ -26,10 +24,8 @@ const RPC_ENDPOINTS: Partial<Record<Chain, string>> = {
   polygon: "https://polygon-rpc.com",
   arbitrum: "https://arb1.arbitrum.io/rpc",
   base: "https://mainnet.base.org",
-  bsc: "https://bsc-dataseed.binance.org",
   optimism: "https://mainnet.optimism.io",
   avalanche: "https://api.avax.network/ext/bc/C/rpc",
-  sonic: "https://rpc.soniclabs.com",
 };
 
 interface OneInchQuote {

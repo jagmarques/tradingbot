@@ -13,7 +13,6 @@ import { notifyBotStarted, notifyBotStopped, notifyCriticalError } from "./servi
 import { stopMonitoring as stopPolymarketMonitoring } from "./services/polygon/arbitrage.js";
 import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { setDailyStartBalance } from "./services/risk/manager.js";
-import { getSolBalance } from "./services/solana/wallet.js";
 import { validateCopyChains } from "./services/evm/index.js";
 import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions } from "./services/aibetting/index.js";
 import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
@@ -47,15 +46,8 @@ async function main(): Promise<void> {
       console.log(`[Bot] Recovered ${totalRecovered} open positions (${recoveredPolymarket} Polymarket, ${recoveredCryptocopies} Crypto copies)`);
     }
 
-    // Set daily loss baseline to actual wallet balance
-    try {
-      const balanceLamports = await getSolBalance();
-      const balanceSol = Number(balanceLamports) / 1_000_000_000;
-      setDailyStartBalance(balanceSol);
-    } catch (err) {
-      console.error("[Bot] Failed to get SOL balance, using 0:", err);
-      setDailyStartBalance(0);
-    }
+    // Set daily loss baseline
+    setDailyStartBalance(0);
 
     // Start health server
     startHealthServer(HEALTH_PORT);

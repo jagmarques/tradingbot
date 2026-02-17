@@ -2,13 +2,11 @@
 import type { Chain, Trader, TraderTrade } from "../traders/types.js";
 import { getSettings, incrementDailyCopyCount, canCopyTrade } from "../settings/settings.js";
 import { canTrade } from "../risk/manager.js";
-import { executeJupiterSwap, executeJupiterSell } from "../solana/jupiter.js";
 import { execute1inchSwap, execute1inchSell, isChainSupported } from "../evm/oneinch.js";
 import { getChatId, sendMessage } from "../telegram/bot.js";
 import { getDb } from "../database/db.js";
 import { isPaperMode } from "../../config/env.js";
 import {
-  ESTIMATED_GAS_FEE_SOL,
   ESTIMATED_GAS_FEE_EVM,
   ESTIMATED_SLIPPAGE_DEX,
 } from "../../config/constants.js";
@@ -166,9 +164,7 @@ export async function closeCopiedPosition(
   // Execute sell
   let sellResult: { success: boolean; amountReceived?: number; error?: string };
 
-  if (position.chain === "solana") {
-    sellResult = await executeJupiterSell(position.tokenAddress, position.tokensReceived);
-  } else if (isChainSupported(position.chain)) {
+  if (isChainSupported(position.chain)) {
     sellResult = await execute1inchSell(position.chain, position.tokenAddress, position.tokensReceived);
   } else {
     console.log(`[CopyTrade] Chain ${position.chain} not supported for sell`);
@@ -185,9 +181,7 @@ export async function closeCopiedPosition(
 
   // Deduct estimated fees (gas + slippage on entry and exit)
   if (isPaperMode()) {
-    const gasFee = position.chain === "solana"
-      ? ESTIMATED_GAS_FEE_SOL * 2 // Entry + exit gas
-      : (ESTIMATED_GAS_FEE_EVM[position.chain] || 0.001) * 2;
+    const gasFee = (ESTIMATED_GAS_FEE_EVM[position.chain] || 0.001) * 2;
     const slippageFee = position.entryAmountNative * ESTIMATED_SLIPPAGE_DEX * 2; // Entry + exit slippage
     pnlNative -= (gasFee + slippageFee);
     console.log(`[CopyTrade] Paper fees: gas=${gasFee.toFixed(6)}, slippage=${slippageFee.toFixed(6)}`);
@@ -203,8 +197,8 @@ export async function closeCopiedPosition(
 
   // Send notification
   const chainLabel: Record<string, string> = {
-    solana: "SOL", ethereum: "ETH", polygon: "MATIC", base: "BASE",
-    arbitrum: "ARB", bsc: "BNB", optimism: "OP", avalanche: "AVAX", sonic: "S",
+    ethereum: "ETH", polygon: "MATIC", base: "BASE",
+    arbitrum: "ARB", optimism: "OP", avalanche: "AVAX",
   };
   const chain = chainLabel[position.chain] || position.chain.toUpperCase();
   const pnlStr = pnlNative >= 0 ? `+${pnlNative.toFixed(6)}` : pnlNative.toFixed(6);
@@ -296,9 +290,7 @@ export async function executeCopyTrade(
 
   let result: CopyTradeResult;
 
-  if (trade.chain === "solana") {
-    result = await executeSolanaCopy(trade.tokenAddress, copyAmount);
-  } else if (isChainSupported(trade.chain)) {
+  if (isChainSupported(trade.chain)) {
     result = await executeEvmCopy(trade.chain, trade.tokenAddress, copyAmount);
   } else {
     console.log(`[CopyTrade] Chain ${trade.chain} not supported for copy trading`);
@@ -333,24 +325,6 @@ export async function executeCopyTrade(
   return result;
 }
 
-async function executeSolanaCopy(
-  tokenAddress: string,
-  amountSol: number
-): Promise<CopyTradeResult> {
-  const result = await executeJupiterSwap(tokenAddress, amountSol);
-
-  return {
-    success: result.success,
-    chain: "solana",
-    tokenAddress,
-    amountNative: amountSol,
-    signature: result.signature,
-    tokensReceived: result.tokensReceived,
-    error: result.error,
-    isPaper: result.isPaper,
-  };
-}
-
 async function executeEvmCopy(
   chain: Chain,
   tokenAddress: string,
@@ -377,15 +351,12 @@ async function notifyCopyTrade(
   filter: CopyFilterResult,
 ): Promise<void> {
   const chainLabel: Record<string, string> = {
-    solana: "SOL",
     ethereum: "ETH",
     polygon: "MATIC",
     base: "BASE",
     arbitrum: "ARB",
-    bsc: "BNB",
     optimism: "OP",
     avalanche: "AVAX",
-    sonic: "S",
   };
 
   const chain = chainLabel[trade.chain] || trade.chain.toUpperCase();

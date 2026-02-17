@@ -20,13 +20,8 @@ vi.mock("../../config/env.js", () => ({
   loadEnv: (): Record<string, unknown> => ({
     DAILY_LOSS_LIMIT_USD: 10,
     MAX_SLIPPAGE_POLYMARKET: 0.02,
-    MIN_SOL_RESERVE: 0.05,
   }),
   isPaperMode: (): boolean => true,
-}));
-
-vi.mock("../solana/wallet.js", () => ({
-  getSolBalance: vi.fn().mockResolvedValue(BigInt(100000000)), // 0.1 SOL
 }));
 
 vi.mock("../polygon/wallet.js", () => ({

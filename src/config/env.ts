@@ -13,23 +13,17 @@ const envSchema = z.object({
   TRADING_MODE: z.enum(["paper", "live"]).default("paper"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // Solana
-  HELIUS_API_KEY: z.string().min(1, "HELIUS_API_KEY is required"),
-  SOLANA_PRIVATE_KEY: z.string().min(1, "SOLANA_PRIVATE_KEY is required"),
-  JITO_TIP_AMOUNT: numericString("0.001"),
-
   // Polygon / Polymarket
   POLYMARKET_API_KEY: z.string().min(1, "POLYMARKET_API_KEY is required"),
   POLYMARKET_SECRET: z.string().min(1, "POLYMARKET_SECRET is required"),
   POLYMARKET_PASSPHRASE: z.string().default(""),
   POLYGON_PRIVATE_KEY: z.string().min(1, "POLYGON_PRIVATE_KEY is required"),
 
-  // EVM chains (Base, BNB, Arbitrum, Avalanche) - uses same key for all EVM chains
+  // EVM chains (Base, Arbitrum, Avalanche) - uses same key for all EVM chains
   PRIVATE_KEY_EVM: z.string().min(1).optional(),
 
   // RPC URLs (with public defaults - use private RPCs in production)
   RPC_URL_BASE: z.string().url().default("https://mainnet.base.org"),
-  RPC_URL_BNB: z.string().url().default("https://bsc-dataseed1.binance.org"),
   RPC_URL_ARBITRUM: z.string().url().default("https://arb1.arbitrum.io/rpc"),
   RPC_URL_AVALANCHE: z.string().url().default("https://api.avax.network/ext/bc/C/rpc"),
 
@@ -64,8 +58,6 @@ const envSchema = z.object({
   DAILY_LOSS_LIMIT_USD: numericString("25"),
   MAX_SLIPPAGE_POLYMARKET: numericStringMax1("0.005"),
 
-  // Gas
-  MIN_SOL_RESERVE: numericString("0.1"),
 });
 
 export type Env = z.infer<typeof envSchema>;

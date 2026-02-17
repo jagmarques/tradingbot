@@ -174,11 +174,11 @@ describe("Telegram Notifications", () => {
 
   describe("notifyLowBalance", () => {
     it("should send low balance warning", async () => {
-      await notifyLowBalance("SOL", 0.02, 0.05);
+      await notifyLowBalance("ETH", 0.02, 0.05);
 
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Low Balance"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("SOL"));
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("ETH"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("0.0200"));
     });
   });

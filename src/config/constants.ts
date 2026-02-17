@@ -15,7 +15,6 @@ export const HEALTH_TIMEOUT_MS = 5_000;
 
 // Alerts
 export const LOW_BALANCE_THRESHOLD_USD = 10;
-export const LOW_SOL_GAS_THRESHOLD = 0.1;
 
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
@@ -30,13 +29,7 @@ export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold ti
 export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
 export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
 
-// Jito retry configuration
-export const JITO_MAX_RETRIES = 3;
-export const JITO_RETRY_BASE_MS = 500;
-export const JITO_RETRY_MAX_MS = 4000;
-
 // Realistic fee estimation for paper trading
-export const ESTIMATED_GAS_FEE_SOL = 0.003; // 3000 lamports typical Solana gas
 export const ESTIMATED_GAS_FEE_MATIC = 0.001; // ~0.001 MATIC (~$0.00011) for Polygon gas
 export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% estimated slippage on Polymarket
 
@@ -46,10 +39,8 @@ export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
   polygon: 0.001, // ~$0.001 MATIC
   base: 0.0001, // Base is cheap
   arbitrum: 0.0001, // Arbitrum is cheap
-  bsc: 0.0005, // BNB gas
   optimism: 0.0001, // OP is cheap
   avalanche: 0.01, // AVAX gas
-  sonic: 0.001, // Sonic gas
 };
 
 // Slippage estimates for copy trading

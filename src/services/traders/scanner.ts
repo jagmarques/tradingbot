@@ -5,7 +5,6 @@ import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
-import { findSolanaEarlyBuyers, getSolanaWalletTokenStatus, scanSolanaWalletHistory } from "../solana/helius.js";
 
 function stripEmoji(s: string): string {
   return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
@@ -20,7 +19,6 @@ const GECKO_NETWORK_IDS: Record<ScanChain, string> = {
   polygon: "polygon_pos",
   optimism: "optimism",
   avalanche: "avax",
-  solana: "solana",
 };
 
 // Etherscan V2 API
@@ -151,8 +149,7 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
       const baseTokenId = pool.relationships.base_token.data.id;
       const parts = baseTokenId.split("_");
       if (parts.length < 2) continue;
-      // Solana addresses are case-sensitive, EVM addresses should be lowercased
-      const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
+      const tokenAddress = parts.slice(1).join("_").toLowerCase();
 
       // Skip duplicates
       if (seen.has(tokenAddress)) continue;
@@ -204,7 +201,7 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
           const baseTokenId = pool.relationships.base_token.data.id;
           const parts = baseTokenId.split("_");
           if (parts.length < 2) continue;
-          const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
+          const tokenAddress = parts.slice(1).join("_").toLowerCase();
 
           if (seen.has(tokenAddress)) continue;
           seen.add(tokenAddress);
@@ -255,7 +252,7 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
           const baseTokenId = pool.relationships.base_token.data.id;
           const parts = baseTokenId.split("_");
           if (parts.length < 2) continue;
-          const tokenAddress = chain === "solana" ? parts.slice(1).join("_") : parts.slice(1).join("_").toLowerCase();
+          const tokenAddress = parts.slice(1).join("_").toLowerCase();
 
           if (seen.has(tokenAddress)) continue;
           seen.add(tokenAddress);
@@ -288,9 +285,6 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
 
 // Find wallets that bought a token early (within first 50-100 transfers)
 export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
-  if (token.chain === "solana") {
-    return findSolanaEarlyBuyers(token.tokenAddress);
-  }
   if (!EXPLORER_SUPPORTED_CHAINS.has(token.chain)) return [];
 
   const url = buildExplorerUrl(token.chain as EvmChain, `module=account&action=tokentx&contractaddress=${token.tokenAddress}&startblock=0&endblock=99999999&sort=asc`);
@@ -370,9 +364,6 @@ interface WalletTokenPnl {
 export async function getWalletTokenPnl(
   walletAddress: string, tokenAddress: string, chain: ScanChain
 ): Promise<WalletTokenPnl> {
-  if (chain === "solana") {
-    return getSolanaWalletTokenStatus(walletAddress, tokenAddress);
-  }
   if (!EXPLORER_SUPPORTED_CHAINS.has(chain)) {
     return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
   }
@@ -466,57 +457,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
   console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
 
   for (const wallet of insiders) {
-    if (wallet.chain === "solana") {
-      try {
-        const tokens = await scanSolanaWalletHistory(wallet.address);
-        const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
-        const existingTokens = new Set(existingGems.map(g => g.tokenAddress));
-        let newGemsCount = 0;
-
-        for (const token of tokens.slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS)) {
-          if (existingTokens.has(token.tokenAddress)) continue;
-
-          const pair = await dexScreenerFetch(wallet.chain, token.tokenAddress);
-          if (!pair) continue;
-
-          const fdvUsd = pair.fdv || 0;
-          const priceUsd = parseFloat(pair.priceUsd || "0");
-          const reserveUsd = pair.liquidity?.usd || 0;
-          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) continue;
-          const isPumpFun = token.tokenAddress.endsWith("pump");
-          if (fdvUsd > 10_000_000 && !isPumpFun) continue;
-          let launchPriceUsd = isPumpFun ? 0.000069 : 0;
-          if (!isPumpFun && pair.pairAddress) {
-            launchPriceUsd = await fetchLaunchPrice(wallet.chain, pair.pairAddress);
-          }
-          const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
-            ? priceUsd / launchPriceUsd
-            : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
-          const symbol = pair.baseToken?.symbol || token.symbol;
-
-          const hit: GemHit = {
-            walletAddress: wallet.address,
-            chain: wallet.chain,
-            tokenAddress: token.tokenAddress,
-            tokenSymbol: stripEmoji(symbol),
-            buyTxHash: "",
-            buyTimestamp: token.firstTx,
-            buyBlockNumber: 0,
-            pumpMultiple,
-            launchPriceUsd,
-          };
-          upsertGemHit(hit);
-          newGemsCount++;
-        }
-
-        console.log(`[InsiderScanner] History: ${wallet.address.slice(0, 8)} (solana) - found ${newGemsCount} new gems`);
-        await new Promise((r) => setTimeout(r, 500));
-      } catch (err) {
-        console.error(`[InsiderScanner] Solana history error for ${wallet.address}:`, err);
-      }
-      continue;
-    }
-
     // Skip chains without working explorer APIs
     if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
@@ -688,7 +628,7 @@ export async function updateHeldGemPrices(): Promise<void> {
   let backfilled = 0;
   for (const [, token] of uniqueTokens) {
     if (token.launchPrice > 0 || token.tokenAddress.endsWith("pump") || backfilled >= 3) continue;
-    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const addrKey = token.tokenAddress.toLowerCase();
     const pair = priceMap.get(addrKey);
     if (pair?.pairAddress) {
       const lp = await fetchLaunchPrice(token.chain, pair.pairAddress);
@@ -702,7 +642,7 @@ export async function updateHeldGemPrices(): Promise<void> {
   }
 
   for (const [, token] of uniqueTokens) {
-    const addrKey = token.chain === "solana" ? token.tokenAddress : token.tokenAddress.toLowerCase();
+    const addrKey = token.tokenAddress.toLowerCase();
     const pair = priceMap.get(addrKey);
     if (!pair) continue;
 
@@ -931,9 +871,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
       if (tokensToProcess.has(key)) continue;
       const cached = getCachedGemAnalysis(gem.tokenSymbol, gem.chain);
-      const NEAR_THRESHOLD_RESCORE_MS = 2 * 60 * 60 * 1000; // 2h rescore for 50-69
+      const NEAR_THRESHOLD_RESCORE_MS = 2 * 60 * 60 * 1000;
+      const existingTrade = getGemPaperTrade(gem.tokenSymbol, gem.chain);
+      const noOpenTrade = !existingTrade || existingTrade.status === "closed";
       if (!cached ||
-          (cached.score >= 70 && !getGemPaperTrade(gem.tokenSymbol, gem.chain)) ||
+          (cached.score >= 70 && noOpenTrade) ||
           (cached.score >= 50 && cached.score < 70 && Date.now() - cached.analyzedAt > NEAR_THRESHOLD_RESCORE_MS)) {
         tokensToProcess.set(key, {
           symbol: gem.tokenSymbol,

@@ -19,7 +19,6 @@ vi.mock("../settings/settings.js", () => ({
     minTraderScore: 50,
     maxCopyPerDay: 10,
     dailyCopyCount: 0,
-    copyAmountSol: 0.02,
     copyAmountEth: 0.001,
     copyAmountMatic: 2,
     copyAmountDefault: 0.005,
@@ -36,21 +35,6 @@ vi.mock("../risk/manager.js", () => ({
 vi.mock("../telegram/bot.js", () => ({
   getChatId: vi.fn(() => "123456"),
   sendMessage: vi.fn(),
-}));
-
-vi.mock("../solana/jupiter.js", () => ({
-  executeJupiterSwap: vi.fn(() => ({
-    success: true,
-    signature: "paper_jupiter_test",
-    isPaper: true,
-    tokensReceived: "1000000000", // 1 billion tokens
-  })),
-  executeJupiterSell: vi.fn(() => ({
-    success: true,
-    signature: "paper_jupiter_sell_test",
-    isPaper: true,
-    amountReceived: 0.025, // Simulated profit
-  })),
 }));
 
 vi.mock("../evm/oneinch.js", () => ({
@@ -84,7 +68,7 @@ vi.mock("./filter.js", () => ({
     };
   }),
   getApproxUsdValue: vi.fn((_amount: number, chain: string) => {
-    const prices: Record<string, number> = { solana: 150, ethereum: 3000, polygon: 0.5, base: 3000 };
+    const prices: Record<string, number> = { ethereum: 3000, polygon: 0.5, base: 3000 };
     return _amount * (prices[chain] || 1);
   }),
 }));
@@ -115,10 +99,10 @@ describe("Copy Trade Executor", () => {
   });
 
   describe("executeCopyTrade", () => {
-    it("should execute SOL copy trade in paper mode and create position", async () => {
+    it("should execute Base copy trade in paper mode and create position", async () => {
       const trader: Trader = {
         address: "TestTrader123456789",
-        chain: "solana",
+        chain: "base",
         score: 80,
         totalTrades: 10,
         winningTrades: 7,
@@ -134,7 +118,7 @@ describe("Copy Trade Executor", () => {
         type: "BUY",
         tokenAddress: "TokenMint123",
         tokenSymbol: "TEST",
-        chain: "solana",
+        chain: "base",
         amountNative: 0.5,
         amountUsd: 100,
         timestamp: Date.now(),
@@ -145,9 +129,9 @@ describe("Copy Trade Executor", () => {
       expect(result).not.toBeNull();
       expect(result?.success).toBe(true);
       expect(result?.isPaper).toBe(true);
-      expect(result?.chain).toBe("solana");
-      expect(result?.amountNative).toBeCloseTo(0.024, 6); // $3.60 / $150 SOL price
-      expect(result?.tokensReceived).toBe("1000000000");
+      expect(result?.chain).toBe("base");
+      expect(result?.amountNative).toBeCloseTo(0.0012, 4); // $3.60 / $3000 Base ETH price
+      expect(result?.tokensReceived).toBe("1000000000000000000");
     });
 
     it("should execute ETH copy trade in paper mode and create position", async () => {
@@ -188,7 +172,7 @@ describe("Copy Trade Executor", () => {
     it("should not copy SELL trades", async () => {
       const trader: Trader = {
         address: "TestTrader123456789",
-        chain: "solana",
+        chain: "base",
         score: 80,
         totalTrades: 10,
         winningTrades: 7,
@@ -204,7 +188,7 @@ describe("Copy Trade Executor", () => {
         type: "SELL",
         tokenAddress: "TokenMint123",
         tokenSymbol: "TEST",
-        chain: "solana",
+        chain: "base",
         amountNative: 0.5,
         amountUsd: 100,
         timestamp: Date.now(),
@@ -218,7 +202,7 @@ describe("Copy Trade Executor", () => {
     it("should not copy if trader score below threshold", async () => {
       const trader: Trader = {
         address: "TestTrader123456789",
-        chain: "solana",
+        chain: "base",
         score: 40, // Below threshold of 50
         totalTrades: 10,
         winningTrades: 4,
@@ -234,7 +218,7 @@ describe("Copy Trade Executor", () => {
         type: "BUY",
         tokenAddress: "TokenMint123",
         tokenSymbol: "TEST",
-        chain: "solana",
+        chain: "base",
         amountNative: 0.5,
         amountUsd: 100,
         timestamp: Date.now(),
@@ -252,7 +236,7 @@ describe("Copy Trade Executor", () => {
       const position: CryptoCopyPosition = {
         id: "test_position_1",
         traderAddress: "TestTrader123",
-        chain: "solana",
+        chain: "base",
         tokenAddress: "TokenMint123",
         tokenSymbol: "TEST",
         entryAmountNative: 0.02,

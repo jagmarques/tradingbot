@@ -6,10 +6,6 @@ import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyInsiderBuyDetected } from "../telegram/notifications.js";
 
-// TODO: Solana support skipped in V1 - Helius rate limits are too tight and the existing
-// scanSolanaWalletHistory in scanner.ts already covers historical wallet scanning.
-// Add Solana support here once a higher-rate Helius plan is available.
-
 // Tracks the most recent tx timestamp seen per wallet+chain to avoid re-processing
 // Key: `${address}_${chain}`, value: unix timestamp in seconds
 const lastSeenTxTimestamp = new Map<string, number>();

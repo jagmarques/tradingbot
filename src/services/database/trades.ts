@@ -3,7 +3,7 @@ import { isPaperMode } from "../../config/env.js";
 
 export interface TradeRecord {
   id: string;
-  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
   type: "BUY" | "SELL";
   tokenAddress?: string;
   tokenSymbol?: string;
@@ -26,7 +26,7 @@ export interface TradeRecord {
 
 export interface PositionRecord {
   id: string;
-  strategy: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
   tokenAddress: string;
   tokenSymbol?: string;
   entryPrice: number;
@@ -122,7 +122,7 @@ export function getTrade(id: string): TradeRecord | null {
 
 // Get trades with filters
 export function getTrades(options: {
-  strategy?: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche";
+  strategy?: "polymarket" | "base" | "arbitrum" | "avalanche";
   type?: "BUY" | "SELL";
   startDate?: string;
   endDate?: string;
@@ -258,7 +258,7 @@ export function insertPosition(
 }
 
 // Get open positions
-export function getOpenPositions(strategy?: "polymarket" | "base" | "bnb" | "arbitrum" | "avalanche"): PositionRecord[] {
+export function getOpenPositions(strategy?: "polymarket" | "base" | "arbitrum" | "avalanche"): PositionRecord[] {
   const db = getDb();
   let query = "SELECT * FROM positions WHERE status = 'open'";
   const params: unknown[] = [];

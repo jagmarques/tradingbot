@@ -7,11 +7,9 @@ import {
   getDailyPnlBreakdown,
   getTodayTrades,
 } from "../risk/manager.js";
-import { getSolBalanceFormatted } from "../solana/wallet.js";
 import { getMaticBalanceFormatted, getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
 import { getEthBalance as getBaseEthBalance } from "../base/executor.js";
-import { getBnbBalance } from "../bnb/executor.js";
 import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
 import { getAvaxBalance } from "../avalanche/executor.js";
 import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
@@ -26,7 +24,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getTokenAddressForGem } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken } from "../traders/storage.js";
 import { getInsiderScannerStatus } from "../traders/index.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 
@@ -228,10 +226,6 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("set_max_daily", async (ctx) => {
     await handleSetMaxDaily(ctx);
-    await ctx.answerCallbackQuery();
-  });
-  bot.callbackQuery("set_copy_sol", async (ctx) => {
-    await handleSetCopyAmount(ctx, "copy_sol");
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_eth", async (ctx) => {
@@ -565,25 +559,19 @@ async function handleBalance(ctx: Context): Promise<void> {
     const formatWei = (wei: bigint): string => (Number(wei) / 1e18).toFixed(4);
 
     // Fetch balances sequentially to avoid RPC batching issues
-    const solBalance = await getSolBalanceFormatted().catch(() => "Error");
     const maticBalance = await getMaticBalanceFormatted().catch(() => "Error");
     const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
     const baseEthBalance = await getBaseEthBalance().catch(() => BigInt(0));
-    const bnbBalance = await getBnbBalance().catch(() => BigInt(0));
     const arbitrumEthBalance = await getArbitrumEthBalance().catch(() => BigInt(0));
     const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
 
     const message =
       `<b>Wallet Balances</b>\n\n` +
-      `<b>Solana</b>\n` +
-      `SOL: ${solBalance}\n\n` +
       `<b>Polygon</b>\n` +
       `MATIC: ${maticBalance}\n` +
       `USDC: ${usdcBalance}\n\n` +
       `<b>Base</b>\n` +
       `ETH: ${formatWei(baseEthBalance)}\n\n` +
-      `<b>BNB Chain</b>\n` +
-      `BNB: ${formatWei(bnbBalance)}\n\n` +
       `<b>Arbitrum</b>\n` +
       `ETH: ${formatWei(arbitrumEthBalance)}\n\n` +
       `<b>Avalanche</b>\n` +
@@ -715,11 +703,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const holders = getGemHolderCount(t.tokenSymbol, t.chain);
         const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
         const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
-        // Solana: pump from Pump.fun graduation ($69k FDV / 1B supply)
-        const tokenAddr = getTokenAddressForGem(t.tokenSymbol, t.chain);
-        const isPumpFun = tokenAddr ? tokenAddr.endsWith("pump") : false;
-        const launchPump = t.chain === "solana" && t.currentPriceUsd > 0 && isPumpFun ? t.currentPriceUsd / 0.000069 : null;
-        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x` + (launchPump ? ` | Launch: ${launchPump.toFixed(0)}x` : "");
+        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x`;
         message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `${pumpLine}\n`;
@@ -822,7 +806,6 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
       ],
       [
-        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
@@ -913,7 +896,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
     if (tab === "wallets") {
       const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
-      let walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | "solana" | undefined);
+      let walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | undefined);
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -991,15 +974,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const sinceBuyPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
           ? `${(trade.currentPriceUsd / trade.buyPriceUsd).toFixed(1)}x`
           : "0.0x";
-        const tokenAddr = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
-        const isPumpFun = tokenAddr ? tokenAddr.endsWith("pump") : false;
-        const launchPump = trade.chain === "solana" && trade.currentPriceUsd > 0 && isPumpFun
-          ? (trade.currentPriceUsd / 0.000069)
-          : null;
         const peakPump = getPeakPumpForToken(trade.tokenSymbol, trade.chain);
-        const launchStr = launchPump && launchPump < 100000 ? ` | Launch: ${launchPump.toFixed(0)}x` : "";
         const peakStr = peakPump > 0 ? ` | Peak: ${peakPump.toFixed(0)}x` : "";
-        const pumpStr = `Since buy: ${sinceBuyPump}${launchStr}${peakStr}`;
+        const pumpStr = `Since buy: ${sinceBuyPump}${peakStr}`;
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
         return `<b>${trade.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\n${pumpStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | Bought: ${buyDate}`;
@@ -1065,7 +1042,6 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
       ],
       [
-        { text: chain === "solana" ? "* Sol" : "Sol", callback_data: `insiders_chain_solana_${tab}` },
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
@@ -1452,7 +1428,6 @@ async function handleAI(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
     const userId = ctx.from?.id?.toString() || "";
     const settings = getSettings(userId);
-    const solBalance = await getSolBalanceFormatted().catch(() => "Error");
     const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
 
     // Polymarket copy trading stats
@@ -1468,7 +1443,6 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Trading enabled: ${riskStatus.tradingEnabled}
 - Paper mode: ${riskStatus.isPaperMode}
 - Daily PnL: $${dailyPnl.toFixed(2)} (${dailyPnlPct >= 0 ? "+" : ""}${dailyPnlPct.toFixed(1)}%)
-- SOL balance: ${solBalance}
 - USDC balance: ${usdcBalance}
 
 === USER SETTINGS ===
@@ -1822,13 +1796,6 @@ async function handleTextInput(ctx: Context): Promise<void> {
       }
       updateSetting(userId, "maxCopyPerDay", numValue);
       console.log(`[Telegram] Max daily set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "copy_sol") {
-      if (numValue <= 0 || numValue > 1) {
-        await ctx.reply("SOL amount must be between 0 and 1");
-        return;
-      }
-      updateSetting(userId, "copyAmountSol", numValue);
-      console.log(`[Telegram] Copy SOL amount set to ${numValue} by user ${userId}`);
     } else if (settingsInputMode === "copy_eth") {
       if (numValue <= 0 || numValue > 0.1) {
         await ctx.reply("ETH amount must be between 0 and 0.1");
@@ -1892,7 +1859,7 @@ async function handleTextInput(ctx: Context): Promise<void> {
       `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
       `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
       `<b>Copy Amounts (fixed per trade):</b>\n` +
-      `SOL: ${settings.copyAmountSol} | ETH: ${settings.copyAmountEth}\n` +
+      `ETH: ${settings.copyAmountEth}\n` +
       `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
       `Polymarket: $${settings.polymarketCopyUsd}` +
       aiBettingSection;
@@ -1904,7 +1871,6 @@ async function handleTextInput(ctx: Context): Promise<void> {
         { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
       ],
       [
-        { text: `SOL: ${settings.copyAmountSol}`, callback_data: "set_copy_sol" },
         { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
       ],
       [
@@ -1976,7 +1942,7 @@ async function handleTextInput(ctx: Context): Promise<void> {
 }
 
 // Settings state for multi-step input
-let settingsInputMode: "min_score" | "max_daily" | "copy_sol" | "copy_eth" | "copy_matic" | "copy_default" | "copy_poly" | null = null;
+let settingsInputMode: "min_score" | "max_daily" | "copy_eth" | "copy_matic" | "copy_default" | "copy_poly" | null = null;
 
 async function handleSettings(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
@@ -2009,7 +1975,7 @@ async function handleSettings(ctx: Context): Promise<void> {
     `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
     `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
     `<b>Copy Amounts (fixed per trade):</b>\n` +
-    `SOL: ${settings.copyAmountSol} | ETH: ${settings.copyAmountEth}\n` +
+    `ETH: ${settings.copyAmountEth}\n` +
     `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
     `Polymarket: $${settings.polymarketCopyUsd}` +
     aiBettingSection;
@@ -2021,7 +1987,6 @@ async function handleSettings(ctx: Context): Promise<void> {
       { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
     ],
     [
-      { text: `SOL: ${settings.copyAmountSol}`, callback_data: "set_copy_sol" },
       { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
     ],
     [
@@ -2064,13 +2029,12 @@ async function handleSetMaxDaily(ctx: Context): Promise<void> {
   lastPromptMessageId = msg.message_id;
 }
 
-async function handleSetCopyAmount(ctx: Context, mode: "copy_sol" | "copy_eth" | "copy_matic" | "copy_default" | "copy_poly"): Promise<void> {
+async function handleSetCopyAmount(ctx: Context, mode: "copy_eth" | "copy_matic" | "copy_default" | "copy_poly"): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   settingsInputMode = mode;
 
   const prompts: Record<typeof mode, string> = {
-    copy_sol: "Enter SOL amount per copy trade (e.g., 0.02):",
     copy_eth: "Enter ETH amount per copy trade (e.g., 0.001):",
     copy_matic: "Enter MATIC amount per copy trade (e.g., 2):",
     copy_default: "Enter default amount for other chains (e.g., 0.005):",

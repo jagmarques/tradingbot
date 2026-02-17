@@ -44,7 +44,6 @@ vi.mock("../risk/manager.js", () => ({
     killSwitchActive: false,
     dailyPnl: 5.5,
     dailyPnlPercentage: 5.5,
-    solBalance: 0.1,
     maticBalance: 0.5,
     hasMinGas: true,
     isPaperMode: true,
@@ -57,10 +56,6 @@ vi.mock("../risk/manager.js", () => ({
 }));
 
 // Mock wallets
-vi.mock("../solana/wallet.js", () => ({
-  getSolBalanceFormatted: vi.fn().mockResolvedValue("0.1000"),
-}));
-
 vi.mock("../polygon/wallet.js", () => ({
   getMaticBalanceFormatted: vi.fn().mockResolvedValue("0.5000"),
   getUsdcBalanceFormatted: vi.fn().mockResolvedValue("50.00"),

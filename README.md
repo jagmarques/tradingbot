@@ -85,10 +85,10 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 | | Paper | Live |
 |---|-------|------|
-| Bankroll | Virtual $10k | Real USDC/SOL |
+| Bankroll | Virtual $10k | Real USDC |
 | Position limits | None | 5 |
 | Exposure limit | None | $50 |
-| Orders | Midpoint prices | Real orderbook (CLOB/Jupiter/1inch) |
+| Orders | Midpoint prices | Real orderbook (CLOB/1inch) |
 | Gem trades | DexScreener prices | 1inch (EVM) |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 
@@ -108,7 +108,7 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 
-**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYGON_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ALCHEMY_SOLANA_RPC`, `DEEPSEEK_API_KEY`
+**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
 
 ## Setup
 
@@ -126,7 +126,7 @@ npm run dev
 
 ## Tech Stack
 
-TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, @solana/web3.js, Docker, Coolify
+TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Docker, Coolify
 
 ## License
 

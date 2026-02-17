@@ -11,15 +11,12 @@ export interface CopyFilterResult {
 
 // Approximate native token prices in USD (for copy amount estimation)
 const APPROX_NATIVE_PRICES: Record<string, number> = {
-  solana: 150,
   ethereum: 3000,
   polygon: 0.75,
   base: 3000, // ETH
   arbitrum: 3000, // ETH
-  bsc: 600,
   optimism: 3000, // ETH
   avalanche: 35,
-  sonic: 0.50,
 };
 
 export function getApproxUsdValue(amountNative: number, chain: Chain): number {
@@ -29,7 +26,6 @@ export function getApproxUsdValue(amountNative: number, chain: Chain): number {
 
 function getCopyAmountUsd(chain: Chain, settings: BotSettings): number {
   const copyAmounts: Record<string, number> = {
-    solana: settings.copyAmountSol,
     ethereum: settings.copyAmountEth,
     polygon: settings.copyAmountMatic,
   };
