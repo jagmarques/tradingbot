@@ -871,7 +871,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         const peak = Math.max(t.peakPump, t.currentPump);
         const launchStr = peak > 0 ? ` | Launch: ${peak.toFixed(0)}x` : "";
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${launchStr} | Insiders: ${t.holders} | ${discoveryDate}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${launchStr} | Wallets: ${t.holders} | ${discoveryDate}`;
       });
 
       const scannerStatus = status.running ? "Running" : "Stopped";
@@ -879,7 +879,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const header = top30.length > 0
         ? `<b>Insider Wallets</b> - Currently Holding\n\n`
         : `<b>Insider Wallets</b> - Currently Holding\n`;
-      const footer = `\n${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
+      const footerBreak = top30.length > 0 ? "\n\n" : "\n";
+      const footer = `${footerBreak}${qualifiedEntries.length} holdings${hiddenStr} | Scanner: ${scannerStatus}`;
       const maxLen = 3900;
 
       const messages: string[] = [];
