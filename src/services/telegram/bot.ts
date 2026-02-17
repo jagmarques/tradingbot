@@ -980,7 +980,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       // Build token blocks from paper trades
       const tokenBlocks = openPaperTrades.map((trade) => {
         const chainTag = trade.chain.toUpperCase().slice(0, 3);
-        const scoreDisplay = trade.aiScore !== null && trade.aiScore !== -1 ? `${trade.aiScore}/100` : "N/A";
+        const analysis = getCachedGemAnalysis(trade.tokenSymbol, trade.chain, true);
+        const currentScore = (analysis && analysis.score !== -1) ? analysis.score : trade.aiScore;
+        const scoreDisplay = currentScore !== null && currentScore !== -1 ? `${currentScore}/100` : "N/A";
         const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
         const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
         const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
