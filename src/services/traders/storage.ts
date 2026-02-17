@@ -228,13 +228,15 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
 export function getAllHeldGemHits(chain?: string): GemHit[] {
   const db = getDb();
-  let query = "SELECT * FROM insider_gem_hits WHERE (status = 'holding' OR status = 'unknown' OR status IS NULL)";
+  let query = `SELECT h.* FROM insider_gem_hits h
+    INNER JOIN insider_wallets w ON LOWER(h.wallet_address) = LOWER(w.address) AND h.chain = w.chain
+    WHERE (h.status = 'holding' OR h.status = 'unknown' OR h.status IS NULL)`;
   const params: unknown[] = [];
   if (chain) {
-    query += " AND chain = ?";
+    query += " AND h.chain = ?";
     params.push(chain);
   }
-  query += " ORDER BY pump_multiple DESC";
+  query += " ORDER BY h.pump_multiple DESC";
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
