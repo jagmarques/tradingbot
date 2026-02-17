@@ -254,13 +254,15 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
 
 export function getRecentGemHits(limit: number = 10, chain?: string): GemHit[] {
   const db = getDb();
-  let query = "SELECT * FROM insider_gem_hits WHERE status IN ('holding', 'sold') AND pump_multiple >= 0.1";
+  let query = `SELECT h.* FROM insider_gem_hits h
+    INNER JOIN insider_gem_analyses a ON a.id = LOWER(h.token_symbol) || '_' || h.chain
+    WHERE h.status IN ('holding', 'sold') AND h.pump_multiple >= 0.1 AND a.score >= 50`;
   const params: unknown[] = [];
   if (chain) {
-    query += " AND chain = ?";
+    query += " AND h.chain = ?";
     params.push(chain);
   }
-  query += " ORDER BY buy_timestamp DESC LIMIT ?";
+  query += " ORDER BY h.buy_timestamp DESC LIMIT ?";
   params.push(limit);
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
