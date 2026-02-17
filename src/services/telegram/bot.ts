@@ -869,8 +869,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const scoreDisplay = `${t.score}/100`;
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         const peak = Math.max(t.peakPump, t.currentPump);
-        const launchStr = peak > 0 ? ` | Launch: ${peak.toFixed(0)}x` : "";
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${launchStr} | Wallets: ${t.holders} | ${discoveryDate}`;
+        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
       });
 
       const scannerStatus = status.running ? "Running" : "Stopped";
@@ -1050,19 +1050,16 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const tradeBlocks = recentHits.map((hit) => {
         const chainTag = hit.chain.toUpperCase().slice(0, 3);
-        const addrShort = `${hit.walletAddress.slice(0, 6)}...${hit.walletAddress.slice(-4)}`;
         const statusStr = hit.status === "holding" ? "BUY" : "SELL";
-        const pumpStr = `${hit.pumpMultiple.toFixed(1)}x`;
+        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain);
+        const scoreStr = analysis && analysis.score !== -1 ? ` - Score: ${analysis.score}/100` : "";
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
-        const launchStr = peak > 0 ? `Launch: ${peak.toFixed(0)}x` : "";
+        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
         const discoveryDate = ts > 0 ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
-        const timeAgo = ts > 0 ? formatTimeAgo(ts) : "unknown";
-        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain);
-        const scoreStr = analysis && analysis.score !== -1 ? `Score: ${analysis.score}/100` : "";
-        const parts = [statusStr, pumpStr, launchStr, scoreStr, discoveryDate, timeAgo].filter(Boolean);
+        const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
 
-        return `${addrShort} <b>${hit.tokenSymbol}</b> (${chainTag})\n${parts.join(" | ")}`;
+        return `<b>${hit.tokenSymbol}</b> (${chainTag})${scoreStr}\n${statusStr}: ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${discoveryDate} | ${timeAgo}`;
       });
 
       const header = `<b>Insider Wallets</b> - Recent Activity\n\n`;
