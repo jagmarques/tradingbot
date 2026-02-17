@@ -362,7 +362,12 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
 
 // Track tokens that repeatedly fail price fetch - stop retrying after MAX_PRICE_FAILURES
 const MAX_PRICE_FAILURES = 3;
-const priceFetchFailures = new Map<string, number>();
+const PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
+const priceFetchFailures = new Map<string, { count: number; lastFailAt: number }>();
+
+// Locks to prevent double-buy/sell race conditions between scanner and watcher
+const buyingLock = new Set<string>();
+const sellingLock = new Set<string>();
 
 export async function buyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
@@ -374,11 +379,21 @@ export async function buyGems(
       continue;
     }
     const existing = getGemPaperTrade(token.symbol, token.chain);
-    if (existing) continue;
+    if (existing && existing.status === "open") continue;
+
+    const lockKey = `${token.symbol}_${token.chain}`;
+    if (buyingLock.has(lockKey)) continue;
+    buyingLock.add(lockKey);
 
     const failKey = `${token.symbol}_${token.chain}`;
-    const failures = priceFetchFailures.get(failKey) ?? 0;
-    if (failures >= MAX_PRICE_FAILURES) continue;
+    const failEntry = priceFetchFailures.get(failKey);
+    if (failEntry && failEntry.count >= MAX_PRICE_FAILURES) {
+      if (Date.now() - failEntry.lastFailAt < PRICE_FAILURE_EXPIRY_MS) {
+        buyingLock.delete(lockKey);
+        continue;
+      }
+      priceFetchFailures.delete(failKey);
+    }
 
     // Use cached DexPair from analyzeGem if available, otherwise fetch
     const cacheKey = `${token.tokenAddress}_${token.chain}`;
@@ -389,23 +404,26 @@ export async function buyGems(
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
 
     if (priceUsd <= 0) {
-      const newFails = failures + 1;
-      priceFetchFailures.set(failKey, newFails);
-      if (newFails >= MAX_PRICE_FAILURES) {
+      const prev = priceFetchFailures.get(failKey);
+      const newCount = (prev?.count ?? 0) + 1;
+      priceFetchFailures.set(failKey, { count: newCount, lastFailAt: Date.now() });
+      if (newCount >= MAX_PRICE_FAILURES) {
         console.log(`[GemAnalyzer] Giving up on ${token.symbol} (${token.chain}) - no price after ${MAX_PRICE_FAILURES} attempts`);
       }
+      buyingLock.delete(lockKey);
       continue;
     }
 
     if (liquidityUsd < 2000) {
-      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $2000 (likely clone)`);
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $2000`);
+      buyingLock.delete(lockKey);
       continue;
     }
 
-    // Max FDV $500k
     const pairFdv = pair?.fdv || 0;
     if (pairFdv > 500_000) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - FDV $${(pairFdv / 1000).toFixed(0)}k > $500k`);
+      buyingLock.delete(lockKey);
       continue;
     }
 
@@ -429,13 +447,13 @@ export async function buyGems(
       });
 
       console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
+      buyingLock.delete(lockKey);
     } else {
-      // Live mode - execute on-chain buy
       if (token.chain === "solana") {
-        // Solana live buy via Jupiter
         const solBalance = await getSolBalance().catch(() => 0n);
-        if (solBalance < 10_000_000n) { // 0.01 SOL minimum
+        if (solBalance < 10_000_000n) {
           console.log(`[GemTrader] LIVE: Skip ${token.symbol} - insufficient SOL`);
+          buyingLock.delete(lockKey);
           continue;
         }
         const solPrice = getApproxUsdValue(1, "solana");
@@ -462,18 +480,20 @@ export async function buyGems(
         } else {
           console.log(`[GemTrader] LIVE BUY FAILED: ${token.symbol} (solana) - ${result.error}`);
         }
+        buyingLock.delete(lockKey);
         continue;
       }
 
-      // EVM live buy via 1inch
       if (!isChainSupported(token.chain as Chain)) {
-        console.log(`[GemTrader] LIVE: Skip ${token.symbol} - chain ${token.chain} not supported by 1inch`);
+        console.log(`[GemTrader] LIVE: Skip ${token.symbol} - chain ${token.chain} not supported`);
+        buyingLock.delete(lockKey);
         continue;
       }
 
       const balance = await getNativeBalance(token.chain as Chain);
-      if (balance === null || balance < 1000000000000000n) { // 0.001 ETH
+      if (balance === null || balance < 1000000000000000n) {
         console.log(`[GemTrader] LIVE: Skip ${token.symbol} - insufficient gas on ${token.chain}`);
+        buyingLock.delete(lockKey);
         continue;
       }
 
@@ -504,30 +524,38 @@ export async function buyGems(
       } else {
         console.log(`[GemTrader] LIVE BUY FAILED: ${token.symbol} (${token.chain}) - ${result.error}`);
       }
+      buyingLock.delete(lockKey);
     }
   }
 }
 
 export async function sellGemPosition(symbol: string, chain: string): Promise<void> {
+  const sellKey = `${symbol}_${chain}`;
+  if (sellingLock.has(sellKey)) return;
+  sellingLock.add(sellKey);
+
   const trade = getGemPaperTrade(symbol, chain);
-  if (!trade || trade.status === "closed") return;
+  if (!trade || trade.status === "closed") {
+    sellingLock.delete(sellKey);
+    return;
+  }
 
   // Paper mode - just close the trade
   if (!trade.isLive) {
     closeGemPaperTrade(symbol, chain);
     console.log(`[GemTrader] Paper close: ${symbol} (${chain})`);
+    sellingLock.delete(sellKey);
     return;
   }
 
-  // Live mode - sell on-chain
   const tokenAddress = getTokenAddressForGem(symbol, chain);
   if (!tokenAddress) {
-    console.log(`[GemTrader] LIVE SELL WARNING: ${symbol} (${chain}) - no token address, closing anyway`);
+    console.log(`[GemTrader] LIVE SELL: ${symbol} (${chain}) - no token address, closing anyway`);
     closeGemPaperTrade(symbol, chain);
+    sellingLock.delete(sellKey);
     return;
   }
 
-  // Solana live sell via Jupiter
   if (chain === "solana" && trade.tokensReceived) {
     const result = await executeJupiterSell(tokenAddress, trade.tokensReceived);
     if (result.success) {
@@ -537,19 +565,19 @@ export async function sellGemPosition(symbol: string, chain: string): Promise<vo
       closeGemPaperTrade(symbol, chain);
       console.log(`[GemTrader] LIVE SELL FAILED: ${symbol} (solana) - ${result.error}`);
     }
+    sellingLock.delete(sellKey);
     return;
   }
 
-  // EVM live sell via 1inch
   const result = await approveAndSell1inch(chain as Chain, tokenAddress, 3);
-
   if (result.success) {
     console.log(`[GemTrader] LIVE SELL: ${symbol} (${chain}) tx=${result.txHash}`);
     closeGemPaperTrade(symbol, chain, result.txHash);
   } else {
-    console.log(`[GemTrader] LIVE SELL FAILED: ${symbol} (${chain}) - ${result.error}. Closing trade anyway.`);
+    console.log(`[GemTrader] LIVE SELL FAILED: ${symbol} (${chain}) - ${result.error}. Closing anyway.`);
     closeGemPaperTrade(symbol, chain);
   }
+  sellingLock.delete(sellKey);
 }
 
 export function analyzeGemsBackground(
