@@ -452,7 +452,7 @@ export async function scanWalletHistory(): Promise<void> {
 }
 
 async function _scanWalletHistoryInner(): Promise<void> {
-  const candidates = getPromisingWalletsForHistoryScan(2, 20); // Query gem_hits directly, bypass insider_wallets table
+  const candidates = getPromisingWalletsForHistoryScan(3, 20); // Query gem_hits directly, bypass insider_wallets table
 
   console.log(`[InsiderScanner] History: Scanning ${candidates.length} wallets`);
 
