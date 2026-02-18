@@ -164,7 +164,10 @@ export async function closeCopiedPosition(
   // Execute sell
   let sellResult: { success: boolean; amountReceived?: number; error?: string };
 
-  if (isChainSupported(position.chain)) {
+  if (isPaperMode()) {
+    // Paper mode: skip real sell, assume break-even minus fees
+    sellResult = { success: true, amountReceived: position.entryAmountNative };
+  } else if (isChainSupported(position.chain)) {
     sellResult = await execute1inchSell(position.chain, position.tokenAddress, position.tokensReceived);
   } else {
     console.log(`[CopyTrade] Chain ${position.chain} not supported for sell`);

@@ -342,13 +342,17 @@ OUTPUT JSON ONLY:
     } else {
       const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
       for (const decision of decisions.slice(0, maxNewBets)) {
-        const market = markets.find((m) => m.conditionId === decision.marketId);
-        if (!market) continue;
+        try {
+          const market = markets.find((m) => m.conditionId === decision.marketId);
+          if (!market) continue;
 
-        const position = await enterPosition(decision, market);
-        if (position) {
-          result.betsPlaced++;
-          console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
+          const position = await enterPosition(decision, market);
+          if (position) {
+            result.betsPlaced++;
+            console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
+          }
+        } catch (err) {
+          console.error(`[AIBetting] Error placing bet on ${decision.marketId}:`, err);
         }
       }
     }
@@ -371,31 +375,35 @@ async function invalidateCacheOnNews(): Promise<void> {
   if (openPositions.length === 0) return;
 
   for (const position of openPositions) {
-    const cached = analysisCache.get(position.marketId);
-    if (!cached) continue;
+    try {
+      const cached = analysisCache.get(position.marketId);
+      if (!cached) continue;
 
-    const market: PolymarketEvent = {
-      conditionId: position.marketId,
-      questionId: "",
-      slug: "",
-      title: position.marketTitle,
-      description: "",
-      category: "other",
-      endDate: position.marketEndDate,
-      volume24h: 0,
-      liquidity: 0,
-      outcomes: [],
-    };
+      const market: PolymarketEvent = {
+        conditionId: position.marketId,
+        questionId: "",
+        slug: "",
+        title: position.marketTitle,
+        description: "",
+        category: "other",
+        endDate: position.marketEndDate,
+        volume24h: 0,
+        liquidity: 0,
+        outcomes: [],
+      };
 
-    const news = await fetchNewsForMarket(market);
-    const hasNewArticles = news.some((n) => {
-      const pubTime = new Date(n.publishedAt).getTime();
-      return pubTime > cached.cachedAt;
-    });
+      const news = await fetchNewsForMarket(market);
+      const hasNewArticles = news.some((n) => {
+        const pubTime = new Date(n.publishedAt).getTime();
+        return pubTime > cached.cachedAt;
+      });
 
-    if (hasNewArticles) {
-      analysisCache.delete(position.marketId);
-      console.log(`[Scheduler] Cache busted for "${position.marketTitle}" (new articles found)`);
+      if (hasNewArticles) {
+        analysisCache.delete(position.marketId);
+        console.log(`[Scheduler] Cache busted for "${position.marketTitle}" (new articles found)`);
+      }
+    } catch (err) {
+      console.error(`[Scheduler] Cache invalidation error for "${position.marketTitle}":`, err);
     }
   }
 }
@@ -467,8 +475,8 @@ export function startAIBetting(cfg: AIBettingConfig): void {
 
   runAnalysisCycle().catch((err) => console.error("[AIBetting] First cycle error:", err));
 
-  intervalHandle = setInterval(async () => {
-    if (isRunning) await runAnalysisCycle();
+  intervalHandle = setInterval(() => {
+    if (isRunning) runAnalysisCycle().catch(err => console.error("[AIBetting] Cycle error:", err));
   }, cfg.scanIntervalMs);
 
   console.log(`[AIBetting] Running every ${cfg.scanIntervalMs / 60000} min`);

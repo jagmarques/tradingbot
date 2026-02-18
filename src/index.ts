@@ -149,8 +149,8 @@ async function shutdown(signal: string): Promise<void> {
 }
 
 // Handle shutdown signals
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => { shutdown("SIGINT").catch(err => console.error("[Bot] Shutdown error:", err)); });
+process.on("SIGTERM", () => { shutdown("SIGTERM").catch(err => console.error("[Bot] Shutdown error:", err)); });
 
 // Handle uncaught errors
 process.on("uncaughtException", async (err) => {

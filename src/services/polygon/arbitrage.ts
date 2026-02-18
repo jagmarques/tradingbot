@@ -1,4 +1,4 @@
-import { getMidPrice, getBestBid, getBestAsk, onOrderbookUpdate } from "./orderbook.js";
+import { getMidPrice, getBestBid, getBestAsk, onOrderbookUpdate, disconnect as disconnectOrderbook } from "./orderbook.js";
 import { placeFokOrder } from "./polymarket.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { MAX_ACTIVE_HEDGED_PAIRS } from "../../config/constants.js";
@@ -228,6 +228,8 @@ export function stopMonitoring(): void {
     clearInterval(monitoringInterval);
     monitoringInterval = null;
   }
+
+  disconnectOrderbook();
 
   // Warn about unclosed positions
   const activePositionsList = getActivePositions();
