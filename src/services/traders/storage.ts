@@ -186,6 +186,24 @@ export function getInsiderWallets(chain?: ScanChain, minHits?: number): InsiderW
   return rows.map(mapRowToInsiderWallet);
 }
 
+export function getPromisingWalletsForHistoryScan(
+  minHits: number = 2,
+  limit: number = 20
+): Array<{ address: string; chain: string; hitCount: number }> {
+  const db = getDb();
+
+  const rows = db.prepare(`
+    SELECT wallet_address as address, chain, COUNT(*) as hit_count
+    FROM insider_gem_hits
+    GROUP BY wallet_address, chain
+    HAVING COUNT(*) >= ?
+    ORDER BY COUNT(*) DESC
+    LIMIT ?
+  `).all(minHits, limit) as Array<{ address: string; chain: string; hit_count: number }>;
+
+  return rows.map(row => ({ address: row.address, chain: row.chain, hitCount: row.hit_count }));
+}
+
 
 export function updateGemHitPnl(
   walletAddress: string, tokenAddress: string, chain: string,
