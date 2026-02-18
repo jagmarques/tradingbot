@@ -1,4 +1,5 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, type GemAnalysis } from "./storage.js";
+import { INSIDER_CONFIG } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -314,8 +315,8 @@ export async function buyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
   for (const token of tokens) {
-    if (token.score < 70) continue;
-    if (token.currentPump >= 20) {
+    if (token.score < INSIDER_CONFIG.MIN_GEM_SCORE) continue;
+    if (token.currentPump >= INSIDER_CONFIG.MAX_BUY_PUMP) {
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
       continue;
     }
