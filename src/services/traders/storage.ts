@@ -187,7 +187,7 @@ export function getInsiderWallets(chain?: ScanChain, minHits?: number): InsiderW
 }
 
 export function getPromisingWalletsForHistoryScan(
-  minHits: number = 2,
+  minHits: number = 3,
   limit: number = 20
 ): Array<{ address: string; chain: string; hitCount: number }> {
   const db = getDb();

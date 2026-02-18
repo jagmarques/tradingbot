@@ -22,7 +22,7 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 
 ### Copy Betting (Polymarket)
 
-Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with avg entry >90c or <10c. 30-minute buffer before market end.
+Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with median entry >95c or <5c. Settlement-trader filter excludes traders where >50% of trades are within 2h of expiry.
 
 ### Insider Gem Scanner
 
@@ -55,7 +55,7 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 **Security checks:** GoPlus kill-switch (honeypot, mintable, hidden owner, high tax = score 0). GoPlus data also feeds Contract Safety and Holder Distribution scores.
 
-**Buy filters:** score >= 80, min liquidity $2k, max FDV $500k, max 24h pump 10x, no duplicates.
+**Buy filters:** score >= 70, min liquidity $2k, max FDV $500k, max 24h pump 20x, no duplicates.
 
 **Exit rules:** stop-loss -70%, auto-sell when high-score insider (80+) sells, auto-close on rug (liquidity < $500).
 
@@ -68,16 +68,15 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 | `/status` | Positions across all strategies |
 | `/balance` | Wallet balances |
 | `/pnl` | P&L (daily/7d/30d/all-time) |
-| `/bets` | AI bets (Open/Closed/Copy tabs) |
 | `/trades` | Recent trades |
 | `/insiders` | Insider wallets, holdings, gems |
 | `/stop` / `/resume` | Kill switch |
 | `/mode` | Switch paper/live |
-| `/settings` | Auto-copy config |
 | `/resetpaper` | Wipe paper data |
+| `/clearcopies` | Clear copied positions |
 | `/ai <question>` | Query bot with DeepSeek |
 
-**Insider tabs:** Wallets (address, score, gem count, avg gain) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
+**Insider tabs:** Wallets (address, score, gem count, avg gain) | Activity (recent buys/sells) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
 
 **Chain filter:** persists across tab switches (ETH, Base, Arb, Poly, Opt, Avax, All)
 
