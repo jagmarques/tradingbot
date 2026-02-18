@@ -223,17 +223,25 @@ export async function verifyGasBalances(): Promise<{
 export async function getRiskStatus(): Promise<RiskStatus> {
   checkDayReset();
 
-  const gasBalances = await verifyGasBalances();
   const dailyPnl = getDailyPnl();
   const dailyPnlPercentage = getDailyPnlPercentage();
+
+  // Skip RPC call in paper mode - gas balance is irrelevant
+  let maticBalance = 0;
+  let hasMinGas = true;
+  if (!isPaperMode()) {
+    const gasBalances = await verifyGasBalances();
+    maticBalance = gasBalances.matic.balance;
+    hasMinGas = gasBalances.matic.sufficient;
+  }
 
   return {
     tradingEnabled: canTrade(),
     killSwitchActive,
     dailyPnl,
     dailyPnlPercentage,
-    maticBalance: gasBalances.matic.balance,
-    hasMinGas: gasBalances.matic.sufficient,
+    maticBalance,
+    hasMinGas,
     isPaperMode: isPaperMode(),
     pauseReason,
   };

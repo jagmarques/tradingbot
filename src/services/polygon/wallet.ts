@@ -1,7 +1,6 @@
 import { ethers, JsonRpcProvider, Wallet, formatUnits } from "ethers";
 import { loadEnv } from "../../config/env.js";
 
-const POLYGON_RPC_URL = "https://polygon-rpc.com";
 const USDC_CONTRACT = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"; // USDC on Polygon
 const USDC_DECIMALS = 6;
 
@@ -18,7 +17,8 @@ let wallet: Wallet | null = null;
 
 export function getProvider(): JsonRpcProvider {
   if (!provider) {
-    provider = new JsonRpcProvider(POLYGON_RPC_URL, undefined, { batchMaxCount: 1 });
+    const env = loadEnv();
+    provider = new JsonRpcProvider(env.RPC_URL_POLYGON, undefined, { batchMaxCount: 1 });
     console.log("[Polygon] Provider connected");
   }
   return provider;

@@ -23,6 +23,7 @@ const envSchema = z.object({
   PRIVATE_KEY_EVM: z.string().min(1).optional(),
 
   // RPC URLs (with public defaults - use private RPCs in production)
+  RPC_URL_POLYGON: z.string().url().default("https://polygon-bor-rpc.publicnode.com"),
   RPC_URL_BASE: z.string().url().default("https://mainnet.base.org"),
   RPC_URL_ARBITRUM: z.string().url().default("https://arb1.arbitrum.io/rpc"),
   RPC_URL_AVALANCHE: z.string().url().default("https://api.avax.network/ext/bc/C/rpc"),

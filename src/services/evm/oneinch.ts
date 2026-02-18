@@ -21,7 +21,7 @@ const NATIVE_TOKEN = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 // RPC endpoints for each chain
 const RPC_ENDPOINTS: Partial<Record<Chain, string>> = {
   ethereum: "https://eth.llamarpc.com",
-  polygon: "https://polygon-rpc.com",
+  polygon: "https://polygon-bor-rpc.publicnode.com",
   arbitrum: "https://arb1.arbitrum.io/rpc",
   base: "https://mainnet.base.org",
   optimism: "https://mainnet.optimism.io",
