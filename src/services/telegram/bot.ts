@@ -1116,7 +1116,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const scoreDisplay = t.score >= 0 ? `${t.score}/100` : "N/A";
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         const peak = Math.max(t.peakPump, t.currentPump);
-        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
+        const peakStr = peak > t.currentPump ? ` | Peak: ${peak.toFixed(1)}x` : "";
         return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nSince buy: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
       });
 
@@ -1237,8 +1237,10 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const sinceBuyPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
           ? `${(trade.currentPriceUsd / trade.buyPriceUsd).toFixed(1)}x`
           : "0.0x";
-        const peakPump = getPeakPumpForToken(trade.tokenSymbol, trade.chain);
-        const peakStr = peakPump > 0 ? ` | Peak: ${peakPump.toFixed(0)}x` : "";
+        const currentPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
+          ? trade.currentPriceUsd / trade.buyPriceUsd : 0;
+        const peakPump = Math.max(getPeakPumpForToken(trade.tokenSymbol, trade.chain), currentPump);
+        const peakStr = peakPump > currentPump ? ` | Peak: ${peakPump.toFixed(1)}x` : "";
         const pumpStr = `Since buy: ${sinceBuyPump}${peakStr}`;
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
@@ -1300,7 +1302,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain, true);
         const scoreDisplay = analysis && analysis.score !== -1 ? `${analysis.score}/100` : "N/A";
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
-        const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
+        const peakStr = peak > (hit.pumpMultiple || 0) ? ` | Peak: ${peak.toFixed(1)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
         const discoveryDate = ts > 0 ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
         const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
