@@ -37,11 +37,11 @@ let tradingPaused = false;
 let pauseReason: string | undefined;
 
 let dailyStartBalance = STARTING_CAPITAL_USD;
-let lastDayReset = new Date().toDateString();
+let lastDayReset = new Date().toISOString().split("T")[0];
 
 // Reset daily stats at midnight
 function checkDayReset(): void {
-  const today = new Date().toDateString();
+  const today = new Date().toISOString().split("T")[0];
   if (today !== lastDayReset) {
     // Database automatically handles day separation via timestamps
     lastDayReset = today;

@@ -146,7 +146,7 @@ export async function enterPosition(
     aiProbability: decision.aiProbability,
     edge,
     reasoning: decision.reason || "AI identified edge",
-  });
+  }).catch(err => console.error("[Executor] Failed to notify bet placed:", err));
 
   return position;
 }
@@ -214,7 +214,7 @@ export async function exitPosition(
     pnl,
     pnlPercentage,
     exitReason: reason,
-  });
+  }).catch(err => console.error("[Executor] Failed to notify bet closed:", err));
 
   return { success: true, pnl };
 }
@@ -293,7 +293,7 @@ export async function resolvePosition(
     pnl,
     pnlPercentage,
     exitReason: reason,
-  });
+  }).catch(err => console.error("[Executor] Failed to notify bet closed:", err));
 
   return { success: true, pnl };
 }

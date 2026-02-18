@@ -446,7 +446,7 @@ export async function sendMainMenu(): Promise<void> {
 
     const currentChatId = chatId;
     const currentBot = bot;
-    Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
+    await Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
 
     lastMenuMessageId = null;
     dataMessageIds.length = 0;

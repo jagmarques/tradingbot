@@ -402,29 +402,33 @@ async function invalidateCacheOnNews(): Promise<void> {
 
 async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
   for (const position of getOpenPositions()) {
-    // Check if market resolved
-    const resolution = await checkMarketResolution(position.tokenId);
-    if (resolution.resolved && resolution.finalPrice !== null) {
-      const { success, pnl } = await resolvePosition(position, resolution.finalPrice);
-      if (success) {
-        const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
-        console.log(`[AIBetting] RESOLVED: ${position.marketTitle} ${pnlStr}`);
+    try {
+      // Check if market resolved
+      const resolution = await checkMarketResolution(position.tokenId);
+      if (resolution.resolved && resolution.finalPrice !== null) {
+        const { success, pnl } = await resolvePosition(position, resolution.finalPrice);
+        if (success) {
+          const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+          console.log(`[AIBetting] RESOLVED: ${position.marketTitle} ${pnlStr}`);
+        }
+        continue;
       }
-      continue;
-    }
 
-    const currentPrice = await getCurrentPrice(position.tokenId);
-    if (currentPrice === null) continue;
+      const currentPrice = await getCurrentPrice(position.tokenId);
+      if (currentPrice === null) continue;
 
-    const analysis = analyses.get(position.marketId) || null;
-    const { shouldExit, reason } = await shouldExitPosition(position, currentPrice, analysis, config ?? undefined);
+      const analysis = analyses.get(position.marketId) || null;
+      const { shouldExit, reason } = await shouldExitPosition(position, currentPrice, analysis, config ?? undefined);
 
-    if (shouldExit) {
-      const { success, pnl } = await exitPosition(position, currentPrice, reason);
-      if (success) {
-        const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
-        console.log(`[AIBetting] EXIT: ${position.marketTitle} ${pnlStr} (${reason})`);
+      if (shouldExit) {
+        const { success, pnl } = await exitPosition(position, currentPrice, reason);
+        if (success) {
+          const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+          console.log(`[AIBetting] EXIT: ${position.marketTitle} ${pnlStr} (${reason})`);
+        }
       }
+    } catch (err) {
+      console.error(`[Scheduler] Exit check failed for "${position.marketTitle}":`, err);
     }
   }
 }

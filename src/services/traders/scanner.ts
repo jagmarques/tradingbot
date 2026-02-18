@@ -383,6 +383,10 @@ export async function getWalletTokenPnl(
   const url = buildExplorerUrl(chain as EvmChain, `module=account&action=tokentx&address=${walletAddress}&contractaddress=${tokenAddress}&startblock=0&endblock=99999999&sort=asc`);
 
   const response = await etherscanRateLimitedFetch(url, chain);
+  if (!response.ok) {
+    console.error(`[Scanner] Etherscan HTTP ${response.status} for wallet token PnL: ${walletAddress}`);
+    return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
+  }
   const data = (await response.json()) as {
     status: string;
     result: Array<{

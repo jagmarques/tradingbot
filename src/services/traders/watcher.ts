@@ -46,6 +46,10 @@ async function watchInsiderWallets(): Promise<void> {
       );
 
       const response = await etherscanRateLimitedFetch(url, wallet.chain);
+      if (!response.ok) {
+        console.error(`[Watcher] Etherscan HTTP ${response.status} for ${wallet.address}`);
+        continue;
+      }
       const data = (await response.json()) as {
         status: string;
         result: Array<{
