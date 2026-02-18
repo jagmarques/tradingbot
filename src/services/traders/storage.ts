@@ -1,5 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { GemHit, InsiderWallet, ScanChain } from "./types.js";
+import { INSIDER_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -551,8 +552,8 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
     FROM insider_gem_hits h
     JOIN insider_wallets w ON h.wallet_address = w.address AND h.chain = w.chain
     WHERE h.token_address = ? AND h.chain = ?
-      AND w.gem_hit_count >= 5
-  `).get(ta, chain) as { insider_count: number; avg_quality: number } | undefined;
+      AND w.gem_hit_count >= ?
+  `).get(ta, chain, INSIDER_CONFIG.QUALITY_GEM_HITS) as { insider_count: number; avg_quality: number } | undefined;
 
   const insiderCount = statsRow?.insider_count ?? 0;
   const avgInsiderQuality = statsRow?.avg_quality ?? 0;

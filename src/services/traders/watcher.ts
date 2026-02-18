@@ -1,5 +1,5 @@
 import type { EvmChain, GemHit } from "./types.js";
-import { WATCHER_CONFIG } from "./types.js";
+import { WATCHER_CONFIG, INSIDER_CONFIG } from "./types.js";
 import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
@@ -161,8 +161,8 @@ async function watchInsiderWallets(): Promise<void> {
         pumpMultiple = fdvUsd / 10000; // Use HISTORY_MIN_FDV_USD as baseline
       }
 
-      // Skip if already pumped >= 10x
-      if (pumpMultiple >= 10) continue;
+      // Skip if already pumped too much
+      if (pumpMultiple >= WATCHER_CONFIG.MAX_BUY_PUMP) continue;
 
       const symbol = pair.baseToken?.symbol || tokenInfo.tokenSymbol;
 
@@ -187,7 +187,7 @@ async function watchInsiderWallets(): Promise<void> {
       console.log(`[InsiderWatcher] Detected: ${tokenInfo.walletAddress.slice(0, 8)} bought ${symbol} on ${tokenInfo.chain} (score: ${gemScore})`);
 
       let action: string;
-      if (gemScore >= 70) {
+      if (gemScore >= INSIDER_CONFIG.MIN_GEM_SCORE) {
         await buyGems([{
           symbol,
           chain: tokenInfo.chain,
@@ -197,7 +197,7 @@ async function watchInsiderWallets(): Promise<void> {
         }]);
         action = `scored ${gemScore}, paper-bought`;
       } else {
-        action = `scored ${gemScore}, skipped (threshold: 70)`;
+        action = `scored ${gemScore}, skipped (threshold: ${INSIDER_CONFIG.MIN_GEM_SCORE})`;
       }
 
       // Send Telegram alert

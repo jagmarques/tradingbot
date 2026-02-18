@@ -1,5 +1,5 @@
 import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
-import { INSIDER_CONFIG } from "./types.js";
+import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
@@ -452,7 +452,7 @@ export async function scanWalletHistory(): Promise<void> {
 }
 
 async function _scanWalletHistoryInner(): Promise<void> {
-  const candidates = getPromisingWalletsForHistoryScan(3, 20); // Query gem_hits directly, bypass insider_wallets table
+  const candidates = getPromisingWalletsForHistoryScan(INSIDER_CONFIG.MIN_GEM_HITS, 20); // Query gem_hits directly, bypass insider_wallets table
 
   console.log(`[InsiderScanner] History: Scanning ${candidates.length} wallets`);
 
@@ -578,7 +578,7 @@ export async function enrichInsiderPnl(): Promise<void> {
         console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
 
         // Auto-close paper trade when high-score insider sells
-        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= 80) {
+        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
             await sellGemPosition(hit.tokenSymbol, hit.chain);
@@ -804,7 +804,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const score = computeWalletScore(group);
       scores.push(score);
 
-      if (score >= 80) {
+      if (score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
         upsertInsiderWallet({
           address: group.wallet_address,
           chain: group.chain,
@@ -819,9 +819,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     }
 
     const { deleteInsiderWalletsBelow } = await import("./storage.js");
-    const deleted = deleteInsiderWalletsBelow(80);
+    const deleted = deleteInsiderWalletsBelow(WATCHER_CONFIG.MIN_WALLET_SCORE);
     if (deleted > 0) {
-      console.log(`[InsiderScanner] Removed ${deleted} wallets below score 80`);
+      console.log(`[InsiderScanner] Removed ${deleted} wallets below score ${WATCHER_CONFIG.MIN_WALLET_SCORE}`);
     }
 
     if (scores.length > 0) {
@@ -875,8 +875,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const existingTrade = getGemPaperTrade(gem.tokenSymbol, gem.chain);
       const noOpenTrade = !existingTrade || existingTrade.status === "closed";
       if (!cached ||
-          (cached.score >= 70 && noOpenTrade) ||
-          (cached.score >= 50 && cached.score < 70 && Date.now() - cached.analyzedAt > NEAR_THRESHOLD_RESCORE_MS)) {
+          (cached.score >= INSIDER_CONFIG.MIN_GEM_SCORE && noOpenTrade) ||
+          (cached.score >= INSIDER_CONFIG.RESCORE_THRESHOLD && cached.score < INSIDER_CONFIG.MIN_GEM_SCORE && Date.now() - cached.analyzedAt > NEAR_THRESHOLD_RESCORE_MS)) {
         tokensToProcess.set(key, {
           symbol: gem.tokenSymbol,
           chain: gem.chain,

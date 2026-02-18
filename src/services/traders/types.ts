@@ -146,6 +146,10 @@ export interface InsiderScanResult {
 export const INSIDER_CONFIG = {
   MIN_PUMP_MULTIPLE: 3, // 3x pump
   MIN_GEM_HITS: 3, // 3+ gems to be considered insider
+  MIN_GEM_SCORE: 70, // min score to paper-buy
+  RESCORE_THRESHOLD: 50, // re-analyze gems near buy threshold
+  MAX_BUY_PUMP: 20, // skip buying if already pumped this much
+  QUALITY_GEM_HITS: 5, // gem hits required for insider quality scoring
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],
@@ -161,4 +165,5 @@ export const WATCHER_CONFIG = {
   LOOKBACK_SECONDS: 300,             // Check last 5 minutes of transactions
   MAX_WALLETS_PER_CYCLE: 30,         // Rate limit: max wallets per cycle
   MAX_NEW_TOKENS_PER_WALLET: 3,      // Max new tokens to process per wallet per cycle
+  MAX_BUY_PUMP: 10,                  // Skip buying if already pumped 10x (lower than scanner's 20x)
 };
