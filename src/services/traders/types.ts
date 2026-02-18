@@ -150,6 +150,7 @@ export const INSIDER_CONFIG = {
   RESCORE_THRESHOLD: 50, // re-analyze gems near buy threshold
   MAX_BUY_PUMP: 20, // skip buying if already pumped this much
   QUALITY_GEM_HITS: 5, // gem hits required for insider quality scoring
+  MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],

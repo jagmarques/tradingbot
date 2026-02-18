@@ -573,6 +573,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Status error:", err);
+    await sendDataMessage("Status temporarily unavailable. Try again.", [[{ text: "Back", callback_data: "main_menu" }]]);
   }
 }
 

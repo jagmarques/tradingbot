@@ -291,7 +291,12 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
     gemDexCache.set(`${tokenAddress}_${chain}`, pair);
   }
 
-  const score = scoreGemQuality(goPlusData, pair, tokenAddress, chain);
+  let score = scoreGemQuality(goPlusData, pair, tokenAddress, chain);
+
+  const pairAgeDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
+  if (pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+    score = Math.min(score, INSIDER_CONFIG.MIN_GEM_SCORE - 1);
+  }
 
   const analysis: GemAnalysis = { tokenSymbol: symbol, chain, score, analyzedAt: Date.now() };
   saveGemAnalysis(analysis);
@@ -360,6 +365,12 @@ export async function buyGems(
       const pairFdv = pair?.fdv || 0;
       if (pairFdv > 500_000) {
         console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - FDV $${(pairFdv / 1000).toFixed(0)}k > $500k`);
+        continue;
+      }
+
+      const ageDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
+      if (ageDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+        console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - token age ${Math.round(ageDays)}d > ${INSIDER_CONFIG.MAX_GEM_AGE_DAYS}d`);
         continue;
       }
 
