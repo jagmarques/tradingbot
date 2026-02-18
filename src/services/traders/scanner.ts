@@ -61,7 +61,18 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 10_000)));
   geckoQueue = myTurn;
   await myTurn;
-  return fetch(url);
+  const response = await fetch(url);
+  if (response.status !== 429) return response;
+  const delays = [15_000, 30_000, 60_000];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const delay = delays[attempt - 1];
+    console.log(`[InsiderScanner] GeckoTerminal 429 on ${url}, retry ${attempt}/3 in ${delay / 1000}s`);
+    await new Promise((r) => setTimeout(r, delay));
+    const retry = await fetch(url);
+    if (retry.status !== 429) return retry;
+  }
+  console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${url}`);
+  return response;
 }
 
 // Fetch launch price from GeckoTerminal OHLCV (earliest daily candle open)
@@ -727,6 +738,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.error(`[InsiderScanner] ${msg}`);
       result.errors.push(msg);
     }
+    // Delay between chains to spread GeckoTerminal load
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   // Multi-factor wallet scoring (0-100)
