@@ -18,8 +18,8 @@ vi.mock("../database/aibetting.js", () => ({
 }));
 
 vi.mock("../telegram/notifications.js", () => ({
-  notifyAIBetPlaced: vi.fn(),
-  notifyAIBetClosed: vi.fn(),
+  notifyAIBetPlaced: vi.fn().mockResolvedValue(undefined),
+  notifyAIBetClosed: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock global fetch

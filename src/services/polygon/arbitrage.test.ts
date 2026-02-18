@@ -5,6 +5,7 @@ vi.mock("./orderbook.js", () => ({
   getBestBid: vi.fn().mockReturnValue({ price: 0.54, size: 100 }),
   getBestAsk: vi.fn().mockReturnValue({ price: 0.56, size: 100 }),
   onOrderbookUpdate: vi.fn().mockReturnValue((): void => {}),
+  disconnect: vi.fn(),
 }));
 
 vi.mock("./polymarket.js", () => ({
