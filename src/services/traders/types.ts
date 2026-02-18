@@ -154,6 +154,7 @@ export const INSIDER_CONFIG = {
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],
+  CHAINS_PER_CYCLE: 3,
   SCAN_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes between scans
   INTER_CHAIN_DELAY_MS: 5_000, // delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan

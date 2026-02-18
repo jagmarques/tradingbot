@@ -73,7 +73,8 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
     const retry = await fetchWithTimeout(url);
     if (retry.status !== 429) return retry;
   }
-  console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${url}`);
+  const exhaustedEndpoint = url.replace("https://api.geckoterminal.com/api/v2", "");
+  console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${exhaustedEndpoint}`);
   return response;
 }
 
@@ -700,6 +701,9 @@ export async function updateHeldGemPrices(): Promise<void> {
   }
 }
 
+// Chain rotation state (rotates 3 chains per cycle through all 6)
+let lastChainIndex = 0;
+
 // Main scan orchestrator
 export async function runInsiderScan(): Promise<InsiderScanResult> {
   const result: InsiderScanResult = {
@@ -709,9 +713,17 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     errors: [],
   };
 
-  console.log(`[InsiderScanner] Scanning ${INSIDER_CONFIG.SCAN_CHAINS.length} chains sequentially to respect rate limits`);
+  const allChains = INSIDER_CONFIG.SCAN_CHAINS;
+  const perCycle = INSIDER_CONFIG.CHAINS_PER_CYCLE;
+  const cycleChains: ScanChain[] = [];
+  for (let i = 0; i < perCycle; i++) {
+    cycleChains.push(allChains[(lastChainIndex + i) % allChains.length]);
+  }
+  lastChainIndex = (lastChainIndex + perCycle) % allChains.length;
 
-  for (const chain of INSIDER_CONFIG.SCAN_CHAINS) {
+  console.log(`[InsiderScanner] Scanning ${cycleChains.length}/${allChains.length} chains: ${cycleChains.join(", ")}`);
+
+  for (const chain of cycleChains) {
     try {
       // Find pumped tokens
       const pumpedTokens = await findPumpedTokens(chain);
