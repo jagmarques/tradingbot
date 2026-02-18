@@ -61,6 +61,7 @@ interface TraderActivity {
 // Track top traders and their last seen activity
 const trackedTraders = new Map<string, { name: string; lastSeen: number; pnl: number; vol: number }>();
 let intervalHandle: NodeJS.Timeout | null = null;
+let refreshHandle: NodeJS.Timeout | null = null;
 let isRunning = false;
 let isCheckingTrades = false;
 
@@ -722,7 +723,7 @@ async function checkForNewTrades(): Promise<void> {
                 size: copiedPos.size,
                 entryPrice: copiedPos.entryPrice,
                 isPaper: isPaperMode(),
-              });
+              }).catch(err => console.error("[PolyTraders] Notification error:", err));
             }
           }
         }
@@ -856,7 +857,7 @@ export function startPolyTraderTracking(checkIntervalMs: number = 60000): void {
   console.log(`[PolyTraders] Loaded ${savedPositions.length} open copied positions`);
 
   // Initial check
-  checkForNewTrades();
+  checkForNewTrades().catch(err => console.error("[PolyTraders] Initial check error:", err));
 
   // Periodic checks
   intervalHandle = setInterval(async () => {
@@ -866,7 +867,7 @@ export function startPolyTraderTracking(checkIntervalMs: number = 60000): void {
   }, checkIntervalMs);
 
   // Refresh top traders every hour
-  setInterval(async () => {
+  refreshHandle = setInterval(async () => {
     if (!isRunning) return;
     await refreshTopTraders();
   }, 60 * 60 * 1000);
@@ -879,6 +880,11 @@ export function stopPolyTraderTracking(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
+  }
+
+  if (refreshHandle) {
+    clearInterval(refreshHandle);
+    refreshHandle = null;
   }
 
   console.log("[PolyTraders] Stopped");
@@ -1054,7 +1060,7 @@ async function checkCopiedPositionExits(): Promise<void> {
           pnl,
           pnlPct,
           isPaper: isPaperMode(),
-        });
+        }).catch(err => console.error("[PolyTraders] Notification error:", err));
 
         await new Promise(r => setTimeout(r, 300));
         continue;
@@ -1099,7 +1105,7 @@ async function checkCopiedPositionExits(): Promise<void> {
             pnl,
             pnlPct,
             isPaper: isPaperMode(),
-          });
+          }).catch(err => console.error("[PolyTraders] Notification error:", err));
 
           break;
         }

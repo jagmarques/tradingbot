@@ -283,12 +283,14 @@ export async function validateTrade(params: {
     };
   }
 
-  const gasBalances = await verifyGasBalances();
-  if (params.strategy === "polymarket" && !gasBalances.matic.sufficient) {
-    return {
-      allowed: false,
-      reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
-    };
+  if (!isPaperMode()) {
+    const gasBalances = await verifyGasBalances();
+    if (params.strategy === "polymarket" && !gasBalances.matic.sufficient) {
+      return {
+        allowed: false,
+        reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
+      };
+    }
   }
   // EVM chains (base, arbitrum, avalanche) use native gas tokens
   // Gas check handled in executor before trade

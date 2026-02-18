@@ -303,6 +303,10 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
 
   try {
     const response = await etherscanRateLimitedFetch(url, token.chain);
+    if (!response.ok) {
+      console.log(`[InsiderScanner] findEarlyBuyers HTTP ${response.status} for ${token.tokenAddress.slice(0, 10)}`);
+      return [];
+    }
     const data = (await response.json()) as {
       status: string;
       result: Array<{
@@ -480,6 +484,10 @@ async function _scanWalletHistoryInner(): Promise<void> {
       // Query all token transfers for this wallet (no contractaddress filter)
       const url = buildExplorerUrl(wallet.chain as EvmChain, `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc`);
       const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
+      if (!response.ok) {
+        console.log(`[InsiderScanner] History: HTTP ${response.status} for ${wallet.address.slice(0, 8)}`);
+        continue;
+      }
       const data = (await response.json()) as {
         status: string;
         result: Array<{

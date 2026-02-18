@@ -169,7 +169,7 @@ export function connect(tokenIds: string[]): Promise<void> {
         const delay = getReconnectDelay();
         reconnectAttempts++;
         console.log(`[Orderbook] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
-        setTimeout(() => connect(subscribedTokens).catch(() => {}), delay);
+        setTimeout(() => connect(subscribedTokens).catch(err => console.error("[Orderbook] Reconnect failed:", err)), delay);
       }
     });
   });

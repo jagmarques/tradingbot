@@ -57,7 +57,8 @@ function getProvider(chain: Chain): JsonRpcProvider | null {
     return cached;
   }
 
-  const rpcUrl = RPC_ENDPOINTS[chain];
+  const envKey = `RPC_URL_${chain.toUpperCase()}`;
+  const rpcUrl = process.env[envKey] || RPC_ENDPOINTS[chain];
   if (!rpcUrl) {
     return null;
   }

@@ -213,7 +213,7 @@ async function watchInsiderWallets(): Promise<void> {
         chain: tokenInfo.chain,
         gemScore,
         action,
-      });
+      }).catch(err => console.error("[InsiderWatcher] Notification error:", err));
     } catch (err) {
       console.error(`[InsiderWatcher] Error processing token ${tokenInfo.tokenAddress}:`, err);
     }
