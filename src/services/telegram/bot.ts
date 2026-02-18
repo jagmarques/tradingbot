@@ -151,7 +151,12 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("timezone", async (ctx) => {
-    await handleTimezone(ctx);
+    try {
+      await handleTimezone(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (timezone):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("stop", async (ctx) => {
@@ -231,31 +236,66 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("toggle_autocopy", async (ctx) => {
-    await handleToggleAutoCopy(ctx);
+    try {
+      await handleToggleAutoCopy(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (toggle_autocopy):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_min_score", async (ctx) => {
-    await handleSetMinScore(ctx);
+    try {
+      await handleSetMinScore(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_min_score):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_max_daily", async (ctx) => {
-    await handleSetMaxDaily(ctx);
+    try {
+      await handleSetMaxDaily(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_max_daily):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_eth", async (ctx) => {
-    await handleSetCopyAmount(ctx, "copy_eth");
+    try {
+      await handleSetCopyAmount(ctx, "copy_eth");
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_copy_eth):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_matic", async (ctx) => {
-    await handleSetCopyAmount(ctx, "copy_matic");
+    try {
+      await handleSetCopyAmount(ctx, "copy_matic");
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_copy_matic):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_default", async (ctx) => {
-    await handleSetCopyAmount(ctx, "copy_default");
+    try {
+      await handleSetCopyAmount(ctx, "copy_default");
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_copy_default):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_poly", async (ctx) => {
-    await handleSetCopyAmount(ctx, "copy_poly");
+    try {
+      await handleSetCopyAmount(ctx, "copy_poly");
+    } catch (err) {
+      console.error("[Telegram] Callback error (set_copy_poly):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("main_menu", async (ctx) => {
@@ -267,15 +307,30 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_close_bets", async (ctx) => {
-    await handleCloseAllBets(ctx);
+    try {
+      await handleCloseAllBets(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (manage_close_bets):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_close_copies", async (ctx) => {
-    await handleCloseAllCopies(ctx);
+    try {
+      await handleCloseAllCopies(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (manage_close_copies):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_resetpaper", async (ctx) => {
-    await handleReset(ctx);
+    try {
+      await handleReset(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (manage_resetpaper):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("confirm_resetpaper", async (ctx) => {
@@ -292,7 +347,12 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_switch_live", async (ctx) => {
-    await handleModeSwitchLive(ctx);
+    try {
+      await handleModeSwitchLive(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (mode_switch_live):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_confirm_live", async (ctx) => {
@@ -300,7 +360,12 @@ export async function startBot(): Promise<void> {
     await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_switch_paper", async (ctx) => {
-    await handleModeSwitchPaper(ctx);
+    try {
+      await handleModeSwitchPaper(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (mode_switch_paper):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
     await ctx.answerCallbackQuery();
   });
 
