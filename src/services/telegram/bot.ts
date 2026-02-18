@@ -668,6 +668,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     await sendDataMessage(message, allButtons);
   } catch (err) {
     console.error("[Telegram] P&L error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to load P&L", backButton);
   }
 }
 
@@ -757,6 +759,8 @@ async function handleTrades(ctx: Context): Promise<void> {
     await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Trades error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to load trades", backButton);
   }
 }
 
@@ -1324,58 +1328,76 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
 async function handleManage(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  const openBets = loadOpenPositions();
-  const cryptoCopy = getCryptoCopyPositions();
-  const polyStats = getCopyStats();
+  try {
+    const openBets = loadOpenPositions();
+    const cryptoCopy = getCryptoCopyPositions();
+    const polyStats = getCopyStats();
 
-  let message = `<b>Manage Positions</b>\n\n`;
-  message += `AI Bets: ${openBets.length} open\n`;
-  message += `Crypto Copy: ${cryptoCopy.length} open\n`;
-  message += `Poly Copy: ${polyStats.openPositions} open\n\n`;
-  message += `Choose an action:`;
+    let message = `<b>Manage Positions</b>\n\n`;
+    message += `AI Bets: ${openBets.length} open\n`;
+    message += `Crypto Copy: ${cryptoCopy.length} open\n`;
+    message += `Poly Copy: ${polyStats.openPositions} open\n\n`;
+    message += `Choose an action:`;
 
-  const buttons = [
-    [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
-    [{ text: "Close All Copy Bets", callback_data: "manage_close_copies" }],
-    [{ text: "Reset Paper Trading", callback_data: "manage_resetpaper" }],
-    [{ text: "Back", callback_data: "main_menu" }],
-  ];
+    const buttons = [
+      [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
+      [{ text: "Close All Copy Bets", callback_data: "manage_close_copies" }],
+      [{ text: "Reset Paper Trading", callback_data: "manage_resetpaper" }],
+      [{ text: "Back", callback_data: "main_menu" }],
+    ];
 
-  await sendDataMessage(message, buttons);
+    await sendDataMessage(message, buttons);
+  } catch (err) {
+    console.error("[Telegram] Manage error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to load manage", backButton);
+  }
 }
 
 async function handleCloseAllBets(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  const openBets = loadOpenPositions();
-  if (openBets.length === 0) {
-    const buttons = [[{ text: "Back", callback_data: "manage" }]];
-    await sendDataMessage("No open AI bets to close.", buttons);
-    return;
-  }
-
-  let closed = 0;
-  for (const bet of openBets) {
-    const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-    if (currentPrice !== null) {
-      const { exitPosition } = await import("../aibetting/executor.js");
-      const { success } = await exitPosition(bet, currentPrice, "Manual close");
-      if (success) closed++;
+  try {
+    const openBets = loadOpenPositions();
+    if (openBets.length === 0) {
+      const buttons = [[{ text: "Back", callback_data: "manage" }]];
+      await sendDataMessage("No open AI bets to close.", buttons);
+      return;
     }
-  }
 
-  const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(`Closed ${closed}/${openBets.length} AI bets.`, buttons);
+    let closed = 0;
+    for (const bet of openBets) {
+      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
+      if (currentPrice !== null) {
+        const { exitPosition } = await import("../aibetting/executor.js");
+        const { success } = await exitPosition(bet, currentPrice, "Manual close");
+        if (success) closed++;
+      }
+    }
+
+    const buttons = [[{ text: "Back", callback_data: "manage" }]];
+    await sendDataMessage(`Closed ${closed}/${openBets.length} AI bets.`, buttons);
+  } catch (err) {
+    console.error("[Telegram] Close bets error:", err);
+    const buttons = [[{ text: "Back", callback_data: "manage" }]];
+    await sendDataMessage("Failed to close bets", buttons);
+  }
 }
 
 async function handleCloseAllCopies(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-  const deleted = clearAllCopiedPositions();
+  try {
+    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
+    const deleted = clearAllCopiedPositions();
 
-  const buttons = [[{ text: "Back", callback_data: "manage" }]];
-  await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
+    const buttons = [[{ text: "Back", callback_data: "manage" }]];
+    await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
+  } catch (err) {
+    console.error("[Telegram] Close copies error:", err);
+    const buttons = [[{ text: "Back", callback_data: "manage" }]];
+    await sendDataMessage("Failed to close copies", buttons);
+  }
 }
 
 async function handleStop(ctx: Context): Promise<void> {
@@ -1731,26 +1753,32 @@ async function handleMode(ctx: Context): Promise<void> {
     return;
   }
 
-  const currentMode = getTradingMode().toUpperCase();
-  const logOnly = isLogOnlyMode();
+  try {
+    const currentMode = getTradingMode().toUpperCase();
+    const logOnly = isLogOnlyMode();
 
-  let message = `<b>Trading Mode</b>\n\n`;
-  message += `Mode: <b>${currentMode}</b>\n`;
-  if (logOnly) {
-    message += `Status: <b>Paused</b> (analyzing only)\n`;
+    let message = `<b>Trading Mode</b>\n\n`;
+    message += `Mode: <b>${currentMode}</b>\n`;
+    if (logOnly) {
+      message += `Status: <b>Paused</b> (analyzing only)\n`;
+    }
+
+    const buttons: { text: string; callback_data: string }[][] = [];
+
+    if (getTradingMode() === "paper") {
+      buttons.push([{ text: "Switch to LIVE", callback_data: "mode_switch_live" }]);
+    } else {
+      buttons.push([{ text: "Switch to PAPER", callback_data: "mode_switch_paper" }]);
+    }
+
+    buttons.push([{ text: "Back", callback_data: "main_menu" }]);
+
+    await sendDataMessage(message, buttons);
+  } catch (err) {
+    console.error("[Telegram] Mode error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to load mode", backButton);
   }
-
-  const buttons: { text: string; callback_data: string }[][] = [];
-
-  if (getTradingMode() === "paper") {
-    buttons.push([{ text: "Switch to LIVE", callback_data: "mode_switch_live" }]);
-  } else {
-    buttons.push([{ text: "Switch to PAPER", callback_data: "mode_switch_paper" }]);
-  }
-
-  buttons.push([{ text: "Back", callback_data: "main_menu" }]);
-
-  await sendDataMessage(message, buttons);
 }
 
 async function handleModeSwitchLive(ctx: Context): Promise<void> {
@@ -2009,55 +2037,61 @@ async function handleSettings(ctx: Context): Promise<void> {
     return;
   }
 
-  const userId = ctx.from?.id?.toString();
-  if (!userId) return;
+  try {
+    const userId = ctx.from?.id?.toString();
+    if (!userId) return;
 
-  const settings = getSettings(userId);
-  const env = loadEnv();
+    const settings = getSettings(userId);
+    const env = loadEnv();
 
-  const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
+    const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
 
-  const aiEnabled = env.AIBETTING_ENABLED === "true";
-  const aiBettingSection = aiEnabled
-    ? `\n\n<b>AI BETTING</b>\n` +
-      `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
-      `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
-      `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
-      `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
-      `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
-    : `\n\n<b>AI BETTING</b>\nDisabled`;
+    const aiEnabled = env.AIBETTING_ENABLED === "true";
+    const aiBettingSection = aiEnabled
+      ? `\n\n<b>AI BETTING</b>\n` +
+        `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
+        `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
+        `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
+        `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
+        `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
+      : `\n\n<b>AI BETTING</b>\nDisabled`;
 
-  const message =
-    `<b>Settings</b>\n\n` +
-    `<b>AUTO-COPY [${copyStatus}]</b>\n` +
-    `Copy trades from profitable wallets (all chains)\n\n` +
-    `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
-    `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
-    `<b>Copy Amounts (fixed per trade):</b>\n` +
-    `ETH: ${settings.copyAmountEth}\n` +
-    `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
-    `Polymarket: $${settings.polymarketCopyUsd}` +
-    aiBettingSection;
+    const message =
+      `<b>Settings</b>\n\n` +
+      `<b>AUTO-COPY [${copyStatus}]</b>\n` +
+      `Copy trades from profitable wallets (all chains)\n\n` +
+      `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
+      `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
+      `<b>Copy Amounts (fixed per trade):</b>\n` +
+      `ETH: ${settings.copyAmountEth}\n` +
+      `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
+      `Polymarket: $${settings.polymarketCopyUsd}` +
+      aiBettingSection;
 
-  const keyboard = [
-    [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
-    [
-      { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
-      { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
-    ],
-    [
-      { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
-    ],
-    [
-      { text: `MATIC: ${settings.copyAmountMatic}`, callback_data: "set_copy_matic" },
-      { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
-    ],
-    [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
-    [{ text: "Timezone", callback_data: "timezone" }],
-    [{ text: "Back", callback_data: "main_menu" }],
-  ];
+    const keyboard = [
+      [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
+      [
+        { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
+        { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
+      ],
+      [
+        { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
+      ],
+      [
+        { text: `MATIC: ${settings.copyAmountMatic}`, callback_data: "set_copy_matic" },
+        { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
+      ],
+      [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
+      [{ text: "Timezone", callback_data: "timezone" }],
+      [{ text: "Back", callback_data: "main_menu" }],
+    ];
 
-  await sendDataMessage(message, keyboard);
+    await sendDataMessage(message, keyboard);
+  } catch (err) {
+    console.error("[Telegram] Settings error:", err);
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage("Failed to load settings", backButton);
+  }
 }
 
 async function handleToggleAutoCopy(ctx: Context): Promise<void> {
