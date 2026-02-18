@@ -1,6 +1,6 @@
 import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
@@ -452,11 +452,11 @@ export async function scanWalletHistory(): Promise<void> {
 }
 
 async function _scanWalletHistoryInner(): Promise<void> {
-  const insiders = getInsiderWallets(undefined, 1); // Cast wider net with 1+ gem hits
+  const candidates = getPromisingWalletsForHistoryScan(2, 20); // Query gem_hits directly, bypass insider_wallets table
 
-  console.log(`[InsiderScanner] History: Scanning ${insiders.length} wallets`);
+  console.log(`[InsiderScanner] History: Scanning ${candidates.length} wallets`);
 
-  for (const wallet of insiders) {
+  for (const wallet of candidates) {
     // Skip chains without working explorer APIs
     if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
@@ -524,7 +524,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
           let launchPriceUsd = 0;
           const priceUsd = parseFloat(pair.priceUsd || "0");
           if (pair.pairAddress) {
-            launchPriceUsd = await fetchLaunchPrice(wallet.chain, pair.pairAddress);
+            launchPriceUsd = await fetchLaunchPrice(wallet.chain as EvmChain, pair.pairAddress);
           }
           const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
             ? priceUsd / launchPriceUsd
@@ -533,7 +533,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
 
           const hit: GemHit = {
             walletAddress: wallet.address,
-            chain: wallet.chain,
+            chain: wallet.chain as ScanChain,
             tokenAddress,
             tokenSymbol: stripEmoji(symbol),
             buyTxHash: "",
