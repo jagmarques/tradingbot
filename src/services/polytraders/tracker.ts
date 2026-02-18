@@ -804,7 +804,8 @@ async function refreshTopTraders(): Promise<void> {
       let expiryChecked = 0;
 
       for (const conditionId of uniqueConditions.slice(0, 4)) {
-        const trade = buyTrades.find(t => t.conditionId === conditionId)!;
+        const trade = buyTrades.find(t => t.conditionId === conditionId);
+        if (!trade) continue;
         const marketInfo = await getMarketInfo(conditionId, trade.outcomeIndex);
         if (marketInfo?.endDate) {
           const tradeTime = trade.timestamp * 1000;

@@ -6,7 +6,6 @@ import {
   filterCryptoCopy,
   filterPolyCopy,
   getApproxUsdValue,
-  CopyFilterResult,
 } from "./filter.js";
 
 function makeTrader(overrides: Partial<Trader> = {}): Trader {

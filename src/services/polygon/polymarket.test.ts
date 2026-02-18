@@ -136,7 +136,7 @@ describe("Polymarket CLOB Client", () => {
       POLYMARKET_API_KEY: "",
       POLYMARKET_SECRET: "test-secret",
       POLYMARKET_PASSPHRASE: "test-passphrase",
-    } as any);
+    } as unknown);
 
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();
@@ -150,7 +150,7 @@ describe("Polymarket CLOB Client", () => {
       POLYMARKET_API_KEY: "test-api-key",
       POLYMARKET_SECRET: "test-secret",
       POLYMARKET_PASSPHRASE: "",
-    } as any);
+    } as unknown);
 
     const { validateApiConnection } = await import("./polymarket.js");
     const isValid = await validateApiConnection();

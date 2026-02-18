@@ -480,7 +480,7 @@ export function analyzeGemsBackground(
 ): void {
   console.log(`[GemAnalyzer] Background analysis started for ${tokens.length} tokens`);
 
-  (async () => {
+  void (async (): Promise<void> => {
     const results: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }> = [];
 
     for (const token of tokens) {

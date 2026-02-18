@@ -132,11 +132,11 @@ function limitCorrelatedBets(
 
     const group = [d];
     assigned.add(d.marketId);
-    const words1 = wordsMap.get(d.marketId)!;
+    const words1 = wordsMap.get(d.marketId) ?? [];
 
     for (const other of decisions) {
       if (assigned.has(other.marketId)) continue;
-      const words2 = wordsMap.get(other.marketId)!;
+      const words2 = wordsMap.get(other.marketId) ?? [];
 
       if (wordOverlapRatio(words1, words2) > 0.5) {
         group.push(other);
@@ -150,7 +150,7 @@ function limitCorrelatedBets(
   // Keep top N by EV from each group, accounting for existing correlated positions
   const result: BetDecision[] = [];
   for (const group of groups) {
-    const groupWords = wordsMap.get(group[0].marketId)!;
+    const groupWords = wordsMap.get(group[0].marketId) ?? [];
     const existingCorrelated = positionWords.filter(
       pw => wordOverlapRatio(groupWords, pw) > 0.5
     ).length;

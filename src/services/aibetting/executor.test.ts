@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AIBettingPosition, BetDecision, PolymarketEvent } from "./types.js";
+import type { BetDecision, PolymarketEvent } from "./types.js";
 
 // Mock all external deps before importing
 vi.mock("../../config/env.js", () => ({
@@ -30,8 +30,6 @@ import {
   enterPosition,
   resolvePosition,
   checkMarketResolution,
-  getOpenPositions,
-  initPositions,
   getCurrentPrice,
 } from "./executor.js";
 
@@ -90,10 +88,10 @@ describe("enterPosition (paper mode)", () => {
     const position = await enterPosition(makeDecision(), makeMarket());
 
     expect(position).not.toBeNull();
-    expect(position!.entryPrice).toBe(0.55);
-    expect(position!.side).toBe("YES");
-    expect(position!.size).toBe(10);
-    expect(position!.status).toBe("open");
+    expect(position?.entryPrice).toBe(0.55);
+    expect(position?.side).toBe("YES");
+    expect(position?.size).toBe(10);
+    expect(position?.status).toBe("open");
   });
 
   it("should fall back to scanner price when midpoint unavailable", async () => {
@@ -105,7 +103,7 @@ describe("enterPosition (paper mode)", () => {
     );
 
     expect(position).not.toBeNull();
-    expect(position!.entryPrice).toBe(0.45); // Falls back to marketPrice for YES
+    expect(position?.entryPrice).toBe(0.45); // Falls back to marketPrice for YES
   });
 
   it("should not open duplicate position in same market", async () => {
@@ -127,14 +125,15 @@ describe("resolvePosition", () => {
 
     // Resolve as WON (finalPrice = 1.0)
     mockFetch.mockClear();
-    const { success, pnl } = await resolvePosition(position!, 1.0);
+    if (!position) throw new Error("position should not be null");
+    const { success, pnl } = await resolvePosition(position, 1.0);
 
     expect(success).toBe(true);
     // shares = 10 / 0.50 = 20, pnl = (20 * 1.0) - 10 = 10.0 (minus small fees)
     expect(pnl).toBeGreaterThan(9.5);
     expect(pnl).toBeLessThan(10.5);
-    expect(position!.status).toBe("closed");
-    expect(position!.exitReason).toContain("WON");
+    expect(position?.status).toBe("closed");
+    expect(position?.exitReason).toContain("WON");
   });
 
   it("should calculate LOST P&L when finalPrice is 0.0", async () => {
@@ -144,13 +143,14 @@ describe("resolvePosition", () => {
     );
     expect(position).not.toBeNull();
 
-    const { success, pnl } = await resolvePosition(position!, 0.0);
+    if (!position) throw new Error("position should not be null");
+    const { success, pnl } = await resolvePosition(position, 0.0);
 
     expect(success).toBe(true);
     // shares = 10 / 0.50 = 20, pnl = (20 * 0.0) - 10 = -10.0 (minus fees)
     expect(pnl).toBeLessThan(-9.5);
-    expect(position!.status).toBe("closed");
-    expect(position!.exitReason).toContain("LOST");
+    expect(position?.status).toBe("closed");
+    expect(position?.exitReason).toContain("LOST");
   });
 });
 
