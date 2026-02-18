@@ -877,11 +877,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
-        const scoreDisplay = `${t.score}/100`;
+        const scoreDisplay = t.score >= 0 ? `${t.score}/100` : "N/A";
         const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         const peak = Math.max(t.peakPump, t.currentPump);
         const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nNow: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nSince buy: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
       });
 
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
@@ -926,7 +926,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders (score >= 80).`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Wallets\n\nNo qualified insiders yet.`, buttons);
         return;
       }
 
@@ -1062,14 +1062,16 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const chainTag = hit.chain.toUpperCase().slice(0, 3);
         const statusStr = hit.status === "sold" ? "SELL" : "BUY";
         const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain, true);
-        const scoreStr = analysis && analysis.score !== -1 ? ` - Score: ${analysis.score}/100` : "";
+        const scoreDisplay = analysis && analysis.score !== -1 ? `${analysis.score}/100` : "N/A";
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
         const peakStr = peak > 0 ? ` | Peak: ${peak.toFixed(0)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
         const discoveryDate = ts > 0 ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
         const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
+        const walletShort = hit.walletAddress ? `${hit.walletAddress.slice(0, 6)}...${hit.walletAddress.slice(-4)}` : "";
+        const walletStr = walletShort ? ` | ${walletShort}` : "";
 
-        return `<b>${hit.tokenSymbol}</b> (${chainTag})${scoreStr}\n${statusStr}: ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${discoveryDate} | ${timeAgo}`;
+        return `<b>${hit.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n${statusStr}: ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${discoveryDate} | ${timeAgo}${walletStr}`;
       });
 
       const header = `<b>Insider Wallets</b> - Recent Activity\n\n`;
