@@ -215,7 +215,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
         Math.abs(curr.probability - meanRawProb) < Math.abs(best.probability - meanRawProb) ? curr : best
       );
       let r1FinalRaw = meanRawProb;
-      let analysis = { ...closestToMean, probability: meanRawProb };
+      const analysis = { ...closestToMean, probability: meanRawProb };
 
       // Supervisor agent: if spread > 15pp, make extra R1 call with all RAW reasoning
       if (spread > 0.15) {
@@ -261,7 +261,7 @@ OUTPUT JSON ONLY:
 
       // Apply Bayesian prior ONCE: 50% market price + 50% R1
       analysis.r1RawProbability = r1FinalRaw;
-      const bw = config!.bayesianWeight;
+      const bw = config.bayesianWeight;
       analysis.probability = bw * yesPrice + (1 - bw) * r1FinalRaw;
       analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
 

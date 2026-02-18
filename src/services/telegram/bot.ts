@@ -110,7 +110,12 @@ export async function startBot(): Promise<void> {
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
   bot.command("insiders", async (ctx) => {
-    await handleInsiders(ctx, "wallets");
+    try {
+      await handleInsiders(ctx, "wallets");
+    } catch (err) {
+      console.error("[Telegram] Command error (insiders):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
   });
 
   // Callback handlers
@@ -335,7 +340,7 @@ export async function startBot(): Promise<void> {
   bot.callbackQuery("clear_chat", async (ctx) => {
     try {
       for (const msgId of alertMessageIds) {
-        await bot?.api.deleteMessage(chatId!, msgId).catch(() => {});
+        if (chatId) await bot?.api.deleteMessage(chatId, msgId).catch(() => {});
       }
       alertMessageIds.length = 0;
       await sendMainMenu();
@@ -562,7 +567,7 @@ export async function sendMessage(text: string): Promise<void> {
 
   try {
     if (lastAlertWithButtonId) {
-      bot.api.editMessageReplyMarkup(chatId, lastAlertWithButtonId, {
+      await bot.api.editMessageReplyMarkup(chatId, lastAlertWithButtonId, {
         reply_markup: { inline_keyboard: [] },
       }).catch(() => {});
     }
@@ -707,7 +712,7 @@ async function handleStart(ctx: Context): Promise<void> {
     return;
   }
 
-  let userTz = getUserTimezone(userId);
+  const userTz = getUserTimezone(userId);
   if (!userTz) {
     setUserTimezone(userId, "UTC");
   }
@@ -1085,7 +1090,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         if (!tokenMap.has(key)) {
           tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
         }
-        tokenMap.get(key)!.gems.push(gem);
+        tokenMap.get(key)?.gems.push(gem);
       }
 
       const tokenEntries = Array.from(tokenMap.values()).map((t) => {
@@ -1153,7 +1158,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
 
     if (tab === "wallets") {
       const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
-      let walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | undefined);
+      const walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | undefined);
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -2080,6 +2085,7 @@ async function handleTextInput(ctx: Context): Promise<void> {
     return;
   }
 
+  try {
   const userId = ctx.from?.id?.toString();
   if (!userId || !ctx.message || !ctx.message.text) {
     return;
@@ -2252,6 +2258,10 @@ async function handleTextInput(ctx: Context): Promise<void> {
     // Show menu
     await sendMainMenu();
     return;
+  }
+  } catch (err) {
+    console.error("[Telegram] Text input error:", err);
+    await ctx.reply("Error processing input. Try again.").catch(() => {});
   }
 }
 

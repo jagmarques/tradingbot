@@ -8,7 +8,7 @@ import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellG
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
-  return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
+  return s.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
 }
 
 // GeckoTerminal API

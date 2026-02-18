@@ -108,7 +108,7 @@ export function initInsiderTables(): void {
   // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
-    const clean = row.token_symbol.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u200d\ufe0f\u{E0067}\u{E0062}\u{E007F}\u{1F3F4}]/gu, "").trim();
+    const clean = row.token_symbol.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
     if (clean !== row.token_symbol) {
       db.prepare("UPDATE insider_gem_hits SET token_symbol = ? WHERE token_symbol = ?").run(clean, row.token_symbol);
     }
