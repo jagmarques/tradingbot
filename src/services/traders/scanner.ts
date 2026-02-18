@@ -66,7 +66,8 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   const delays = [15_000, 30_000, 60_000];
   for (let attempt = 1; attempt <= 3; attempt++) {
     const delay = delays[attempt - 1];
-    console.log(`[InsiderScanner] GeckoTerminal 429 on ${url}, retry ${attempt}/3 in ${delay / 1000}s`);
+    const endpoint = url.replace("https://api.geckoterminal.com/api/v2", "");
+    console.log(`[InsiderScanner] GeckoTerminal 429 on ${endpoint}, retry ${attempt}/3 in ${delay / 1000}s`);
     await new Promise((r) => setTimeout(r, delay));
     const retry = await fetch(url);
     if (retry.status !== 429) return retry;
@@ -739,7 +740,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       result.errors.push(msg);
     }
     // Delay between chains to spread GeckoTerminal load
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, INSIDER_CONFIG.INTER_CHAIN_DELAY_MS));
   }
 
   // Multi-factor wallet scoring (0-100)
