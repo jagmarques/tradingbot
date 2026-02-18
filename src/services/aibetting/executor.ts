@@ -7,10 +7,8 @@ import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
 import { isPaperMode } from "../../config/env.js";
 import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
-import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET } from "../../config/constants.js";
-
-const CLOB_API_URL = "https://clob.polymarket.com";
-const GAMMA_API_URL = "https://gamma-api.polymarket.com";
+import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, GAMMA_API_URL } from "../../config/constants.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 
 // In-memory position storage
 const positions = new Map<string, AIBettingPosition>();
@@ -31,7 +29,7 @@ function generatePositionId(): string {
 // Get midpoint price from CLOB API (public, no auth needed)
 async function fetchMidpointPrice(tokenId: string): Promise<number | null> {
   try {
-    const response = await fetch(`${CLOB_API_URL}/midpoint?token_id=${tokenId}`);
+    const response = await fetchWithTimeout(`${CLOB_API_URL}/midpoint?token_id=${tokenId}`);
     if (!response.ok) return null;
     const data = (await response.json()) as { mid?: string };
     if (data.mid) {
@@ -222,7 +220,7 @@ export async function exitPosition(
 // Check if market resolved via GAMMA API
 export async function checkMarketResolution(tokenId: string): Promise<{ resolved: boolean; finalPrice: number | null }> {
   try {
-    const response = await fetch(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
+    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
     if (!response.ok) return { resolved: false, finalPrice: null };
 
     const markets = await response.json() as Array<{

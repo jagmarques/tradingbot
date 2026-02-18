@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import { loadEnv } from "../../config/env.js";
 import { getAddress } from "./wallet.js";
-
-const CLOB_API_URL = "https://clob.polymarket.com";
+import { fetchWithTimeout } from "../../utils/fetch.js";
+import { CLOB_API_URL } from "../../config/constants.js";
 
 interface OrderPayload {
   tokenId: string;
@@ -70,7 +70,7 @@ async function request<T>(
   const headers = getHeaders(method, path, bodyStr);
 
   try {
-    const response = await fetch(`${CLOB_API_URL}${path}`, {
+    const response = await fetchWithTimeout(`${CLOB_API_URL}${path}`, {
       method,
       headers,
       body: bodyStr || undefined,

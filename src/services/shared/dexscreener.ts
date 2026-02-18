@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "../../utils/fetch.js";
+
 const RATE_LIMIT_MS = 1100;
 let queue: Promise<void> = Promise.resolve();
 
@@ -34,7 +36,7 @@ export async function dexScreenerFetch(chain: string, tokenAddress: string): Pro
   await enqueue();
 
   try {
-    const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+    const resp = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
     if (!resp.ok) return null;
 
     const data = (await resp.json()) as { pairs?: DexPair[] };
@@ -75,7 +77,7 @@ export async function dexScreenerFetchBatch(
       await enqueue();
 
       try {
-        const resp = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${batch.join(",")}`);
+        const resp = await fetchWithTimeout(`https://api.dexscreener.com/tokens/v1/${chain}/${batch.join(",")}`);
         if (!resp.ok) continue;
 
         const pairs = (await resp.json()) as DexPair[];

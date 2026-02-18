@@ -1,5 +1,6 @@
 import { Bot, Context } from "grammy";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -646,6 +647,17 @@ async function handleStatus(ctx: Context): Promise<void> {
 async function handleBalance(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /balance from user ${ctx.from?.id}`);
+    return;
+  }
+
+  if (isPaperMode()) {
+    const message =
+      `<b>Wallet Balances (Paper Mode)</b>\n\n` +
+      `Paper mode active - real balances not fetched.\n` +
+      `Starting capital: $${STARTING_CAPITAL_USD}\n` +
+      `Capital per strategy: $${CAPITAL_PER_STRATEGY_USD}`;
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(message, backButton);
     return;
   }
 

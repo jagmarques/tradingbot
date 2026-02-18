@@ -1,4 +1,5 @@
 import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
 import { getDb } from "../database/db.js";
@@ -61,7 +62,7 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 10_000)));
   geckoQueue = myTurn;
   await myTurn;
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
   if (response.status !== 429) return response;
   const delays = [15_000, 30_000, 60_000];
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -69,7 +70,7 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
     const endpoint = url.replace("https://api.geckoterminal.com/api/v2", "");
     console.log(`[InsiderScanner] GeckoTerminal 429 on ${endpoint}, retry ${attempt}/3 in ${delay / 1000}s`);
     await new Promise((r) => setTimeout(r, delay));
-    const retry = await fetch(url);
+    const retry = await fetchWithTimeout(url);
     if (retry.status !== 429) return retry;
   }
   console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${url}`);
@@ -109,7 +110,7 @@ export async function etherscanRateLimitedFetch(url: string, chain: string): Pro
   });
   etherscanQueueByChain.set(chain, myTurn);
   await myTurn;
-  return fetch(url);
+  return fetchWithTimeout(url);
 }
 
 interface GeckoPool {

@@ -2,6 +2,7 @@
 import { ethers, JsonRpcProvider, Wallet } from "ethers";
 import type { Chain } from "../traders/types.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 
 const ONEINCH_API = "https://api.1inch.dev/swap/v6.0";
 
@@ -131,7 +132,7 @@ export async function get1inchQuote(
       `slippage=${slippage}&` +
       `disableEstimate=false`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         accept: "application/json",
@@ -192,7 +193,7 @@ export async function get1inchSellQuote(
       `slippage=${slippage}&` +
       `disableEstimate=false`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         accept: "application/json",

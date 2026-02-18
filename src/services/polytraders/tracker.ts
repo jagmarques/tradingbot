@@ -5,7 +5,8 @@ import { notifyTopTraderCopy, notifyTopTraderCopyClose } from "../telegram/notif
 import { placeFokOrder } from "../polygon/polymarket.js";
 import { isPaperMode } from "../../config/env.js";
 import { getDb } from "../database/db.js";
-import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET } from "../../config/constants.js";
+import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, GAMMA_API_URL, DATA_API_URL } from "../../config/constants.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 import { getSettings } from "../settings/settings.js";
 import { getChatId } from "../telegram/bot.js";
 import { parseDate, minutesUntil, hoursUntil } from "../../utils/dates.js";
@@ -16,8 +17,6 @@ import { fetchNewsForMarket } from "../aibetting/news.js";
 import { analyzeMarket } from "../aibetting/analyzer.js";
 import type { PolymarketEvent } from "../aibetting/types.js";
 
-const DATA_API_URL = "https://data-api.polymarket.com/v1";
-const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 
 // Categories with long-dated markets (weeks/months, not hours like sports)
 const COPY_CATEGORIES = ["POLITICS", "CRYPTO", "ECONOMICS", "CULTURE"];
@@ -360,7 +359,7 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number, slug?: s
 
   try {
     // Try conditionId lookup first
-    const response = await fetch(`${GAMMA_API_URL}/markets?conditionId=${conditionId}`);
+    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?conditionId=${conditionId}`);
     if (response.ok) {
       const markets = await response.json() as GammaMarketResult[];
       const cid = conditionId.toLowerCase();
@@ -370,7 +369,7 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number, slug?: s
 
     // Fallback: try slug lookup
     if (slug) {
-      const slugResponse = await fetch(`${GAMMA_API_URL}/markets?slug=${encodeURIComponent(slug)}`);
+      const slugResponse = await fetchWithTimeout(`${GAMMA_API_URL}/markets?slug=${encodeURIComponent(slug)}`);
       if (slugResponse.ok) {
         const slugMarkets = await slugResponse.json() as GammaMarketResult[];
         if (slugMarkets.length > 0) return extractMarketInfo(slugMarkets[0], outcomeIndex);
@@ -394,7 +393,7 @@ type GammaFullMarket = GammaMarketResult & {
 
 async function fetchFullMarketData(conditionId: string): Promise<PolymarketEvent | null> {
   try {
-    const response = await fetch(`${GAMMA_API_URL}/markets?conditionId=${conditionId}`);
+    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?conditionId=${conditionId}`);
     if (!response.ok) return null;
     const markets = await response.json() as GammaFullMarket[];
     const cid = conditionId.toLowerCase();
@@ -554,7 +553,7 @@ export async function fetchTopTraders(
 ): Promise<LeaderboardEntry[]> {
   try {
     const url = `${DATA_API_URL}/leaderboard?category=${category}&timePeriod=${timePeriod}&orderBy=PNL&limit=${limit}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
 
     if (!response.ok) {
       throw new Error(`Leaderboard API error: ${response.status}`);
@@ -573,7 +572,7 @@ export async function fetchTraderActivity(
 ): Promise<TraderActivity[]> {
   try {
     const url = `${DATA_API_URL}/activity?user=${wallet}&limit=${limit}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
 
     if (!response.ok) {
       throw new Error(`Activity API error: ${response.status}`);
@@ -996,7 +995,7 @@ export function getCopyStats(): {
 async function checkMarketResolution(tokenId: string): Promise<{ resolved: boolean; finalPrice: number | null }> {
   try {
     // Use clob_token_ids (snake_case) to look up market by token ID
-    const response = await fetch(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
+    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
     if (!response.ok) return { resolved: false, finalPrice: null };
 
     const markets = await response.json() as Array<{
@@ -1133,12 +1132,11 @@ async function checkCopiedPositionExits(): Promise<void> {
 }
 
 // Fetch current price for a token from Polymarket
-const CLOB_API_URL = "https://clob.polymarket.com";
 
 async function getCurrentPrice(tokenId: string): Promise<number | null> {
   try {
     // Try CLOB API first (real-time prices for active markets)
-    const clobResponse = await fetch(`${CLOB_API_URL}/midpoint?token_id=${tokenId}`);
+    const clobResponse = await fetchWithTimeout(`${CLOB_API_URL}/midpoint?token_id=${tokenId}`);
     if (clobResponse.ok) {
       const clobData = await clobResponse.json() as { mid?: string; error?: string };
       if (clobData.mid) {
@@ -1148,7 +1146,7 @@ async function getCurrentPrice(tokenId: string): Promise<number | null> {
     }
 
     // Fall back to GAMMA API for resolved markets (use clob_token_ids snake_case)
-    const gammaResponse = await fetch(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
+    const gammaResponse = await fetchWithTimeout(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
     if (!gammaResponse.ok) return null;
 
     const markets = await gammaResponse.json() as Array<{

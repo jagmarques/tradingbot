@@ -5,8 +5,8 @@ import type {
   AIBettingConfig,
 } from "./types.js";
 import { parseDate } from "../../utils/dates.js";
-
-const GAMMA_API_URL = "https://gamma-api.polymarket.com";
+import { fetchWithTimeout } from "../../utils/fetch.js";
+import { GAMMA_API_URL } from "../../config/constants.js";
 
 interface GammaMarket {
   conditionId: string;
@@ -89,7 +89,7 @@ export async function fetchActiveMarkets(maxMarkets: number = 500): Promise<Poly
 
   try {
     while (allMarkets.length < maxMarkets) {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${GAMMA_API_URL}/markets?active=true&closed=false&limit=${pageSize}&offset=${offset}`
       );
 
@@ -222,7 +222,7 @@ export async function fetchMarketByConditionId(conditionId: string, tokenId?: st
     const query = tokenId
       ? `clob_token_ids=${tokenId}`
       : `condition_id=${conditionId}`;
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${GAMMA_API_URL}/markets?${query}&limit=1`
     );
     if (!response.ok) return null;

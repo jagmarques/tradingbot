@@ -45,3 +45,8 @@ export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
 
 // Slippage estimates for copy trading
 export const ESTIMATED_SLIPPAGE_DEX = 0.01; // 1% slippage on DEX swaps (entry + exit)
+
+// Polymarket API URLs
+export const CLOB_API_URL = "https://clob.polymarket.com";
+export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
+export const DATA_API_URL = "https://data-api.polymarket.com/v1";
