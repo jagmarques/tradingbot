@@ -61,3 +61,4 @@ export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
 export const QUANT_CANDLE_INTERVALS: Array<"15m" | "1h" | "4h"> = ["15m", "1h", "4h"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
+export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
