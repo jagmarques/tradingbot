@@ -116,3 +116,7 @@ export interface QuantAIDecision {
   suggestedSizeUsd: number; // Kelly-derived, filled by sizer in Plan 02
   analyzedAt: string; // ISO timestamp
 }
+
+export interface QuantAIPromptData extends PairAnalysis {
+  candles: Record<CandleInterval, OhlcvCandle[]>;
+}
