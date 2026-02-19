@@ -51,3 +51,8 @@ export { fetchFundingRate, fetchOpenInterest, fetchMarketContext } from "./marke
 export { computeIndicators } from "./indicators.js";
 export { classifyRegime } from "./regime.js";
 export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
+
+// AI Decision Engine
+export { buildQuantPrompt } from "./prompt.js";
+export { analyzeWithAI, runAIDecisionEngine, clearAICache } from "./ai-analyzer.js";
+export { calculateQuantPositionSize } from "./kelly.js";
