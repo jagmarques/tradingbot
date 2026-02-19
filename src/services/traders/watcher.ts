@@ -1,6 +1,6 @@
 import type { EvmChain, GemHit } from "./types.js";
-import { WATCHER_CONFIG, INSIDER_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade } from "./storage.js";
+import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
+import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -106,6 +106,31 @@ async function watchInsiderWallets(): Promise<void> {
           await sellGemPosition(symbol, chain);
           console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
         }
+
+        // Also close any copy trade for this token
+        const copyTrade = getCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
+        if (copyTrade && copyTrade.status === "open") {
+          closeCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
+          console.log(`[CopyTrade] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
+          try {
+            // notifyCopyTrade added in Plan 03 -- best-effort
+            const notifMod = await import("../telegram/notifications.js");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            await (notifMod as any).notifyCopyTrade?.({
+              walletAddress: wallet.address,
+              tokenSymbol: symbol,
+              chain: wallet.chain,
+              side: "sell",
+              priceUsd: copyTrade.currentPriceUsd,
+              liquidityOk: true,
+              liquidityUsd: 0,
+              skipReason: null,
+              pnlPct: copyTrade.pnlPct,
+            });
+          } catch { /* best-effort */ }
+        } else if (copyTrade && copyTrade.status === "skipped") {
+          console.log(`[CopyTrade] Insider sold ${symbol} but we had skipped (${copyTrade.skipReason})`);
+        }
       }
 
       if (recentIncoming.length === 0) continue;
@@ -142,7 +167,7 @@ async function watchInsiderWallets(): Promise<void> {
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
 
-  // Process new tokens
+  // Process new tokens (gem scoring path -- applies FDV/pump/score filters)
   for (const [, tokenInfo] of newTokensGlobal) {
     try {
       // Look up token on DexScreener
@@ -216,6 +241,104 @@ async function watchInsiderWallets(): Promise<void> {
       }).catch(err => console.error("[InsiderWatcher] Notification error:", err));
     } catch (err) {
       console.error(`[InsiderWatcher] Error processing token ${tokenInfo.tokenAddress}:`, err);
+    }
+  }
+
+  // --- Copy-trade path: mirror ALL buys regardless of score ---
+  for (const [, tokenInfo] of newTokensGlobal) {
+    try {
+      // Check if we already have a copy trade for this wallet+token+chain
+      const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
+      if (existingCopy) continue;
+
+      // Fetch price and liquidity from DexScreener
+      const pair = await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress);
+      const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+      const liquidityUsd = pair?.liquidity?.usd ?? 0;
+      const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+
+      if (priceUsd <= 0) {
+        // Can't get price -- record as skipped
+        insertCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          tokenAddress: tokenInfo.tokenAddress,
+          chain: tokenInfo.chain,
+          side: "buy",
+          buyPriceUsd: 0,
+          currentPriceUsd: 0,
+          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+          pnlPct: 0,
+          status: "skipped",
+          liquidityOk: false,
+          liquidityUsd: 0,
+          skipReason: "no price",
+          buyTimestamp: Date.now(),
+          closeTimestamp: null,
+        });
+        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price data`);
+        continue;
+      }
+
+      const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
+
+      if (!liquidityOk) {
+        insertCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          tokenAddress: tokenInfo.tokenAddress,
+          chain: tokenInfo.chain,
+          side: "buy",
+          buyPriceUsd: priceUsd,
+          currentPriceUsd: priceUsd,
+          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+          pnlPct: 0,
+          status: "skipped",
+          liquidityOk: false,
+          liquidityUsd,
+          skipReason: `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`,
+          buyTimestamp: Date.now(),
+          closeTimestamp: null,
+        });
+        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - liquidity $${liquidityUsd.toFixed(0)}`);
+      } else {
+        insertCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          tokenAddress: tokenInfo.tokenAddress,
+          chain: tokenInfo.chain,
+          side: "buy",
+          buyPriceUsd: priceUsd,
+          currentPriceUsd: priceUsd,
+          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+          pnlPct: 0,
+          status: "open",
+          liquidityOk: true,
+          liquidityUsd,
+          skipReason: null,
+          buyTimestamp: Date.now(),
+          closeTimestamp: null,
+        });
+        console.log(`[CopyTrade] Paper buy: ${symbol} (${tokenInfo.chain}) at $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
+      }
+
+      // Notify (best effort -- notifyCopyTrade added in Plan 03)
+      try {
+        const notifMod = await import("../telegram/notifications.js");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await (notifMod as any).notifyCopyTrade?.({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          chain: tokenInfo.chain,
+          side: "buy",
+          priceUsd,
+          liquidityOk,
+          liquidityUsd,
+          skipReason: liquidityOk ? null : `liquidity $${liquidityUsd.toFixed(0)}`,
+        });
+      } catch { /* notification is best-effort */ }
+    } catch (err) {
+      console.error(`[CopyTrade] Error processing ${tokenInfo.tokenAddress}:`, err);
     }
   }
 }
