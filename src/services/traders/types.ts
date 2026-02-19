@@ -170,3 +170,28 @@ export const WATCHER_CONFIG = {
   MAX_NEW_TOKENS_PER_WALLET: 3,      // Max new tokens to process per wallet per cycle
   MAX_BUY_PUMP: 10,                  // Skip buying if already pumped 10x (lower than scanner's 20x)
 };
+
+export interface CopyTrade {
+  id: string; // format: `${walletAddress}_${tokenAddress}_${chain}`
+  walletAddress: string;
+  tokenSymbol: string;
+  tokenAddress: string;
+  chain: string;
+  side: "buy" | "sell";
+  buyPriceUsd: number;
+  currentPriceUsd: number;
+  amountUsd: number; // always 10
+  pnlPct: number;
+  status: "open" | "closed" | "skipped";
+  liquidityOk: boolean;
+  liquidityUsd: number;
+  skipReason: string | null; // e.g., "no liquidity", "no price"
+  buyTimestamp: number;
+  closeTimestamp: number | null;
+}
+
+export const COPY_TRADE_CONFIG = {
+  MIN_LIQUIDITY_USD: 1000,
+  AMOUNT_USD: 10,
+  STOP_LOSS_PCT: -80,
+};
