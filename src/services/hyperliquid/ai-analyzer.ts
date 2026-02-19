@@ -2,6 +2,7 @@ import { buildQuantPrompt } from "./prompt.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
+import { isQuantKilled } from "./risk-manager.js";
 import type { PairAnalysis, QuantAIDecision, MarketRegime } from "./types.js";
 import { QUANT_AI_CACHE_TTL_MS } from "../../config/constants.js";
 
@@ -192,6 +193,11 @@ export async function analyzeWithAI(analysis: PairAnalysis): Promise<QuantAIDeci
 // --- Orchestrator ---
 
 export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
+  if (isQuantKilled()) {
+    console.log("[QuantAI] Engine skipped: kill switch active");
+    return [];
+  }
+
   const analyses = await runMarketDataPipeline();
 
   const actionable: QuantAIDecision[] = [];
