@@ -80,3 +80,22 @@ export interface FundingInfo {
   annualizedRate: number;
   nextFundingTime: number;
 }
+
+export type MarketRegime = "trending" | "ranging" | "volatile";
+
+export interface TechnicalIndicators {
+  rsi: number | null;
+  macd: { macd: number | null; signal: number | null; histogram: number | null } | null;
+  bollingerBands: { upper: number | null; middle: number | null; lower: number | null; width: number | null } | null;
+  atr: number | null;
+  vwap: number | null;
+  adx: number | null;
+}
+
+export interface PairAnalysis {
+  pair: string;
+  interval: CandleInterval;
+  indicators: TechnicalIndicators;
+  regime: MarketRegime;
+  analyzedAt: string;
+}
