@@ -1,6 +1,6 @@
 import { Bot, Context } from "grammy";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -27,7 +27,7 @@ import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/ex
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
-import { getVirtualBalance, getOpenQuantPositions } from "../hyperliquid/index.js";
+import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { loadClosedQuantTrades } from "../database/quant.js";
 import { getQuantStats } from "../database/quant.js";
 
@@ -1653,9 +1653,10 @@ async function handleStop(ctx: Context): Promise<void> {
   }
 
   setLogOnlyMode(true);
-  console.log("[Telegram] Trading paused (log-only mode) by user");
+  setQuantKilled(true);
+  console.log("[Telegram] Trading paused (log-only + quant killed) by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Trading paused - analyzing only, no bets placed.", backButton);
+  await sendDataMessage("All trading paused - AI bets log-only, quant trading halted.", backButton);
 }
 
 async function handleResume(ctx: Context): Promise<void> {
@@ -1665,9 +1666,10 @@ async function handleResume(ctx: Context): Promise<void> {
   }
 
   setLogOnlyMode(false);
-  console.log("[Telegram] Trading resumed (log-only off) by user");
+  setQuantKilled(false);
+  console.log("[Telegram] Trading resumed (log-only off + quant active) by user");
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("Trading resumed - bets will be placed.", backButton);
+  await sendDataMessage("All trading resumed - bets and quant active.", backButton);
 }
 
 async function handleTimezone(ctx: Context): Promise<void> {
@@ -2435,9 +2437,14 @@ async function handleQuant(ctx: Context): Promise<void> {
   const stats = getQuantStats();
   const mode = isPaperMode() ? "PAPER" : "LIVE";
 
+  const killed = isQuantKilled();
+  const dailyLoss = getDailyLossTotal();
+
   let text = `<b>Quant Trading (Hyperliquid) - ${mode}</b>\n\n`;
   text += `Balance: <b>$${balance.toFixed(2)}</b>\n`;
-  text += `Open positions: <b>${openPositions.length}</b>\n\n`;
+  text += `Open positions: <b>${openPositions.length}</b>\n`;
+  text += `Kill switch: <b>${killed ? "ACTIVE (halted)" : "OFF"}</b>\n`;
+  text += `Daily loss: <b>$${dailyLoss.toFixed(2)}</b> / $${QUANT_DAILY_DRAWDOWN_LIMIT}\n\n`;
 
   if (openPositions.length > 0) {
     text += "<b>Open Positions:</b>\n";

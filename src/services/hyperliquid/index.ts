@@ -56,3 +56,18 @@ export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
 export { buildQuantPrompt } from "./prompt.js";
 export { analyzeWithAI, runAIDecisionEngine, clearAICache } from "./ai-analyzer.js";
 export { calculateQuantPositionSize } from "./kelly.js";
+
+// Risk Management
+export {
+  validateRiskGates,
+  checkLeverageCap,
+  checkStopLossPresent,
+  checkDailyDrawdown,
+  checkMaxPositions,
+  checkRegimeAllowed,
+  isQuantKilled,
+  setQuantKilled,
+  recordDailyLoss,
+  resetDailyDrawdown,
+  getDailyLossTotal,
+} from "./risk-manager.js";
