@@ -59,6 +59,8 @@ export async function paperOpenPosition(
   direction: "long" | "short",
   sizeUsd: number,
   leverage: number,
+  stopLoss: number,
+  takeProfit: number,
 ): Promise<QuantPosition | null> {
   if (virtualBalance < sizeUsd) {
     console.log(
@@ -80,6 +82,8 @@ export async function paperOpenPosition(
     entryPrice: price,
     size: sizeUsd,
     leverage,
+    stopLoss,
+    takeProfit,
     unrealizedPnl: 0,
     mode: "paper",
     status: "open",

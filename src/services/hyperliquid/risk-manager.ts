@@ -76,32 +76,16 @@ export function checkLeverageCap(leverage: number): {
   return { allowed: true, reason: "" };
 }
 
-export function checkStopLossPresent(
-  stopLoss: number,
-  direction: "long" | "short",
-  entryPrice: number,
-): { allowed: boolean; reason: string } {
-  if (stopLoss === 0 || !isFinite(stopLoss) || isNaN(stopLoss)) {
+export function checkStopLossPresent(stopLoss: number): {
+  allowed: boolean;
+  reason: string;
+} {
+  if (!isFinite(stopLoss) || stopLoss <= 0) {
     return {
       allowed: false,
-      reason: `Stop-loss is invalid (got ${stopLoss})`,
+      reason: `Stop-loss must be a positive finite number, got ${stopLoss}`,
     };
   }
-
-  if (direction === "long" && stopLoss >= entryPrice) {
-    return {
-      allowed: false,
-      reason: `Long stop-loss ${stopLoss} must be below entry price ${entryPrice}`,
-    };
-  }
-
-  if (direction === "short" && stopLoss <= entryPrice) {
-    return {
-      allowed: false,
-      reason: `Short stop-loss ${stopLoss} must be above entry price ${entryPrice}`,
-    };
-  }
-
   return { allowed: true, reason: "" };
 }
 
@@ -143,11 +127,9 @@ export function checkRegimeAllowed(regime: MarketRegime): {
 export function validateRiskGates(params: {
   leverage: number;
   stopLoss: number;
-  direction: "long" | "short";
-  entryPrice: number;
   regime: MarketRegime;
 }): { allowed: boolean; reason: string } {
-  const { leverage, stopLoss, direction, entryPrice, regime } = params;
+  const { leverage, stopLoss, regime } = params;
 
   // 1. Kill switch
   if (isQuantKilled()) {
@@ -184,8 +166,8 @@ export function validateRiskGates(params: {
     return leverageCheck;
   }
 
-  // 6. Stop-loss presence and direction
-  const stopLossCheck = checkStopLossPresent(stopLoss, direction, entryPrice);
+  // 6. Stop-loss presence (directional validation handled by AI parser)
+  const stopLossCheck = checkStopLossPresent(stopLoss);
   if (!stopLossCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${stopLossCheck.reason}`);
     return stopLossCheck;

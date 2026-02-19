@@ -5,6 +5,8 @@ export interface QuantPosition {
   entryPrice: number;
   size: number;
   leverage: number;
+  stopLoss?: number; // Risk-enforced stop-loss price
+  takeProfit?: number; // AI-suggested take-profit price
   unrealizedPnl: number;
   mode: "paper" | "live";
   openedAt: string; // ISO date
