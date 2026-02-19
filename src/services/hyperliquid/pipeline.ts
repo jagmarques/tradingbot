@@ -48,9 +48,13 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
 
   return {
     pair,
-    interval: REGIME_INTERVAL,
-    indicators: regimeIndicators,
+    indicators: indicatorsByInterval,
     regime,
+    fundingRate: marketCtx.fundingRate,
+    openInterest: marketCtx.openInterest,
+    markPrice: marketCtx.markPrice,
+    oraclePrice: marketCtx.oraclePrice,
+    dayVolume: marketCtx.dayVolume,
     analyzedAt: new Date().toISOString(),
   };
 }

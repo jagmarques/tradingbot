@@ -94,8 +94,12 @@ export interface TechnicalIndicators {
 
 export interface PairAnalysis {
   pair: string;
-  interval: CandleInterval;
-  indicators: TechnicalIndicators;
+  indicators: Record<CandleInterval, TechnicalIndicators>;
   regime: MarketRegime;
+  fundingRate: number;
+  openInterest: number;
+  markPrice: number;
+  oraclePrice: number;
+  dayVolume: number;
   analyzedAt: string;
 }
