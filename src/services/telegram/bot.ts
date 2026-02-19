@@ -25,8 +25,8 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
-import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades } from "../traders/storage.js";
+import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { loadClosedQuantTrades } from "../database/quant.js";
 import { getQuantStats } from "../database/quant.js";
@@ -281,12 +281,21 @@ export async function startBot(): Promise<void> {
     }
     await ctx.answerCallbackQuery();
   });
+  bot.callbackQuery("insiders_copies", async (ctx) => {
+    try {
+      await handleInsiders(ctx, "copies");
+    } catch (err) {
+      console.error("[Telegram] Callback error (insiders_copies):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
+    await ctx.answerCallbackQuery();
+  });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     try {
       const match = ctx.match;
       if (!match) return;
       const chainVal = match[1];
-      const tabVal = match[2] as "holding" | "wallets" | "opps" | "activity";
+      const tabVal = match[2] as "holding" | "wallets" | "opps" | "activity" | "copies";
       const resolvedChain = chainVal === "all" ? undefined : chainVal;
       await handleInsiders(ctx, tabVal, resolvedChain);
     } catch (err) {
@@ -1050,7 +1059,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" | "activity" = "wallets", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" | "activity" | "copies" = "wallets", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -1072,6 +1081,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
+        { text: tab === "copies" ? "* Copies" : "Copies", callback_data: chain ? `insiders_chain_${chain}_copies` : "insiders_copies" },
       ],
       [
         { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
@@ -1300,6 +1310,72 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       return;
     }
 
+    if (tab === "copies") {
+      await refreshCopyTradePrices();
+
+      let openCopyTrades = getOpenCopyTrades();
+
+      if (chain) {
+        openCopyTrades = openCopyTrades.filter((t) => t.chain === chain);
+      }
+
+      if (openCopyTrades.length === 0) {
+        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+        await sendDataMessage(`<b>Insider Wallets</b> - Copies\n\nNo open copy trades yet.`, buttons);
+        return;
+      }
+
+      const tokenBlocks = openCopyTrades.map((trade) => {
+        const chainTag = trade.chain.toUpperCase().slice(0, 3);
+        const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
+        const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
+        const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
+        const sign = pnlUsd >= 0 ? "+" : "";
+        const walletShort = `${trade.walletAddress.slice(0, 6)}...${trade.walletAddress.slice(-4)}`;
+        const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const liqStr = `Liq: $${trade.liquidityUsd.toFixed(0)}`;
+
+        return `<b>${trade.tokenSymbol}</b> (${chainTag})\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | ${liqStr}\nWallet: ${walletShort} | ${buyDate}`;
+      });
+
+      const totalPnlUsd = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const avgPnlPct = openCopyTrades.reduce((sum, t) => sum + t.pnlPct, 0) / openCopyTrades.length;
+      const totalSign = totalPnlUsd >= 0 ? "+" : "";
+      const avgSign = avgPnlPct >= 0 ? "+" : "";
+      const summary = `\nCopy Portfolio: ${openCopyTrades.length} positions | P&L: ${totalSign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
+
+      const copiesHeader = `<b>Insider Wallets</b> - Copies\n\n`;
+      const footer = `\n${summary}`;
+      const maxLen = 3900;
+
+      const messages: string[] = [];
+      let current = copiesHeader;
+      for (const block of tokenBlocks) {
+        if (current.length + block.length + 2 > maxLen) {
+          messages.push(current);
+          current = "";
+        }
+        current += (current && current !== copiesHeader ? "\n\n" : "") + block;
+      }
+      current += footer;
+      messages.push(current);
+
+      const copyButtons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+      for (let i = 0; i < messages.length; i++) {
+        const isLast = i === messages.length - 1;
+        if (isLast) {
+          await sendDataMessage(messages[i], copyButtons);
+        } else {
+          if (bot && chatId) {
+            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
+            insiderExtraMessageIds.push(overflowMsg.message_id);
+          }
+        }
+      }
+
+      return;
+    }
+
     if (tab === "activity") {
       const recentHits = getRecentGemHits(10, chain);
 
@@ -1339,6 +1415,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
         { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
+        { text: tab === "copies" ? "* Copies" : "Copies", callback_data: chain ? `insiders_chain_${chain}_copies` : "insiders_copies" },
       ],
       [
         { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
