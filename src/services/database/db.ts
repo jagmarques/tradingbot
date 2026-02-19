@@ -224,6 +224,46 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_whale_trades_market ON whale_trades(market_id);
     CREATE INDEX IF NOT EXISTS idx_whale_trades_traded ON whale_trades(traded_at);
 
+    CREATE TABLE IF NOT EXISTS quant_trades (
+      id TEXT PRIMARY KEY,
+      pair TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      exit_price REAL,
+      size REAL NOT NULL,
+      leverage INTEGER NOT NULL DEFAULT 1,
+      pnl REAL DEFAULT 0,
+      fees REAL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'paper',
+      status TEXT NOT NULL DEFAULT 'open',
+      ai_confidence REAL,
+      ai_reasoning TEXT,
+      exit_reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS quant_positions (
+      id TEXT PRIMARY KEY,
+      pair TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      size REAL NOT NULL,
+      leverage INTEGER NOT NULL DEFAULT 1,
+      unrealized_pnl REAL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'paper',
+      status TEXT NOT NULL DEFAULT 'open',
+      opened_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      closed_at TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_quant_trades_pair ON quant_trades(pair);
+    CREATE INDEX IF NOT EXISTS idx_quant_trades_status ON quant_trades(status);
+    CREATE INDEX IF NOT EXISTS idx_quant_trades_mode ON quant_trades(mode);
+    CREATE INDEX IF NOT EXISTS idx_quant_trades_created ON quant_trades(created_at);
+    CREATE INDEX IF NOT EXISTS idx_quant_positions_status ON quant_positions(status);
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
