@@ -28,6 +28,7 @@ import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/sn
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions } from "../hyperliquid/index.js";
+import { loadClosedQuantTrades } from "../database/quant.js";
 import { getQuantStats } from "../database/quant.js";
 
 let bot: Bot | null = null;
@@ -2442,6 +2443,16 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += "<b>Open Positions:</b>\n";
     for (const pos of openPositions) {
       text += `  ${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)\n`;
+    }
+    text += "\n";
+  }
+
+  const recentTrades = loadClosedQuantTrades(5);
+  if (recentTrades.length > 0) {
+    text += "<b>Recent Trades:</b>\n";
+    for (const t of recentTrades) {
+      const pnlStr = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      text += `  ${t.direction.toUpperCase()} ${t.pair} $${t.size.toFixed(2)} ${pnlStr}\n`;
     }
     text += "\n";
   }
