@@ -238,49 +238,6 @@ export async function notifyAIBetClosed(params: {
   await sendMessage(message);
 }
 
-// AI Betting: Cycle summary
-export async function notifyAIBettingCycle(params: {
-  marketsAnalyzed: number;
-  opportunitiesFound: number;
-  betsPlaced: number;
-  openPositions: number;
-  totalExposure: number;
-}): Promise<void> {
-  if (params.betsPlaced === 0 && params.opportunitiesFound === 0) {
-    return; // Don't spam if nothing happened
-  }
-  const message =
-    `🤖 <b>AI Betting Cycle</b>\n\n` +
-    `Analyzed: ${params.marketsAnalyzed} markets\n` +
-    `Found: ${params.opportunitiesFound} opportunities\n` +
-    `Placed: ${params.betsPlaced} bets\n\n` +
-    `Open: ${params.openPositions} positions\n` +
-    `Exposure: $${params.totalExposure.toFixed(2)}`;
-  await sendMessage(message);
-}
-
-// Polymarket Top Trader Alert
-export async function notifyTopTraderBet(params: {
-  traderName: string;
-  traderPnl: number;
-  marketTitle: string;
-  size: number;
-  price: number;
-}): Promise<void> {
-  const pnlStr = params.traderPnl >= 0
-    ? `+$${(params.traderPnl / 1e6).toFixed(1)}M`
-    : `-$${(Math.abs(params.traderPnl) / 1e6).toFixed(1)}M`;
-
-  const message =
-    `👀 <b>TOP TRADER BET</b>\n\n` +
-    `Trader: ${escapeHtml(params.traderName)}\n` +
-    `Monthly PnL: ${pnlStr}\n\n` +
-    `<b>${escapeHtml(params.marketTitle)}</b>\n` +
-    `Size: $${params.size.toFixed(0)}\n` +
-    `Price: ${(params.price * 100).toFixed(1)}c`;
-  await sendMessage(message);
-}
-
 // Polymarket Copy Trade Notification
 export async function notifyTopTraderCopy(params: {
   traderName: string;
