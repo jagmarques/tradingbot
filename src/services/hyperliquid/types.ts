@@ -103,3 +103,16 @@ export interface PairAnalysis {
   dayVolume: number;
   analyzedAt: string;
 }
+
+export interface QuantAIDecision {
+  pair: string;
+  direction: "long" | "short" | "flat";
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  confidence: number; // 0-100
+  reasoning: string;
+  regime: MarketRegime;
+  suggestedSizeUsd: number; // Kelly-derived, filled by sizer in Plan 02
+  analyzedAt: string; // ISO timestamp
+}

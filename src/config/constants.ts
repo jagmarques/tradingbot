@@ -62,3 +62,9 @@ export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
 export const QUANT_CANDLE_INTERVALS: Array<"15m" | "1h" | "4h"> = ["15m", "1h", "4h"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
+
+// Quant AI Decision Engine
+export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+export const QUANT_AI_MIN_CONFIDENCE = 60; // Minimum confidence to act (0-100)
+export const QUANT_AI_STOP_LOSS_MAX_PCT = 3; // Max stop-loss distance %
+export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
