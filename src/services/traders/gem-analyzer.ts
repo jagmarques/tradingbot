@@ -1,5 +1,5 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, type GemAnalysis } from "./storage.js";
-import { INSIDER_CONFIG } from "./types.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, type GemAnalysis } from "./storage.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -571,6 +571,54 @@ export async function refreshGemPaperPrices(): Promise<void> {
     if (trade.pnlPct <= -70) {
       console.log(`[GemAnalyzer] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}%`);
       await sellGemPosition(trade.tokenSymbol, trade.chain);
+    }
+  }
+}
+
+export async function refreshCopyTradePrices(): Promise<void> {
+  const openTrades = getOpenCopyTrades();
+  if (openTrades.length === 0) return;
+
+  // Build list of tokens to fetch prices for
+  const tokensToFetch: Array<{ chain: string; tokenAddress: string; walletAddress: string }> = [];
+  for (const trade of openTrades) {
+    tokensToFetch.push({ chain: trade.chain, tokenAddress: trade.tokenAddress, walletAddress: trade.walletAddress });
+  }
+
+  if (tokensToFetch.length === 0) return;
+
+  // Batch fetch prices
+  const priceMap = await dexScreenerFetchBatch(
+    tokensToFetch.map(t => ({ chain: t.chain, tokenAddress: t.tokenAddress }))
+  );
+
+  let updated = 0;
+  for (const token of tokensToFetch) {
+    const addrKey = token.tokenAddress.toLowerCase();
+    let pair = priceMap.get(addrKey);
+
+    // Single fetch fallback (includes Gecko)
+    if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
+      pair = (await dexScreenerFetch(token.chain, token.tokenAddress)) ?? undefined;
+    }
+
+    const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    if (priceUsd > 0) {
+      updateCopyTradePrice(token.walletAddress, token.tokenAddress, token.chain, priceUsd);
+      updated++;
+    }
+  }
+
+  if (updated > 0) {
+    console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
+  }
+
+  // Stop-loss check
+  const refreshedTrades = getOpenCopyTrades();
+  for (const trade of refreshedTrades) {
+    if (trade.pnlPct <= COPY_TRADE_CONFIG.STOP_LOSS_PCT) {
+      console.log(`[CopyTrade] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}%`);
+      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
     }
   }
 }
