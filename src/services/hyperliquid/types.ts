@@ -95,6 +95,7 @@ export interface TechnicalIndicators {
 export interface PairAnalysis {
   pair: string;
   indicators: Record<CandleInterval, TechnicalIndicators>;
+  candles?: Record<CandleInterval, OhlcvCandle[]>;
   regime: MarketRegime;
   fundingRate: number;
   openInterest: number;

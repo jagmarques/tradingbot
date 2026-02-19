@@ -49,6 +49,7 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
   return {
     pair,
     indicators: indicatorsByInterval,
+    candles: candlesByInterval,
     regime,
     fundingRate: marketCtx.fundingRate,
     openInterest: marketCtx.openInterest,
