@@ -12,6 +12,43 @@ const CHAINS: Record<string, string> = {
   avalanche: "avalanche",
 };
 
+const GECKO_NETWORKS: Record<string, string> = {
+  ethereum: "eth",
+  base: "base",
+  arbitrum: "arbitrum",
+  polygon: "polygon_pos",
+  optimism: "optimism",
+  avalanche: "avax",
+};
+
+async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<{ priceUsd: number; liquidityUsd: number; fdv: number }> {
+  const network = GECKO_NETWORKS[chain];
+  if (!network || !tokenAddress) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+  try {
+    const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
+    const resp = await fetchWithTimeout(url, { timeoutMs: 10_000 });
+    if (!resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+    const data = await resp.json() as {
+      data?: {
+        attributes?: {
+          price_usd?: string;
+          fdv_usd?: string;
+          total_reserve_in_usd?: string;
+        };
+      };
+    };
+    const attrs = data?.data?.attributes;
+    if (!attrs) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+    return {
+      priceUsd: parseFloat(attrs.price_usd || "0"),
+      liquidityUsd: parseFloat(attrs.total_reserve_in_usd || "0"),
+      fdv: parseFloat(attrs.fdv_usd || "0"),
+    };
+  } catch {
+    return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+  }
+}
+
 export interface DexPair {
   priceUsd?: string;
   fdv?: number;
@@ -37,17 +74,36 @@ export async function dexScreenerFetch(chain: string, tokenAddress: string): Pro
 
   try {
     const resp = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
-    if (!resp.ok) return null;
-
-    const data = (await resp.json()) as { pairs?: DexPair[] };
-    const pairs = data.pairs;
-    if (!Array.isArray(pairs) || pairs.length === 0) return null;
-
-    const dexChain = CHAINS[chain];
-    return (dexChain && pairs.find((p) => p.chainId === dexChain)) || pairs[0];
+    if (resp.ok) {
+      const data = (await resp.json()) as { pairs?: DexPair[] };
+      const pairs = data.pairs;
+      if (Array.isArray(pairs) && pairs.length > 0) {
+        const dexChain = CHAINS[chain];
+        const pair = (dexChain && pairs.find((p) => p.chainId === dexChain)) || pairs[0];
+        if (pair && parseFloat(pair.priceUsd || "0") > 0) return pair;
+      }
+    }
   } catch {
-    return null;
+    // DexScreener failed, try fallback
   }
+
+  // GeckoTerminal fallback
+  try {
+    const gecko = await geckoTerminalPrice(chain, tokenAddress);
+    if (gecko.priceUsd > 0) {
+      console.log(`[DexScreener] Gecko fallback ${tokenAddress.slice(0, 10)}: $${gecko.priceUsd.toFixed(8)}`);
+      return {
+        priceUsd: gecko.priceUsd.toString(),
+        fdv: gecko.fdv,
+        liquidity: { usd: gecko.liquidityUsd },
+        chainId: CHAINS[chain],
+      };
+    }
+  } catch {
+    // Both sources failed
+  }
+
+  return null;
 }
 
 const BATCH_SIZE = 30;

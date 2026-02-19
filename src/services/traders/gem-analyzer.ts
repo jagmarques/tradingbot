@@ -548,10 +548,14 @@ export async function refreshGemPaperPrices(): Promise<void> {
   let updated = 0;
   for (const token of tokensToFetch) {
     const addrKey = token.tokenAddress.toLowerCase();
-    const pair = priceMap.get(addrKey);
-    if (!pair) continue;
+    let pair = priceMap.get(addrKey);
 
-    const priceUsd = parseFloat(pair.priceUsd || "0");
+    // Single fetch fallback (includes Gecko)
+    if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
+      pair = (await dexScreenerFetch(token.chain, token.tokenAddress)) ?? undefined;
+    }
+
+    const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
     if (priceUsd > 0) {
       updateGemPaperTradePrice(token.symbol, token.chain, priceUsd);
       updated++;

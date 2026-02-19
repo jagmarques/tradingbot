@@ -669,7 +669,12 @@ export async function updateHeldGemPrices(): Promise<void> {
 
   for (const [, token] of uniqueTokens) {
     const addrKey = token.tokenAddress.toLowerCase();
-    const pair = priceMap.get(addrKey);
+    let pair = priceMap.get(addrKey);
+
+    // Single fetch fallback (includes Gecko)
+    if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
+      pair = (await dexScreenerFetch(token.chain, token.tokenAddress)) ?? undefined;
+    }
     if (!pair) continue;
 
     const priceUsd = parseFloat(pair.priceUsd || "0");
