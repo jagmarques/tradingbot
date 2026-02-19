@@ -6,14 +6,12 @@ import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyInsiderBuyDetected, notifyCopyTrade } from "../telegram/notifications.js";
 
-// Tracks the most recent tx timestamp seen per wallet+chain to avoid re-processing
-// Key: `${address}_${chain}`, value: unix timestamp in seconds
 const lastSeenTxTimestamp = new Map<string, number>();
 
 let watcherRunning = false;
 
 async function watchInsiderWallets(): Promise<void> {
-  // Get all insider wallets and filter by minimum score
+  // Get qualified wallets
   const allWallets = getInsiderWallets();
   const qualifiedWallets = allWallets
     .filter((w) => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE && EXPLORER_SUPPORTED_CHAINS.has(w.chain))
@@ -25,7 +23,7 @@ async function watchInsiderWallets(): Promise<void> {
     return;
   }
 
-  // Collect new token buys across all wallets, deduplicated by tokenAddress+chain
+  // Gem path: one per token
   const newTokensGlobal = new Map<string, {
     walletAddress: string;
     walletScore: number;
@@ -33,6 +31,15 @@ async function watchInsiderWallets(): Promise<void> {
     tokenSymbol: string;
     chain: string;
   }>();
+
+  // Copy path: all wallet+token pairs
+  const allWalletBuys: Array<{
+    walletAddress: string;
+    walletScore: number;
+    tokenAddress: string;
+    tokenSymbol: string;
+    chain: string;
+  }> = [];
 
   let newBuysTotal = 0;
 
@@ -69,7 +76,7 @@ async function watchInsiderWallets(): Promise<void> {
       const lastSeenTs = lastSeenTxTimestamp.get(walletKey);
 
       if (lastSeenTs === undefined) {
-        // First time seeing this wallet - establish baseline and skip
+        // First time: establish baseline
         const maxTs = data.result.reduce((max, tx) => {
           const ts = parseInt(tx.timeStamp);
           return ts > max ? ts : max;
@@ -78,7 +85,7 @@ async function watchInsiderWallets(): Promise<void> {
         continue;
       }
 
-      // Find max timestamp in this response to update baseline
+      // Update baseline
       let maxTs = lastSeenTs;
       for (const tx of data.result) {
         const ts = parseInt(tx.timeStamp);
@@ -86,13 +93,13 @@ async function watchInsiderWallets(): Promise<void> {
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
 
-      // Filter to incoming transfers after last seen timestamp
+      // Recent incoming transfers
       const recentIncoming = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
         return ts > lastSeenTs && tx.to.toLowerCase() === wallet.address.toLowerCase();
       });
 
-      // Detect sells: outgoing transfers of tokens we have paper positions on
+      // Detect sells
       const recentOutgoing = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
         return ts > lastSeenTs && tx.from.toLowerCase() === wallet.address.toLowerCase();
@@ -107,7 +114,7 @@ async function watchInsiderWallets(): Promise<void> {
           console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
         }
 
-        // Also close any copy trade for this token
+        // Close copy trade if open
         const copyTrade = getCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
         if (copyTrade && copyTrade.status === "open") {
           closeCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
@@ -130,11 +137,11 @@ async function watchInsiderWallets(): Promise<void> {
 
       if (recentIncoming.length === 0) continue;
 
-      // Get existing gem hits for this wallet to avoid duplicates
+      // Avoid duplicates
       const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
       const existingTokens = new Set(existingGems.map((g) => g.tokenAddress.toLowerCase()));
 
-      // Collect unique new token addresses from incoming transfers
+      // Collect new tokens
       let walletNewCount = 0;
       for (const tx of recentIncoming) {
         if (walletNewCount >= WATCHER_CONFIG.MAX_NEW_TOKENS_PER_WALLET) break;
@@ -143,17 +150,21 @@ async function watchInsiderWallets(): Promise<void> {
         if (existingTokens.has(tokenAddress)) continue;
 
         const globalKey = `${tokenAddress}_${wallet.chain}`;
+        const buyInfo = {
+          walletAddress: wallet.address,
+          walletScore: wallet.score,
+          tokenAddress,
+          tokenSymbol: tx.tokenSymbol || "UNKNOWN",
+          chain: wallet.chain,
+        };
+
         if (!newTokensGlobal.has(globalKey)) {
-          newTokensGlobal.set(globalKey, {
-            walletAddress: wallet.address,
-            walletScore: wallet.score,
-            tokenAddress,
-            tokenSymbol: tx.tokenSymbol || "UNKNOWN",
-            chain: wallet.chain,
-          });
-          walletNewCount++;
-          newBuysTotal++;
+          newTokensGlobal.set(globalKey, buyInfo);
         }
+
+        allWalletBuys.push(buyInfo);
+        walletNewCount++;
+        newBuysTotal++;
       }
     } catch (err) {
       console.error(`[InsiderWatcher] Error checking ${wallet.address.slice(0, 8)} (${wallet.chain}):`, err);
@@ -162,10 +173,10 @@ async function watchInsiderWallets(): Promise<void> {
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
 
-  // Cache DexScreener results so copy-trade path doesn't double-fetch
+  // Cache pairs for copy path reuse
   const pairCache = new Map<string, import("../shared/dexscreener.js").DexPair | null>();
 
-  // Process new tokens (gem scoring path -- applies FDV/pump/score filters)
+  // Gem scoring path (filtered)
   for (const [globalKey, tokenInfo] of newTokensGlobal) {
     try {
       const pair = await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress);
@@ -236,13 +247,13 @@ async function watchInsiderWallets(): Promise<void> {
     }
   }
 
-  // Copy-trade path: mirror ALL buys regardless of score (reuse cached pairs)
-  for (const [globalKey, tokenInfo] of newTokensGlobal) {
+  // Copy-trade path (unfiltered)
+  for (const tokenInfo of allWalletBuys) {
     try {
       const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
       if (existingCopy) continue;
 
-      // Reuse pair from gem path cache
+      const globalKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
       const pair = pairCache.get(globalKey) ?? null;
       const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
@@ -321,7 +332,7 @@ export function startInsiderWatcher(): void {
 
   console.log(`[InsiderWatcher] Starting (every ${WATCHER_CONFIG.INTERVAL_MS / 60000} min, after 30s delay)`);
 
-  // Delay start to let scanner populate wallets first
+  // Delay start for scanner
   setTimeout(() => {
     (async (): Promise<void> => {
       while (watcherRunning) {
