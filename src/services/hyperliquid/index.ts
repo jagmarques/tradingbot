@@ -3,6 +3,7 @@ import { initPaperEngine } from "./paper.js";
 import { loadOpenQuantPositions } from "../database/quant.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
+import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -29,6 +30,8 @@ export function initQuant(): number {
     initPaperEngine(startBalance);
   }
 
+  startPositionMonitor();
+
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
   console.log(`[Quant] Initialized (${isPaperMode() ? "paper" : "live"} mode), ${count} open positions`);
@@ -36,7 +39,7 @@ export function initQuant(): number {
 }
 
 export function stopQuant(): void {
-  // Cleanup placeholder - no persistent timers in this phase
+  stopPositionMonitor();
   console.log("[Quant] Stopped");
 }
 
@@ -71,3 +74,6 @@ export {
   resetDailyDrawdown,
   getDailyLossTotal,
 } from "./risk-manager.js";
+
+// Position Monitor
+export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
