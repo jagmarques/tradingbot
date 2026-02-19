@@ -72,3 +72,4 @@ export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 5; // $5 max daily loss before trading halt
 export const QUANT_STOP_LOSS_REQUIRED = true; // Every position must have a stop-loss
+export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000; // 30 seconds between stop-loss checks
