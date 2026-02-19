@@ -50,3 +50,33 @@ export interface OrderResult {
   orderId: string | undefined;
   error: string | undefined;
 }
+
+export type CandleInterval = "15m" | "1h" | "4h";
+
+export interface OhlcvCandle {
+  timestamp: number; // open time in ms
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  trades: number;
+}
+
+export interface MarketDataSnapshot {
+  pair: string;
+  candles: Record<CandleInterval, OhlcvCandle[]>;
+  fundingRate: number;
+  openInterest: number;
+  markPrice: number;
+  oraclePrice: number;
+  dayVolume: number;
+  fetchedAt: string;
+}
+
+export interface FundingInfo {
+  pair: string;
+  currentRate: number;
+  annualizedRate: number;
+  nextFundingTime: number;
+}

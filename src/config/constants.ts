@@ -56,3 +56,8 @@ export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 10; // $10 paper trading
 export const QUANT_MAX_POSITIONS = 3; // Max concurrent positions
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
+
+// Quant Market Data Pipeline
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
+export const QUANT_CANDLE_INTERVALS: Array<"15m" | "1h" | "4h"> = ["15m", "1h", "4h"];
+export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
