@@ -4,7 +4,7 @@ import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade,
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
-import { notifyInsiderBuyDetected } from "../telegram/notifications.js";
+import { notifyInsiderBuyDetected, notifyCopyTrade } from "../telegram/notifications.js";
 
 // Tracks the most recent tx timestamp seen per wallet+chain to avoid re-processing
 // Key: `${address}_${chain}`, value: unix timestamp in seconds
@@ -112,6 +112,17 @@ async function watchInsiderWallets(): Promise<void> {
         if (copyTrade && copyTrade.status === "open") {
           closeCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
           console.log(`[CopyTrade] Auto-sell: ${symbol} (${wallet.address.slice(0, 8)} sold, P&L ${copyTrade.pnlPct.toFixed(1)}%)`);
+          notifyCopyTrade({
+            walletAddress: wallet.address,
+            tokenSymbol: copyTrade.tokenSymbol,
+            chain: copyTrade.chain,
+            side: "sell",
+            priceUsd: copyTrade.currentPriceUsd,
+            liquidityOk: copyTrade.liquidityOk,
+            liquidityUsd: copyTrade.liquidityUsd,
+            skipReason: copyTrade.skipReason,
+            pnlPct: copyTrade.pnlPct,
+          }).catch(err => console.error("[CopyTrade] Notification error:", err));
         } else if (copyTrade && copyTrade.status === "skipped") {
           console.log(`[CopyTrade] Insider sold ${symbol} but we skipped (${copyTrade.skipReason})`);
         }
@@ -256,6 +267,16 @@ async function watchInsiderWallets(): Promise<void> {
           closeTimestamp: null,
         });
         console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
+        notifyCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          chain: tokenInfo.chain,
+          side: "buy",
+          priceUsd: 0,
+          liquidityOk: false,
+          liquidityUsd: 0,
+          skipReason: "no price",
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
         continue;
       }
 
@@ -278,6 +299,16 @@ async function watchInsiderWallets(): Promise<void> {
         closeTimestamp: null,
       });
       console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
+      notifyCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        chain: tokenInfo.chain,
+        side: "buy",
+        priceUsd,
+        liquidityOk,
+        liquidityUsd,
+        skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
     } catch (err) {
       console.error(`[CopyTrade] Error processing ${tokenInfo.tokenAddress}:`, err);
     }

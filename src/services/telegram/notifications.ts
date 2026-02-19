@@ -341,6 +341,41 @@ export async function notifyInsiderBuyDetected(params: {
   await sendMessage(message);
 }
 
+// Copy trade notification (buy or sell)
+export async function notifyCopyTrade(params: {
+  walletAddress: string;
+  tokenSymbol: string;
+  chain: string;
+  side: "buy" | "sell";
+  priceUsd: number;
+  liquidityOk: boolean;
+  liquidityUsd: number;
+  skipReason: string | null;
+  pnlPct?: number;
+}): Promise<void> {
+  const isBuy = params.side === "buy";
+  const header = isBuy ? "COPY BUY" : "COPY SELL";
+  const statusStr = params.liquidityOk
+    ? "Paper traded"
+    : `Skipped: ${escapeHtml(params.skipReason || "unknown")}`;
+
+  let message =
+    `<b>${header}</b>\n\n` +
+    `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
+    `Chain: ${escapeHtml(params.chain)}\n` +
+    `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
+    `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
+    `Liquidity: $${params.liquidityUsd.toFixed(0)}\n` +
+    `Status: ${statusStr}`;
+
+  if (!isBuy && params.pnlPct !== undefined) {
+    const sign = params.pnlPct >= 0 ? "+" : "";
+    message += `\nP&L: ${sign}${params.pnlPct.toFixed(1)}%`;
+  }
+
+  await sendMessage(message);
+}
+
 // Helper to escape HTML
 function escapeHtml(text: string): string {
   return text
