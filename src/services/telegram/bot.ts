@@ -1114,10 +1114,10 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const tokenBlocks = top30.map((t) => {
         const chainTag = t.chain.toUpperCase().slice(0, 3);
         const scoreDisplay = t.score >= 0 ? `${t.score}/100` : "N/A";
-        const discoveryDate = new Date(t.launchTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const foundAgo = formatTimeAgo(t.launchTs);
         const peak = Math.max(t.peakPump, t.currentPump);
         const peakStr = peak > t.currentPump ? ` | Peak: ${peak.toFixed(1)}x` : "";
-        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nSince buy: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | ${discoveryDate}`;
+        return `<b>${t.symbol}</b> (${chainTag}) - Score: ${scoreDisplay}\nSince buy: ${t.currentPump.toFixed(1)}x${peakStr} | Wallets: ${t.holders} | Found ${foundAgo}`;
       });
 
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
@@ -1304,12 +1304,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
         const peakStr = peak > (hit.pumpMultiple || 0) ? ` | Peak: ${peak.toFixed(1)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
-        const discoveryDate = ts > 0 ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "?";
-        const timeAgo = ts > 0 ? formatTimeAgo(ts) : "";
+        const foundAgo = ts > 0 ? formatTimeAgo(ts) : "?";
         const walletShort = hit.walletAddress ? `${hit.walletAddress.slice(0, 6)}...${hit.walletAddress.slice(-4)}` : "";
         const walletStr = walletShort ? ` | ${walletShort}` : "";
 
-        return `<b>${hit.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n${statusStr}: ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${discoveryDate} | ${timeAgo}${walletStr}`;
+        return `<b>${hit.tokenSymbol}</b> (${chainTag}) - Score: ${scoreDisplay}\n${statusStr}: ${hit.pumpMultiple.toFixed(1)}x${peakStr} | Found ${foundAgo}${walletStr}`;
       });
 
       const header = `<b>Insider Wallets</b> - Recent Activity\n\n`;
