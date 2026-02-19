@@ -4,7 +4,7 @@ import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
-import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
+import { analyzeGemsBackground, revalidateHeldGems, refreshGemPaperPrices, refreshCopyTradePrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
 function stripEmoji(s: string): string {
@@ -897,9 +897,12 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     console.error("[InsiderScanner] Held gem price update error:", err);
   });
 
-  // Refresh gem paper trade prices (non-blocking)
+  // Refresh paper trade prices (non-blocking)
   refreshGemPaperPrices().catch(err => {
     console.error("[InsiderScanner] Paper price refresh error:", err);
+  });
+  refreshCopyTradePrices().catch(err => {
+    console.error("[InsiderScanner] Copy trade price refresh error:", err);
   });
 
   // Revalidate held gems for liquidity rugs (non-blocking)

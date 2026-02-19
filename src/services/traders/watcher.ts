@@ -111,25 +111,9 @@ async function watchInsiderWallets(): Promise<void> {
         const copyTrade = getCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
         if (copyTrade && copyTrade.status === "open") {
           closeCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
-          console.log(`[CopyTrade] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
-          try {
-            // notifyCopyTrade added in Plan 03 -- best-effort
-            const notifMod = await import("../telegram/notifications.js");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            await (notifMod as any).notifyCopyTrade?.({
-              walletAddress: wallet.address,
-              tokenSymbol: symbol,
-              chain: wallet.chain,
-              side: "sell",
-              priceUsd: copyTrade.currentPriceUsd,
-              liquidityOk: true,
-              liquidityUsd: 0,
-              skipReason: null,
-              pnlPct: copyTrade.pnlPct,
-            });
-          } catch { /* best-effort */ }
+          console.log(`[CopyTrade] Auto-sell: ${symbol} (${wallet.address.slice(0, 8)} sold, P&L ${copyTrade.pnlPct.toFixed(1)}%)`);
         } else if (copyTrade && copyTrade.status === "skipped") {
-          console.log(`[CopyTrade] Insider sold ${symbol} but we had skipped (${copyTrade.skipReason})`);
+          console.log(`[CopyTrade] Insider sold ${symbol} but we skipped (${copyTrade.skipReason})`);
         }
       }
 
@@ -167,35 +151,34 @@ async function watchInsiderWallets(): Promise<void> {
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
 
+  // Cache DexScreener results so copy-trade path doesn't double-fetch
+  const pairCache = new Map<string, import("../shared/dexscreener.js").DexPair | null>();
+
   // Process new tokens (gem scoring path -- applies FDV/pump/score filters)
-  for (const [, tokenInfo] of newTokensGlobal) {
+  for (const [globalKey, tokenInfo] of newTokensGlobal) {
     try {
-      // Look up token on DexScreener
       const pair = await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress);
+      pairCache.set(globalKey, pair);
       if (!pair) continue;
 
       const fdvUsd = pair.fdv || 0;
       const liquidityUsd = pair.liquidity?.usd || 0;
       const priceUsd = parseFloat(pair.priceUsd || "0");
 
-      // Skip if FDV > 10M or liquidity < 2000
       if (fdvUsd > 10_000_000 || liquidityUsd < 2000) continue;
 
-      // Calculate pump multiple
       let pumpMultiple = 1;
       const isPumpFun = tokenInfo.tokenAddress.endsWith("pump");
       if (isPumpFun && priceUsd > 0) {
         pumpMultiple = priceUsd / 0.000069;
       } else if (fdvUsd > 0) {
-        pumpMultiple = fdvUsd / 10000; // Use HISTORY_MIN_FDV_USD as baseline
+        pumpMultiple = fdvUsd / 10000;
       }
 
-      // Skip if already pumped too much
       if (pumpMultiple >= WATCHER_CONFIG.MAX_BUY_PUMP) continue;
 
       const symbol = pair.baseToken?.symbol || tokenInfo.tokenSymbol;
 
-      // Upsert gem hit
       const hit: GemHit = {
         walletAddress: tokenInfo.walletAddress,
         chain: tokenInfo.chain as import("./types.js").ScanChain,
@@ -209,7 +192,6 @@ async function watchInsiderWallets(): Promise<void> {
       };
       upsertGemHit(hit);
 
-      // Score via analyzeGem
       const analysis = await analyzeGem(symbol, tokenInfo.chain, tokenInfo.tokenAddress);
       const gemScore = analysis.score;
 
@@ -229,7 +211,6 @@ async function watchInsiderWallets(): Promise<void> {
         action = `scored ${gemScore}, skipped (threshold: ${INSIDER_CONFIG.MIN_GEM_SCORE})`;
       }
 
-      // Send Telegram alert
       await notifyInsiderBuyDetected({
         walletAddress: tokenInfo.walletAddress,
         walletScore: tokenInfo.walletScore,
@@ -244,21 +225,19 @@ async function watchInsiderWallets(): Promise<void> {
     }
   }
 
-  // --- Copy-trade path: mirror ALL buys regardless of score ---
-  for (const [, tokenInfo] of newTokensGlobal) {
+  // Copy-trade path: mirror ALL buys regardless of score (reuse cached pairs)
+  for (const [globalKey, tokenInfo] of newTokensGlobal) {
     try {
-      // Check if we already have a copy trade for this wallet+token+chain
       const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
       if (existingCopy) continue;
 
-      // Fetch price and liquidity from DexScreener
-      const pair = await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress);
+      // Reuse pair from gem path cache
+      const pair = pairCache.get(globalKey) ?? null;
       const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
       const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
       if (priceUsd <= 0) {
-        // Can't get price -- record as skipped
         insertCopyTrade({
           walletAddress: tokenInfo.walletAddress,
           tokenSymbol: symbol,
@@ -276,67 +255,29 @@ async function watchInsiderWallets(): Promise<void> {
           buyTimestamp: Date.now(),
           closeTimestamp: null,
         });
-        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price data`);
+        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
         continue;
       }
 
       const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
-
-      if (!liquidityOk) {
-        insertCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          tokenAddress: tokenInfo.tokenAddress,
-          chain: tokenInfo.chain,
-          side: "buy",
-          buyPriceUsd: priceUsd,
-          currentPriceUsd: priceUsd,
-          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
-          pnlPct: 0,
-          status: "skipped",
-          liquidityOk: false,
-          liquidityUsd,
-          skipReason: `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`,
-          buyTimestamp: Date.now(),
-          closeTimestamp: null,
-        });
-        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - liquidity $${liquidityUsd.toFixed(0)}`);
-      } else {
-        insertCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          tokenAddress: tokenInfo.tokenAddress,
-          chain: tokenInfo.chain,
-          side: "buy",
-          buyPriceUsd: priceUsd,
-          currentPriceUsd: priceUsd,
-          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
-          pnlPct: 0,
-          status: "open",
-          liquidityOk: true,
-          liquidityUsd,
-          skipReason: null,
-          buyTimestamp: Date.now(),
-          closeTimestamp: null,
-        });
-        console.log(`[CopyTrade] Paper buy: ${symbol} (${tokenInfo.chain}) at $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
-      }
-
-      // Notify (best effort -- notifyCopyTrade added in Plan 03)
-      try {
-        const notifMod = await import("../telegram/notifications.js");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        await (notifMod as any).notifyCopyTrade?.({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          chain: tokenInfo.chain,
-          side: "buy",
-          priceUsd,
-          liquidityOk,
-          liquidityUsd,
-          skipReason: liquidityOk ? null : `liquidity $${liquidityUsd.toFixed(0)}`,
-        });
-      } catch { /* notification is best-effort */ }
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+        pnlPct: 0,
+        status: liquidityOk ? "open" : "skipped",
+        liquidityOk,
+        liquidityUsd,
+        skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
+        buyTimestamp: Date.now(),
+        closeTimestamp: null,
+      });
+      console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
     } catch (err) {
       console.error(`[CopyTrade] Error processing ${tokenInfo.tokenAddress}:`, err);
     }
