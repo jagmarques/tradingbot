@@ -20,6 +20,7 @@ import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { validateApiConnection } from "./services/polygon/polymarket.js";
 import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
+import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -92,6 +93,17 @@ async function main(): Promise<void> {
       console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and DEEPSEEK_API_KEY to enable)");
     }
 
+    // Quant trading on Hyperliquid (opt-in)
+    if (env.QUANT_ENABLED === "true" && env.HYPERLIQUID_PRIVATE_KEY) {
+      const recoveredQuant = initQuant();
+      if (recoveredQuant > 0) {
+        console.log(`[Bot] Recovered ${recoveredQuant} quant positions`);
+      }
+      console.log("[Bot] Quant trading started");
+    } else {
+      console.log("[Bot] Quant trading disabled (set QUANT_ENABLED=true and HYPERLIQUID_PRIVATE_KEY to enable)");
+    }
+
     // Start Polymarket top trader tracking
     startPolyTraderTracking(5000);
     console.log("[Bot] Polymarket trader tracking started");
@@ -137,6 +149,7 @@ async function shutdown(signal: string): Promise<void> {
     stopAIBetting();
     stopPolyTraderTracking();
     stopInsiderScanner();
+    stopQuant();
     stopBot();
     stopHealthServer();
     closeDb();

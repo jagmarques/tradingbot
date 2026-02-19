@@ -27,6 +27,8 @@ import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/ex
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits } from "../traders/storage.js";
 import { refreshGemPaperPrices } from "../traders/gem-analyzer.js";
+import { getVirtualBalance, getOpenQuantPositions } from "../hyperliquid/index.js";
+import { getQuantStats } from "../database/quant.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -78,6 +80,7 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🕵 Insiders", callback_data: "insiders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
+    { text: "Quant", callback_data: "quant" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
@@ -520,6 +523,15 @@ export async function startBot(): Promise<void> {
       await handleModeSwitchPaper(ctx);
     } catch (err) {
       console.error("[Telegram] Callback error (mode_switch_paper):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
+    await ctx.answerCallbackQuery();
+  });
+  bot.callbackQuery("quant", async (ctx) => {
+    try {
+      await handleQuant(ctx);
+    } catch (err) {
+      console.error("[Telegram] Callback error (quant):", err);
       await ctx.reply("Error processing request. Try again.").catch(() => {});
     }
     await ctx.answerCallbackQuery();
@@ -2400,4 +2412,46 @@ function findTimezoneForOffset(offsetHours: number): string | null {
   }
 
   return null;
+}
+
+async function handleQuant(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const env = loadEnv();
+  const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
+
+  if (!quantEnabled) {
+    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+    await sendDataMessage(
+      "<b>Quant Trading (Hyperliquid)</b>\n\nDisabled. Set <code>QUANT_ENABLED=true</code> and <code>HYPERLIQUID_PRIVATE_KEY</code> to enable.",
+      backButton,
+    );
+    return;
+  }
+
+  const balance = getVirtualBalance();
+  const openPositions = getOpenQuantPositions();
+  const stats = getQuantStats();
+  const mode = isPaperMode() ? "PAPER" : "LIVE";
+
+  let text = `<b>Quant Trading (Hyperliquid) - ${mode}</b>\n\n`;
+  text += `Balance: <b>$${balance.toFixed(2)}</b>\n`;
+  text += `Open positions: <b>${openPositions.length}</b>\n\n`;
+
+  if (openPositions.length > 0) {
+    text += "<b>Open Positions:</b>\n";
+    for (const pos of openPositions) {
+      text += `  ${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)\n`;
+    }
+    text += "\n";
+  }
+
+  text += "<b>Stats (closed trades):</b>\n";
+  text += `  Trades: ${stats.totalTrades}\n`;
+  text += `  Wins: ${stats.wins} / Losses: ${stats.losses}\n`;
+  text += `  Win rate: ${stats.winRate.toFixed(1)}%\n`;
+  text += `  Total PnL: ${stats.totalPnl >= 0 ? "+" : ""}$${stats.totalPnl.toFixed(2)}\n`;
+
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage(text, backButton);
 }
