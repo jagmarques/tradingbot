@@ -44,3 +44,10 @@ export function stopQuant(): void {
 export { openPosition, closePosition, getOpenQuantPositions, getVirtualBalance } from "./executor.js";
 export { getPaperBalance, getPaperPositions } from "./paper.js";
 export { getAccountState, getRecentFills } from "./account.js";
+
+// Market data pipeline
+export { fetchCandles, fetchAllCandles } from "./candles.js";
+export { fetchFundingRate, fetchOpenInterest, fetchMarketContext } from "./market-data.js";
+export { computeIndicators } from "./indicators.js";
+export { classifyRegime } from "./regime.js";
+export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
