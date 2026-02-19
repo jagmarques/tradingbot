@@ -1,5 +1,5 @@
 import { getDb } from "../database/db.js";
-import type { GemHit, InsiderWallet, ScanChain } from "./types.js";
+import type { CopyTrade, GemHit, InsiderWallet, ScanChain } from "./types.js";
 import { INSIDER_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
@@ -113,6 +113,37 @@ export function initInsiderTables(): void {
       db.prepare("UPDATE insider_gem_hits SET token_symbol = ? WHERE token_symbol = ?").run(clean, row.token_symbol);
     }
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS insider_copy_trades (
+      id TEXT PRIMARY KEY,
+      wallet_address TEXT NOT NULL,
+      token_symbol TEXT NOT NULL,
+      token_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      side TEXT NOT NULL DEFAULT 'buy',
+      buy_price_usd REAL NOT NULL,
+      current_price_usd REAL NOT NULL,
+      amount_usd REAL NOT NULL DEFAULT 10,
+      pnl_pct REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open',
+      liquidity_ok INTEGER NOT NULL DEFAULT 1,
+      liquidity_usd REAL NOT NULL DEFAULT 0,
+      skip_reason TEXT DEFAULT NULL,
+      buy_timestamp INTEGER NOT NULL,
+      close_timestamp INTEGER DEFAULT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_copy_trades_wallet ON insider_copy_trades(wallet_address)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_copy_trades_status ON insider_copy_trades(status)
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_copy_trades_chain ON insider_copy_trades(chain)
+  `);
 
   console.log("[InsiderScanner] Database tables initialized");
 }
@@ -619,4 +650,103 @@ export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStat
     avgGainPct: r.avg_pump > 0 ? (r.avg_pump - 1) * 100 : 0,
     avgPnlUsd: r.avg_pump > 0 ? (r.avg_pump - 1) * 10 : 0,
   }));
+}
+
+function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
+  return {
+    id: row.id as string,
+    walletAddress: row.wallet_address as string,
+    tokenSymbol: row.token_symbol as string,
+    tokenAddress: row.token_address as string,
+    chain: row.chain as string,
+    side: row.side as "buy" | "sell",
+    buyPriceUsd: row.buy_price_usd as number,
+    currentPriceUsd: row.current_price_usd as number,
+    amountUsd: row.amount_usd as number,
+    pnlPct: row.pnl_pct as number,
+    status: row.status as "open" | "closed" | "skipped",
+    liquidityOk: (row.liquidity_ok as number) === 1,
+    liquidityUsd: row.liquidity_usd as number,
+    skipReason: (row.skip_reason as string) || null,
+    buyTimestamp: row.buy_timestamp as number,
+    closeTimestamp: (row.close_timestamp as number) || null,
+  };
+}
+
+export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
+  const db = getDb();
+  const wa = normalizeAddr(trade.walletAddress);
+  const ta = normalizeAddr(trade.tokenAddress);
+  const id = `${wa}_${ta}_${trade.chain}`;
+
+  db.prepare(`
+    INSERT OR IGNORE INTO insider_copy_trades (
+      id, wallet_address, token_symbol, token_address, chain, side,
+      buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
+      liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    wa,
+    trade.tokenSymbol,
+    ta,
+    trade.chain,
+    trade.side,
+    trade.buyPriceUsd,
+    trade.currentPriceUsd,
+    trade.amountUsd,
+    trade.pnlPct,
+    trade.status,
+    trade.liquidityOk ? 1 : 0,
+    trade.liquidityUsd,
+    trade.skipReason ?? null,
+    trade.buyTimestamp,
+    trade.closeTimestamp ?? null
+  );
+}
+
+export function getCopyTrade(walletAddress: string, tokenAddress: string, chain: string): CopyTrade | null {
+  const db = getDb();
+  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+
+  const row = db.prepare("SELECT * FROM insider_copy_trades WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  return mapRowToCopyTrade(row);
+}
+
+export function getOpenCopyTrades(): CopyTrade[] {
+  const db = getDb();
+
+  const rows = db.prepare("SELECT * FROM insider_copy_trades WHERE status = 'open' ORDER BY pnl_pct DESC").all() as Record<string, unknown>[];
+  return rows.map(mapRowToCopyTrade);
+}
+
+export function updateCopyTradePrice(walletAddress: string, tokenAddress: string, chain: string, currentPriceUsd: number): void {
+  const db = getDb();
+  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+
+  db.prepare(`
+    UPDATE insider_copy_trades
+    SET current_price_usd = ?,
+        pnl_pct = CASE
+          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100)
+          ELSE 0
+        END
+    WHERE id = ?
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
+}
+
+export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string): void {
+  const db = getDb();
+  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+
+  db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ? WHERE id = ?").run(Date.now(), id);
+}
+
+export function getAllCopyTrades(): CopyTrade[] {
+  const db = getDb();
+
+  const rows = db.prepare("SELECT * FROM insider_copy_trades ORDER BY buy_timestamp DESC").all() as Record<string, unknown>[];
+  return rows.map(mapRowToCopyTrade);
 }
