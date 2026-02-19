@@ -27,6 +27,7 @@
     "ethers": "^6.16.0",
     "googleapis": "^170.1.0",
     "grammy": "^1.39.3",
+    "hyperliquid": "^1.7.7",
     "linkedom": "^0.18.12",
     "node-cron": "^4.2.1",
     "pdfkit": "^0.17.2",

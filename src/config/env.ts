@@ -59,6 +59,12 @@ const envSchema = z.object({
   DAILY_LOSS_LIMIT_USD: numericString("25"),
   MAX_SLIPPAGE_POLYMARKET: numericStringMax1("0.005"),
 
+  // Quant Trading (Hyperliquid)
+  HYPERLIQUID_PRIVATE_KEY: z.string().min(1).optional(),
+  HYPERLIQUID_WALLET_ADDRESS: z.string().min(1).optional(),
+  QUANT_ENABLED: z.enum(["true", "false"]).default("false"),
+  QUANT_VIRTUAL_BALANCE: numericString("10"),
+
 });
 
 export type Env = z.infer<typeof envSchema>;

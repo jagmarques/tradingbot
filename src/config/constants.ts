@@ -50,3 +50,9 @@ export const ESTIMATED_SLIPPAGE_DEX = 0.01; // 1% slippage on DEX swaps (entry +
 export const CLOB_API_URL = "https://clob.polymarket.com";
 export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 export const DATA_API_URL = "https://data-api.polymarket.com/v1";
+
+// Hyperliquid Quant Trading
+export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
+export const QUANT_DEFAULT_VIRTUAL_BALANCE = 10; // $10 paper trading
+export const QUANT_MAX_POSITIONS = 3; // Max concurrent positions
+export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
