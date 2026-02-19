@@ -68,3 +68,7 @@ export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const QUANT_AI_MIN_CONFIDENCE = 60; // Minimum confidence to act (0-100)
 export const QUANT_AI_STOP_LOSS_MAX_PCT = 3; // Max stop-loss distance %
 export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
+
+// Quant Risk Management
+export const QUANT_DAILY_DRAWDOWN_LIMIT = 5; // $5 max daily loss before trading halt
+export const QUANT_STOP_LOSS_REQUIRED = true; // Every position must have a stop-loss
