@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, updateCopyTradePriceWithRugFee, closeCopyTrade, updateCopyTradePeakPnl, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -655,6 +655,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
               ? `liquidity dropped ${((1 - liquidityUsd / entryLiq) * 100).toFixed(0)}% ($${entryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
               : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
           console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - ${reason}`);
+          updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, priceUsd);
           closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
           notifyCopyTrade({
             walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
