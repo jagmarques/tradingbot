@@ -11,8 +11,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      trade_type, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      indicators_at_entry, trade_type, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     trade.id,
     trade.pair,
@@ -27,7 +27,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.status,
     trade.aiConfidence ?? null,
     trade.aiReasoning ?? null,
-    null,
+    trade.exitReason ?? null,
+    trade.indicatorsAtEntry ?? null,
     trade.tradeType ?? "directional",
     trade.createdAt,
   );
@@ -115,6 +116,8 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     status: string;
     ai_confidence: number | null;
     ai_reasoning: string | null;
+    exit_reason: string | null;
+    indicators_at_entry: string | null;
     created_at: string;
     updated_at: string;
     trade_type: string | null;
@@ -134,6 +137,8 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     status: row.status as "open" | "closed" | "failed",
     aiConfidence: row.ai_confidence ?? undefined,
     aiReasoning: row.ai_reasoning ?? undefined,
+    exitReason: row.exit_reason ?? undefined,
+    indicatorsAtEntry: row.indicators_at_entry ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     tradeType: (row.trade_type ?? "directional") as TradeType,

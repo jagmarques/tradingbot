@@ -239,6 +239,7 @@ export function initDb(dbPath?: string): Database.Database {
       ai_confidence REAL,
       ai_reasoning TEXT,
       exit_reason TEXT,
+      indicators_at_entry TEXT,
       trade_type TEXT NOT NULL DEFAULT 'directional',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -325,6 +326,10 @@ export function initDb(dbPath?: string): Database.Database {
   if (!qtColNames.includes("trade_type")) {
     db.exec(`ALTER TABLE quant_trades ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'directional'`);
     console.log("[Database] Migrated quant_trades: added trade_type column");
+  }
+  if (!qtColNames.includes("indicators_at_entry")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN indicators_at_entry TEXT`);
+    console.log("[Database] Migrated quant_trades: added indicators_at_entry column");
   }
   const quantPosCols = db.pragma("table_info(quant_positions)") as Array<{ name: string }>;
   const qpColNames = quantPosCols.map((c) => c.name);

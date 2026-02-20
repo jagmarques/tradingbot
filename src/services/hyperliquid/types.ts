@@ -32,6 +32,8 @@ export interface QuantTrade {
   status: "open" | "closed" | "failed";
   aiConfidence: number | undefined;
   aiReasoning: string | undefined;
+  exitReason?: string;
+  indicatorsAtEntry?: string; // JSON-stringified TechnicalIndicators snapshot at entry time
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
   tradeType?: TradeType;
