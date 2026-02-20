@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, updateCopyTradePriceWithRugFee, closeCopyTrade, updateCopyTradePeakPnl, incrementRugCount, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, incrementRugCount, getRugCount, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -332,6 +332,12 @@ export async function buyGems(
       console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - already pumped ${token.currentPump.toFixed(1)}x`);
       continue;
     }
+    // Skip tokens that have rugged us before
+    const rugCount = getRugCount(token.tokenAddress, token.chain);
+    if (rugCount > 0) {
+      console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - rugged ${rugCount}x before`);
+      continue;
+    }
     const existing = getGemPaperTrade(token.symbol, token.chain);
     if (existing && existing.status === "open") continue;
 
@@ -641,32 +647,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
       }
     }
 
-    // Rug detection: floor (if entry was healthy) or 70% drop
-    const liquidityUsd = pair?.liquidity?.usd ?? 0;
-    if (priceUsd > 0) {
-      const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
-      if (trade) {
-        const entryLiq = trade.liquidityUsd;
-        const belowFloor = entryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
-        const droppedFromEntry = entryLiq > 0 && liquidityUsd > 0 && liquidityUsd < entryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
-        if (belowFloor || droppedFromEntry) {
-          const reason = liquidityUsd === 0
-            ? "liquidity is zero"
-            : droppedFromEntry
-              ? `liquidity dropped ${((1 - liquidityUsd / entryLiq) * 100).toFixed(0)}% ($${entryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
-              : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
-          console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - ${reason}`);
-          updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, priceUsd);
-          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
-          incrementRugCount(trade.tokenAddress, trade.chain);
-          notifyCopyTrade({
-            walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-            side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
-            skipReason: "liquidity rug", pnlPct: trade.pnlPct,
-          }).catch(() => {});
-        }
-      }
-    }
   }
 
   if (updated > 0) {

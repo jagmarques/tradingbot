@@ -1,6 +1,6 @@
 import type { EvmChain, GemHit } from "./types.js";
 import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades } from "./storage.js";
+import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition, fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -252,6 +252,13 @@ async function watchInsiderWallets(): Promise<void> {
       const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
       if (existingCopy) continue;
 
+      // Skip tokens that have rugged us before
+      const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
+      if (rugCount > 0) {
+        console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
+        continue;
+      }
+
       // Check exposure budget before opening new positions (accumulation still allowed)
       const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
       if (!existingTokenTrade) {
@@ -302,6 +309,7 @@ async function watchInsiderWallets(): Promise<void> {
           tokenSymbol: symbol,
           tokenAddress: tokenInfo.tokenAddress,
           chain: tokenInfo.chain,
+          pairAddress: pair?.pairAddress ?? null,
           side: "buy",
           buyPriceUsd: priceUsd,
           currentPriceUsd: priceUsd,
@@ -326,6 +334,7 @@ async function watchInsiderWallets(): Promise<void> {
           tokenSymbol: symbol,
           tokenAddress: tokenInfo.tokenAddress,
           chain: tokenInfo.chain,
+          pairAddress: pair?.pairAddress ?? null,
           side: "buy",
           buyPriceUsd: 0,
           currentPriceUsd: 0,
@@ -363,6 +372,7 @@ async function watchInsiderWallets(): Promise<void> {
           tokenSymbol: symbol,
           tokenAddress: tokenInfo.tokenAddress,
           chain: tokenInfo.chain,
+          pairAddress: pair?.pairAddress ?? null,
           side: "buy",
           buyPriceUsd: priceUsd,
           currentPriceUsd: priceUsd,
@@ -398,6 +408,7 @@ async function watchInsiderWallets(): Promise<void> {
         tokenSymbol: symbol,
         tokenAddress: tokenInfo.tokenAddress,
         chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
         side: "buy",
         buyPriceUsd: priceUsd,
         currentPriceUsd: priceUsd,
