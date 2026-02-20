@@ -702,3 +702,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
   }
 }
+
+export function clearCopyPriceFailures(): void {
+  copyPriceFailures.clear();
+}

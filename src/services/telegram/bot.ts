@@ -2108,14 +2108,19 @@ async function handleReset(ctx: Context): Promise<void> {
   const db = (await import("../database/db.js")).getDb();
   const insiderWalletCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt;
   const insiderGemHitCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_hits").get() as { cnt: number }).cnt;
+  const insiderCopyCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt;
+  const quantTradeCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_trades").get() as { cnt: number }).cnt;
+  const quantPosCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_positions").get() as { cnt: number }).cnt;
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
   message += `  AI Bets: ${openAIBets.length} open + ${closedStats.totalBets} closed\n`;
   message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
   message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
+  message += `  Insider Copy: ${insiderCopyCount} trades\n`;
   message += `  Gem Trades: ${gemTrades.length} open\n`;
   message += `  Insiders: ${insiderWalletCount} wallets + ${insiderGemHitCount} gem hits\n`;
+  message += `  Quant: ${quantTradeCount} trades + ${quantPosCount} positions\n`;
   message += `  Trades + daily stats + caches: all\n\n`;
   message += "<b>This cannot be undone.</b>";
 
@@ -2151,47 +2156,68 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
 
     // 3. Crypto copy positions - DB + memory
     const cryptoResult = db.prepare("DELETE FROM crypto_copy_positions").run();
+    const { clearCryptoCopyMemory } = await import("../copy/executor.js");
+    clearCryptoCopyMemory();
 
-    // 4. General trades table
+    // 4. Insider copy trades - DB
+    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades").run();
+
+    // 5. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
 
-    // 5. General positions table
+    // 6. General positions table
     const positionsResult = db.prepare("DELETE FROM positions").run();
 
-    // 6. Daily stats
+    // 7. Daily stats
     const dailyResult = db.prepare("DELETE FROM daily_stats").run();
 
-    // 7. Arbitrage positions
+    // 8. Arbitrage positions
     const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
 
-    // 8. Gem paper trades
+    // 9. Gem paper trades
     const gemTradesResult = db.prepare("DELETE FROM insider_gem_paper_trades").run();
 
-    // 9. Gem analyses (GoPlus scores cache)
+    // 10. Gem analyses (GoPlus scores cache)
     const gemAnalysesResult = db.prepare("DELETE FROM insider_gem_analyses").run();
 
-    // 10. Copy outcomes
+    // 11. Copy outcomes
     const copyOutcomesResult = db.prepare("DELETE FROM copy_outcomes").run();
 
-    // 11. Calibration data
+    // 12. Calibration data
     const calPredResult = db.prepare("DELETE FROM calibration_predictions").run();
     const calScoreResult = db.prepare("DELETE FROM calibration_scores").run();
     const calLogResult = db.prepare("DELETE FROM calibration_log").run();
 
-    // 12. Whale trades
+    // 13. Whale trades
     const whaleResult = db.prepare("DELETE FROM whale_trades").run();
 
-    // 13. Insider data
+    // 14. Insider data
     const insiderWalletsResult = db.prepare("DELETE FROM insider_wallets").run();
     const insiderGemHitsResult = db.prepare("DELETE FROM insider_gem_hits").run();
 
+    // 15. Quant trades + positions + config
+    const quantTradesResult = db.prepare("DELETE FROM quant_trades").run();
+    const quantPosResult = db.prepare("DELETE FROM quant_positions").run();
+    const quantConfigResult = db.prepare("DELETE FROM quant_config").run();
+
+    // 16. Clear all in-memory caches
+    const { clearWatcherMemory } = await import("../traders/watcher.js");
+    const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
+    const { clearPaperMemory, clearAICache: clearQuantAICache, resetDailyDrawdown } = await import("../hyperliquid/index.js");
+    clearWatcherMemory();
+    clearCopyPriceFailures();
+    clearPaperMemory();
+    clearQuantAICache();
+    resetDailyDrawdown();
+
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
-      + polyCopiesDeleted + cryptoResult.changes + tradesResult.changes
-      + positionsResult.changes + dailyResult.changes + arbResult.changes
+      + polyCopiesDeleted + cryptoResult.changes + insiderCopyResult.changes
+      + tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes
       + gemTradesResult.changes + gemAnalysesResult.changes
       + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
       + calLogResult.changes + whaleResult.changes
-      + insiderWalletsResult.changes + insiderGemHitsResult.changes;
+      + insiderWalletsResult.changes + insiderGemHitsResult.changes
+      + quantTradesResult.changes + quantPosResult.changes + quantConfigResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
 
@@ -2199,12 +2225,14 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
     message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
+    message += `Insider copies: ${insiderCopyResult.changes} records\n`;
     message += `Gem trades: ${gemTradesResult.changes} + ${gemAnalysesResult.changes} scores\n`;
     message += `Insiders: ${insiderWalletsResult.changes} wallets + ${insiderGemHitsResult.changes} gem hits\n`;
+    message += `Quant: ${quantTradesResult.changes} trades + ${quantPosResult.changes} positions\n`;
     message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
     message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
     message += `<b>Total: ${totalDeleted} records deleted</b>\n`;
-    message += "Paper trading is ready to start fresh.";
+    message += "Paper trading is ready to start fresh.\nAll caches cleared.";
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, backButton);
@@ -2282,6 +2310,7 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     clearAllCopiedPositions();
 
     db.prepare("DELETE FROM crypto_copy_positions").run();
+    db.prepare("DELETE FROM insider_copy_trades").run();
     db.prepare("DELETE FROM trades").run();
     db.prepare("DELETE FROM positions").run();
     db.prepare("DELETE FROM daily_stats").run();
@@ -2293,10 +2322,27 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     db.prepare("DELETE FROM calibration_scores").run();
     db.prepare("DELETE FROM calibration_log").run();
     db.prepare("DELETE FROM whale_trades").run();
+    db.prepare("DELETE FROM insider_wallets").run();
+    db.prepare("DELETE FROM insider_gem_hits").run();
+    db.prepare("DELETE FROM quant_trades").run();
+    db.prepare("DELETE FROM quant_positions").run();
+    db.prepare("DELETE FROM quant_config").run();
+
+    // Clear all in-memory caches
+    const { clearCryptoCopyMemory } = await import("../copy/executor.js");
+    const { clearWatcherMemory } = await import("../traders/watcher.js");
+    const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
+    const { clearPaperMemory, clearAICache: clearQuantAICache, resetDailyDrawdown } = await import("../hyperliquid/index.js");
+    clearCryptoCopyMemory();
+    clearWatcherMemory();
+    clearCopyPriceFailures();
+    clearPaperMemory();
+    clearQuantAICache();
+    resetDailyDrawdown();
 
     // Switch to live mode
     setTradingMode("live");
-    console.log("[Telegram] Switched to LIVE mode, paper data deleted");
+    console.log("[Telegram] Switched to LIVE mode, all paper data deleted");
 
     await handleMode(ctx);
   } catch (err) {

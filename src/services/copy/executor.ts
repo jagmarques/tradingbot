@@ -113,6 +113,10 @@ export function getOpenCryptoCopyPositions(): CryptoCopyPosition[] {
   return Array.from(cryptoCopyPositions.values()).filter(p => p.status === "open");
 }
 
+export function clearCryptoCopyMemory(): void {
+  cryptoCopyPositions.clear();
+}
+
 // Close a copied position when trader sells
 export async function closeCopiedPosition(
   position: CryptoCopyPosition,

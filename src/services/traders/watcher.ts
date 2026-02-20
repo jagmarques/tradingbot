@@ -452,3 +452,7 @@ export function stopInsiderWatcher(): void {
 export function isInsiderWatcherRunning(): boolean {
   return watcherRunning;
 }
+
+export function clearWatcherMemory(): void {
+  lastSeenTxTimestamp.clear();
+}

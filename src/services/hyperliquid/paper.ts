@@ -213,3 +213,9 @@ export async function paperClosePosition(
 
   return { success: true, pnl };
 }
+
+export function clearPaperMemory(): void {
+  paperPositions.clear();
+  positionContext.clear();
+  virtualBalance = QUANT_DEFAULT_VIRTUAL_BALANCE;
+}
