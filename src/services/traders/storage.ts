@@ -196,8 +196,18 @@ export interface InsiderWalletStats {
 export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStats[] {
   const db = getDb();
   let query = `
-    SELECT w.address, w.chain, w.score, w.gem_hit_count
+    SELECT w.address, w.chain, w.score, w.gem_hit_count,
+      COALESCE(s.avg_pnl_pct, 0) AS avg_pnl_pct,
+      COALESCE(s.avg_pnl_usd, 0) AS avg_pnl_usd
     FROM insider_wallets w
+    LEFT JOIN (
+      SELECT wallet_address, chain,
+        AVG(pnl_pct) AS avg_pnl_pct,
+        AVG(pnl_pct / 100.0 * amount_usd) AS avg_pnl_usd
+      FROM insider_copy_trades
+      WHERE status IN ('open', 'closed')
+      GROUP BY wallet_address, chain
+    ) s ON s.wallet_address = w.address AND s.chain = w.chain
     WHERE 1=1
   `;
   const params: unknown[] = [];
@@ -209,6 +219,7 @@ export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStat
 
   const rows = db.prepare(query).all(...params) as Array<{
     address: string; chain: string; score: number; gem_hit_count: number;
+    avg_pnl_pct: number; avg_pnl_usd: number;
   }>;
 
   return rows.map(r => ({
@@ -216,8 +227,8 @@ export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStat
     chain: r.chain as ScanChain,
     score: r.score,
     gemHitCount: r.gem_hit_count,
-    avgGainPct: 0,
-    avgPnlUsd: 0,
+    avgGainPct: r.avg_pnl_pct,
+    avgPnlUsd: r.avg_pnl_usd,
   }));
 }
 
