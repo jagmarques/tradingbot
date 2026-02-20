@@ -3,6 +3,7 @@ import { ethers, JsonRpcProvider, Wallet } from "ethers";
 import type { Chain } from "../traders/types.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
+import { dexScreenerFetch } from "../shared/dexscreener.js";
 
 const ONEINCH_API = "https://api.1inch.dev/swap/v6.0";
 
@@ -221,14 +222,33 @@ export async function execute1inchSell(
 ): Promise<OneInchSellResult> {
   console.log(`[1inch] Selling ${amountTokens} tokens on ${chain} for native`);
 
-  // Paper mode - simulate
+  // Paper mode - simulate with DexScreener price
   if (isPaperMode()) {
     console.log(`[1inch] PAPER: Sell ${amountTokens} tokens on ${chain}`);
+    let amountReceived = 0.1; // fallback
+    try {
+      const pair = await dexScreenerFetch(chain, tokenAddress);
+      if (pair?.priceUsd) {
+        const tokenPriceUsd = parseFloat(pair.priceUsd);
+        const APPROX_NATIVE_PRICES: Partial<Record<Chain, number>> = {
+          ethereum: 3000, polygon: 0.75, base: 3000,
+          arbitrum: 3000, optimism: 3000, avalanche: 35,
+        };
+        const nativePriceUsd = APPROX_NATIVE_PRICES[chain] ?? 1;
+        const tokensHeld = parseFloat(amountTokens) / 1e18;
+        if (tokenPriceUsd > 0 && nativePriceUsd > 0 && tokensHeld > 0) {
+          const valueUsd = tokensHeld * tokenPriceUsd;
+          amountReceived = valueUsd / nativePriceUsd;
+        }
+      }
+    } catch (err) {
+      console.log(`[1inch] PAPER: Sell price lookup failed, using fallback:`, err instanceof Error ? err.message : err);
+    }
     return {
       success: true,
       txHash: `paper_1inch_sell_${chain}_${Date.now()}`,
       isPaper: true,
-      amountReceived: 0.1, // Simulated native received
+      amountReceived,
     };
   }
 
@@ -284,14 +304,33 @@ export async function execute1inchSwap(
 ): Promise<OneInchSwapResult> {
   console.log(`[1inch] Swapping ${amountNative} native on ${chain} for ${tokenAddress.slice(0, 10)}...`);
 
-  // Paper mode - simulate
+  // Paper mode - simulate with DexScreener price
   if (isPaperMode()) {
     console.log(`[1inch] PAPER: Swap ${amountNative} native on ${chain} for ${tokenAddress}`);
+    let tokensReceived = "1000000000000000000"; // fallback: 1 token
+    try {
+      const pair = await dexScreenerFetch(chain, tokenAddress);
+      if (pair?.priceUsd) {
+        const tokenPriceUsd = parseFloat(pair.priceUsd);
+        const APPROX_NATIVE_PRICES: Partial<Record<Chain, number>> = {
+          ethereum: 3000, polygon: 0.75, base: 3000,
+          arbitrum: 3000, optimism: 3000, avalanche: 35,
+        };
+        const nativePriceUsd = APPROX_NATIVE_PRICES[chain] ?? 1;
+        if (tokenPriceUsd > 0) {
+          const valueUsd = amountNative * nativePriceUsd;
+          const tokens = valueUsd / tokenPriceUsd;
+          tokensReceived = BigInt(Math.floor(tokens * 1e18)).toString();
+        }
+      }
+    } catch (err) {
+      console.log(`[1inch] PAPER: Price lookup failed, using fallback:`, err instanceof Error ? err.message : err);
+    }
     return {
       success: true,
       txHash: `paper_1inch_${chain}_${Date.now()}`,
       isPaper: true,
-      tokensReceived: "1000000000000000000", // Simulated 1 token
+      tokensReceived,
     };
   }
 
