@@ -68,6 +68,9 @@ export function getDailyPnlBreakdown(): {
   cryptoCopy: number;
   polyCopy: number;
   aiBetting: number;
+  quantPnl: number;
+  insiderCopyPnl: number;
+  rugLosses: number;
 } {
   checkDayReset();
   const db = getDb();
@@ -101,11 +104,42 @@ export function getDailyPnlBreakdown(): {
   `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const aiBetting = aiBettingResult.total || 0;
 
+  // Quant trading (from quant_trades, closed today)
+  const quantResult = db.prepare(`
+    SELECT SUM(pnl) as total
+    FROM quant_trades
+    WHERE status = 'closed'
+      AND updated_at >= ?
+  `).get(startOfDay) as { total: number | null };
+  const quantPnl = quantResult.total || 0;
+
+  // Insider copy (from insider_copy_trades, closed today - exclude rugs, those are separate)
+  const insiderResult = db.prepare(`
+    SELECT SUM(amount_usd * pnl_pct / 100) as total
+    FROM insider_copy_trades
+    WHERE status = 'closed'
+      AND (exit_reason IS NULL OR exit_reason != 'liquidity_rug')
+      AND close_timestamp >= ?
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
+  const insiderCopyPnl = insiderResult.total || 0;
+
+  // Rug losses (from insider_copy_trades, exit_reason = 'liquidity_rug', closed today)
+  const rugResult = db.prepare(`
+    SELECT SUM(amount_usd) as total
+    FROM insider_copy_trades
+    WHERE exit_reason = 'liquidity_rug'
+      AND close_timestamp >= ?
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
+  const rugLosses = -(rugResult.total || 0);
+
   return {
-    total: cryptoCopy + polyCopy + aiBetting,
+    total: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl + rugLosses,
     cryptoCopy,
     polyCopy,
     aiBetting,
+    quantPnl,
+    insiderCopyPnl,
+    rugLosses,
   };
 }
 

@@ -25,9 +25,8 @@ async function scanLoop(): Promise<void> {
 async function priceRefreshLoop(): Promise<void> {
   while (running) {
     try {
-      const { refreshCopyTradePrices, revalidateHeldGems } = await import("./gem-analyzer.js");
+      const { refreshCopyTradePrices } = await import("./gem-analyzer.js");
       await refreshCopyTradePrices();
-      await revalidateHeldGems();
     } catch (err) {
       console.error("[PriceRefresh] Error:", err);
     }

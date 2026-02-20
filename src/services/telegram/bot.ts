@@ -25,11 +25,11 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades, getRugStats } from "../traders/storage.js";
-import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
+import { getOpenCopyTrades, getClosedCopyTrades, getRugStats } from "../traders/storage.js";
+import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { loadClosedQuantTrades, getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
+import { getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -49,24 +49,7 @@ function isAuthorized(ctx: Context): boolean {
   return fromId === chatId;
 }
 
-function formatTokenPrice(price: number): string {
-  if (price === 0) return "$0";
-  if (price >= 1) return `$${price.toFixed(2)}`;
-  if (price >= 0.01) return `$${price.toFixed(4)}`;
-  if (price >= 0.000001) return `$${price.toFixed(6)}`;
-  return `$${price.toExponential(2)}`;
-}
 
-function formatTimeAgo(timestamp: number): string {
-  const diffMs = Date.now() - timestamp;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 const MAIN_MENU_BUTTONS = [
   [
@@ -268,17 +251,7 @@ export async function startBot(): Promise<void> {
       await ctx.answerCallbackQuery().catch(() => {});
     }
   });
-  bot.callbackQuery("insiders_opps", async (ctx) => {
-    try {
-      await handleInsiders(ctx, "opps");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (insiders_opps):", err);
-      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
-  bot.callbackQuery("insiders_wallets", async (ctx) => {
+bot.callbackQuery("insiders_wallets", async (ctx) => {
     try {
       await handleInsiders(ctx, "wallets");
       await ctx.answerCallbackQuery();
@@ -288,32 +261,12 @@ export async function startBot(): Promise<void> {
       await ctx.answerCallbackQuery().catch(() => {});
     }
   });
-  bot.callbackQuery("insiders_activity", async (ctx) => {
-    try {
-      await handleInsiders(ctx, "activity");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (insiders_activity):", err);
-      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
-  bot.callbackQuery("insiders_copies", async (ctx) => {
-    try {
-      await handleInsiders(ctx, "copies");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (insiders_copies):", err);
-      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     try {
       const match = ctx.match;
       if (!match) return;
       const chainVal = match[1];
-      const tabVal = match[2] as "holding" | "wallets" | "opps" | "activity" | "copies";
+      const tabVal = match[2] as "holding" | "wallets";
       const resolvedChain = chainVal === "all" ? undefined : chainVal;
       await handleInsiders(ctx, tabVal, resolvedChain);
       await ctx.answerCallbackQuery();
@@ -870,15 +823,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
     lines.push(`Poly Copy: ${polyStats.openPositions} | ${$(copyInvested)}${copyPnlStr}`);
 
-    // Gem paper trades
-    try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
-    const gemPaperTrades = getOpenGemPaperTrades();
-    if (gemPaperTrades.length > 0) {
-      const gemInvested = gemPaperTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-      const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      lines.push(`Gems: ${gemPaperTrades.length} | ${$(gemInvested)} ${pnl(gemTotalPnl)}`);
-    }
-
     // Insider copy trades
     try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
     const openCopyTrades = getOpenCopyTrades();
@@ -1022,7 +966,14 @@ async function handlePnl(ctx: Context): Promise<void> {
       const losses = trades.filter((t) => t.pnl < 0).length;
       message += `Total: ${pnl(breakdown.total)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%) | ${wins}W ${losses}L\n`;
 
-      message += formatBreakdown(breakdown.cryptoCopy, breakdown.polyCopy, breakdown.aiBetting);
+      message += formatBreakdown(
+        breakdown.cryptoCopy,
+        breakdown.polyCopy,
+        breakdown.aiBetting,
+        breakdown.quantPnl,
+        breakdown.insiderCopyPnl,
+        breakdown.rugLosses,
+      );
     } else {
       // Historical data from snapshots
       const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
@@ -1030,7 +981,14 @@ async function handlePnl(ctx: Context): Promise<void> {
 
       message += `Total: ${pnl(data.totalPnl)}\n`;
 
-      message += formatBreakdown(data.cryptoCopyPnl, data.polyCopyPnl, data.aiBettingPnl);
+      message += formatBreakdown(
+        data.cryptoCopyPnl,
+        data.polyCopyPnl,
+        data.aiBettingPnl,
+        data.quantPnl,
+        data.insiderCopyPnl,
+        data.rugPnl,
+      );
 
       // Chart
       const history = getDailyPnlHistory(days);
@@ -1038,6 +996,76 @@ async function handlePnl(ctx: Context): Promise<void> {
         message += `\n<b>Cumulative P&L</b>\n`;
         message += generatePnlChart(history);
       }
+    }
+
+    // Unrealized P&L (open positions) - shown for all periods
+    const unrealizedLines: string[] = [];
+
+    // AI bets unrealized
+    const openBets = loadOpenPositions();
+    let aiBetUnrealized = 0;
+    for (const bet of openBets) {
+      const price = await getAIBetCurrentPrice(bet.tokenId);
+      if (price !== null) {
+        const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
+        aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
+      }
+    }
+    if (openBets.length > 0) {
+      unrealizedLines.push(`AI Bets: ${openBets.length} open ${pnl(aiBetUnrealized)}`);
+    }
+
+    // Poly copy unrealized
+    try {
+      const copyPositions = await getOpenPositionsWithValues();
+      let copyUnrealized = 0;
+      for (const pos of copyPositions) {
+        if (pos.currentValue !== null) {
+          copyUnrealized += (pos.currentValue ?? 0) - pos.size;
+        }
+      }
+      if (copyPositions.length > 0) {
+        unrealizedLines.push(`Poly Copy: ${copyPositions.length} open ${pnl(copyUnrealized)}`);
+      }
+    } catch { /* non-fatal */ }
+
+    // Insider copy unrealized
+    try {
+      await refreshCopyTradePrices();
+    } catch { /* DexScreener failure non-fatal */ }
+    const openInsider = getOpenCopyTrades();
+    if (openInsider.length > 0) {
+      const insiderUnrealized = openInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      unrealizedLines.push(`Insider: ${openInsider.length} open ${pnl(insiderUnrealized)}`);
+    }
+
+    // Quant unrealized
+    const env = loadEnv();
+    if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY) {
+      const quantPositions = getOpenQuantPositions();
+      if (quantPositions.length > 0) {
+        let quantUnrealized = 0;
+        try {
+          const sdk = getClient();
+          const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+          for (const pos of quantPositions) {
+            const rawMid = mids[pos.pair];
+            if (rawMid) {
+              const currentPrice = parseFloat(rawMid);
+              if (!isNaN(currentPrice)) {
+                quantUnrealized += pos.direction === "long"
+                  ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+                  : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+              }
+            }
+          }
+        } catch { /* prices unavailable */ }
+        unrealizedLines.push(`Quant: ${quantPositions.length} open ${pnl(quantUnrealized)}`);
+      }
+    }
+
+    if (unrealizedLines.length > 0) {
+      message += `\n\n<b>Unrealized</b>\n${unrealizedLines.join("\n")}`;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1049,13 +1077,23 @@ async function handlePnl(ctx: Context): Promise<void> {
   }
 }
 
-function formatBreakdown(cryptoCopy: number, polyCopy: number, aiBetting: number): string {
+function formatBreakdown(
+  cryptoCopy: number,
+  polyCopy: number,
+  aiBetting: number,
+  quantPnl: number,
+  insiderCopyPnl: number,
+  rugPnl: number,
+): string {
   const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
     { name: "Crypto Copy", value: cryptoCopy },
     { name: "Poly Copy", value: polyCopy },
     { name: "AI Bets", value: aiBetting },
+    { name: "Quant", value: quantPnl },
+    { name: "Insider", value: insiderCopyPnl },
+    { name: "Rugs", value: rugPnl },
   ];
 
   const rows = sources.filter(s => s.value !== 0).map(s => `${s.name}: ${pnl(s.value)}`);
@@ -1083,22 +1121,6 @@ async function handleTrades(ctx: Context): Promise<void> {
       message += `<b>Crypto Copy</b> ${cryptoCopyPositions.length} open\n`;
       for (const pos of cryptoCopyPositions) {
         message += `${pos.tokenSymbol} | ${pos.chain} | ${pos.entryAmountNative.toFixed(4)} native\n`;
-      }
-      message += `\n`;
-    }
-
-    // Gem paper trades
-    try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
-    const gemPaperTrades = getOpenGemPaperTrades();
-    if (gemPaperTrades.length > 0) {
-      const totalInvested = gemPaperTrades.reduce((s, t) => s + t.amountUsd, 0);
-      const totalPnlUsd = gemPaperTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      message += `<b>Gem Paper</b> ${gemPaperTrades.length} | ${$(totalInvested)} inv | ${pnl(totalPnlUsd)}\n`;
-      for (const t of gemPaperTrades) {
-        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-        const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
-        message += `${t.tokenSymbol} | ${$(t.amountUsd)} | ${buyPump.toFixed(1)}x | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
-        message += `  @${formatTokenPrice(t.buyPriceUsd)} -> ${formatTokenPrice(t.currentPriceUsd)}\n`;
       }
       message += `\n`;
     }
@@ -1142,7 +1164,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString().slice(0, 5);
         message += `${time} | ${trade.strategy} | ${$(trade.amount)} | ${pnl(trade.pnl)}\n`;
       }
-    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
+    } else if (cryptoCopyPositions.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
       message += "No trades or positions.";
     }
 
@@ -1198,7 +1220,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" | "activity" | "copies" = "wallets", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallets", chain?: string): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -1213,18 +1235,10 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       insiderExtraMessageIds.length = 0;
     }
 
-
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
-    const ago = (ts: number) => { const s = formatTimeAgo(ts); return s.replace(" ago", ""); };
-
     const chainButtons = [
       [
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
-        { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
-        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
-        { text: tab === "copies" ? "* Copies" : "Copies", callback_data: chain ? `insiders_chain_${chain}_copies` : "insiders_copies" },
       ],
       [
         { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
@@ -1242,58 +1256,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
     ];
 
     if (tab === "holding") {
-      const heldGems = getAllHeldGemHits(chain);
-
-      if (heldGems.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insiders - Holding</b>\n\nNo insiders currently holding gems.`, buttons);
-        return;
-      }
-
-      const tokenMap = new Map<string, { symbol: string; chain: string; gems: typeof heldGems }>();
-      for (const gem of heldGems) {
-        const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
-        if (!tokenMap.has(key)) {
-          tokenMap.set(key, { symbol: gem.tokenSymbol, chain: gem.chain, gems: [] });
-        }
-        tokenMap.get(key)?.gems.push(gem);
-      }
-
-      const tokenEntries = Array.from(tokenMap.values()).map((t) => {
-        const holders = t.gems.length;
-        const currentPumps = t.gems.map((g) => g.pumpMultiple || 0);
-        const currentPump = Math.max(...currentPumps);
-        const peakPumps = t.gems.map((g) => g.maxPumpMultiple || g.pumpMultiple || 0);
-        const peakPump = Math.max(...peakPumps);
-        const earliestBuy = Math.min(...t.gems.map((g) => g.buyDate || g.buyTimestamp || Date.now()));
-        const analysis = getCachedGemAnalysis(t.symbol, t.chain, true);
-        const score = analysis && analysis.score !== -1 ? analysis.score : -1;
-        return { symbol: t.symbol, chain: t.chain, holders, currentPump, peakPump, launchTs: earliestBuy, score };
-      });
-
-      const filteredEntries = tokenEntries.filter(t => t.currentPump < 100_000);
-      filteredEntries.sort((a, b) => a.currentPump - b.currentPump || b.launchTs - a.launchTs);
-      const qualifiedEntries = filteredEntries.filter(t => t.score >= 50);
-      const hiddenCount = filteredEntries.length - qualifiedEntries.length;
-      const top30 = qualifiedEntries.slice(0, 30);
-
-      const lines = top30.map((t) => {
-        const chainTag = t.chain.toUpperCase().slice(0, 3);
-        const scoreStr = t.score >= 0 ? `${t.score}` : "?";
-        const peak = Math.max(t.peakPump, t.currentPump);
-        const peakStr = peak > t.currentPump ? ` pk${peak.toFixed(1)}x` : "";
-        const foundStr = ago(t.launchTs);
-        return `${t.symbol} | ${chainTag} | ${scoreStr} | ${t.currentPump.toFixed(1)}x${peakStr} | ${t.holders}w | ${foundStr}`;
-      });
-
-      const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
-      const header = `<b>Insiders - Holding</b>\n\n`;
-      const footer = `\n${qualifiedEntries.length} holdings${hiddenStr}`;
-      const text = header + lines.join("\n") + footer;
-
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(text, buttons);
-
+      await sendDataMessage(`<b>Insiders - Holding</b>\n\nNo insiders currently holding tokens.`, buttons);
       return;
     }
 
@@ -1307,12 +1271,12 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return;
       }
 
-      walletStats.sort((a, b) => b.gemHitCount - a.gemHitCount || b.score - a.score);
+      walletStats.sort((a, b) => b.score - a.score);
 
       const lines = walletStats.map((w) => {
         const addrShort = `0x${w.address.slice(2, 4)}..${w.address.slice(-4)}`;
         const gainSign = w.avgGainPct >= 0 ? "+" : "";
-        return `${addrShort} | ${w.score} | ${w.gemHitCount}g | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
+        return `${addrShort} | ${w.score} | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
       const header = `<b>Insiders - Wallets</b>\n\n`;
@@ -1325,159 +1289,12 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       return;
     }
 
-    if (tab === "opps") {
-      let openPaperTrades = getOpenGemPaperTrades();
-
-      if (chain) {
-        openPaperTrades = openPaperTrades.filter((trade) => trade.chain === chain);
-      }
-
-      if (openPaperTrades.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insiders - Gems</b>\n\nNo gem paper trades yet.`, buttons);
-        return;
-      }
-
-      const lines = openPaperTrades.map((trade) => {
-        const chainTag = trade.chain.toUpperCase().slice(0, 3);
-        const analysis = getCachedGemAnalysis(trade.tokenSymbol, trade.chain, true);
-        const currentScore = (analysis && analysis.score !== -1) ? analysis.score : trade.aiScore;
-        const scoreStr = currentScore !== null && currentScore !== -1 ? `${currentScore}` : "?";
-        const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
-        const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
-
-        const currentPump = trade.buyPriceUsd > 0 && trade.currentPriceUsd > 0
-          ? trade.currentPriceUsd / trade.buyPriceUsd : 0;
-        const sinceBuyStr = currentPump > 0 ? `${currentPump.toFixed(1)}x` : "0.0x";
-        const peakPump = Math.max(getPeakPumpForToken(trade.tokenSymbol, trade.chain), currentPump);
-        const peakStr = peakPump > currentPump ? ` pk${peakPump.toFixed(1)}x` : "";
-        const pctSign = trade.pnlPct >= 0 ? "+" : "";
-        const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }).replace(" ", "");
-
-        const l1 = `${trade.tokenSymbol} | ${chainTag} | ${scoreStr} | ${$(trade.amountUsd)} @ ${buyPriceStr}`;
-        const l2 = `  ${sinceBuyStr}${peakStr} | ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}% | ${buyDate}`;
-        return l1 + "\n" + l2;
-      });
-
-      const header = `<b>Insiders - Gems</b>\n\n`;
-      const totalPnlUsd = openPaperTrades.reduce((sum, trade) => sum + (trade.pnlPct / 100) * trade.amountUsd, 0);
-      const avgPnlPct = openPaperTrades.reduce((sum, trade) => sum + trade.pnlPct, 0) / openPaperTrades.length;
-      const avgSign = avgPnlPct >= 0 ? "+" : "";
-      const footer = `\n${openPaperTrades.length} pos | PnL: ${pnl(totalPnlUsd)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
-      const text = header + lines.join("\n") + footer;
-
-      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(text, buttons);
-
-      return;
-    }
-
-    if (tab === "copies") {
-      await refreshCopyTradePrices();
-
-      let openCopyTrades = getOpenCopyTrades();
-      let closedCopies = getClosedCopyTrades();
-
-      if (chain) {
-        openCopyTrades = openCopyTrades.filter((t) => t.chain === chain);
-        closedCopies = closedCopies.filter((t) => t.chain === chain);
-      }
-
-      if (openCopyTrades.length === 0 && closedCopies.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insiders - Copies</b>\n\nNo copy trades yet.`, buttons);
-        return;
-      }
-
-      // Group open trades by token
-      const tokenGroups = new Map<string, { symbol: string; chain: string; totalInv: number; totalPnlUsd: number; wallets: number }>();
-      for (const t of openCopyTrades) {
-        const key = `${t.tokenAddress}_${t.chain}`;
-        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-        const g = tokenGroups.get(key);
-        if (g) { g.totalInv += t.amountUsd; g.totalPnlUsd += pnlUsd; g.wallets++; }
-        else tokenGroups.set(key, { symbol: t.tokenSymbol, chain: t.chain, totalInv: t.amountUsd, totalPnlUsd: pnlUsd, wallets: 1 });
-      }
-      const sorted = [...tokenGroups.values()].sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
-
-      const unrealPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const realPnl = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const totalInv = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-
-      let text = `<b>Insiders - Copies</b>\n`;
-      text += `${openCopyTrades.length} open | ${$(totalInv)} inv | ${pnl(unrealPnl)} unreal`;
-      if (closedCopies.length > 0) text += ` | ${pnl(realPnl)} real`;
-      text += "\n";
-
-      if (sorted.length > 0) {
-        text += "\n<b>Open</b>\n";
-        for (const g of sorted) {
-          const pct = g.totalInv > 0 ? (g.totalPnlUsd / g.totalInv * 100) : 0;
-          const wStr = g.wallets > 1 ? ` (${g.wallets}w)` : "";
-          text += `${g.symbol} | ${$(g.totalInv)}${wStr} | ${pnl(g.totalPnlUsd)} ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%\n`;
-        }
-      }
-
-      if (closedCopies.length > 0) {
-        text += `\n<b>Closed</b> (${closedCopies.length}) ${pnl(realPnl)}\n`;
-        const reasonCounts = new Map<string, number>();
-        for (const t of closedCopies) reasonCounts.set(t.exitReason || "unknown", (reasonCounts.get(t.exitReason || "unknown") || 0) + 1);
-        const labels: Record<string, string> = { insider_sold: "sold", trailing_stop: "trail", stop_loss: "SL", target_500: "5x", stale_price: "stale", liquidity_rug: "rug", unknown: "?" };
-        const parts: string[] = [];
-        for (const [r, c] of reasonCounts) parts.push(`${labels[r] || r}: ${c}`);
-        if (parts.length > 0) text += parts.join(" | ") + "\n";
-
-        const topClosed = closedCopies.sort((a, b) => Math.abs((b.pnlPct / 100) * b.amountUsd) - Math.abs((a.pnlPct / 100) * a.amountUsd)).slice(0, 5);
-        for (const t of topClosed) {
-          const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-          text += `${t.tokenSymbol} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
-        }
-        if (closedCopies.length > 5) text += `+${closedCopies.length - 5} more\n`;
-      }
-
-      const copyButtons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(text, copyButtons);
-
-      return;
-    }
-
-    if (tab === "activity") {
-      const recentHits = getRecentGemHits(10, chain);
-
-      if (recentHits.length === 0) {
-        const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insiders - Activity</b>\n\nNo insider activity detected yet.`, buttons);
-        return;
-      }
-
-      const lines = recentHits.map((hit) => {
-        const chainTag = hit.chain.toUpperCase().slice(0, 3);
-        const statusStr = hit.status === "sold" ? "SELL" : "BUY";
-        const analysis = getCachedGemAnalysis(hit.tokenSymbol, hit.chain, true);
-        const scoreStr = analysis && analysis.score !== -1 ? `${analysis.score}` : "?";
-        const peak = Math.max(hit.maxPumpMultiple || 0, hit.pumpMultiple || 0);
-        const peakStr = peak > (hit.pumpMultiple || 0) ? ` pk${peak.toFixed(1)}x` : "";
-        const ts = hit.buyTimestamp || hit.buyDate || 0;
-        const foundStr = ts > 0 ? ago(ts) : "?";
-        return `${statusStr} ${hit.tokenSymbol} | ${chainTag} | ${scoreStr} | ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${foundStr}`;
-      });
-
-      const header = `<b>Insiders - Activity</b>\n\n`;
-      const body = lines.join("\n");
-      const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(header + body, buttons);
-      return;
-    }
-
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
-    const chainButtons = [
+    const errorButtons = [
       [
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
-        { text: tab === "activity" ? "* Activity" : "Activity", callback_data: chain ? `insiders_chain_${chain}_activity` : "insiders_activity" },
         { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
-        { text: tab === "opps" ? "* Gems" : "Gems", callback_data: chain ? `insiders_chain_${chain}_opps` : "insiders_opps" },
-        { text: tab === "copies" ? "* Copies" : "Copies", callback_data: chain ? `insiders_chain_${chain}_copies` : "insiders_copies" },
       ],
       [
         { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
@@ -1493,7 +1310,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
       ],
     ];
-    const backButton = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    const backButton = [...errorButtons, [{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch insiders", backButton);
   }
 }
@@ -2009,10 +1826,8 @@ async function handleReset(ctx: Context): Promise<void> {
   const closedStats = getBettingStats();
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
-  const gemTrades = getOpenGemPaperTrades();
   const db = (await import("../database/db.js")).getDb();
   const insiderWalletCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt;
-  const insiderGemHitCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_hits").get() as { cnt: number }).cnt;
   const insiderCopyCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt;
   const quantTradeCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_trades").get() as { cnt: number }).cnt;
   const quantPosCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_positions").get() as { cnt: number }).cnt;
@@ -2023,8 +1838,7 @@ async function handleReset(ctx: Context): Promise<void> {
   message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
   message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
   message += `  Insider Copy: ${insiderCopyCount} trades\n`;
-  message += `  Gem Trades: ${gemTrades.length} open\n`;
-  message += `  Insiders: ${insiderWalletCount} wallets + ${insiderGemHitCount} gem hits\n`;
+  message += `  Insiders: ${insiderWalletCount} wallets\n`;
   message += `  Quant: ${quantTradeCount} trades + ${quantPosCount} positions\n`;
   message += `  Trades + daily stats + caches: all\n\n`;
   message += "<b>This cannot be undone.</b>";
@@ -2079,13 +1893,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 8. Arbitrage positions
     const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
 
-    // 9. Gem paper trades
-    const gemTradesResult = db.prepare("DELETE FROM insider_gem_paper_trades").run();
-
-    // 10. Gem analyses (GoPlus scores cache)
-    const gemAnalysesResult = db.prepare("DELETE FROM insider_gem_analyses").run();
-
-    // 11. Copy outcomes
+    // 9. Copy outcomes
     const copyOutcomesResult = db.prepare("DELETE FROM copy_outcomes").run();
 
     // 12. Calibration data
@@ -2098,7 +1906,6 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
 
     // 14. Insider data
     const insiderWalletsResult = db.prepare("DELETE FROM insider_wallets").run();
-    const insiderGemHitsResult = db.prepare("DELETE FROM insider_gem_hits").run();
 
     // 15. Quant trades + positions + config
     const quantTradesResult = db.prepare("DELETE FROM quant_trades").run();
@@ -2118,10 +1925,9 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
       + polyCopiesDeleted + cryptoResult.changes + insiderCopyResult.changes
       + tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes
-      + gemTradesResult.changes + gemAnalysesResult.changes
       + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
       + calLogResult.changes + whaleResult.changes
-      + insiderWalletsResult.changes + insiderGemHitsResult.changes
+      + insiderWalletsResult.changes
       + quantTradesResult.changes + quantPosResult.changes + quantConfigResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
@@ -2131,8 +1937,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
     message += `Insider copies: ${insiderCopyResult.changes} records\n`;
-    message += `Gem trades: ${gemTradesResult.changes} + ${gemAnalysesResult.changes} scores\n`;
-    message += `Insiders: ${insiderWalletsResult.changes} wallets + ${insiderGemHitsResult.changes} gem hits\n`;
+    message += `Insiders: ${insiderWalletsResult.changes} wallets\n`;
     message += `Quant: ${quantTradesResult.changes} trades + ${quantPosResult.changes} positions\n`;
     message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
     message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
@@ -2220,15 +2025,12 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     db.prepare("DELETE FROM positions").run();
     db.prepare("DELETE FROM daily_stats").run();
     db.prepare("DELETE FROM arbitrage_positions").run();
-    db.prepare("DELETE FROM insider_gem_paper_trades").run();
-    db.prepare("DELETE FROM insider_gem_analyses").run();
     db.prepare("DELETE FROM copy_outcomes").run();
     db.prepare("DELETE FROM calibration_predictions").run();
     db.prepare("DELETE FROM calibration_scores").run();
     db.prepare("DELETE FROM calibration_log").run();
     db.prepare("DELETE FROM whale_trades").run();
     db.prepare("DELETE FROM insider_wallets").run();
-    db.prepare("DELETE FROM insider_gem_hits").run();
     db.prepare("DELETE FROM quant_trades").run();
     db.prepare("DELETE FROM quant_positions").run();
     db.prepare("DELETE FROM quant_config").run();
@@ -2622,7 +2424,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
-  text += `Balance: ${$(balance)} | Positions: ${openPositions.length} | Daily Loss: ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT}\n`;
+  text += `${$(balance)} bal | ${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
 
   let mids: Record<string, string> = {};
   if (openPositions.length > 0) {
@@ -2637,7 +2439,6 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     const posLines: string[] = [];
     for (const pos of openPositions) {
-      const tag = pos.tradeType === "funding" ? "[F] " : "    ";
       const dir = pos.direction === "long" ? "L" : "S";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
@@ -2651,44 +2452,27 @@ async function handleQuant(ctx: Context): Promise<void> {
           upnlStr = ` ${pnl(unrealizedPnl)}`;
         }
       }
-      posLines.push(`${tag}${dir} ${pos.pair} | ${$(pos.size)} | @${pos.entryPrice} ${pos.leverage}x${upnlStr}`);
+      posLines.push(`${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`);
     }
-    text += `\n<b>Pos</b>\n${posLines.join("\n")}\n`;
-  }
-
-  const recentTrades = loadClosedQuantTrades(5);
-  if (recentTrades.length > 0) {
-    const tradeLines: string[] = [];
-    for (const t of recentTrades) {
-      const dir = t.direction === "long" ? "L" : "S";
-      tradeLines.push(`${dir} ${t.pair} | ${$(t.size)} | ${pnl(t.pnl)}`);
-    }
-    text += `\n<b>Trades</b>\n${tradeLines.join("\n")}\n`;
+    text += `\n${posLines.join("\n")}\n`;
   }
 
   const directionalPnl = directionalStats.totalPnl;
   const fundingPnl = funding.totalIncome;
   const totalPnl = directionalPnl + fundingPnl;
+  const totalTrades = directionalStats.totalTrades + funding.tradeCount;
+  const winRate = directionalStats.totalTrades > 0 ? directionalStats.winRate.toFixed(0) : 0;
 
-  const pnlLines: string[] = [];
-  pnlLines.push(`Directional: ${pnl(directionalPnl)} | ${directionalStats.totalTrades}t ${directionalStats.winRate.toFixed(0)}%w`);
-  pnlLines.push(`Funding: ${pnl(fundingPnl)} | ${funding.tradeCount}t`);
-  pnlLines.push(`Total: ${pnl(totalPnl)}`);
-  text += `\n<b>P&L</b>\n${pnlLines.join("\n")}\n`;
+  text += `\n${pnl(totalPnl)} total | ${totalTrades} trades | ${winRate}% win\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
-  const daysRemaining = Math.max(0, QUANT_PAPER_VALIDATION_DAYS - daysElapsed);
 
-  const valLines: string[] = [];
-  valLines.push(`Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} | Sharpe ${validation.sharpeRatio.toFixed(2)}`);
-  valLines.push(`Drawdown: ${validation.maxDrawdownPct.toFixed(1)}% | Avg Duration: ${validation.avgTradeDurationHours.toFixed(1)}h`);
   if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
-    valLines.push("Ready for live");
+    text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} — ready for live\n`;
   } else {
-    valLines.push(`${daysRemaining} days left`);
+    text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} paper validation\n`;
   }
-  text += `\n<b>Validation</b>\n${valLines.join("\n")}\n`;
 
   const buttons: { text: string; callback_data: string }[][] = [];
   if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS && isPaperMode()) {

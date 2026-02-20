@@ -1,16 +1,10 @@
-import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
+import type { EvmChain, ScanChain, PumpedToken, InsiderScanResult } from "./types.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
 import { loadEnv } from "../../config/env.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
+import { upsertInsiderWallet, deleteInsiderWalletsBelow } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
-import { analyzeGemsBackground, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
-import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
-
-function stripEmoji(s: string): string {
-  return s.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
-}
 
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
@@ -78,27 +72,6 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   const exhaustedEndpoint = url.replace("https://api.geckoterminal.com/api/v2", "").slice(0, 60);
   console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${exhaustedEndpoint}`);
   return response;
-}
-
-// Fetch launch price from GeckoTerminal OHLCV (earliest daily candle open)
-async function fetchLaunchPrice(chain: ScanChain, pairAddress: string): Promise<number> {
-  if (!pairAddress) return 0;
-  const network = GECKO_NETWORK_IDS[chain];
-  if (!network) return 0;
-  try {
-    const url = `${GECKO_BASE}/networks/${network}/pools/${pairAddress}/ohlcv/day?limit=200&currency=usd`;
-    const resp = await geckoRateLimitedFetch(url);
-    if (!resp.ok) return 0;
-    const data = await resp.json() as { data?: { attributes?: { ohlcv_list?: number[][] } } };
-    const candles = data?.data?.attributes?.ohlcv_list;
-    if (!candles || candles.length === 0) return 0;
-    // Candles are newest-first; last = earliest
-    const earliest = candles[candles.length - 1];
-    const openPrice = earliest[1];
-    return openPrice > 0 ? openPrice : 0;
-  } catch {
-    return 0;
-  }
 }
 
 // Rate limiting for Etherscan (220ms between requests, per chain)
@@ -458,265 +431,6 @@ export async function getWalletTokenPnl(
   return { buyTokens, sellTokens, status, buyDate, sellDate };
 }
 
-// Busy guard to prevent overlapping history scans
-let historyInProgress = false;
-
-// Scan historical wallet transactions for additional gem hits
-export async function scanWalletHistory(): Promise<void> {
-  if (historyInProgress) {
-    console.log("[InsiderScanner] History: Skipping (previous scan still running)");
-    return;
-  }
-  historyInProgress = true;
-  try {
-    await _scanWalletHistoryInner();
-  } finally {
-    historyInProgress = false;
-  }
-}
-
-async function _scanWalletHistoryInner(): Promise<void> {
-  const candidates = getPromisingWalletsForHistoryScan(INSIDER_CONFIG.MIN_GEM_HITS, 20); // Query gem_hits directly, bypass insider_wallets table
-
-  console.log(`[InsiderScanner] History: Scanning ${candidates.length} wallets`);
-
-  for (const wallet of candidates) {
-    // Skip chains without working explorer APIs
-    if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
-
-    try {
-      // Query all token transfers for this wallet (no contractaddress filter)
-      const url = buildExplorerUrl(wallet.chain as EvmChain, `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc`);
-      const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
-      if (!response.ok) {
-        console.log(`[InsiderScanner] History: HTTP ${response.status} for ${wallet.address.slice(0, 8)}`);
-        continue;
-      }
-      const data = (await response.json()) as {
-        status: string;
-        result: Array<{
-          contractAddress: string;
-          tokenSymbol: string;
-          tokenDecimal: string;
-          timeStamp: string;
-        }>;
-      };
-
-      if (data.status !== "1" || !Array.isArray(data.result)) {
-        console.log(
-          `[InsiderScanner] History: ${wallet.address.slice(0, 8)} - no transfers found (status=${data.status}, resultType=${typeof data.result}, resultLength=${Array.isArray(data.result) ? data.result.length : String(data.result).slice(0, 80)})`
-        );
-        continue;
-      }
-
-      // Build map of unique token addresses
-      const tokenMap = new Map<string, { symbol: string; firstTx: number }>();
-      for (const tx of data.result) {
-        const tokenAddr = tx.contractAddress.toLowerCase();
-        if (!tokenMap.has(tokenAddr)) {
-          tokenMap.set(tokenAddr, {
-            symbol: tx.tokenSymbol || "UNKNOWN",
-            firstTx: parseInt(tx.timeStamp) * 1000,
-          });
-        }
-      }
-
-      // Get existing gems for this wallet to avoid duplicates
-      const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
-      const existingTokens = new Set(existingGems.map(g => g.tokenAddress.toLowerCase()));
-
-      // Filter to new tokens only, cap at MAX_HISTORY_TOKENS
-      const newTokens = Array.from(tokenMap.entries())
-        .filter(([addr]) => !existingTokens.has(addr))
-        .slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS);
-
-      // Batch fetch all tokens at once (~7 API calls instead of ~200)
-      const batchTokens = newTokens.map(([addr]) => ({ chain: wallet.chain, tokenAddress: addr }));
-      const batchResults = await dexScreenerFetchBatch(batchTokens);
-      console.log(`[InsiderScanner] History: Batch fetched ${batchResults.size}/${newTokens.length} tokens for ${wallet.address.slice(0, 8)}`);
-
-      let checkedCount = 0;
-      let newGemsCount = 0;
-
-      for (const [tokenAddress, tokenInfo] of newTokens) {
-        try {
-          let pair = batchResults.get(tokenAddress) ?? null;
-          // Fallback for tokens not found in batch (includes GeckoTerminal)
-          if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
-            pair = await dexScreenerFetch(wallet.chain, tokenAddress);
-          }
-          checkedCount++;
-
-          if (!pair) continue;
-
-          const fdvUsd = pair.fdv || 0;
-          const reserveUsd = pair.liquidity?.usd || 0;
-
-          if (fdvUsd < INSIDER_CONFIG.HISTORY_MIN_FDV_USD && reserveUsd < 1000) {
-            continue;
-          }
-          if (fdvUsd > 10_000_000) continue;
-
-          // Fetch launch price from OHLCV for accurate pump
-          let launchPriceUsd = 0;
-          const priceUsd = parseFloat(pair.priceUsd || "0");
-          if (pair.pairAddress) {
-            launchPriceUsd = await fetchLaunchPrice(wallet.chain as EvmChain, pair.pairAddress);
-          }
-          const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
-            ? priceUsd / launchPriceUsd
-            : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
-          const symbol = pair.baseToken?.symbol || tokenInfo.symbol;
-
-          const hit: GemHit = {
-            walletAddress: wallet.address,
-            chain: wallet.chain as ScanChain,
-            tokenAddress,
-            tokenSymbol: stripEmoji(symbol),
-            buyTxHash: "",
-            buyTimestamp: tokenInfo.firstTx,
-            buyBlockNumber: 0,
-            pumpMultiple,
-            launchPriceUsd,
-          };
-          upsertGemHit(hit);
-          newGemsCount++;
-        } catch {
-          continue;
-        }
-      }
-
-      console.log(
-        `[InsiderScanner] History: ${wallet.address.slice(0, 8)} - checked ${checkedCount} tokens, found ${newGemsCount} new gems`
-      );
-
-      // Delay between wallets
-      await new Promise((r) => setTimeout(r, 500));
-    } catch (err) {
-      console.error(`[InsiderScanner] History scan error for ${wallet.address}:`, err);
-      continue;
-    }
-  }
-}
-
-// Enrich gem hits with P&L data (non-blocking, runs after scan)
-export async function enrichInsiderPnl(): Promise<void> {
-  const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
-
-  for (const wallet of insiders) {
-    const hits = getGemHitsForWallet(wallet.address, wallet.chain);
-
-    for (const hit of hits) {
-      if (hit.status === 'sold' || hit.status === 'transferred') continue; // Terminal status, skip
-
-      try {
-        const pnl = await getWalletTokenPnl(hit.walletAddress, hit.tokenAddress, hit.chain);
-        updateGemHitPnl(hit.walletAddress, hit.tokenAddress, hit.chain, pnl.buyTokens, pnl.sellTokens, pnl.status, pnl.buyDate, pnl.sellDate);
-        console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
-
-        // Auto-close paper trade when high-score insider sells
-        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
-          const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
-          if (paperTrade && paperTrade.status === "open") {
-            await sellGemPosition(hit.tokenSymbol, hit.chain);
-            console.log(`[InsiderScanner] Auto-close: ${hit.tokenSymbol} (insider score ${wallet.score} ${pnl.status})`);
-          }
-        }
-      } catch (err) {
-        console.error(`[InsiderScanner] P&L enrichment failed for ${hit.tokenSymbol}:`, err);
-      }
-
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  }
-}
-
-export async function updateHeldGemPrices(): Promise<void> {
-  const heldGems = getAllHeldGemHits();
-
-  // Deduplicate by token+chain (many wallets may hold same token)
-  const uniqueTokens = new Map<string, { tokenAddress: string; chain: ScanChain; symbol: string; oldMultiple: number; launchPrice: number }>();
-  for (const gem of heldGems) {
-    const key = `${gem.tokenAddress}_${gem.chain}`;
-    if (!uniqueTokens.has(key)) {
-      uniqueTokens.set(key, {
-        tokenAddress: gem.tokenAddress,
-        chain: gem.chain,
-        symbol: gem.tokenSymbol,
-        oldMultiple: gem.pumpMultiple,
-        launchPrice: gem.launchPriceUsd || 0,
-      });
-    }
-  }
-
-  if (uniqueTokens.size === 0) return;
-
-  console.log(`[InsiderScanner] Updating prices for ${uniqueTokens.size} held tokens`);
-  let updated = 0;
-
-  // Batch fetch all prices at once
-  const tokenArray = Array.from(uniqueTokens.values()).map((t) => ({
-    chain: t.chain,
-    tokenAddress: t.tokenAddress,
-  }));
-  const priceMap = await dexScreenerFetchBatch(tokenArray);
-
-  // Backfill launch prices for tokens missing them (max 3 per cycle)
-  let backfilled = 0;
-  for (const [, token] of uniqueTokens) {
-    if (token.launchPrice > 0 || token.tokenAddress.endsWith("pump") || backfilled >= 3) continue;
-    const addrKey = token.tokenAddress.toLowerCase();
-    const pair = priceMap.get(addrKey);
-    if (pair?.pairAddress) {
-      const lp = await fetchLaunchPrice(token.chain, pair.pairAddress);
-      if (lp > 0) {
-        token.launchPrice = lp;
-        setLaunchPrice(token.tokenAddress, token.chain, lp);
-        console.log(`[InsiderScanner] Launch price: ${token.symbol} = $${lp.toFixed(8)}`);
-        backfilled++;
-      }
-    }
-  }
-
-  for (const [, token] of uniqueTokens) {
-    const addrKey = token.tokenAddress.toLowerCase();
-    let pair = priceMap.get(addrKey);
-
-    // Single fetch fallback (includes Gecko)
-    if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
-      pair = (await dexScreenerFetch(token.chain, token.tokenAddress)) ?? undefined;
-    }
-    if (!pair) continue;
-
-    const priceUsd = parseFloat(pair.priceUsd || "0");
-    const fdvUsd = pair.fdv || 0;
-
-    if (priceUsd > 0 || fdvUsd > 0) {
-      const isPumpFun = token.tokenAddress.endsWith("pump");
-      if (fdvUsd > 10_000_000 && !isPumpFun) continue;
-      // Use launch price when available, fall back to Pump.fun formula or FDV ratio
-      let newMultiple: number;
-      if (token.launchPrice > 0 && priceUsd > 0) {
-        newMultiple = priceUsd / token.launchPrice;
-      } else if (isPumpFun && priceUsd > 0) {
-        newMultiple = priceUsd / 0.000069;
-      } else {
-        newMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
-      }
-      const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
-      if (changeRatio > 0.1) {
-        updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
-        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd.toFixed(6)})`);
-        updated++;
-      }
-    }
-  }
-
-  if (updated > 0) {
-    console.log(`[InsiderScanner] Updated ${updated}/${uniqueTokens.size} held token prices`);
-  }
-}
-
 // Chain rotation state (rotates 3 chains per cycle through all 6)
 let lastChainIndex = 0;
 
@@ -751,21 +465,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
           const earlyBuyers = await findEarlyBuyers(token);
           result.walletsAnalyzed += earlyBuyers.length;
 
-          // Store each (wallet, token) pair as a GemHit
-          for (const buyer of earlyBuyers) {
-            const hit: GemHit = {
-              walletAddress: buyer,
-              chain,
-              tokenAddress: token.tokenAddress,
-              tokenSymbol: stripEmoji(token.symbol),
-              buyTxHash: "", // Not tracked individually
-              buyTimestamp: token.discoveredAt,
-              buyBlockNumber: 0,
-              pumpMultiple: token.priceChangeH24 / 100 + 1, // Convert % to multiple
-            };
-            upsertGemHit(hit);
-          }
-
           // 500ms delay between tokens
           await new Promise((r) => setTimeout(r, 500));
         } catch (err) {
@@ -784,7 +483,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     await new Promise((r) => setTimeout(r, INSIDER_CONFIG.INTER_CHAIN_DELAY_MS));
   }
 
-  // Multi-factor wallet scoring (0-100)
+  // Multi-factor wallet scoring (0-100) - now based on copy trades
   function computeWalletScore(wallet: {
     gem_count: number;
     avg_pump: number;
@@ -793,10 +492,10 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     first_seen: number;
     last_seen: number;
   }): number {
-    // 1. Gem count (30 points max) - need 100+ gems for max, 50=20, 20=13, 10=8
+    // 1. Gem count (30 points max)
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
 
-    // 2. Average pump multiple (30 points max) - need 50x+ for max
+    // 2. Average pump multiple (30 points max)
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
 
     // 3. Hold rate (20 points max)
@@ -811,35 +510,25 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     return Math.min(100, total);
   }
 
-  // Recalculate insider wallets from gem_hits
+  // Recalculate insider wallets from copy_trades
   try {
     const db = getDb();
 
-    const totalGems = (db.prepare("SELECT COUNT(*) as cnt FROM insider_gem_hits").get() as { cnt: number }).cnt;
-    const quickFlips = (db.prepare(`
-      SELECT COUNT(*) as cnt FROM insider_gem_hits
-      WHERE status = 'sold' AND sell_date > 0 AND buy_date > 0
-        AND (sell_date - buy_date) < ?
-    `).get(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS) as { cnt: number }).cnt;
-
-    if (quickFlips > 0) {
-      console.log(`[InsiderScanner] Filtered ${quickFlips}/${totalGems} gem hits as sniper bot flips (<24h hold)`);
-    }
-
+    // Score wallets based on copy trade performance
     const walletGroups = db.prepare(`
-      SELECT wallet_address, chain, COUNT(*) as gem_count,
+      SELECT wallet_address, chain,
+             COUNT(*) as gem_count,
              GROUP_CONCAT(DISTINCT token_symbol) as token_symbols,
              MIN(buy_timestamp) as first_seen,
              MAX(buy_timestamp) as last_seen,
-             AVG(pump_multiple) as avg_pump,
-             SUM(CASE WHEN (status = 'holding' OR status IS NULL OR status = 'unknown') THEN 1 ELSE 0 END) as holding_count,
+             AVG(CASE WHEN pnl_pct > 0 THEN pnl_pct / 100 + 1 ELSE 1 END) as avg_pump,
+             SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as holding_count,
              COUNT(DISTINCT token_address) as unique_tokens
-      FROM insider_gem_hits
-      WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
-            AND (sell_date - buy_date) < ?)
+      FROM insider_copy_trades
+      WHERE status IN ('open', 'closed')
       GROUP BY wallet_address, chain
       HAVING gem_count >= ?
-    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS) as Array<{
+    `).all(INSIDER_CONFIG.MIN_GEM_HITS) as Array<{
       wallet_address: string;
       chain: EvmChain;
       gem_count: number;
@@ -855,7 +544,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     let qualifiedCount = 0;
 
     for (const group of walletGroups) {
-      const gems = group.token_symbols.split(",").filter(Boolean);
+      const gems = group.token_symbols ? group.token_symbols.split(",").filter(Boolean) : [];
       const score = computeWalletScore(group);
       scores.push(score);
 
@@ -873,7 +562,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       }
     }
 
-    const { deleteInsiderWalletsBelow } = await import("./storage.js");
     const deleted = deleteInsiderWalletsBelow(WATCHER_CONFIG.MIN_WALLET_SCORE);
     if (deleted > 0) {
       console.log(`[InsiderScanner] Removed ${deleted} wallets below score ${WATCHER_CONFIG.MIN_WALLET_SCORE}`);
@@ -893,59 +581,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     result.errors.push(msg);
   }
 
-  // Enrich P&L data (non-blocking)
-  enrichInsiderPnl().catch(err => {
-    console.error("[InsiderScanner] P&L enrichment error:", err);
-  });
-
-  // Scan historical wallet transactions (non-blocking)
-  scanWalletHistory().catch(err => {
-    console.error("[InsiderScanner] History scan error:", err);
-  });
-
-  // Update held gem prices (non-blocking)
-  updateHeldGemPrices().catch(err => {
-    console.error("[InsiderScanner] Held gem price update error:", err);
-  });
-
-  // Refresh paper trade prices (non-blocking)
-  refreshGemPaperPrices().catch(err => {
-    console.error("[InsiderScanner] Paper price refresh error:", err);
-  });
-
-  // Auto-score and paper-buy unscored or unbought held gems (non-blocking)
-  try {
-    const heldGems = getAllHeldGemHits();
-    const tokensToProcess = new Map<string, { symbol: string; chain: string; currentPump: number; tokenAddress: string }>();
-    for (const gem of heldGems) {
-      const key = `${gem.tokenSymbol.toLowerCase()}_${gem.chain}`;
-      if (tokensToProcess.has(key)) continue;
-      const cached = getCachedGemAnalysis(gem.tokenSymbol, gem.chain);
-      const NEAR_THRESHOLD_RESCORE_MS = 2 * 60 * 60 * 1000;
-      const existingTrade = getGemPaperTrade(gem.tokenSymbol, gem.chain);
-      const noOpenTrade = !existingTrade || existingTrade.status === "closed";
-      if (!cached ||
-          (cached.score >= INSIDER_CONFIG.MIN_GEM_SCORE && noOpenTrade) ||
-          (cached.score >= INSIDER_CONFIG.RESCORE_THRESHOLD && cached.score < INSIDER_CONFIG.MIN_GEM_SCORE && Date.now() - cached.analyzedAt > NEAR_THRESHOLD_RESCORE_MS)) {
-        tokensToProcess.set(key, {
-          symbol: gem.tokenSymbol,
-          chain: gem.chain,
-          currentPump: gem.pumpMultiple,
-          tokenAddress: gem.tokenAddress,
-        });
-      }
-    }
-    if (tokensToProcess.size > 0) {
-      console.log(`[InsiderScanner] Auto-scoring ${tokensToProcess.size} unscored/unbought gems`);
-      analyzeGemsBackground(Array.from(tokensToProcess.values()));
-    }
-  } catch (err) {
-    console.error("[InsiderScanner] Auto-score error:", err);
-  }
-
   console.log(
     `[InsiderScanner] Scan complete: ${result.pumpedTokensFound} pumped tokens, ${result.walletsAnalyzed} wallets, ${result.insidersFound} insiders`
   );
 
   return result;
 }
+
+

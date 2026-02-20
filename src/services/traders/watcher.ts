@@ -1,10 +1,10 @@
-import type { EvmChain, GemHit } from "./types.js";
-import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount } from "./storage.js";
+import type { EvmChain } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
+import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
-import { analyzeGem, buyGems, sellGemPosition, fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
+import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
-import { notifyInsiderBuyDetected, notifyCopyTrade } from "../telegram/notifications.js";
+import { notifyCopyTrade } from "../telegram/notifications.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
 
@@ -22,15 +22,6 @@ async function watchInsiderWallets(): Promise<void> {
     console.log("[InsiderWatcher] No qualified wallets to watch");
     return;
   }
-
-  // Gem path: one per token
-  const newTokensGlobal = new Map<string, {
-    walletAddress: string;
-    walletScore: number;
-    tokenAddress: string;
-    tokenSymbol: string;
-    chain: string;
-  }>();
 
   // Copy path: all wallet+token pairs
   const allWalletBuys: Array<{
@@ -106,18 +97,6 @@ async function watchInsiderWallets(): Promise<void> {
       });
 
       for (const tx of recentOutgoing) {
-        const symbol = tx.tokenSymbol || "";
-        const chain = wallet.chain;
-        const paperTrade = getGemPaperTrade(symbol, chain);
-        if (paperTrade && paperTrade.status === "open") {
-          try {
-            await sellGemPosition(symbol, chain);
-            console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
-          } catch (err) {
-            console.error(`[InsiderWatcher] Failed to sell ${symbol}:`, err instanceof Error ? err.message : err);
-          }
-        }
-
         // Close ALL copy trade positions for this token when any insider sells
         const primaryTrade = getOpenCopyTradeByToken(tx.contractAddress, wallet.chain);
         if (primaryTrade) {
@@ -139,19 +118,13 @@ async function watchInsiderWallets(): Promise<void> {
 
       if (recentIncoming.length === 0) continue;
 
-      // Avoid duplicates
-      const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
-      const existingTokens = new Set(existingGems.map((g) => g.tokenAddress.toLowerCase()));
-
       // Collect new tokens
       let walletNewCount = 0;
       for (const tx of recentIncoming) {
         if (walletNewCount >= WATCHER_CONFIG.MAX_NEW_TOKENS_PER_WALLET) break;
 
         const tokenAddress = tx.contractAddress.toLowerCase();
-        if (existingTokens.has(tokenAddress)) continue;
 
-        const globalKey = `${tokenAddress}_${wallet.chain}`;
         const buyInfo = {
           walletAddress: wallet.address,
           walletScore: wallet.score,
@@ -159,10 +132,6 @@ async function watchInsiderWallets(): Promise<void> {
           tokenSymbol: tx.tokenSymbol || "UNKNOWN",
           chain: wallet.chain,
         };
-
-        if (!newTokensGlobal.has(globalKey)) {
-          newTokensGlobal.set(globalKey, buyInfo);
-        }
 
         allWalletBuys.push(buyInfo);
         walletNewCount++;
@@ -174,80 +143,6 @@ async function watchInsiderWallets(): Promise<void> {
   }
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
-
-  // Cache pairs for copy path reuse
-  const pairCache = new Map<string, import("../shared/dexscreener.js").DexPair | null>();
-
-  // Gem scoring path (filtered)
-  for (const [globalKey, tokenInfo] of newTokensGlobal) {
-    try {
-      const pair = await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress);
-      pairCache.set(globalKey, pair);
-      if (!pair) continue;
-
-      const fdvUsd = pair.fdv || 0;
-      const liquidityUsd = pair.liquidity?.usd || 0;
-      const priceUsd = parseFloat(pair.priceUsd || "0");
-
-      if (fdvUsd > 10_000_000 || liquidityUsd < 2000) continue;
-
-      let pumpMultiple = 1;
-      const isPumpFun = tokenInfo.tokenAddress.endsWith("pump");
-      if (isPumpFun && priceUsd > 0) {
-        pumpMultiple = priceUsd / 0.000069;
-      } else if (fdvUsd > 0) {
-        pumpMultiple = fdvUsd / 10000;
-      }
-
-      if (pumpMultiple >= WATCHER_CONFIG.MAX_BUY_PUMP) continue;
-
-      const symbol = pair.baseToken?.symbol || tokenInfo.tokenSymbol;
-
-      const hit: GemHit = {
-        walletAddress: tokenInfo.walletAddress,
-        chain: tokenInfo.chain as import("./types.js").ScanChain,
-        tokenAddress: tokenInfo.tokenAddress,
-        tokenSymbol: symbol,
-        buyTxHash: "",
-        buyTimestamp: Date.now(),
-        buyBlockNumber: 0,
-        pumpMultiple,
-        launchPriceUsd: isPumpFun ? 0.000069 : 0,
-      };
-      upsertGemHit(hit);
-
-      const analysis = await analyzeGem(symbol, tokenInfo.chain, tokenInfo.tokenAddress);
-      const gemScore = analysis.score;
-
-      console.log(`[InsiderWatcher] Detected: ${tokenInfo.walletAddress.slice(0, 8)} bought ${symbol} on ${tokenInfo.chain} (score: ${gemScore})`);
-
-      let action: string;
-      if (gemScore >= INSIDER_CONFIG.MIN_GEM_SCORE) {
-        await buyGems([{
-          symbol,
-          chain: tokenInfo.chain,
-          currentPump: pumpMultiple,
-          score: gemScore,
-          tokenAddress: tokenInfo.tokenAddress,
-        }]);
-        action = `scored ${gemScore}, paper-bought`;
-      } else {
-        action = `scored ${gemScore}, skipped (threshold: ${INSIDER_CONFIG.MIN_GEM_SCORE})`;
-      }
-
-      await notifyInsiderBuyDetected({
-        walletAddress: tokenInfo.walletAddress,
-        walletScore: tokenInfo.walletScore,
-        tokenSymbol: symbol,
-        tokenAddress: tokenInfo.tokenAddress,
-        chain: tokenInfo.chain,
-        gemScore,
-        action,
-      }).catch(err => console.error("[InsiderWatcher] Notification error:", err));
-    } catch (err) {
-      console.error(`[InsiderWatcher] Error processing token ${tokenInfo.tokenAddress}:`, err);
-    }
-  }
 
   // Copy-trade path (deduplicate by token - one position per token, accumulate on repeat)
   for (const tokenInfo of allWalletBuys) {
@@ -274,12 +169,7 @@ async function watchInsiderWallets(): Promise<void> {
         }
       }
 
-      const globalKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
-      let pair = pairCache.get(globalKey) ?? null;
-      // Fallback fetch if gem path didn't cache this token (e.g. filtered by FDV/pump)
-      if (!pair) {
-        pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
-      }
+      const pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
       const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
       const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;

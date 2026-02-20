@@ -108,24 +108,6 @@ export interface PumpedToken {
   discoveredAt: number;
 }
 
-export interface GemHit {
-  walletAddress: string;
-  chain: ScanChain;
-  tokenAddress: string;
-  tokenSymbol: string;
-  buyTxHash: string;
-  buyTimestamp: number;
-  buyBlockNumber: number;
-  pumpMultiple: number;
-  maxPumpMultiple?: number;
-  buyTokens?: number;
-  sellTokens?: number;
-  status?: "holding" | "sold" | "partial" | "transferred" | "unknown";
-  buyDate?: number;
-  sellDate?: number;
-  launchPriceUsd?: number;
-}
-
 export interface InsiderWallet {
   address: string;
   chain: ScanChain;
@@ -146,11 +128,7 @@ export interface InsiderScanResult {
 export const INSIDER_CONFIG = {
   MIN_PUMP_MULTIPLE: 3, // 3x pump
   MIN_GEM_HITS: 3, // 3+ gems to be considered insider
-  MIN_GEM_SCORE: 70, // min score to paper-buy
-  RESCORE_THRESHOLD: 50, // re-analyze gems near buy threshold
   MAX_BUY_PUMP: 20, // skip buying if already pumped this much
-  QUALITY_GEM_HITS: 5, // gem hits required for insider quality scoring
-  MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],

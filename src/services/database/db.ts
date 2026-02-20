@@ -326,6 +326,16 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated daily_stats: added P&L breakdown columns");
   }
 
+  // Migration: Add quant/insider/rug P&L breakdown columns to daily_stats
+  if (!dailyStatsColumnNames.includes("quant_pnl")) {
+    db.exec(`
+      ALTER TABLE daily_stats ADD COLUMN quant_pnl REAL DEFAULT 0;
+      ALTER TABLE daily_stats ADD COLUMN insider_copy_pnl REAL DEFAULT 0;
+      ALTER TABLE daily_stats ADD COLUMN rug_pnl REAL DEFAULT 0;
+    `);
+    console.log("[Database] Migrated daily_stats: added quant/insider/rug P&L columns");
+  }
+
   // Migration: Add trade_type column to quant_trades and quant_positions (for funding arb tracking)
   const quantTradesCols = db.pragma("table_info(quant_trades)") as Array<{ name: string }>;
   const qtColNames = quantTradesCols.map((c) => c.name);

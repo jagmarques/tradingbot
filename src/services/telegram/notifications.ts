@@ -184,17 +184,15 @@ export async function notifyInsiderBuyDetected(params: {
   tokenSymbol: string;
   tokenAddress: string;
   chain: string;
-  gemScore?: number;
   action: string;
 }): Promise<void> {
-  const scoreStr = params.gemScore !== undefined ? ` (gem score: ${params.gemScore})` : "";
   const message =
     `👀 <b>INSIDER BUY DETECTED</b>\n\n` +
     `Wallet: ${escapeHtml(params.walletAddress.slice(0, 8))}...\n` +
     `Wallet score: ${params.walletScore}\n` +
     `Chain: ${escapeHtml(params.chain)}\n\n` +
     `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
-    `Address: ${escapeHtml(params.tokenAddress.slice(0, 10))}...${scoreStr}\n\n` +
+    `Address: ${escapeHtml(params.tokenAddress.slice(0, 10))}...\n\n` +
     `Action: ${escapeHtml(params.action)}`;
   await sendMessage(message);
 }

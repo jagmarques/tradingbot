@@ -1,6 +1,6 @@
 # Trading Bot
 
-Polymarket AI betting, Polymarket copy trading, EVM insider copy trades, gem paper trades, Hyperliquid quant trading. TypeScript, Docker, Coolify.
+Polymarket AI betting, Polymarket copy trading, EVM insider copy trading, Hyperliquid quant trading, rug monitoring. TypeScript, Docker, Coolify.
 
 ## Strategies
 
@@ -8,7 +8,7 @@ Polymarket AI betting, Polymarket copy trading, EVM insider copy trades, gem pap
 
 Scans markets, fetches news via GDELT, runs blind probability estimation with DeepSeek R1, evaluates with Kelly criterion, places bets.
 
-**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1 x2 ensemble) -> Evaluator (Kelly + Bayesian) -> Executor (CLOB/Paper)
+**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1) -> Evaluator (Kelly) -> Executor (CLOB/Paper)
 
 - Blind probability: market prices hidden from AI to prevent anchoring
 - Round-number debiasing: R1 avoids 40%, 35%, uses 37%, 43%
@@ -24,45 +24,6 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 
 Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with median entry >95c or <5c. Settlement-trader filter excludes traders where >50% of trades are within 2h of expiry.
 
-### Insider Gem Scanner
-
-Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat winners as insiders.
-
-**Chains:** Ethereum, Base, Arbitrum, Polygon, Optimism, Avalanche
-
-**Pipeline:** GeckoTerminal (trending/new/top pools) -> Early buyer detection (Etherscan) -> Wallet tracking -> Insider scoring -> Security checks -> Paper/live buy
-
-**Insider qualification:** 3+ gem hits, sniper bot filter (<24h hold excluded)
-
-**Wallet scoring (0-100):**
-
-| Factor | Weight | Description |
-|--------|--------|-------------|
-| Gem count | 30pts | Log-scaled, need 100+ for max |
-| Avg pump | 30pts | Sqrt curve, need 50x+ for max |
-| Hold rate | 20pts | % of gems still held |
-| Recency | 20pts | Decays over 90 days |
-
-**Gem scoring (0-100):**
-
-| Category | Weight | Source | Criteria |
-|----------|--------|--------|----------|
-| Liquidity Health | 35pts | DexScreener | Absolute liquidity 15, liquidity/FDV ratio 12, volume/liquidity ratio 8 |
-| Contract Safety | 20pts | GoPlus | Ownership renounced 8, low buy tax 4, low sell tax 4, no external calls 4 |
-| Growth Potential | 20pts | DexScreener | FDV sweet spot 7, token age 7, price momentum 6 |
-| Holder Distribution | 15pts | GoPlus | Top 10 concentration 6, holder count 4, creator holdings 3, LP locked 2 |
-| Insider Signal | 10pts | On-chain | Mapped from insider count, hold rate, quality (0-100 -> 0-10) |
-
-**Security checks:** GoPlus kill-switch (honeypot, mintable, hidden owner, high tax = score 0). GoPlus data also feeds Contract Safety and Holder Distribution scores.
-
-**Buy filters:** score >= 70, min liquidity $2k, max FDV $500k, max 24h pump 20x, no duplicates.
-
-**Exit rules:** stop-loss -70%, auto-sell when high-score insider (80+) sells, auto-close on rug (liquidity < $500).
-
-**Display:** Launch price from GeckoTerminal OHLCV candles. DexScreener batch pricing.
-
-**Rug detection:** Real-time WebSocket monitoring via Alchemy (Uniswap V2/V3 Burn events). Tokens that rug are tracked in DB and auto-skipped in future buys. /status shows total rug count and USD lost.
-
 ### Insider Copy Trading
 
 Copies EVM token buys from high-scoring insider wallets.
@@ -72,6 +33,15 @@ Copies EVM token buys from high-scoring insider wallets.
 - Trailing stop-loss ladder, +500% target, -80% floor
 - GoPlus security checks (honeypot, high tax, scam detection)
 - $200 max exposure, $10 per position, 15% rug exit fee
+
+### Rug Monitor
+
+Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Burn events).
+
+- Monitors all open insider copy trade positions
+- Auto-sells on rug detection
+- Tracks rugged tokens in DB to skip future buys
+- /status shows total rug count and USD lost
 
 ### Hyperliquid Quant Trading
 
@@ -93,7 +63,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 | `/balance` | Wallet balances (Polygon, Base, Arbitrum, Avax) |
 | `/pnl` | P&L with period tabs (today/7d/30d/all-time) |
 | `/trades` | Open positions and recent trades |
-| `/insiders` | Insider wallets, activity, holdings, gems, copies (5 tabs + chain filter) |
+| `/insiders` | Insider wallets and holdings (2 tabs + chain filter) |
 | `/stop` / `/resume` | Kill switch |
 | `/mode` | Switch paper/live |
 | `/resetpaper` | Wipe paper data |
@@ -117,7 +87,6 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 | Position limits | None | 5 |
 | Exposure limit | None | $50 |
 | Orders | Midpoint prices | Real orderbook (CLOB/1inch) |
-| Gem trades | DexScreener prices | 1inch (EVM) |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 
 ## Config
@@ -141,7 +110,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
 
-**Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `SNOWTRACE_API_KEY`, `ALCHEMY_API_KEY`, `ONEINCH_API_KEY`, `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
+**Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `SNOWTRACE_API_KEY`, `ALCHEMY_API_KEY`, `ONEINCH_API_KEY`
 
 ## Setup
 
