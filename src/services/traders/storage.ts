@@ -202,8 +202,10 @@ export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStat
     FROM insider_wallets w
     LEFT JOIN (
       SELECT wallet_address, chain,
-        AVG(pnl_pct) AS avg_pnl_pct,
-        AVG(pnl_pct / 100.0 * amount_usd) AS avg_pnl_usd
+        CASE WHEN SUM(amount_usd) > 0
+          THEN SUM(pnl_pct / 100.0 * amount_usd) / SUM(amount_usd) * 100.0
+          ELSE 0 END AS avg_pnl_pct,
+        SUM(pnl_pct / 100.0 * amount_usd) AS avg_pnl_usd
       FROM insider_copy_trades
       WHERE status IN ('open', 'closed')
       GROUP BY wallet_address, chain
