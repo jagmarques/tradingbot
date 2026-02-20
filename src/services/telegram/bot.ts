@@ -1928,10 +1928,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 13. Whale trades
     const whaleResult = db.prepare("DELETE FROM whale_trades").run();
 
-    // 14. Insider data
-    const insiderWalletsResult = db.prepare("DELETE FROM insider_wallets").run();
-
-    // 15. Quant trades + positions + config
+    // 14. Quant trades + positions + config
     const quantTradesResult = db.prepare("DELETE FROM quant_trades").run();
     const quantPosResult = db.prepare("DELETE FROM quant_positions").run();
     const quantConfigResult = db.prepare("DELETE FROM quant_config").run();
@@ -1951,7 +1948,6 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
       + tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes
       + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
       + calLogResult.changes + whaleResult.changes
-      + insiderWalletsResult.changes
       + quantTradesResult.changes + quantPosResult.changes + quantConfigResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
@@ -1960,8 +1956,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
     message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
     message += `Crypto copies: ${cryptoResult.changes} records\n`;
-    message += `Insider copies: ${insiderCopyResult.changes} records\n`;
-    message += `Insiders: ${insiderWalletsResult.changes} wallets\n`;
+    message += `Insider copies: ${insiderCopyResult.changes} trades reset\n`;
     message += `Quant: ${quantTradesResult.changes} trades + ${quantPosResult.changes} positions\n`;
     message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
     message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
@@ -2054,7 +2049,6 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     db.prepare("DELETE FROM calibration_scores").run();
     db.prepare("DELETE FROM calibration_log").run();
     db.prepare("DELETE FROM whale_trades").run();
-    db.prepare("DELETE FROM insider_wallets").run();
     db.prepare("DELETE FROM quant_trades").run();
     db.prepare("DELETE FROM quant_positions").run();
     db.prepare("DELETE FROM quant_config").run();
