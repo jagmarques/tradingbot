@@ -26,7 +26,7 @@ const V3_BURN_TOPIC = keccak256("Burn(address,int24,int24,uint128,uint256,uint25
 
 const connections = new Map<string, WebSocket>(); // per chain
 const subscriptions = new Map<string, Map<string, string>>(); // chain -> (pair -> subId)
-const pairToTrade = new Map<string, { walletAddress: string; tokenAddress: string; tokenSymbol: string; chain: string }>();
+const pairToToken = new Map<string, { tokenAddress: string; tokenSymbol: string; chain: string }>();
 const reconnectAttempts = new Map<string, number>();
 const pendingRequests = new Map<number, { chain: string; pairAddress: string }>();
 
@@ -56,14 +56,14 @@ function getChainSubscriptions(chain: string): Map<string, string> {
   return subscriptions.get(chain)!;
 }
 
-function subscribePair(chain: string, pairAddress: string, trade: { walletAddress: string; tokenAddress: string; tokenSymbol: string }): void {
+function subscribePair(chain: string, pairAddress: string, token: { tokenAddress: string; tokenSymbol: string }): void {
   const ws = connections.get(chain);
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
   const normalizedPair = pairAddress.toLowerCase();
   const tradeKey = `${normalizedPair}_${chain}`;
-  pairToTrade.set(tradeKey, { ...trade, chain });
-  console.log(`[RugMonitor] Subscribing to ${trade.tokenSymbol} (${chain}) pair ${pairAddress.slice(0, 10)}...`);
+  pairToToken.set(tradeKey, { ...token, chain });
+  console.log(`[RugMonitor] Subscribing to ${token.tokenSymbol} (${chain}) pair ${pairAddress.slice(0, 10)}...`);
 
   const id = nextRpcId();
   pendingRequests.set(id, { chain, pairAddress: normalizedPair });
@@ -80,6 +80,21 @@ function subscribePair(chain: string, pairAddress: string, trade: { walletAddres
       },
     ],
   }));
+}
+
+type TradeWithPair = { pairAddress: string; tokenAddress: string; tokenSymbol: string };
+
+function subscribeUniquePairs(chain: string, trades: TradeWithPair[]): void {
+  const seen = new Set<string>();
+  for (const trade of trades) {
+    const normalizedPair = trade.pairAddress.toLowerCase();
+    if (seen.has(normalizedPair)) continue;
+    seen.add(normalizedPair);
+    subscribePair(chain, trade.pairAddress, {
+      tokenAddress: trade.tokenAddress,
+      tokenSymbol: trade.tokenSymbol,
+    });
+  }
 }
 
 function unsubscribePair(chain: string, pairAddress: string): void {
@@ -101,21 +116,21 @@ function unsubscribePair(chain: string, pairAddress: string): void {
   }
 
   const tradeKey = `${normalizedPair}_${chain}`;
-  pairToTrade.delete(tradeKey);
+  pairToToken.delete(tradeKey);
   console.log(`[RugMonitor] Unsubscribed from ${pairAddress.slice(0, 10)}... (${chain})`);
 }
 
 async function handleBurnEvent(chain: string, pairAddress: string): Promise<void> {
   const normalizedPair = pairAddress.toLowerCase();
   const tradeKey = `${normalizedPair}_${chain}`;
-  const tradeInfo = pairToTrade.get(tradeKey);
+  const tradeInfo = pairToToken.get(tradeKey);
 
   if (!tradeInfo) {
     // Already closed
     return;
   }
 
-  const { walletAddress, tokenAddress, tokenSymbol } = tradeInfo;
+  const { tokenAddress, tokenSymbol } = tradeInfo;
   console.log(`[RugMonitor] Burn event: ${tokenSymbol} (${chain})`);
 
   try {
@@ -123,51 +138,51 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
     const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
 
-    // Get entry liquidity from DB
+    // Close ALL trades for this token, not just one
     const openTrades = getOpenCopyTrades();
-    const trade = openTrades.find(
-      t => t.walletAddress.toLowerCase() === walletAddress.toLowerCase() &&
-           t.tokenAddress.toLowerCase() === tokenAddress.toLowerCase() &&
-           t.chain === chain
+    const matchingTrades = openTrades.filter(
+      t => t.tokenAddress.toLowerCase() === tokenAddress.toLowerCase() && t.chain === chain
     );
 
-    if (!trade) {
+    if (matchingTrades.length === 0) {
       unsubscribePair(chain, pairAddress);
       return;
     }
 
-    const entryLiq = trade.liquidityUsd;
-    const belowFloor = entryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
-    const droppedFromEntry = entryLiq > 0 && liquidityUsd >= 0 && liquidityUsd < entryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
+    // Use max entry liquidity for threshold
+    const maxEntryLiq = Math.max(...matchingTrades.map(t => t.liquidityUsd));
+    const belowFloor = maxEntryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
+    const droppedFromEntry = maxEntryLiq > 0 && liquidityUsd >= 0 && liquidityUsd < maxEntryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
 
     if (belowFloor || droppedFromEntry) {
       const reason = liquidityUsd === 0
         ? "liquidity is zero"
         : droppedFromEntry
-          ? `liquidity dropped ${((1 - liquidityUsd / entryLiq) * 100).toFixed(0)}% ($${entryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
+          ? `liquidity dropped ${((1 - liquidityUsd / maxEntryLiq) * 100).toFixed(0)}% ($${maxEntryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
           : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
 
-      console.log(`[RugMonitor] REALTIME RUG: ${tokenSymbol} (${chain}) - ${reason}`);
+      console.log(`[RugMonitor] REALTIME RUG: ${tokenSymbol} (${chain}) - ${reason} (${matchingTrades.length} trades)`);
 
-      updateCopyTradePriceWithRugFee(walletAddress, tokenAddress, chain, priceUsd);
-      closeCopyTrade(walletAddress, tokenAddress, chain, "liquidity_rug");
-      incrementRugCount(tokenAddress, chain);
       const rugFeePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
-      const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
-        ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
-        : 0;
-      notifyCopyTrade({
-        walletAddress,
-        tokenSymbol,
-        chain,
-        side: "sell",
-        priceUsd,
-        liquidityOk: false,
-        liquidityUsd,
-        skipReason: "liquidity rug",
-        pnlPct: computedPnl,
-      }).catch(() => {});
-
+      for (const trade of matchingTrades) {
+        updateCopyTradePriceWithRugFee(trade.walletAddress, tokenAddress, chain, priceUsd);
+        closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug");
+        const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
+          ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
+          : 0;
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress,
+          tokenSymbol,
+          chain,
+          side: "sell",
+          priceUsd,
+          liquidityOk: false,
+          liquidityUsd,
+          skipReason: "liquidity rug",
+          pnlPct: computedPnl,
+        }).catch(() => {});
+      }
+      incrementRugCount(tokenAddress, chain);
       unsubscribePair(chain, pairAddress);
     } else {
       if (pendingRechecks.has(tradeKey)) {
@@ -232,14 +247,9 @@ function connectChain(chain: string): WebSocket | null {
 
     const chainSubs = subscriptions.get(chain);
     if (chainSubs) chainSubs.clear();
-    const tradesForChain = getOpenCopyTrades().filter(t => t.chain === chain && t.pairAddress);
-    for (const trade of tradesForChain) {
-      subscribePair(chain, trade.pairAddress!, {
-        walletAddress: trade.walletAddress,
-        tokenAddress: trade.tokenAddress,
-        tokenSymbol: trade.tokenSymbol,
-      });
-    }
+    const tradesForChain = getOpenCopyTrades()
+      .filter((t): t is typeof t & { pairAddress: string } => t.chain === chain && !!t.pairAddress);
+    subscribeUniquePairs(chain, tradesForChain);
   });
 
   ws.on("message", (data: WebSocket.RawData) => {
@@ -282,19 +292,39 @@ async function syncSubscriptions(): Promise<void> {
   try {
   const openTrades = getOpenCopyTrades();
 
-  // Backfill missing pairAddress from DexScreener
+  // Backfill missing pairAddress (dedup by token+chain)
   const missingPair = openTrades.filter(t => !t.pairAddress);
   if (missingPair.length > 0) {
+    const seen = new Set<string>();
     for (const trade of missingPair) {
+      const key = `${trade.tokenAddress.toLowerCase()}_${trade.chain}`;
+      if (seen.has(key)) {
+        // Apply cached pairAddress
+        const donor = missingPair.find(t =>
+          t.tokenAddress.toLowerCase() === trade.tokenAddress.toLowerCase() &&
+          t.chain === trade.chain && t.pairAddress
+        );
+        if (donor?.pairAddress) {
+          updateCopyTradePairAddress(trade.walletAddress, trade.tokenAddress, trade.chain, donor.pairAddress);
+          trade.pairAddress = donor.pairAddress;
+        }
+        continue;
+      }
+      seen.add(key);
       try {
         const pair = await dexScreenerFetch(trade.chain, trade.tokenAddress);
         if (pair?.pairAddress) {
-          updateCopyTradePairAddress(trade.walletAddress, trade.tokenAddress, trade.chain, pair.pairAddress);
-          trade.pairAddress = pair.pairAddress;
+          // Apply to all trades with this token
+          for (const t of missingPair) {
+            if (t.tokenAddress.toLowerCase() === trade.tokenAddress.toLowerCase() && t.chain === trade.chain) {
+              updateCopyTradePairAddress(t.walletAddress, t.tokenAddress, t.chain, pair.pairAddress);
+              t.pairAddress = pair.pairAddress;
+            }
+          }
           console.log(`[RugMonitor] Backfilled pairAddress for ${trade.tokenSymbol} (${trade.chain}): ${pair.pairAddress.slice(0, 10)}...`);
         }
       } catch {
-        // Skip this trade, try again next sync
+        // Skip this token, try again next sync
       }
     }
   }
@@ -315,16 +345,8 @@ async function syncSubscriptions(): Promise<void> {
       connectChain(chain);
     } else if (ws.readyState === WebSocket.OPEN) {
       const chainSubs = getChainSubscriptions(chain);
-      for (const trade of trades) {
-        const normalizedPair = trade.pairAddress!.toLowerCase();
-        if (!chainSubs.has(normalizedPair)) {
-          subscribePair(chain, trade.pairAddress!, {
-            walletAddress: trade.walletAddress,
-            tokenAddress: trade.tokenAddress,
-            tokenSymbol: trade.tokenSymbol,
-          });
-        }
-      }
+      const newTrades = trades.filter(t => !chainSubs.has(t.pairAddress!.toLowerCase()));
+      subscribeUniquePairs(chain, newTrades as TradeWithPair[]);
     }
   }
 
@@ -393,7 +415,7 @@ export function stopRugMonitor(): void {
     }
   }
   subscriptions.clear();
-  pairToTrade.clear();
+  pairToToken.clear();
   pendingRequests.clear();
   pendingRechecks.clear();
   reconnectAttempts.clear();
