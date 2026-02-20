@@ -1,9 +1,9 @@
 export * from "./types.js";
 export { callDeepSeek, validateDeepSeekConnection } from "./deepseek.js";
-export { fetchActiveMarkets, discoverMarkets } from "./scanner.js";
+export { discoverMarkets } from "./scanner.js";
 export { fetchNewsForMarket } from "./news.js";
 export { analyzeMarket } from "./analyzer.js";
-export { evaluateBetOpportunity, evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
+export { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 export {
   enterPosition,
   exitPosition,

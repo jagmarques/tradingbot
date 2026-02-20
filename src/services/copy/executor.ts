@@ -113,47 +113,6 @@ export function getOpenCryptoCopyPositions(): CryptoCopyPosition[] {
   return Array.from(cryptoCopyPositions.values()).filter(p => p.status === "open");
 }
 
-export function getCryptoCopyStats(): {
-  totalCopies: number;
-  openPositions: number;
-  closedPositions: number;
-  totalPnlNative: number;
-} {
-  const db = getDb();
-  const stats = db.prepare(`
-    SELECT
-      COUNT(*) as total,
-      SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
-      SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_count,
-      SUM(CASE WHEN status = 'closed' THEN pnl_native ELSE 0 END) as total_pnl
-    FROM crypto_copy_positions
-  `).get() as {
-    total: number;
-    open_count: number;
-    closed_count: number;
-    total_pnl: number;
-  };
-
-  return {
-    totalCopies: stats.total || 0,
-    openPositions: stats.open_count || 0,
-    closedPositions: stats.closed_count || 0,
-    totalPnlNative: stats.total_pnl || 0,
-  };
-}
-
-// Find open position for a trader+token combination
-export function findOpenPosition(traderAddress: string, tokenAddress: string): CryptoCopyPosition | undefined {
-  for (const pos of cryptoCopyPositions.values()) {
-    if (pos.status === "open" &&
-        pos.traderAddress.toLowerCase() === traderAddress.toLowerCase() &&
-        pos.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()) {
-      return pos;
-    }
-  }
-  return undefined;
-}
-
 // Close a copied position when trader sells
 export async function closeCopiedPosition(
   position: CryptoCopyPosition,

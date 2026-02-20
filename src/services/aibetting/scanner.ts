@@ -115,7 +115,7 @@ export async function fetchActiveMarkets(maxMarkets: number = 500): Promise<Poly
   }
 }
 
-export function filterCandidateMarkets(
+function filterCandidateMarkets(
   markets: PolymarketEvent[],
   config: AIBettingConfig,
   existingPositionMarketIds: Set<string>
@@ -199,7 +199,7 @@ export function filterCandidateMarkets(
   return passed;
 }
 
-export function scoreMarket(market: PolymarketEvent): number {
+function scoreMarket(market: PolymarketEvent): number {
   let score = 0;
 
   // Higher volume = more liquid, easier to trade
