@@ -61,9 +61,17 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 **Display:** Launch price from GeckoTerminal OHLCV candles. DexScreener batch pricing.
 
+**Rug detection:** Real-time WebSocket monitoring via Alchemy (Uniswap V2/V3 Burn events). Tokens that rug are tracked in DB and auto-skipped in future buys. /status shows total rug count and USD lost.
+
 ### Insider Copy Trading
 
-Copies EVM token buys from high-scoring insider wallets. Auto-sells when the insider sells or on rug detection.
+Copies EVM token buys from high-scoring insider wallets.
+
+- Auto-sells when the insider sells
+- Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
+- Trailing stop-loss ladder, +500% target, -80% floor
+- GoPlus security checks (honeypot, high tax, scam detection)
+- $200 max exposure, $10 per position, 15% rug exit fee
 
 ### Hyperliquid Quant Trading
 
@@ -129,10 +137,11 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
 | `QUANT_VIRTUAL_BALANCE` | `$10` | Quant paper trading balance |
+| `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
 
-**Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `ONEINCH_API_KEY`, `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
+**Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `SNOWTRACE_API_KEY`, `ALCHEMY_API_KEY`, `ONEINCH_API_KEY`, `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 ## Setup
 
