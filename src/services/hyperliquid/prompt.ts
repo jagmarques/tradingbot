@@ -51,8 +51,11 @@ function getRegimeInstruction(regime: MarketRegime): string {
       );
     case "ranging":
       return (
-        "Market is RANGING. Favor mean-reversion entries. Look for price at Bollinger Band extremes " +
-        "with RSI overbought/oversold. Set tighter stops near range boundaries. Target the opposite band."
+        "Market is RANGING. You MUST pick long or short based on mean-reversion logic. " +
+        "If price is near the upper Bollinger Band or RSI > 65, go short targeting the middle/lower band. " +
+        "If price is near the lower Bollinger Band or RSI < 35, go long targeting the middle/upper band. " +
+        "Set stop-loss just beyond the band extreme (above upper for short, below lower for long). " +
+        "Confidence should be 60-85%. Only return flat if price is exactly at the middle band AND RSI is 45-55."
       );
     case "volatile":
       return (
