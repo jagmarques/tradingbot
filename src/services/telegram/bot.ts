@@ -29,7 +29,7 @@ import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemP
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { loadClosedQuantTrades, getQuantStats, getFundingIncome, getQuantValidationMetrics, getPaperStartDate } from "../database/quant.js";
+import { loadClosedQuantTrades, getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -2737,11 +2737,11 @@ async function handleQuant(ctx: Context): Promise<void> {
   const funding = getFundingIncome();
   const directionalStats = getQuantStats("directional");
 
-  let text = `<b>Quant Trading (Hyperliquid) - ${mode}</b>\n\n`;
-  text += `Balance: <b>$${balance.toFixed(2)}</b>\n`;
-  text += `Open positions: <b>${openPositions.length}</b>\n`;
-  text += `Kill switch: <b>${killed ? "ACTIVE (halted)" : "OFF"}</b>\n`;
-  text += `Daily loss: <b>$${dailyLoss.toFixed(2)}</b> / $${QUANT_DAILY_DRAWDOWN_LIMIT}\n\n`;
+  const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+
+  let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
+  text += `Bal: ${$(balance)} | Pos: ${openPositions.length} | Loss: ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT}\n`;
 
   let mids: Record<string, string> = {};
   if (openPositions.length > 0) {
@@ -2754,9 +2754,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   if (openPositions.length > 0) {
-    text += "<b>Open Positions:</b>\n";
+    const posLines: string[] = [];
     for (const pos of openPositions) {
-      const label = pos.tradeType === "funding" ? "[FUND] " : "";
+      const tag = pos.tradeType === "funding" ? "[F] " : "    ";
+      const dir = pos.direction === "long" ? "L" : "S";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2766,53 +2767,47 @@ async function handleQuant(ctx: Context): Promise<void> {
             pos.direction === "long"
               ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
               : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-          const upnlPct = (unrealizedPnl / pos.size) * 100;
-          const sign = unrealizedPnl >= 0 ? "+" : "-";
-          upnlStr = ` | uPnL: ${sign}$${Math.abs(unrealizedPnl).toFixed(2)} (${sign}${Math.abs(upnlPct).toFixed(1)}%)`;
+          upnlStr = ` ${pnl(unrealizedPnl)}`;
         }
       }
-      text += `  ${label}${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)${upnlStr}\n`;
+      posLines.push(`${tag}${dir} ${pos.pair}  ${$(pos.size)}  @${pos.entryPrice} ${pos.leverage}x${upnlStr}`);
     }
-    text += "\n";
+    text += `\n<b>Pos</b>\n<pre>${posLines.join("\n")}</pre>\n`;
   }
 
   const recentTrades = loadClosedQuantTrades(5);
   if (recentTrades.length > 0) {
-    text += "<b>Recent Trades:</b>\n";
+    const tradeLines: string[] = [];
     for (const t of recentTrades) {
-      const pnlStr = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
-      text += `  ${t.direction.toUpperCase()} ${t.pair} $${t.size.toFixed(2)} ${pnlStr}\n`;
+      const dir = t.direction === "long" ? "L" : "S";
+      tradeLines.push(`${dir} ${t.pair}  ${$(t.size)}  ${pnl(t.pnl)}`);
     }
-    text += "\n";
+    text += `\n<b>Trades</b>\n<pre>${tradeLines.join("\n")}</pre>\n`;
   }
 
   const directionalPnl = directionalStats.totalPnl;
   const fundingPnl = funding.totalIncome;
   const totalPnl = directionalPnl + fundingPnl;
-  const fmtPnl = (v: number) => `${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(2)}`;
 
-  text += "<b>P&L Breakdown:</b>\n";
-  text += `  Directional: ${fmtPnl(directionalPnl)}  (${directionalStats.totalTrades} trades, ${directionalStats.winRate.toFixed(1)}% win)\n`;
-  text += `  Funding Arb: ${fmtPnl(fundingPnl)}  (${funding.tradeCount} trades)\n`;
-  text += `  Combined: ${fmtPnl(totalPnl)}\n`;
+  const pnlLines: string[] = [];
+  pnlLines.push(`${"Dir".padEnd(6)}${pnl(directionalPnl)}  ${directionalStats.totalTrades}t ${directionalStats.winRate.toFixed(0)}%w`);
+  pnlLines.push(`${"Fund".padEnd(6)}${pnl(fundingPnl)}  ${funding.tradeCount}t`);
+  pnlLines.push(`${"Total".padEnd(6)}${pnl(totalPnl)}`);
+  text += `\n<b>P&L</b>\n<pre>${pnlLines.join("\n")}</pre>\n`;
 
   const validation = getQuantValidationMetrics();
-  const startDate = getPaperStartDate();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
   const daysRemaining = Math.max(0, QUANT_PAPER_VALIDATION_DAYS - daysElapsed);
 
-  text += "\n<b>Paper Validation:</b>\n";
-  text += `  Started: ${startDate ? new Date(startDate).toISOString().slice(0, 10) : "Not started"}\n`;
-  text += `  Days running: ${daysElapsed} / ${QUANT_PAPER_VALIDATION_DAYS}\n`;
-  text += `  Sharpe ratio: ${validation.sharpeRatio.toFixed(2)}\n`;
-  text += `  Max drawdown: ${validation.maxDrawdownPct.toFixed(1)}%\n`;
-  text += `  Avg trade duration: ${validation.avgTradeDurationHours.toFixed(1)}h\n`;
-
+  const valLines: string[] = [];
+  valLines.push(`Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} | Sharpe ${validation.sharpeRatio.toFixed(2)}`);
+  valLines.push(`DD ${validation.maxDrawdownPct.toFixed(1)}% | Avg ${validation.avgTradeDurationHours.toFixed(1)}h`);
   if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
-    text += `  Status: READY for live\n`;
+    valLines.push("Ready for live");
   } else {
-    text += `  Status: Paper validation in progress (${daysRemaining} days remaining)\n`;
+    valLines.push(`${daysRemaining} days left`);
   }
+  text += `\n<b>Validation</b>\n<pre>${valLines.join("\n")}</pre>\n`;
 
   const buttons: { text: string; callback_data: string }[][] = [];
   if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS && isPaperMode()) {
