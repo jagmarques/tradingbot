@@ -39,8 +39,9 @@ export function saveQuantPosition(position: QuantPosition): void {
   db.prepare(`
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
-      unrealized_pnl, mode, status, trade_type, opened_at, closed_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      unrealized_pnl, mode, status, trade_type, opened_at, closed_at,
+      stop_loss, take_profit, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -54,6 +55,8 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.tradeType ?? "directional",
     position.openedAt,
     position.closedAt ?? null,
+    position.stopLoss ?? null,
+    position.takeProfit ?? null,
   );
 }
 
@@ -83,6 +86,8 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     entryPrice: row.entry_price,
     size: row.size,
     leverage: row.leverage,
+    stopLoss: (row as Record<string, unknown>).stop_loss as number | undefined ?? undefined,
+    takeProfit: (row as Record<string, unknown>).take_profit as number | undefined ?? undefined,
     unrealizedPnl: row.unrealized_pnl,
     mode: row.mode as "paper" | "live",
     status: row.status as "open" | "closed",

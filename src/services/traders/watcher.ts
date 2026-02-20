@@ -277,6 +277,13 @@ async function watchInsiderWallets(): Promise<void> {
       if (existingTokenTrade) {
         // Accumulate: add 10% of current position for each additional insider
         const addAmount = existingTokenTrade.amountUsd * 0.10;
+        // Check exposure budget before accumulating
+        const openTrades = getOpenCopyTrades();
+        const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+        if (currentExposure + addAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
+          console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} + $${addAmount.toFixed(2)} > $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
+          continue;
+        }
         increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
         console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
         notifyCopyTrade({

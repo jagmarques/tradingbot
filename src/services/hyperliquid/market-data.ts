@@ -2,7 +2,7 @@ import { ensureConnected, getClient } from "./client.js";
 import type { FundingInfo, FundingOpportunity } from "./types.js";
 import { FUNDING_ARB_MIN_APR } from "../../config/constants.js";
 
-const FUNDING_PERIODS_PER_YEAR = 3 * 365; // 8-hour funding periods
+const FUNDING_PERIODS_PER_YEAR = 24 * 365; // 1-hour funding periods (Hyperliquid)
 
 export async function fetchFundingRate(pair: string): Promise<FundingInfo | null> {
   try {

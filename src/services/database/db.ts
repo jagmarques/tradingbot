@@ -343,6 +343,11 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec(`ALTER TABLE quant_positions ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'directional'`);
     console.log("[Database] Migrated quant_positions: added trade_type column");
   }
+  if (!qpColNames.includes("stop_loss")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN stop_loss REAL`);
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN take_profit REAL`);
+    console.log("[Database] Migrated quant_positions: added stop_loss, take_profit columns");
+  }
 
   console.log("[Database] Initialized at", finalPath);
   return db;

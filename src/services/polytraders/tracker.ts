@@ -64,8 +64,17 @@ let refreshHandle: NodeJS.Timeout | null = null;
 let isRunning = false;
 let isCheckingTrades = false;
 
+const MAX_CACHE_SIZE = 500;
 const resolvedMarketCache = new Set<string>();
 const gammaNotFoundCache = new Set<string>();
+
+function addToCache(cache: Set<string>, key: string): void {
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const first = cache.values().next().value;
+    if (first !== undefined) cache.delete(first);
+  }
+  cache.add(key);
+}
 
 const LEARNING_THRESHOLD = 30;
 
@@ -377,7 +386,7 @@ async function getMarketInfo(conditionId: string, outcomeIndex: number, slug?: s
     }
 
     // Neither worked - cache to avoid repeated lookups
-    gammaNotFoundCache.add(conditionId);
+    addToCache(gammaNotFoundCache, conditionId);
     return null;
   } catch {
     return null;
@@ -671,7 +680,7 @@ async function checkForNewTrades(): Promise<void> {
               continue;
             }
             if (marketInfo.closed) {
-              resolvedMarketCache.add(trade.conditionId);
+              addToCache(resolvedMarketCache, trade.conditionId);
               skip("market_closed");
               console.log(`[PolyTraders] ${info.name} traded closed market: ${trade.title}`);
               continue;
