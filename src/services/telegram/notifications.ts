@@ -213,22 +213,31 @@ export async function notifyCopyTrade(params: {
 }): Promise<void> {
   const isBuy = params.side === "buy";
   const header = isBuy ? "COPY BUY" : "COPY SELL";
-  const statusStr = params.liquidityOk
-    ? "Paper traded"
-    : `Skipped: ${escapeHtml(params.skipReason || "unknown")}`;
 
-  let message =
-    `<b>${header}</b>\n\n` +
-    `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
-    `Chain: ${escapeHtml(params.chain)}\n` +
-    `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
-    `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
-    `Liquidity: $${params.liquidityUsd.toFixed(0)}\n` +
-    `Status: ${statusStr}`;
-
-  if (!isBuy && params.pnlPct !== undefined) {
-    const sign = params.pnlPct >= 0 ? "+" : "";
-    message += `\nP&L: ${sign}${params.pnlPct.toFixed(1)}%`;
+  let message: string;
+  if (isBuy) {
+    const statusStr = params.liquidityOk
+      ? "Paper traded"
+      : `Skipped: ${escapeHtml(params.skipReason || "unknown")}`;
+    message =
+      `<b>${header}</b>\n\n` +
+      `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
+      `Chain: ${escapeHtml(params.chain)}\n` +
+      `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
+      `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
+      `Liquidity: $${params.liquidityUsd.toFixed(0)}\n` +
+      `Status: ${statusStr}`;
+  } else {
+    const pnlStr = params.pnlPct !== undefined
+      ? `${params.pnlPct >= 0 ? "+" : ""}${params.pnlPct.toFixed(1)}%`
+      : "N/A";
+    message =
+      `<b>${header}</b>\n\n` +
+      `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
+      `Chain: ${escapeHtml(params.chain)}\n` +
+      `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
+      `P&L: ${pnlStr}\n` +
+      `Reason: ${escapeHtml(params.skipReason || "closed")}`;
   }
 
   await sendMessage(message);

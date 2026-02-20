@@ -1,6 +1,6 @@
 import type { EvmChain, GemHit } from "./types.js";
 import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount } from "./storage.js";
+import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition, fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -127,7 +127,7 @@ async function watchInsiderWallets(): Promise<void> {
             priceUsd: primaryTrade.currentPriceUsd,
             liquidityOk: primaryTrade.liquidityOk,
             liquidityUsd: primaryTrade.liquidityUsd,
-            skipReason: null,
+            skipReason: "insider sell",
             pnlPct: primaryTrade.pnlPct,
           }).catch(err => console.error("[CopyTrade] Notification error:", err));
         }
@@ -252,14 +252,28 @@ async function watchInsiderWallets(): Promise<void> {
       const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
       if (existingCopy) continue;
 
+      // Check exposure budget before opening new positions (accumulation still allowed)
+      const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
+      if (!existingTokenTrade) {
+        const openTrades = getOpenCopyTrades();
+        const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+        if (currentExposure + COPY_TRADE_CONFIG.AMOUNT_USD > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
+          console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} >= $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
+          continue;
+        }
+      }
+
       const globalKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
-      const pair = pairCache.get(globalKey) ?? null;
+      let pair = pairCache.get(globalKey) ?? null;
+      // Fallback fetch if gem path didn't cache this token (e.g. filtered by FDV/pump)
+      if (!pair) {
+        pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
+      }
       const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
       const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
-      // Check if ANY wallet already has an open position for this token
-      const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
+      // Accumulate if another wallet already has an open position for this token
       if (existingTokenTrade) {
         // Accumulate: add 10% of current position for each additional insider
         const addAmount = existingTokenTrade.amountUsd * 0.10;

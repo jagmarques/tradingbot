@@ -675,7 +675,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       notifyCopyTrade({
         walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
         side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-        skipReason: null, pnlPct: trade.pnlPct,
+        skipReason: "target +500%", pnlPct: trade.pnlPct,
       }).catch(() => {});
       continue;
     }
@@ -697,7 +697,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       notifyCopyTrade({
         walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
         side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-        skipReason: null, pnlPct: trade.pnlPct,
+        skipReason: reason, pnlPct: trade.pnlPct,
       }).catch(() => {});
     }
   }

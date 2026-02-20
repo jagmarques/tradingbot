@@ -197,4 +197,5 @@ export const COPY_TRADE_CONFIG = {
   AMOUNT_USD: 10,
   STOP_LOSS_PCT: -80,
   ESTIMATED_FEE_PCT: 1.5, // ~0.3% swap fee x2 + slippage on micro-caps
+  MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
 };
