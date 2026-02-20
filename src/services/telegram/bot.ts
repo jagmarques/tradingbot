@@ -832,10 +832,10 @@ async function handleStatus(ctx: Context): Promise<void> {
     const polyStats = getCopyStats();
     const env = loadEnv();
 
-    const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeTag = status.isPaperMode ? "Paper" : "Live";
-    const killTag = status.killSwitchActive ? "Kill: ON" : "";
-    const pnlSign = status.dailyPnl >= 0 ? "+" : "";
+    const killTag = status.killSwitchActive ? " | Kill" : "";
+    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     // Compute unrealized P&L for AI bets
     const openBets = loadOpenPositions();
@@ -857,17 +857,18 @@ async function handleStatus(ctx: Context): Promise<void> {
       }
     }
 
-    let message = `<b>Status</b>\n\n`;
-    message += `${statusEmoji} ${modeTag}${killTag ? " | " + killTag : ""}\n`;
-    message += `P&L: ${pnlSign}$${status.dailyPnl.toFixed(2)} (${todayTrades.length} trades)\n\n`;
+    let message = `<b>Status</b> | ${modeTag}${killTag}\n`;
+    message += `PnL: ${pnl(status.dailyPnl)} (${todayTrades.length} trades)\n\n`;
 
-    const logOnly = schedulerStatus.logOnly ? " | Log-only" : "";
+    const lines: string[] = [];
+    const logOnly = schedulerStatus.logOnly ? " Log" : "";
     const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
-    const aiPnlStr = openBets.length > 0 ? ` | ${aiBetUnrealized >= 0 ? "+" : ""}$${aiBetUnrealized.toFixed(2)}` : "";
-    message += `AI Betting: ${openBets.length} open | $${aiInvested.toFixed(2)} invested${aiPnlStr}${logOnly}\n`;
+    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
+    lines.push(`${"AI Bets".padEnd(10)} ${openBets.length} | ${$(aiInvested).padEnd(5)} ${aiPnlStr}${logOnly}`);
+
     const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
-    message += `Poly Copy: ${polyStats.openPositions} open | $${copyInvested.toFixed(2)} invested${copyPnlStr}\n`;
+    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
+    lines.push(`${"Poly Copy".padEnd(10)} ${polyStats.openPositions} | ${$(copyInvested).padEnd(5)} ${copyPnlStr}`);
 
     // Gem paper trades
     try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
@@ -875,8 +876,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     if (gemPaperTrades.length > 0) {
       const gemInvested = gemPaperTrades.reduce((sum, t) => sum + t.amountUsd, 0);
       const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const gemSign = gemTotalPnl >= 0 ? "+" : "";
-      message += `Gem Paper: ${gemPaperTrades.length} open | $${gemInvested.toFixed(2)} invested | ${gemSign}$${gemTotalPnl.toFixed(2)}\n`;
+      lines.push(`${"Gems".padEnd(10)} ${gemPaperTrades.length} | ${$(gemInvested).padEnd(5)} ${pnl(gemTotalPnl)}`);
     }
 
     // Insider copy trades
@@ -887,12 +887,10 @@ async function handleStatus(ctx: Context): Promise<void> {
       const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
       const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
       const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const unrealSign = unrealizedPnl >= 0 ? "+" : "";
-      const realSign = realizedPnl >= 0 ? "+" : "";
-      let line = `Insider Copy: ${openCopyTrades.length} open`;
-      if (openCopyTrades.length > 0) line += ` | $${insiderInvested.toFixed(2)} invested | ${unrealSign}$${unrealizedPnl.toFixed(2)} unreal`;
-      if (closedCopyTrades.length > 0) line += ` | ${realSign}$${realizedPnl.toFixed(2)} real (${closedCopyTrades.length} closed)`;
-      message += `${line}\n`;
+      let line = `${"Insider".padEnd(10)} ${openCopyTrades.length} | ${$(insiderInvested).padEnd(5)}`;
+      if (openCopyTrades.length > 0) line += ` ${pnl(unrealizedPnl)}`;
+      if (closedCopyTrades.length > 0) line += ` / ${pnl(realizedPnl)}r`;
+      lines.push(line);
     }
 
     // Quant trading
@@ -917,16 +915,17 @@ async function handleStatus(ctx: Context): Promise<void> {
           }
         } catch { /* Prices unavailable - show without unrealized */ }
       }
-      const quantMode = isPaperMode() ? "Paper" : "Live";
       const quantKilled = isQuantKilled();
       const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
-      const quantPnlStr = quantPositions.length > 0 ? ` | ${quantUnrealized >= 0 ? "+" : ""}$${quantUnrealized.toFixed(2)}` : "";
-      const quantKillStr = quantKilled ? " | HALTED" : "";
-      message += `Quant (${quantMode}): ${quantPositions.length} open | $${quantInvested.toFixed(2)} invested${quantPnlStr}${quantKillStr}\n`;
+      const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
+      const quantKillStr = quantKilled ? " HALTED" : "";
+      lines.push(`${"Quant".padEnd(10)} ${quantPositions.length} | ${$(quantInvested).padEnd(5)} ${quantPnlStr}${quantKillStr}`);
     }
 
+    message += `<pre>${lines.join("\n")}</pre>`;
+
     if (status.pauseReason) {
-      message += `\n\n⚠️ ${status.pauseReason}`;
+      message += `\n\n${status.pauseReason}`;
     }
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
