@@ -6,6 +6,9 @@ let queue: Promise<void> = Promise.resolve();
 const GECKO_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 let geckoCooldownUntil = 0;
 
+const DEX_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+let dexCooldownUntil = 0;
+
 const CHAINS: Record<string, string> = {
   ethereum: "ethereum",
   base: "base",
@@ -56,7 +59,8 @@ async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<
       liquidityUsd: parseFloat(attrs.total_reserve_in_usd || "0"),
       fdv: parseFloat(attrs.fdv_usd || "0"),
     };
-  } catch {
+  } catch (err) {
+    console.log(`[DexScreener] GeckoTerminal error for ${tokenAddress.slice(0, 10)}:`, err instanceof Error ? err.message : err);
     return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
   }
 }
@@ -74,6 +78,14 @@ export interface DexPair {
   txns?: { h24?: { buys?: number; sells?: number } };
 }
 
+// Price cache (populated by both dexScreenerFetch and dexScreenerFetchBatch)
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const priceCache = new Map<string, { pair: DexPair; cachedAt: number }>();
+
+export function clearPriceCache(): void {
+  priceCache.clear();
+}
+
 function enqueue(): Promise<void> {
   const myTurn = queue.then(() => new Promise<void>((r) => setTimeout(r, RATE_LIMIT_MS)));
   queue = myTurn;
@@ -82,21 +94,40 @@ function enqueue(): Promise<void> {
 
 export async function dexScreenerFetch(chain: string, tokenAddress: string): Promise<DexPair | null> {
   if (!tokenAddress) return null;
-  await enqueue();
 
-  try {
-    const resp = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
-    if (resp.ok) {
-      const data = (await resp.json()) as { pairs?: DexPair[] };
-      const pairs = data.pairs;
-      if (Array.isArray(pairs) && pairs.length > 0) {
-        const dexChain = CHAINS[chain];
-        const pair = (dexChain && pairs.find((p) => p.chainId === dexChain)) || pairs[0];
-        if (pair && parseFloat(pair.priceUsd || "0") > 0) return pair;
+  // Check cache first
+  const cacheKey = chain + ":" + tokenAddress.toLowerCase();
+  const cached = priceCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    console.log(`[DexScreener] Cache hit ${tokenAddress.slice(0, 10)}`);
+    return cached.pair;
+  }
+
+  // Skip DexScreener if in cooldown, go straight to Gecko fallback
+  if (Date.now() < dexCooldownUntil) {
+    // Fall through to GeckoTerminal
+  } else {
+    await enqueue();
+    try {
+      const resp = await fetchWithTimeout(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`);
+      if (resp.status === 429) {
+        dexCooldownUntil = Date.now() + DEX_COOLDOWN_MS;
+        console.log("[DexScreener] DexScreener 429 - cooling down 5min");
+      } else if (resp.ok) {
+        const data = (await resp.json()) as { pairs?: DexPair[] };
+        const pairs = data.pairs;
+        if (Array.isArray(pairs) && pairs.length > 0) {
+          const dexChain = CHAINS[chain];
+          const pair = (dexChain && pairs.find((p) => p.chainId === dexChain)) || pairs[0];
+          if (pair && parseFloat(pair.priceUsd || "0") > 0) {
+            priceCache.set(cacheKey, { pair, cachedAt: Date.now() });
+            return pair;
+          }
+        }
       }
+    } catch (err) {
+      console.log(`[DexScreener] Fetch error for ${tokenAddress.slice(0, 10)}:`, err instanceof Error ? err.message : err);
     }
-  } catch {
-    // DexScreener failed, try fallback
   }
 
   // GeckoTerminal fallback
@@ -104,15 +135,17 @@ export async function dexScreenerFetch(chain: string, tokenAddress: string): Pro
     const gecko = await geckoTerminalPrice(chain, tokenAddress);
     if (gecko.priceUsd > 0) {
       console.log(`[DexScreener] Gecko fallback ${tokenAddress.slice(0, 10)}: $${gecko.priceUsd.toFixed(8)}`);
-      return {
+      const pair: DexPair = {
         priceUsd: gecko.priceUsd.toString(),
         fdv: gecko.fdv,
         liquidity: { usd: gecko.liquidityUsd },
         chainId: CHAINS[chain],
       };
+      priceCache.set(cacheKey, { pair, cachedAt: Date.now() });
+      return pair;
     }
-  } catch {
-    // Both sources failed
+  } catch (err) {
+    console.log(`[DexScreener] Gecko fallback error for ${tokenAddress.slice(0, 10)}:`, err instanceof Error ? err.message : err);
   }
 
   return null;
@@ -141,11 +174,18 @@ export async function dexScreenerFetchBatch(
 
   for (const [chain, addresses] of byChain) {
     for (let i = 0; i < addresses.length; i += BATCH_SIZE) {
+      if (Date.now() < dexCooldownUntil) continue;
+
       const batch = addresses.slice(i, i + BATCH_SIZE);
       await enqueue();
 
       try {
         const resp = await fetchWithTimeout(`https://api.dexscreener.com/tokens/v1/${chain}/${batch.join(",")}`);
+        if (resp.status === 429) {
+          dexCooldownUntil = Date.now() + DEX_COOLDOWN_MS;
+          console.log("[DexScreener] Batch 429 - cooling down 5min");
+          continue;
+        }
         if (!resp.ok) continue;
 
         const pairs = (await resp.json()) as DexPair[];
@@ -154,9 +194,15 @@ export async function dexScreenerFetchBatch(
         for (const pair of pairs) {
           const raw = pair.baseToken?.address;
           const addr = raw ? raw.toLowerCase() : undefined;
-          if (addr && !result.has(addr)) result.set(addr, pair);
+          if (addr && !result.has(addr)) {
+            result.set(addr, pair);
+            // Populate price cache
+            const cacheKey = chain + ":" + addr;
+            priceCache.set(cacheKey, { pair, cachedAt: Date.now() });
+          }
         }
-      } catch {
+      } catch (err) {
+        console.log("[DexScreener] Batch error:", err instanceof Error ? err.message : err);
         continue;
       }
     }
