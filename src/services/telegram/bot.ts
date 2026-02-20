@@ -756,7 +756,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
     const schedulerStatus = getAIBettingStatus();
     const polyStats = getCopyStats();
-    const cryptoCopyPositions = getCryptoCopyPositions();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeTag = status.isPaperMode ? "Paper" : "Live";
@@ -794,8 +793,6 @@ async function handleStatus(ctx: Context): Promise<void> {
     const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
     const copyPnlStr = copyPositions.length > 0 ? ` | ${copyUnrealized >= 0 ? "+" : ""}$${copyUnrealized.toFixed(2)}` : "";
     message += `Poly Copy: ${polyStats.openPositions} open | $${copyInvested.toFixed(2)} invested${copyPnlStr}\n`;
-    const cryptoInvested = cryptoCopyPositions.reduce((sum, p) => sum + p.entryAmountNative, 0);
-    message += `Crypto Copy: ${cryptoCopyPositions.length} open${cryptoCopyPositions.length > 0 ? ` | ${cryptoInvested.toFixed(4)} ETH invested` : ""}\n`;
 
     // Gem paper trades
     try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
