@@ -76,11 +76,11 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🔄 Trades", callback_data: "trades" },
     { text: "🎯 Bets", callback_data: "bets" },
+    { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
     { text: "🕵 Insiders", callback_data: "insiders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
-    { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
@@ -1003,6 +1003,25 @@ async function handleTrades(ctx: Context): Promise<void> {
       message += `\n`;
     }
 
+    // Insider copy trades
+    try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
+    const openCopyTrades = getOpenCopyTrades();
+    if (openCopyTrades.length > 0) {
+      const copyInvested = openCopyTrades.reduce((s, t) => s + t.amountUsd, 0);
+      const copyTotalPnl = openCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
+      const copySign = copyTotalPnl >= 0 ? "+" : "";
+      message += `<b>Insider Copy</b> (${openCopyTrades.length} open | $${copyInvested.toFixed(0)} invested | ${copySign}$${copyTotalPnl.toFixed(2)})\n\n`;
+      for (const t of openCopyTrades) {
+        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+        const sign = pnlUsd >= 0 ? "+" : "";
+        const chainTag = t.chain.toUpperCase().slice(0, 3);
+        const walletShort = `${t.walletAddress.slice(0, 6)}...${t.walletAddress.slice(-4)}`;
+        message += `<b>${t.tokenSymbol}</b> (${chainTag})\n`;
+        message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
+        message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%) | ${walletShort}\n\n`;
+      }
+    }
+
     // Recent trades
     if (trades.length > 0) {
       message += `<b>Today</b> (${trades.length} trades)\n`;
@@ -1011,7 +1030,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString();
         message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
       }
-    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0) {
+    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0) {
       message += "No trades or positions.";
     }
 
