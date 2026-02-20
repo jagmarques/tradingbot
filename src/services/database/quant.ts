@@ -1,5 +1,5 @@
 import { getDb } from "./db.js";
-import type { QuantTrade, QuantPosition } from "../hyperliquid/types.js";
+import type { QuantTrade, QuantPosition, TradeType } from "../hyperliquid/types.js";
 
 export function generateQuantId(): string {
   return `qt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -11,8 +11,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      trade_type, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     trade.id,
     trade.pair,
@@ -28,6 +28,7 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.aiConfidence ?? null,
     trade.aiReasoning ?? null,
     null,
+    trade.tradeType ?? "directional",
     trade.createdAt,
   );
 }
@@ -37,8 +38,8 @@ export function saveQuantPosition(position: QuantPosition): void {
   db.prepare(`
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
-      unrealized_pnl, mode, status, opened_at, closed_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      unrealized_pnl, mode, status, trade_type, opened_at, closed_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -49,6 +50,7 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.unrealizedPnl,
     position.mode,
     position.status,
+    position.tradeType ?? "directional",
     position.openedAt,
     position.closedAt ?? null,
   );
@@ -70,6 +72,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     status: string;
     opened_at: string;
     closed_at: string | null;
+    trade_type: string | null;
   }>;
 
   return rows.map((row) => ({
@@ -87,6 +90,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     exitPrice: undefined,
     realizedPnl: undefined,
     exitReason: undefined,
+    tradeType: (row.trade_type ?? "directional") as TradeType,
   }));
 }
 
@@ -113,6 +117,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     ai_reasoning: string | null;
     created_at: string;
     updated_at: string;
+    trade_type: string | null;
   }>;
 
   return rows.map((row) => ({
@@ -131,10 +136,11 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     aiReasoning: row.ai_reasoning ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    tradeType: (row.trade_type ?? "directional") as TradeType,
   }));
 }
 
-export function getQuantStats(): {
+export function getQuantStats(tradeType?: "directional" | "funding"): {
   totalTrades: number;
   wins: number;
   losses: number;
@@ -142,6 +148,9 @@ export function getQuantStats(): {
   winRate: number;
 } {
   const db = getDb();
+  const whereClause = tradeType
+    ? `WHERE status = 'closed' AND trade_type = '${tradeType}'`
+    : `WHERE status = 'closed'`;
   const stats = db.prepare(`
     SELECT
       COUNT(*) as total,
@@ -149,7 +158,7 @@ export function getQuantStats(): {
       SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
       SUM(pnl) as total_pnl
     FROM quant_trades
-    WHERE status = 'closed'
+    ${whereClause}
   `).get() as {
     total: number;
     wins: number;
@@ -165,5 +174,22 @@ export function getQuantStats(): {
     losses: stats.losses || 0,
     totalPnl: stats.total_pnl || 0,
     winRate: total > 0 ? (wins / total) * 100 : 0,
+  };
+}
+
+export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `
+    SELECT COALESCE(SUM(pnl), 0) as total_income, COUNT(*) as trade_count
+    FROM quant_trades
+    WHERE status = 'closed' AND trade_type = 'funding'
+  `,
+    )
+    .get() as { total_income: number; trade_count: number };
+  return {
+    totalIncome: result.total_income,
+    tradeCount: result.trade_count,
   };
 }

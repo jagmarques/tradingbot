@@ -239,6 +239,7 @@ export function initDb(dbPath?: string): Database.Database {
       ai_confidence REAL,
       ai_reasoning TEXT,
       exit_reason TEXT,
+      trade_type TEXT NOT NULL DEFAULT 'directional',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -253,6 +254,7 @@ export function initDb(dbPath?: string): Database.Database {
       unrealized_pnl REAL DEFAULT 0,
       mode TEXT NOT NULL DEFAULT 'paper',
       status TEXT NOT NULL DEFAULT 'open',
+      trade_type TEXT NOT NULL DEFAULT 'directional',
       opened_at TEXT DEFAULT CURRENT_TIMESTAMP,
       closed_at TEXT,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -315,6 +317,20 @@ export function initDb(dbPath?: string): Database.Database {
       ALTER TABLE daily_stats ADD COLUMN ai_betting_pnl REAL DEFAULT 0;
     `);
     console.log("[Database] Migrated daily_stats: added P&L breakdown columns");
+  }
+
+  // Migration: Add trade_type column to quant_trades and quant_positions (for funding arb tracking)
+  const quantTradesCols = db.pragma("table_info(quant_trades)") as Array<{ name: string }>;
+  const qtColNames = quantTradesCols.map((c) => c.name);
+  if (!qtColNames.includes("trade_type")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'directional'`);
+    console.log("[Database] Migrated quant_trades: added trade_type column");
+  }
+  const quantPosCols = db.pragma("table_info(quant_positions)") as Array<{ name: string }>;
+  const qpColNames = quantPosCols.map((c) => c.name);
+  if (!qpColNames.includes("trade_type")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN trade_type TEXT NOT NULL DEFAULT 'directional'`);
+    console.log("[Database] Migrated quant_positions: added trade_type column");
   }
 
   console.log("[Database] Initialized at", finalPath);

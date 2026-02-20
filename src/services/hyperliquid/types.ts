@@ -15,6 +15,7 @@ export interface QuantPosition {
   realizedPnl: number | undefined;
   exitReason: string | undefined;
   status: "open" | "closed";
+  tradeType?: TradeType;
 }
 
 export interface QuantTrade {
@@ -33,6 +34,7 @@ export interface QuantTrade {
   aiReasoning: string | undefined;
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
+  tradeType?: TradeType;
 }
 
 export interface QuantAccountState {
