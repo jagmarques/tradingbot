@@ -1,11 +1,6 @@
 // Stagnation timeout - exit at break-even if stuck too long
 export const STAGNATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Timing
-export const WEBSOCKET_PING_INTERVAL_MS = 10_000; // 10 seconds
-export const WEBSOCKET_RECONNECT_BASE_MS = 1_000; // 1 second base for exponential backoff
-export const WEBSOCKET_RECONNECT_MAX_MS = 60_000; // 60 seconds max backoff
-
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
 export const CAPITAL_PER_STRATEGY_USD = 50;
@@ -46,19 +41,16 @@ export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
 export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
-export const QUANT_CANDLE_INTERVALS: Array<"15m" | "1h" | "4h"> = ["15m", "1h", "4h"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant AI Decision Engine
 export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-export const QUANT_AI_MIN_CONFIDENCE = 60; // Minimum confidence to act (0-100)
 export const QUANT_AI_STOP_LOSS_MAX_PCT = 3; // Max stop-loss distance %
 export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 5; // $5 max daily loss before trading halt
-export const QUANT_STOP_LOSS_REQUIRED = true; // Every position must have a stop-loss
 export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000; // 30 seconds between stop-loss checks
 
 // Funding Rate Arbitrage

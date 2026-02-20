@@ -330,7 +330,6 @@ OUTPUT JSON ONLY:
       config,
       openPositions,
       usdcBalance,
-      isPaperMode()
     );
     result.opportunitiesFound = decisions.length;
 

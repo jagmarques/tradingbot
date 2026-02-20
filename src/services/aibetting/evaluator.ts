@@ -261,7 +261,6 @@ export function evaluateAllOpportunities(
   config: AIBettingConfig,
   currentPositions: AIBettingPosition[],
   bankroll: number,
-  paperMode = false
 ): BetDecision[] {
   const decisions: BetDecision[] = [];
 
@@ -304,7 +303,7 @@ export function evaluateAllOpportunities(
   const decorrelated = limitCorrelatedBets(approved, markets, currentPositions);
 
   // Apply position limit after ranking (best edges first). Paper mode: no limit.
-  if (paperMode) return decorrelated;
+  if (isPaperMode()) return decorrelated;
 
   const openPositionCount = currentPositions.filter(
     (p) => p.status === "open"

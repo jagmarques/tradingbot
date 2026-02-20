@@ -1,6 +1,7 @@
 import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
+import { loadEnv } from "../../config/env.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
@@ -43,12 +44,13 @@ export const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "avalanche
 
 // Build explorer URL based on chain (Routescan for Avalanche, Etherscan V2 for others)
 export function buildExplorerUrl(chain: EvmChain, params: string): string {
+  const env = loadEnv();
   if (chain === "avalanche") {
-    const apiKey = process.env.SNOWTRACE_API_KEY || "";
+    const apiKey = env.SNOWTRACE_API_KEY ?? "";
     return `${ROUTESCAN_AVAX_URL}?${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
   }
   const chainId = ETHERSCAN_CHAIN_IDS[chain];
-  const apiKey = process.env.ETHERSCAN_API_KEY || "";
+  const apiKey = env.ETHERSCAN_API_KEY ?? "";
   return `${ETHERSCAN_V2_URL}?chainid=${chainId}&${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
 }
 

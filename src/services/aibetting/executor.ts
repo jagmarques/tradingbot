@@ -7,7 +7,7 @@ import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
 import { isPaperMode } from "../../config/env.js";
 import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
-import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, GAMMA_API_URL } from "../../config/constants.js";
+import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL } from "../../config/constants.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 
 // In-memory position storage
@@ -217,38 +217,8 @@ export async function exitPosition(
   return { success: true, pnl };
 }
 
-// Check if market resolved via GAMMA API
-export async function checkMarketResolution(tokenId: string): Promise<{ resolved: boolean; finalPrice: number | null }> {
-  try {
-    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
-    if (!response.ok) return { resolved: false, finalPrice: null };
-
-    const markets = await response.json() as Array<{
-      closed: boolean;
-      clobTokenIds: string;
-      outcomePrices: string;
-    }>;
-
-    if (markets.length === 0) return { resolved: false, finalPrice: null };
-
-    const market = markets[0];
-    if (!market.closed) return { resolved: false, finalPrice: null };
-
-    // Market is closed - get the final price for our token
-    const tokenIds = JSON.parse(market.clobTokenIds) as string[];
-    const prices = JSON.parse(market.outcomePrices) as string[];
-    const idx = tokenIds.indexOf(tokenId);
-
-    if (idx >= 0) {
-      const price = parseFloat(prices[idx]);
-      return { resolved: true, finalPrice: isNaN(price) ? null : price };
-    }
-
-    return { resolved: false, finalPrice: null };
-  } catch {
-    return { resolved: false, finalPrice: null };
-  }
-}
+// Re-export for backward compat
+export { checkMarketResolution } from "../shared/polymarket.js";
 
 // Close position on market resolution (shares settle on-chain)
 export async function resolvePosition(

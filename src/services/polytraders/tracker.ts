@@ -7,6 +7,7 @@ import { isPaperMode } from "../../config/env.js";
 import { getDb } from "../database/db.js";
 import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, GAMMA_API_URL, DATA_API_URL } from "../../config/constants.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
+import { checkMarketResolution } from "../shared/polymarket.js";
 import { getSettings } from "../settings/settings.js";
 import { getChatId } from "../telegram/bot.js";
 import { parseDate, minutesUntil, hoursUntil } from "../../utils/dates.js";
@@ -999,41 +1000,6 @@ export function getCopyStats(): {
     totalPnl: stats.total_pnl || 0,
     winRate: stats.closed_count > 0 ? (stats.wins / stats.closed_count) * 100 : 0,
   };
-}
-
-// Check if market is resolved and get the final outcome price
-async function checkMarketResolution(tokenId: string): Promise<{ resolved: boolean; finalPrice: number | null }> {
-  try {
-    // Use clob_token_ids (snake_case) to look up market by token ID
-    const response = await fetchWithTimeout(`${GAMMA_API_URL}/markets?clob_token_ids=${tokenId}`);
-    if (!response.ok) return { resolved: false, finalPrice: null };
-
-    const markets = await response.json() as Array<{
-      closed: boolean;
-      clobTokenIds: string;
-      outcomePrices: string;
-    }>;
-
-    if (markets.length === 0) return { resolved: false, finalPrice: null };
-
-    const market = markets[0];
-    if (!market.closed) return { resolved: false, finalPrice: null };
-
-    // Market is closed - get the final price for our token
-    const tokenIds = JSON.parse(market.clobTokenIds) as string[];
-    const prices = JSON.parse(market.outcomePrices) as string[];
-    const idx = tokenIds.indexOf(tokenId);
-
-    if (idx >= 0) {
-      const price = parseFloat(prices[idx]);
-      // Resolved prices are ~0.00 (lost) or ~1.00 (won)
-      return { resolved: true, finalPrice: isNaN(price) ? null : price };
-    }
-
-    return { resolved: false, finalPrice: null };
-  } catch {
-    return { resolved: false, finalPrice: null };
-  }
 }
 
 // Check if any copied positions should be closed (trader sold OR market resolved)

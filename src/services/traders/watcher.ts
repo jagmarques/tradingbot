@@ -110,8 +110,12 @@ async function watchInsiderWallets(): Promise<void> {
         const chain = wallet.chain;
         const paperTrade = getGemPaperTrade(symbol, chain);
         if (paperTrade && paperTrade.status === "open") {
-          await sellGemPosition(symbol, chain);
-          console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
+          try {
+            await sellGemPosition(symbol, chain);
+            console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
+          } catch (err) {
+            console.error(`[InsiderWatcher] Failed to sell ${symbol}:`, err instanceof Error ? err.message : err);
+          }
         }
 
         // Close ALL copy trade positions for this token when any insider sells

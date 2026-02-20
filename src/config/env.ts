@@ -66,6 +66,9 @@ const envSchema = z.object({
   QUANT_VIRTUAL_BALANCE: numericString("10"),
   ALCHEMY_API_KEY: z.string().min(1).optional(),
 
+  // Explorer API keys (optional, improves rate limits)
+  ETHERSCAN_API_KEY: z.string().min(1).optional(),
+  SNOWTRACE_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

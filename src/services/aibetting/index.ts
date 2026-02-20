@@ -13,6 +13,9 @@ export {
   getTotalExposure,
   loadPosition,
   initPositions,
+  getCurrentPrice,
+  clearAllPositions,
+  checkMarketResolution,
 } from "./executor.js";
 export {
   startAIBetting,
@@ -21,4 +24,7 @@ export {
   getAIBettingStatus,
   runManualCycle,
   clearAnalysisCache,
+  setLogOnlyMode,
+  isLogOnlyMode,
+  getCachedMarketAnalysis,
 } from "./scheduler.js";
