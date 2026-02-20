@@ -1,5 +1,5 @@
 import { sendMessage } from "./bot.js";
-import { getDailyPnl, getDailyPnlPercentage, getTodayTrades, type Trade } from "../risk/manager.js";
+import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
 
@@ -28,80 +28,6 @@ function formatDate(date: Date = new Date(), userId?: string): string {
     // Fallback if timezone is invalid
     return date.toLocaleString();
   }
-}
-
-// Trade alert
-export async function notifyTrade(trade: Omit<Trade, "id" | "timestamp">): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "";
-  const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
-
-  const message =
-    `${mode}${emoji} <b>${trade.type} ${trade.strategy.toUpperCase()}</b>\n\n` +
-    `Amount: $${trade.amount.toFixed(2)}\n` +
-    `Price: ${trade.price.toFixed(8)}\n` +
-    `${emoji} P&L: $${trade.pnl.toFixed(2)}`;
-
-  await sendMessage(message);
-}
-
-// Buy executed alert
-export async function notifyBuy(params: {
-  strategy: "polymarket";
-  symbol?: string;
-  amount: number;
-  price: number;
-  txHash?: string;
-}): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "";
-
-  let message =
-    `${mode}📊 <b>BUY ${params.strategy.toUpperCase()}</b>\n\n` +
-    (params.symbol ? `Token: ${params.symbol}\n` : "") +
-    `Amount: $${params.amount.toFixed(2)}\n` +
-    `Price: ${params.price.toFixed(8)}`;
-
-  if (params.txHash) {
-    message += `\n\n<a href="https://polygonscan.com/tx/${params.txHash}">View TX</a>`;
-  }
-
-  await sendMessage(message);
-}
-
-// Sell executed alert
-export async function notifySell(params: {
-  strategy: "polymarket";
-  symbol?: string;
-  amount: number;
-  price: number;
-  pnl: number;
-  pnlPercentage: number;
-  reason?: string;
-  txHash?: string;
-}): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "";
-  const emoji = params.pnl >= 0 ? "🟢" : "🔴";
-
-  let message =
-    `${mode}${emoji} <b>SELL ${params.strategy.toUpperCase()}</b>\n\n` +
-    (params.symbol ? `Token: ${params.symbol}\n` : "") +
-    `Amount: $${params.amount.toFixed(2)}\n` +
-    `Price: ${params.price.toFixed(8)}\n` +
-    `P&L: $${params.pnl.toFixed(2)} (${params.pnlPercentage >= 0 ? "+" : ""}${params.pnlPercentage.toFixed(1)}%)` +
-    (params.reason ? `\nReason: ${params.reason}` : "");
-
-  if (params.txHash) {
-    message += `\n\n<a href="https://polygonscan.com/tx/${params.txHash}">View TX</a>`;
-  }
-
-  await sendMessage(message);
-}
-
-// Error alert
-export async function notifyError(error: string, context?: string): Promise<void> {
-  const message =
-    `⚠️ <b>ERROR</b>\n\n` + (context ? `Context: ${context}\n\n` : "") + `<code>${escapeHtml(error)}</code>`;
-
-  await sendMessage(message);
 }
 
 // Critical error alert
@@ -168,31 +94,6 @@ export async function notifyDailySummary(): Promise<void> {
     `Wins: ${wins} | Losses: ${losses}\n` +
     `Win Rate: ${winRate.toFixed(1)}%`;
 
-  await sendMessage(message);
-}
-
-// Low balance warning
-export async function notifyLowBalance(currency: string, balance: number, minimum: number): Promise<void> {
-  const message =
-    `⚠️ <b>Low Balance Warning</b>\n\n` +
-    `${currency}: ${balance.toFixed(4)}\n` +
-    `Minimum: ${minimum.toFixed(4)}\n\n` +
-    `Please top up to continue trading.`;
-  await sendMessage(message);
-}
-
-// Opportunity detected (for monitoring)
-export async function notifyOpportunity(params: {
-  strategy: "polymarket";
-  confidence: number;
-  details: string;
-}): Promise<void> {
-  const emoji = "📊";
-  const message =
-    `${emoji} <b>Opportunity Detected</b>\n\n` +
-    `Strategy: ${params.strategy}\n` +
-    `Confidence: ${params.confidence.toFixed(1)}%\n\n` +
-    `${params.details}`;
   await sendMessage(message);
 }
 

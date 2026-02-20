@@ -32,85 +32,16 @@ vi.mock("../risk/manager.js", () => ({
 }));
 
 import {
-  notifyTrade,
-  notifyBuy,
-  notifySell,
-  notifyError,
   notifyCriticalError,
   notifyBotStarted,
   notifyBotStopped,
   notifyKillSwitch,
   notifyDailySummary,
-  notifyLowBalance,
-  notifyOpportunity,
 } from "./notifications.js";
 
 describe("Telegram Notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  describe("notifyTrade", () => {
-    it("should send trade notification", async () => {
-      await notifyTrade({
-        strategy: "polymarket",
-        type: "BUY",
-        amount: 10,
-        price: 0.001,
-        pnl: 0,
-      });
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("[PAPER]"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("BUY"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("POLYMARKET"));
-    });
-  });
-
-  describe("notifyBuy", () => {
-    it("should send buy notification with TX link", async () => {
-      await notifyBuy({
-        strategy: "polymarket",
-        symbol: "TEST",
-        amount: 10,
-        price: 0.001,
-        txHash: "abc123",
-      });
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("BUY"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("TEST"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("polygonscan.com"));
-    });
-  });
-
-  describe("notifySell", () => {
-    it("should send sell notification with P&L", async () => {
-      await notifySell({
-        strategy: "polymarket",
-        amount: 20,
-        price: 0.65,
-        pnl: 5,
-        pnlPercentage: 25,
-        reason: "Take profit",
-      });
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("SELL"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("$5.00"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Take profit"));
-    });
-  });
-
-  describe("notifyError", () => {
-    it("should send error notification", async () => {
-      await notifyError("Connection failed", "WebSocket");
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("ERROR"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Connection failed"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("WebSocket"));
-    });
   });
 
   describe("notifyCriticalError", () => {
@@ -169,31 +100,6 @@ describe("Telegram Notifications", () => {
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("$25.50"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Total Trades"));
       expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Win Rate"));
-    });
-  });
-
-  describe("notifyLowBalance", () => {
-    it("should send low balance warning", async () => {
-      await notifyLowBalance("ETH", 0.02, 0.05);
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Low Balance"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("ETH"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("0.0200"));
-    });
-  });
-
-  describe("notifyOpportunity", () => {
-    it("should send opportunity notification", async () => {
-      await notifyOpportunity({
-        strategy: "polymarket",
-        confidence: 92.5,
-        details: "Price discrepancy detected",
-      });
-
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("Opportunity"));
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.stringContaining("92.5%"));
     });
   });
 });
