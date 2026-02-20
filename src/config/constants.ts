@@ -6,16 +6,6 @@ export const WEBSOCKET_PING_INTERVAL_MS = 10_000; // 10 seconds
 export const WEBSOCKET_RECONNECT_BASE_MS = 1_000; // 1 second base for exponential backoff
 export const WEBSOCKET_RECONNECT_MAX_MS = 60_000; // 60 seconds max backoff
 
-// Polymarket confidence threshold (85%)
-export const MIN_CONFIDENCE_PERCENTAGE = 85;
-
-// Health check
-export const HEALTH_PORT = 3000;
-export const HEALTH_TIMEOUT_MS = 5_000;
-
-// Alerts
-export const LOW_BALANCE_THRESHOLD_USD = 10;
-
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
 export const CAPITAL_PER_STRATEGY_USD = 50;
@@ -24,10 +14,7 @@ export const CAPITAL_PER_STRATEGY_USD = 50;
 export const CAPITAL_LOSS_PAUSE_PERCENTAGE = 30;
 
 // Polymarket trading
-export const TARGET_ARBITRAGE_PROFIT_PCT = 0.5; // 0.5% net profit target after all fees
 export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold time
-export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
-export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
 
 // Realistic fee estimation for paper trading
 export const ESTIMATED_GAS_FEE_MATIC = 0.1; // ~$0.10 per Polygon tx (sourced from Polymarket docs 2026)

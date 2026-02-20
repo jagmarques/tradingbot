@@ -153,11 +153,46 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_reason TEXT DEFAULT NULL"); } catch { /* already exists */ }
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS token_rug_counts (
+      token_address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      rug_count INTEGER NOT NULL DEFAULT 0,
+      last_rugged_at INTEGER NOT NULL,
+      PRIMARY KEY (token_address, chain)
+    )
+  `);
+
   console.log("[InsiderScanner] Database tables initialized");
 }
 
 function normalizeAddr(addr: string): string {
   return addr.toLowerCase();
+}
+
+export function incrementRugCount(tokenAddress: string, chain: string): void {
+  const db = getDb();
+  const ta = normalizeAddr(tokenAddress);
+  const now = Date.now();
+
+  db.prepare(`
+    INSERT INTO token_rug_counts (token_address, chain, rug_count, last_rugged_at)
+    VALUES (?, ?, 1, ?)
+    ON CONFLICT(token_address, chain) DO UPDATE SET
+      rug_count = rug_count + 1,
+      last_rugged_at = ?
+  `).run(ta, chain, now, now);
+}
+
+export function getRugCount(tokenAddress: string, chain: string): number {
+  const db = getDb();
+  const ta = normalizeAddr(tokenAddress);
+
+  const row = db.prepare(
+    "SELECT rug_count FROM token_rug_counts WHERE token_address = ? AND chain = ?"
+  ).get(ta, chain) as { rug_count: number } | undefined;
+
+  return row?.rug_count ?? 0;
 }
 
 export function upsertGemHit(hit: GemHit): void {
