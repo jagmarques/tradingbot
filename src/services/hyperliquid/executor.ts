@@ -6,6 +6,8 @@ import {
   getPaperPositions,
 } from "./paper.js";
 import { validateRiskGates, recordDailyLoss } from "./risk-manager.js";
+import { getPaperStartDate } from "../database/quant.js";
+import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
 import type { QuantPosition, MarketRegime } from "./types.js";
 
 export async function openPosition(
@@ -33,8 +35,19 @@ export async function openPosition(
     return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry);
   }
 
-  // Live mode: not yet implemented (Phase 26+)
-  console.warn(`[Quant Executor] Live trading not yet implemented. Use paper mode.`);
+  // Live mode: validate paper period complete before allowing real trades
+  const startDate = getPaperStartDate();
+  if (!startDate) {
+    console.warn(`[Quant Executor] Live mode blocked: no paper trading history. Run paper mode first.`);
+    return null;
+  }
+  const daysElapsed = (Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24);
+  if (daysElapsed < QUANT_PAPER_VALIDATION_DAYS) {
+    console.warn(`[Quant Executor] Live mode blocked: paper validation incomplete (${daysElapsed.toFixed(1)}/${QUANT_PAPER_VALIDATION_DAYS} days)`);
+    return null;
+  }
+  // TODO: Wire real Hyperliquid order placement here when ready
+  console.warn(`[Quant Executor] Live order placement not yet wired. Paper validation passed but real execution requires SDK order integration.`);
   return null;
 }
 
@@ -50,8 +63,8 @@ export async function closePosition(
     return result;
   }
 
-  // Live mode: not yet implemented (Phase 26+)
-  console.warn(`[Quant Executor] Live trading not yet implemented. Use paper mode.`);
+  // Live mode: position close not yet wired to real exchange
+  console.warn(`[Quant Executor] Live position close not yet wired. Position ${positionId} requires manual close on Hyperliquid.`);
   return { success: false, pnl: 0 };
 }
 
