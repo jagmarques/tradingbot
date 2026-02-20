@@ -83,6 +83,17 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
+export type TradeType = "directional" | "funding";
+
+export interface FundingOpportunity {
+  pair: string;
+  currentRate: number; // per-period rate (8h)
+  annualizedRate: number; // annualized APR (rate * 3 * 365)
+  direction: "long" | "short"; // short if positive rate (shorts collect), long if negative
+  nextFundingTime: number; // unix ms
+  markPrice: number; // current mid price from getAllMids, used for stop-loss/take-profit calc
+}
+
 export type MarketRegime = "trending" | "ranging" | "volatile";
 
 export interface TechnicalIndicators {
