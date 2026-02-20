@@ -201,6 +201,7 @@ export const COPY_TRADE_CONFIG = {
   STOP_LOSS_PCT: -80,
   ESTIMATED_FEE_PCT: 1.5, // ~0.3% swap fee x2 + slippage on micro-caps
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
-  LIQUIDITY_RUG_FLOOR_USD: 5000, // static floor - close if liquidity below this
-  LIQUIDITY_RUG_DROP_PCT: 70, // relative - close if liquidity dropped 70% from entry
+  LIQUIDITY_RUG_FLOOR_USD: 5000,
+  LIQUIDITY_RUG_DROP_PCT: 70,
+  RUG_CHECK_INTERVAL_MS: 2 * 60 * 1000,
 };

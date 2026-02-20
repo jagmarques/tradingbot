@@ -640,14 +640,13 @@ export async function refreshCopyTradePrices(): Promise<void> {
       }
     }
 
-    // Liquidity revalidation - auto-close if pool drained (rug)
-    // Three triggers: zero liquidity, static floor ($5k), OR 70% drop from entry
+    // Rug detection: floor (if entry was healthy) or 70% drop
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
     if (priceUsd > 0) {
       const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
       if (trade) {
-        const belowFloor = liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
         const entryLiq = trade.liquidityUsd;
+        const belowFloor = entryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
         const droppedFromEntry = entryLiq > 0 && liquidityUsd > 0 && liquidityUsd < entryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
         if (belowFloor || droppedFromEntry) {
           const reason = liquidityUsd === 0
