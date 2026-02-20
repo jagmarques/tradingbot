@@ -528,12 +528,21 @@ async function _scanWalletHistoryInner(): Promise<void> {
         .filter(([addr]) => !existingTokens.has(addr))
         .slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS);
 
+      // Batch fetch all tokens at once (~7 API calls instead of ~200)
+      const batchTokens = newTokens.map(([addr]) => ({ chain: wallet.chain, tokenAddress: addr }));
+      const batchResults = await dexScreenerFetchBatch(batchTokens);
+      console.log(`[InsiderScanner] History: Batch fetched ${batchResults.size}/${newTokens.length} tokens for ${wallet.address.slice(0, 8)}`);
+
       let checkedCount = 0;
       let newGemsCount = 0;
 
       for (const [tokenAddress, tokenInfo] of newTokens) {
         try {
-          const pair = await dexScreenerFetch(wallet.chain, tokenAddress);
+          let pair = batchResults.get(tokenAddress) ?? null;
+          // Fallback for tokens not found in batch (includes GeckoTerminal)
+          if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
+            pair = await dexScreenerFetch(wallet.chain, tokenAddress);
+          }
           checkedCount++;
 
           if (!pair) continue;
