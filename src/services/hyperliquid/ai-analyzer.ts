@@ -73,6 +73,36 @@ function parseAIResponse(
     return null;
   }
 
+  // Volatile regime override: force flat regardless of AI output
+  let finalDirection: "long" | "short" | "flat" = direction;
+  if (regime === "volatile" && direction !== "flat") {
+    console.log(`[QuantAI] Overriding to flat: volatile regime for ${pair}`);
+    finalDirection = "flat";
+  }
+
+  // Flat decisions skip all SL/TP/entry validation
+  if (finalDirection === "flat") {
+    const rawConf = Number(parsed["confidence"]);
+    const flatConfidence = isFinite(rawConf) ? Math.max(0, Math.min(100, rawConf)) : 0;
+    const flatReasoning =
+      typeof parsed["reasoning"] === "string" && parsed["reasoning"].trim().length > 0
+        ? (parsed["reasoning"] as string).trim()
+        : "Flat - no setup";
+    return {
+      pair,
+      direction: "flat" as const,
+      entryPrice: markPrice,
+      stopLoss: 0,
+      takeProfit: 0,
+      confidence: flatConfidence,
+      reasoning: flatReasoning,
+      regime,
+      suggestedSizeUsd: 0,
+      analyzedAt: new Date().toISOString(),
+    };
+  }
+
+  // From here on, direction is long or short - validate entry/SL/TP
   const entryPrice = Number(parsed["entryPrice"]);
   if (!isFinite(entryPrice) || entryPrice <= 0) {
     console.error(`[QuantAI] Validation failed for ${pair}: invalid entryPrice ${String(parsed["entryPrice"])}`);
@@ -103,14 +133,7 @@ function parseAIResponse(
     return null;
   }
 
-  // Volatile regime override: force flat regardless of AI output
-  let finalDirection: "long" | "short" | "flat" = direction;
-  if (regime === "volatile" && direction !== "flat") {
-    console.log(`[QuantAI] Overriding to flat: volatile regime for ${pair}`);
-    finalDirection = "flat";
-  }
-
-  // Validate stop-loss direction (only for non-flat)
+  // Validate stop-loss direction
   if (finalDirection === "long" && stopLoss >= entryPrice) {
     console.error(`[QuantAI] Validation failed for ${pair}: long stop-loss ${stopLoss} must be below entry ${entryPrice}`);
     return null;
@@ -120,7 +143,7 @@ function parseAIResponse(
     return null;
   }
 
-  // Validate take-profit direction (only for non-flat)
+  // Validate take-profit direction
   if (finalDirection === "long" && takeProfit <= entryPrice) {
     console.error(`[QuantAI] Validation failed for ${pair}: long take-profit ${takeProfit} must be above entry ${entryPrice}`);
     return null;
@@ -132,8 +155,6 @@ function parseAIResponse(
 
   // Clamp confidence to 0-100
   const confidence = Math.max(0, Math.min(100, rawConfidence));
-
-  void markPrice; // markPrice available for future use (e.g., proximity checks)
 
   return {
     pair,
