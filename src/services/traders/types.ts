@@ -180,14 +180,16 @@ export interface CopyTrade {
   side: "buy" | "sell";
   buyPriceUsd: number;
   currentPriceUsd: number;
-  amountUsd: number; // always 10
+  amountUsd: number;
   pnlPct: number;
   status: "open" | "closed" | "skipped";
   liquidityOk: boolean;
   liquidityUsd: number;
-  skipReason: string | null; // e.g., "no liquidity", "no price"
+  skipReason: string | null;
   buyTimestamp: number;
   closeTimestamp: number | null;
+  insiderCount: number;
+  peakPnlPct: number;
 }
 
 export const COPY_TRADE_CONFIG = {

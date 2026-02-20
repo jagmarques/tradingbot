@@ -144,6 +144,13 @@ export function initInsiderTables(): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_copy_trades_chain ON insider_copy_trades(chain)
   `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_copy_trades_token ON insider_copy_trades(token_address, chain)
+  `);
+
+  // Add insider_count and peak_pnl_pct columns (safe if already exist)
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN insider_count INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 
   console.log("[InsiderScanner] Database tables initialized");
 }
@@ -670,6 +677,8 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     skipReason: (row.skip_reason as string) || null,
     buyTimestamp: row.buy_timestamp as number,
     closeTimestamp: (row.close_timestamp as number) || null,
+    insiderCount: (row.insider_count as number) || 1,
+    peakPnlPct: (row.peak_pnl_pct as number) || 0,
   };
 }
 
@@ -683,8 +692,9 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     INSERT OR IGNORE INTO insider_copy_trades (
       id, wallet_address, token_symbol, token_address, chain, side,
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
-      liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
+      insider_count, peak_pnl_pct
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -701,7 +711,9 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.liquidityUsd,
     trade.skipReason ?? null,
     trade.buyTimestamp,
-    trade.closeTimestamp ?? null
+    trade.closeTimestamp ?? null,
+    trade.insiderCount ?? 1,
+    trade.peakPnlPct ?? 0
   );
 }
 
@@ -749,6 +761,29 @@ export function getClosedCopyTrades(): CopyTrade[] {
 
   const rows = db.prepare("SELECT * FROM insider_copy_trades WHERE status = 'closed' ORDER BY close_timestamp DESC").all() as Record<string, unknown>[];
   return rows.map(mapRowToCopyTrade);
+}
+
+export function getOpenCopyTradeByToken(tokenAddress: string, chain: string): CopyTrade | null {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT * FROM insider_copy_trades WHERE token_address = ? AND chain = ? AND status = 'open' LIMIT 1"
+  ).get(normalizeAddr(tokenAddress), chain) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return mapRowToCopyTrade(row);
+}
+
+export function increaseCopyTradeAmount(id: string, additionalAmount: number): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE insider_copy_trades SET amount_usd = amount_usd + ?, insider_count = insider_count + 1 WHERE id = ?"
+  ).run(additionalAmount, id);
+}
+
+export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE insider_copy_trades SET peak_pnl_pct = ? WHERE id = ? AND ? > peak_pnl_pct"
+  ).run(peakPnlPct, id, peakPnlPct);
 }
 
 export function getAllCopyTrades(): CopyTrade[] {

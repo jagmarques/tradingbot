@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
@@ -613,11 +613,35 @@ export async function refreshCopyTradePrices(): Promise<void> {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
   }
 
-  // Stop-loss check
+  // Trailing stop-loss check
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
-    if (trade.pnlPct <= COPY_TRADE_CONFIG.STOP_LOSS_PCT) {
-      console.log(`[CopyTrade] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}%`);
+    // Track peak P&L for trailing stop
+    if (trade.pnlPct > trade.peakPnlPct) {
+      updateCopyTradePeakPnl(trade.id, trade.pnlPct);
+    }
+    const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
+
+    // Auto-close at +200%
+    if (trade.pnlPct >= 200) {
+      console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
+      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+      continue;
+    }
+
+    // Trailing stop ladder based on peak profit
+    let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -80% floor
+    if (peak >= 100) {
+      stopLevel = 50; // lock in +50% if we hit +100%
+    } else if (peak >= 50) {
+      stopLevel = 25; // lock in +25% if we hit +50%
+    } else if (peak >= 20) {
+      stopLevel = 0; // breakeven if we hit +20%
+    }
+
+    if (trade.pnlPct <= stopLevel) {
+      const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
+      console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
       closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
     }
   }
