@@ -9,7 +9,7 @@ export async function getAccountBalance(walletAddress: string): Promise<{
   try {
     await ensureConnected();
     const sdk = getClient();
-    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddress);
+    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddress, true);
 
     const equity = parseFloat(state.marginSummary.accountValue);
     const totalMarginUsed = parseFloat(state.marginSummary.totalMarginUsed);
@@ -34,7 +34,7 @@ export async function getOpenPositions(
   try {
     await ensureConnected();
     const sdk = getClient();
-    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddress);
+    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddress, true);
 
     const positions: QuantPosition[] = state.assetPositions
       .filter((ap) => parseFloat(ap.position.szi) !== 0)
@@ -43,7 +43,7 @@ export async function getOpenPositions(
         const szi = parseFloat(p.szi);
         return {
           id: `${p.coin}-${p.entryPx}`,
-          pair: p.coin.replace(/-PERP$/, ""),
+          pair: p.coin,
           direction: szi > 0 ? "long" : "short",
           entryPrice: parseFloat(p.entryPx),
           size: Math.abs(szi),
@@ -84,7 +84,7 @@ export async function getRecentFills(
   try {
     await ensureConnected();
     const sdk = getClient();
-    const fills = await sdk.info.getUserFills(walletAddress);
+    const fills = await sdk.info.getUserFills(walletAddress, true);
 
     const mapped = fills.slice(0, limit).map((f) => ({
       pair: f.coin,
