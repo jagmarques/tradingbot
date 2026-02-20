@@ -1570,9 +1570,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
 
       message += `Unreal: ${pnl(totalPnlVal)} | Real: ${pnl(aiStats.totalPnl)}\n`;
       message += `${openBets.length} open | ${$(totalInvested)} inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
-      message += `<pre>`;
       message += positionLines;
-      message += `</pre>`;
 
     } else if (tab === "closed") {
       const closedBets = loadClosedPositions(1000);
@@ -1611,9 +1609,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
 
       message += `Real: ${pnl(closedTotalPnl)}\n`;
       message += `${aiStats.totalBets} closed | ${$(closedTotalInvested)} inv | ${aiStats.winRate.toFixed(0)}% win\n\n`;
-      message += `<pre>`;
       message += closedLines;
-      message += `</pre>`;
 
     } else if (tab === "copy") {
       // Copy Open tab - Polymarket copy positions
@@ -1652,9 +1648,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       const unrealizedPnl = totalCurrentValue - totalInvested;
       message += `Unreal: ${pnl(unrealizedPnl)} | Real: ${pnl(polyStats.totalPnl)}\n`;
       message += `${positionsWithValues.length} open | ${$(totalInvested)} inv | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
-      message += `<pre>`;
       message += copyLines;
-      message += `</pre>`;
 
     } else {
       // Copy Closed tab
@@ -1692,9 +1686,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
 
       message += `Real: ${pnl(copyClosedPnlVal)}\n`;
       message += `${polyStats.closedPositions} closed | ${$(copyClosedInvested)} inv | ${polyStats.winRate.toFixed(0)}% win\n\n`;
-      message += `<pre>`;
       message += copyClosedLines;
-      message += `</pre>`;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
