@@ -622,21 +622,21 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
 
-    // Auto-close at +200%
-    if (trade.pnlPct >= 200) {
+    // Auto-close at +500%
+    if (trade.pnlPct >= 500) {
       console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
       closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
       continue;
     }
 
-    // Trailing stop ladder based on peak profit
+    // Trailing stop ladder based on peak profit (aggressive for micro-caps)
     let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -80% floor
-    if (peak >= 100) {
+    if (peak >= 200) {
+      stopLevel = 100; // lock in +100% if we hit +200%
+    } else if (peak >= 100) {
       stopLevel = 50; // lock in +50% if we hit +100%
     } else if (peak >= 50) {
-      stopLevel = 25; // lock in +25% if we hit +50%
-    } else if (peak >= 20) {
-      stopLevel = 0; // breakeven if we hit +20%
+      stopLevel = 0; // breakeven if we hit +50%
     }
 
     if (trade.pnlPct <= stopLevel) {

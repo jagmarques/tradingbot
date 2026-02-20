@@ -114,24 +114,22 @@ async function watchInsiderWallets(): Promise<void> {
           console.log(`[InsiderWatcher] Auto-sell: ${symbol} (insider ${wallet.address.slice(0, 8)} sold)`);
         }
 
-        // Close copy trade if open
-        const copyTrade = getCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
-        if (copyTrade && copyTrade.status === "open") {
-          closeCopyTrade(wallet.address, tx.contractAddress, wallet.chain);
-          console.log(`[CopyTrade] Auto-sell: ${symbol} (${wallet.address.slice(0, 8)} sold, P&L ${copyTrade.pnlPct.toFixed(1)}%)`);
+        // Close ALL copy trade positions for this token when any insider sells
+        const primaryTrade = getOpenCopyTradeByToken(tx.contractAddress, wallet.chain);
+        if (primaryTrade) {
+          closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain);
+          console.log(`[CopyTrade] Insider sell: closing ${primaryTrade.tokenSymbol} (${wallet.address.slice(0, 8)} sold, P&L ${primaryTrade.pnlPct.toFixed(1)}%)`);
           notifyCopyTrade({
             walletAddress: wallet.address,
-            tokenSymbol: copyTrade.tokenSymbol,
-            chain: copyTrade.chain,
+            tokenSymbol: primaryTrade.tokenSymbol,
+            chain: primaryTrade.chain,
             side: "sell",
-            priceUsd: copyTrade.currentPriceUsd,
-            liquidityOk: copyTrade.liquidityOk,
-            liquidityUsd: copyTrade.liquidityUsd,
-            skipReason: copyTrade.skipReason,
-            pnlPct: copyTrade.pnlPct,
+            priceUsd: primaryTrade.currentPriceUsd,
+            liquidityOk: primaryTrade.liquidityOk,
+            liquidityUsd: primaryTrade.liquidityUsd,
+            skipReason: null,
+            pnlPct: primaryTrade.pnlPct,
           }).catch(err => console.error("[CopyTrade] Notification error:", err));
-        } else if (copyTrade && copyTrade.status === "skipped") {
-          console.log(`[CopyTrade] Insider sold ${symbol} but we skipped (${copyTrade.skipReason})`);
         }
       }
 
