@@ -82,3 +82,9 @@ export const FUNDING_ARB_MAX_SIZE_USD = 3; // $3 max per funding position (conse
 export const FUNDING_ARB_SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour between scans
 export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss (wider than directional, since 1x leverage)
 export const FUNDING_ARB_TAKE_PROFIT_PCT = 10; // 10% take-profit
+
+// Directional Trading Scheduler
+export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+// Paper Trading Validation
+export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading period
