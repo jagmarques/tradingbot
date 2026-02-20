@@ -810,8 +810,9 @@ async function handleStatus(ctx: Context): Promise<void> {
       }
     }
 
+    const breakdown = getDailyPnlBreakdown();
     let message = `<b>Status</b> | ${modeTag}${killTag}\n`;
-    message += `PnL: ${pnl(status.dailyPnl)} (${todayTrades.length} trades)\n\n`;
+    message += `PnL: ${pnl(breakdown.total)} (${todayTrades.length} trades)\n\n`;
 
     const lines: string[] = [];
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
@@ -1094,9 +1095,7 @@ function formatBreakdown(
     { name: "Rugs", value: rugPnl },
   ];
 
-  const rows = sources.filter(s => s.value !== 0).map(s => `${s.name}: ${pnl(s.value)}`);
-
-  if (rows.length === 0) return `No closed positions`;
+  const rows = sources.map(s => `${s.name}: ${pnl(s.value)}`);
   return rows.join("\n");
 }
 
