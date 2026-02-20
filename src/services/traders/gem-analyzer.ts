@@ -4,7 +4,13 @@ import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
+import { notifyCopyTrade } from "../telegram/notifications.js";
 import type { Chain } from "./types.js";
+
+// Price failure tracking for copy trades (auto-close after repeated failures)
+const copyPriceFailures = new Map<string, { count: number; lastFailAt: number }>();
+const COPY_MAX_PRICE_FAILURES = 3;
+const COPY_PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
   ethereum: "1",
@@ -603,9 +609,49 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
 
     const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    const failKey = `${token.tokenAddress}_${token.chain}`;
+
     if (priceUsd > 0) {
       updateCopyTradePrice(token.walletAddress, token.tokenAddress, token.chain, priceUsd);
+      copyPriceFailures.delete(failKey);
       updated++;
+    } else {
+      // Track price fetch failures - auto-close after repeated failures
+      const prev = copyPriceFailures.get(failKey);
+      if (prev && Date.now() - prev.lastFailAt > COPY_PRICE_FAILURE_EXPIRY_MS) {
+        copyPriceFailures.delete(failKey);
+      }
+      const entry = copyPriceFailures.get(failKey);
+      const newCount = (entry?.count ?? 0) + 1;
+      copyPriceFailures.set(failKey, { count: newCount, lastFailAt: Date.now() });
+      if (newCount >= COPY_MAX_PRICE_FAILURES) {
+        const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
+        if (trade) {
+          console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${COPY_MAX_PRICE_FAILURES} attempts`);
+          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+          notifyCopyTrade({
+            walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+            side: "sell", priceUsd: 0, liquidityOk: false, liquidityUsd: 0,
+            skipReason: "stale price", pnlPct: trade.pnlPct,
+          }).catch(() => {});
+        }
+        copyPriceFailures.delete(failKey);
+      }
+    }
+
+    // Liquidity revalidation - auto-close if pool drained (rug)
+    const liquidityUsd = pair?.liquidity?.usd ?? 0;
+    if (priceUsd > 0 && liquidityUsd < 500) {
+      const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
+      if (trade) {
+        console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $500`);
+        closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+          side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
+          skipReason: "liquidity rug", pnlPct: trade.pnlPct,
+        }).catch(() => {});
+      }
     }
   }
 
@@ -626,6 +672,11 @@ export async function refreshCopyTradePrices(): Promise<void> {
     if (trade.pnlPct >= 500) {
       console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
       closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+      notifyCopyTrade({
+        walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+        side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+        skipReason: null, pnlPct: trade.pnlPct,
+      }).catch(() => {});
       continue;
     }
 
@@ -643,6 +694,11 @@ export async function refreshCopyTradePrices(): Promise<void> {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
       closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+      notifyCopyTrade({
+        walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+        side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+        skipReason: null, pnlPct: trade.pnlPct,
+      }).catch(() => {});
     }
   }
 }

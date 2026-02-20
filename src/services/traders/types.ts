@@ -196,4 +196,5 @@ export const COPY_TRADE_CONFIG = {
   MIN_LIQUIDITY_USD: 1000,
   AMOUNT_USD: 10,
   STOP_LOSS_PCT: -80,
+  ESTIMATED_FEE_PCT: 1.5, // ~0.3% swap fee x2 + slippage on micro-caps
 };

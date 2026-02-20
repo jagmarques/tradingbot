@@ -2,7 +2,7 @@ import type { EvmChain, GemHit } from "./types.js";
 import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
-import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
+import { analyzeGem, buyGems, sellGemPosition, fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyInsiderBuyDetected, notifyCopyTrade } from "../telegram/notifications.js";
 
@@ -328,6 +328,42 @@ async function watchInsiderWallets(): Promise<void> {
           liquidityOk: false,
           liquidityUsd: 0,
           skipReason: "no price",
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
+        continue;
+      }
+
+      // GoPlus safety check - reject honeypots, high-tax tokens, etc.
+      const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
+      if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+        insertCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          tokenAddress: tokenInfo.tokenAddress,
+          chain: tokenInfo.chain,
+          side: "buy",
+          buyPriceUsd: priceUsd,
+          currentPriceUsd: priceUsd,
+          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+          pnlPct: 0,
+          status: "skipped",
+          liquidityOk: true,
+          liquidityUsd,
+          skipReason: "GoPlus kill-switch",
+          buyTimestamp: Date.now(),
+          closeTimestamp: null,
+          insiderCount: 1,
+          peakPnlPct: 0,
+        });
+        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
+        notifyCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          chain: tokenInfo.chain,
+          side: "buy",
+          priceUsd,
+          liquidityOk: false,
+          liquidityUsd,
+          skipReason: "GoPlus kill-switch",
         }).catch(err => console.error("[CopyTrade] Notification error:", err));
         continue;
       }

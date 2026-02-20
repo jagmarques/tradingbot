@@ -1,6 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { CopyTrade, GemHit, InsiderWallet, ScanChain } from "./types.js";
-import { INSIDER_CONFIG } from "./types.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -737,16 +737,17 @@ export function getOpenCopyTrades(): CopyTrade[] {
 export function updateCopyTradePrice(walletAddress: string, tokenAddress: string, chain: string, currentPriceUsd: number): void {
   const db = getDb();
   const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
 
   db.prepare(`
     UPDATE insider_copy_trades
     SET current_price_usd = ?,
         pnl_pct = CASE
-          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100)
+          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100 - ?)
           ELSE 0
         END
     WHERE id = ?
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
 }
 
 export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string): void {
