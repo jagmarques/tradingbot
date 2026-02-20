@@ -1,6 +1,6 @@
 # Trading Bot
 
-Polymarket AI betting, copy trading, and insider gem scanner. TypeScript, Docker, Coolify.
+Polymarket AI betting, Polymarket copy trading, EVM insider copy trades, gem paper trades, Hyperliquid quant trading. TypeScript, Docker, Coolify.
 
 ## Strategies
 
@@ -61,24 +61,45 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 
 **Display:** Launch price from GeckoTerminal OHLCV candles. DexScreener batch pricing.
 
+### Insider Copy Trading
+
+Copies EVM token buys from high-scoring insider wallets. Auto-sells when the insider sells or on rug detection.
+
+### Hyperliquid Quant Trading
+
+AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
+
+- DeepSeek analysis with market data pipeline (technical indicators, regime classification)
+- Kelly criterion position sizing (quarter Kelly, 20% balance cap)
+- Funding rate arbitrage (short when funding > 15% APR, close when < 5%)
+- Max 5x leverage, 3 concurrent positions, $5 daily drawdown limit
+- 14-day paper validation required before live trading
+
 ## Telegram
+
+**Slash commands:**
 
 | Command | Description |
 |---------|-------------|
 | `/status` | Positions across all strategies |
-| `/balance` | Wallet balances |
-| `/pnl` | P&L (daily/7d/30d/all-time) |
-| `/trades` | Recent trades |
-| `/insiders` | Insider wallets, holdings, gems |
+| `/balance` | Wallet balances (Polygon, Base, Arbitrum, Avax) |
+| `/pnl` | P&L with period tabs (today/7d/30d/all-time) |
+| `/trades` | Open positions and recent trades |
+| `/insiders` | Insider wallets, activity, holdings, gems, copies (5 tabs + chain filter) |
 | `/stop` / `/resume` | Kill switch |
 | `/mode` | Switch paper/live |
 | `/resetpaper` | Wipe paper data |
 | `/clearcopies` | Clear copied positions |
-| `/ai <question>` | Query bot with DeepSeek |
+| `/ai <question>` | Query DeepSeek |
+| `/timezone` | Set display timezone |
 
-**Insider tabs:** Wallets (address, score, gem count, avg gain) | Activity (recent buys/sells) | Holding (tokens insiders hold) | Gems (paper-bought positions with P&L)
+**Menu buttons:** Status, Balance, P&L, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
 
-**Chain filter:** persists across tab switches (ETH, Base, Arb, Poly, Opt, Avax, All)
+- **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
+- **Bettors** - Tracked Polymarket bettors by ROI
+- **Quant** - Hyperliquid quant positions, P&L, paper validation status
+- **Settings** - Copy trading and AI betting configuration
+- **Manage** - Close all positions, clear copies
 
 ## Paper vs Live
 
@@ -106,8 +127,12 @@ Scans 6 EVM chains for pumped tokens, identifies early buyers, tracks repeat win
 | `AIBETTING_TAKE_PROFIT` | `40%` | Take-profit threshold |
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
+| `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
+| `QUANT_VIRTUAL_BALANCE` | `$10` | Quant paper trading balance |
 
-**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYMARKET_PASSPHRASE`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
+**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
+
+**Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `ONEINCH_API_KEY`, `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 ## Setup
 
@@ -121,11 +146,11 @@ npm run dev
 
 1. Set environment variables in dashboard
 2. Mount `/data` volume for SQLite persistence
-3. Health check: `GET /health` on port 4000
+3. Health check: `GET /health` on port 3000
 
 ## Tech Stack
 
-TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Docker, Coolify
+TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Hyperliquid SDK, Docker, Coolify
 
 ## License
 
