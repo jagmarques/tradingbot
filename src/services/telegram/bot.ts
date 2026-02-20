@@ -28,8 +28,7 @@ import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/sn
 import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades } from "../traders/storage.js";
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
-import { loadClosedQuantTrades } from "../database/quant.js";
-import { getQuantStats } from "../database/quant.js";
+import { loadClosedQuantTrades, getQuantStats, getFundingIncome } from "../database/quant.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -2511,11 +2510,12 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const balance = getVirtualBalance();
   const openPositions = getOpenQuantPositions();
-  const stats = getQuantStats();
   const mode = isPaperMode() ? "PAPER" : "LIVE";
 
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
+  const funding = getFundingIncome();
+  const directionalStats = getQuantStats("directional");
 
   let text = `<b>Quant Trading (Hyperliquid) - ${mode}</b>\n\n`;
   text += `Balance: <b>$${balance.toFixed(2)}</b>\n`;
@@ -2526,7 +2526,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     text += "<b>Open Positions:</b>\n";
     for (const pos of openPositions) {
-      text += `  ${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)\n`;
+      const label = pos.tradeType === "funding" ? "[FUND] " : "";
+      text += `  ${label}${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)\n`;
     }
     text += "\n";
   }
@@ -2541,11 +2542,15 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += "\n";
   }
 
-  text += "<b>Stats (closed trades):</b>\n";
-  text += `  Trades: ${stats.totalTrades}\n`;
-  text += `  Wins: ${stats.wins} / Losses: ${stats.losses}\n`;
-  text += `  Win rate: ${stats.winRate.toFixed(1)}%\n`;
-  text += `  Total PnL: ${stats.totalPnl >= 0 ? "+" : ""}$${stats.totalPnl.toFixed(2)}\n`;
+  const directionalPnl = directionalStats.totalPnl;
+  const fundingPnl = funding.totalIncome;
+  const totalPnl = directionalPnl + fundingPnl;
+  const fmtPnl = (v: number) => `${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(2)}`;
+
+  text += "<b>P&L Breakdown:</b>\n";
+  text += `  Directional: ${fmtPnl(directionalPnl)}  (${directionalStats.totalTrades} trades, ${directionalStats.winRate.toFixed(1)}% win)\n`;
+  text += `  Funding Arb: ${fmtPnl(fundingPnl)}  (${funding.tradeCount} trades)\n`;
+  text += `  Combined: ${fmtPnl(totalPnl)}\n`;
 
   const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
   await sendDataMessage(text, backButton);
