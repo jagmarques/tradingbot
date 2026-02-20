@@ -154,9 +154,9 @@ export const INSIDER_CONFIG = {
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],
-  CHAINS_PER_CYCLE: 3,
-  SCAN_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes between scans
-  INTER_CHAIN_DELAY_MS: 5_000, // delay between chains to spread GeckoTerminal load
+  CHAINS_PER_CYCLE: 2, // 2 chains per cycle (6 chains = full rotation in 30 min)
+  SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
+  INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
   HISTORY_MIN_FDV_USD: 10000, // min FDV to qualify
   SNIPER_MAX_HOLD_MS: 24 * 60 * 60 * 1000, // max hold time to be considered a sniper flip
