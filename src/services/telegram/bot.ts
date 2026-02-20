@@ -827,15 +827,13 @@ async function handleStatus(ctx: Context): Promise<void> {
     try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
     const openCopyTrades = getOpenCopyTrades();
     const closedCopyTrades = getClosedCopyTrades();
-    if (openCopyTrades.length > 0 || closedCopyTrades.length > 0) {
-      const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-      const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      let line = `Insider: ${openCopyTrades.length} | ${$(insiderInvested)}`;
-      if (openCopyTrades.length > 0) line += ` ${pnl(unrealizedPnl)}`;
-      if (closedCopyTrades.length > 0) line += ` / ${pnl(realizedPnl)}r`;
-      lines.push(line);
-    }
+    const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+    const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+    const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+    let insiderLine = `Insider: ${openCopyTrades.length} | ${$(insiderInvested)}`;
+    if (openCopyTrades.length > 0) insiderLine += ` ${pnl(unrealizedPnl)}`;
+    if (closedCopyTrades.length > 0) insiderLine += ` / ${pnl(realizedPnl)}r`;
+    lines.push(insiderLine);
 
     // Rug stats
     const rugStats = getRugStats();
