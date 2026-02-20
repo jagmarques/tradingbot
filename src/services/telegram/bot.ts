@@ -25,7 +25,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades } from "../traders/storage.js";
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
@@ -1067,16 +1067,19 @@ async function handleTrades(ctx: Context): Promise<void> {
   try {
     const trades = getTodayTrades();
     const cryptoCopyPositions = getCryptoCopyPositions();
+    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     let message = `<b>Trades</b>\n\n`;
 
     // Crypto copy positions
     if (cryptoCopyPositions.length > 0) {
-      message += `<b>Crypto Copy</b> (${cryptoCopyPositions.length} open)\n`;
+      message += `<b>Crypto Copy</b> ${cryptoCopyPositions.length} open\n`;
+      message += `<pre>`;
       for (const pos of cryptoCopyPositions) {
-        message += `  ${pos.tokenSymbol} (${pos.chain}): ${pos.entryAmountNative.toFixed(4)} native\n`;
+        message += `${pos.tokenSymbol.padEnd(10)}${pos.chain.padEnd(7)}${pos.entryAmountNative.toFixed(4)} native\n`;
       }
-      message += `\n`;
+      message += `</pre>\n`;
     }
 
     // Gem paper trades
@@ -1085,22 +1088,15 @@ async function handleTrades(ctx: Context): Promise<void> {
     if (gemPaperTrades.length > 0) {
       const totalInvested = gemPaperTrades.reduce((s, t) => s + t.amountUsd, 0);
       const totalPnlUsd = gemPaperTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      const totalSign = totalPnlUsd >= 0 ? "+" : "";
-      message += `<b>Gem Paper</b> (${gemPaperTrades.length} open | $${totalInvested.toFixed(0)} invested | ${totalSign}$${totalPnlUsd.toFixed(2)})\n\n`;
+      message += `<b>Gem Paper</b> ${gemPaperTrades.length} | ${$(totalInvested)} inv | ${pnl(totalPnlUsd)}\n`;
+      message += `<pre>`;
       for (const t of gemPaperTrades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-        const sign = pnlUsd >= 0 ? "+" : "";
-        const scoreStr = t.aiScore != null ? ` | Score: ${t.aiScore}` : "";
-        const holders = getGemHolderCount(t.tokenSymbol, t.chain);
-        const holdersStr = holders > 0 ? ` | ${holders} holders` : "";
         const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
-        const pumpLine = `Since buy: ${buyPump.toFixed(1)}x`;
-        message += `<b>${t.tokenSymbol}</b> (${t.chain.slice(0, 3).toUpperCase()}${scoreStr}${holdersStr})\n`;
-        message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
-        message += `${pumpLine}\n`;
-        message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
+        message += `${t.tokenSymbol.padEnd(10)} ${$(t.amountUsd).padEnd(6)}${buyPump.toFixed(1)}x  ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+        message += `  @${formatTokenPrice(t.buyPriceUsd)} -> ${formatTokenPrice(t.currentPriceUsd)}\n`;
       }
-      message += `\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n`;
+      message += `</pre>\n`;
     }
 
     // Insider copy trades
@@ -1111,43 +1107,43 @@ async function handleTrades(ctx: Context): Promise<void> {
       const copyInvested = openCopyTrades.reduce((s, t) => s + t.amountUsd, 0);
       const unrealPnl = openCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
       const realPnl = closedCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      const unrealSign = unrealPnl >= 0 ? "+" : "";
-      const realSign = realPnl >= 0 ? "+" : "";
-      let header = `<b>Insider Copy</b> (${openCopyTrades.length} open`;
-      if (openCopyTrades.length > 0) header += ` | $${copyInvested.toFixed(0)} invested | ${unrealSign}$${unrealPnl.toFixed(2)} unreal`;
-      if (closedCopyTrades.length > 0) header += ` | ${realSign}$${realPnl.toFixed(2)} real`;
-      header += `)\n\n`;
-      message += header;
-      for (const t of openCopyTrades) {
-        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-        const sign = pnlUsd >= 0 ? "+" : "";
-        const chainTag = t.chain.toUpperCase().slice(0, 3);
-        const walletShort = `${t.walletAddress.slice(0, 6)}...${t.walletAddress.slice(-4)}`;
-        message += `<b>${t.tokenSymbol}</b> (${chainTag})\n`;
-        message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
-        message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%) | ${walletShort}\n\n`;
+      let header = `<b>Insider Copy</b> ${openCopyTrades.length} open`;
+      if (openCopyTrades.length > 0) header += ` | ${$(copyInvested)} inv | ${pnl(unrealPnl)} unr`;
+      if (closedCopyTrades.length > 0) header += ` | ${pnl(realPnl)} real`;
+      message += header + `\n`;
+      if (openCopyTrades.length > 0) {
+        message += `<pre>`;
+        for (const t of openCopyTrades) {
+          const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+          const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
+          message += `${t.tokenSymbol.padEnd(10)} ${$(t.amountUsd).padEnd(6)}${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          message += `  ${walletShort}\n`;
+        }
+        message += `</pre>`;
       }
       if (closedCopyTrades.length > 0) {
-        message += `<b>Closed</b> (${closedCopyTrades.length} trades | ${realSign}$${realPnl.toFixed(2)})\n`;
+        message += `<b>Closed</b> ${closedCopyTrades.length} | ${pnl(realPnl)}\n`;
+        message += `<pre>`;
         for (const t of closedCopyTrades.slice(0, 5)) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-          const sign = pnlUsd >= 0 ? "+" : "";
           const chainTag = t.chain.toUpperCase().slice(0, 3);
-          message += `${t.tokenSymbol} (${chainTag}) ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n`;
+          message += `${t.tokenSymbol} ${chainTag} ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         }
-        if (closedCopyTrades.length > 5) message += `... and ${closedCopyTrades.length - 5} more\n`;
-        message += `\n`;
+        if (closedCopyTrades.length > 5) message += `... +${closedCopyTrades.length - 5} more\n`;
+        message += `</pre>`;
       }
+      message += `\n`;
     }
 
     // Recent trades
     if (trades.length > 0) {
-      message += `<b>Today</b> (${trades.length} trades)\n`;
+      message += `<b>Today</b> ${trades.length} trades\n`;
+      message += `<pre>`;
       for (const trade of trades) {
-        const emoji = trade.pnl >= 0 ? "🟢" : "🔴";
-        const time = new Date(trade.timestamp).toLocaleTimeString();
-        message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
+        const time = new Date(trade.timestamp).toLocaleTimeString().slice(0, 5);
+        message += `${time} ${trade.strategy.padEnd(10)}${$(trade.amount).padEnd(6)}${pnl(trade.pnl)}\n`;
       }
+      message += `</pre>`;
     } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
       message += "No trades or positions.";
     }
