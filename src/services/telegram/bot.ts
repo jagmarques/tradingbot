@@ -1256,8 +1256,31 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     ];
 
     if (tab === "holding") {
+      try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
+      let trades = getOpenCopyTrades();
+      if (chain) trades = trades.filter(t => t.chain === chain);
+
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(`<b>Insiders - Holding</b>\n\nNo insiders currently holding tokens.`, buttons);
+
+      if (trades.length === 0) {
+        await sendDataMessage(`<b>Insiders - Holding</b>\n\nNo insiders currently holding tokens.`, buttons);
+        return;
+      }
+
+      const invested = trades.reduce((s, t) => s + t.amountUsd, 0);
+      const unrealPnl = trades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
+      const fmtPnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+      const fmtUsd = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+
+      let message = `<b>Insiders - Holding</b> ${trades.length} open | ${fmtUsd(invested)} inv | ${fmtPnl(unrealPnl)} unr\n\n`;
+      for (const t of trades) {
+        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+        const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
+        message += `${t.tokenSymbol} | ${fmtUsd(t.amountUsd)} | ${fmtPnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+        message += `  ${walletShort}\n`;
+      }
+
+      await sendDataMessage(message, buttons);
       return;
     }
 
