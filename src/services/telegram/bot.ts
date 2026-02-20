@@ -1080,7 +1080,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         message += `${pumpLine}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n\n`;
       }
-      message += `\n`;
+      message += `\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n`;
     }
 
     // Insider copy trades
