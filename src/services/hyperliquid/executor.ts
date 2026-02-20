@@ -19,6 +19,7 @@ export async function openPosition(
   aiConfidence?: number,
   aiReasoning?: string,
   tradeType: "directional" | "funding" = "directional",
+  indicatorsAtEntry?: string,
 ): Promise<QuantPosition | null> {
   // Funding positions bypass volatile regime check (they're regime-agnostic)
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
@@ -28,11 +29,8 @@ export async function openPosition(
     return null;
   }
 
-  void aiConfidence;
-  void aiReasoning;
-
   if (isPaperMode()) {
-    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType);
+    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry);
   }
 
   // Live mode: not yet implemented (Phase 26+)

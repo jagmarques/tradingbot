@@ -11,6 +11,13 @@ import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 let virtualBalance: number = QUANT_DEFAULT_VIRTUAL_BALANCE;
 const paperPositions = new Map<string, QuantPosition>();
 
+// Stores AI context and indicator snapshot per position, keyed by position ID
+const positionContext = new Map<string, {
+  aiConfidence?: number;
+  aiReasoning?: string;
+  indicatorsAtEntry?: string;
+}>();
+
 export function initPaperEngine(startingBalance: number): void {
   virtualBalance = startingBalance;
   paperPositions.clear();
@@ -62,6 +69,9 @@ export async function paperOpenPosition(
   stopLoss: number,
   takeProfit: number,
   tradeType: "directional" | "funding" = "directional",
+  aiConfidence?: number,
+  aiReasoning?: string,
+  indicatorsAtEntry?: string,
 ): Promise<QuantPosition | null> {
   if (virtualBalance < sizeUsd) {
     console.log(
@@ -99,6 +109,7 @@ export async function paperOpenPosition(
   virtualBalance -= sizeUsd;
   paperPositions.set(position.id, position);
   saveQuantPosition(position);
+  positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
 
   console.log(
     `[Quant Paper] OPEN ${direction} ${pair} $${sizeUsd} @ ${price} (${leverage}x)`,
@@ -150,6 +161,7 @@ export async function paperClosePosition(
   paperPositions.set(positionId, closedPosition);
   saveQuantPosition(closedPosition);
 
+  const ctx = positionContext.get(positionId);
   saveQuantTrade({
     id: position.id,
     pair: position.pair,
@@ -162,12 +174,15 @@ export async function paperClosePosition(
     fees,
     mode: "paper",
     status: "closed",
-    aiConfidence: undefined,
-    aiReasoning: undefined,
+    aiConfidence: ctx?.aiConfidence,
+    aiReasoning: ctx?.aiReasoning,
+    exitReason: reason,
+    indicatorsAtEntry: ctx?.indicatorsAtEntry,
     createdAt: position.openedAt,
     updatedAt: now,
     tradeType: position.tradeType ?? "directional",
   });
+  positionContext.delete(positionId);
 
   const pnlStr =
     pnl >= 0 ? `+$${pnl.toFixed(4)}` : `-$${Math.abs(pnl).toFixed(4)}`;
