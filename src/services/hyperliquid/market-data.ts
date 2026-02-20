@@ -9,7 +9,7 @@ export async function fetchFundingRate(pair: string): Promise<FundingInfo | null
     await ensureConnected();
     const sdk = getClient();
 
-    const fundings = await sdk.info.perpetuals.getPredictedFundings();
+    const fundings = await sdk.info.perpetuals.getPredictedFundings(true);
     // fundings is { [coin: string]: VenueFunding[] } where VenueFunding is { [venue: string]: PredictedFunding }
     const venueFundingList = fundings[pair];
     if (!venueFundingList || venueFundingList.length === 0) {
@@ -50,7 +50,7 @@ export async function fetchOpenInterest(pair: string): Promise<number> {
     await ensureConnected();
     const sdk = getClient();
 
-    const [meta, assetCtxs] = await sdk.info.perpetuals.getMetaAndAssetCtxs();
+    const [meta, assetCtxs] = await sdk.info.perpetuals.getMetaAndAssetCtxs(true);
     const idx = meta.universe.findIndex((u) => u.name === pair);
     if (idx === -1) {
       console.warn(`[Hyperliquid] Pair ${pair} not found in universe`);
@@ -73,7 +73,7 @@ export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
     await ensureConnected();
     const sdk = getClient();
 
-    const fundings = await sdk.info.perpetuals.getPredictedFundings();
+    const fundings = await sdk.info.perpetuals.getPredictedFundings(true);
     const results: FundingInfo[] = [];
 
     for (const pair of Object.keys(fundings)) {
@@ -111,7 +111,7 @@ export async function scanFundingOpportunities(): Promise<FundingOpportunity[]> 
 
     const [allRates, midsRaw] = await Promise.all([
       fetchAllFundingRates(),
-      sdk.info.getAllMids() as Promise<Record<string, string>>,
+      sdk.info.getAllMids(true) as Promise<Record<string, string>>,
     ]);
 
     const qualifying = allRates.filter((r) => Math.abs(r.annualizedRate) >= FUNDING_ARB_MIN_APR);
@@ -156,7 +156,7 @@ export async function fetchMarketContext(pair: string): Promise<{
     await ensureConnected();
     const sdk = getClient();
 
-    const [meta, assetCtxs] = await sdk.info.perpetuals.getMetaAndAssetCtxs();
+    const [meta, assetCtxs] = await sdk.info.perpetuals.getMetaAndAssetCtxs(true);
     const idx = meta.universe.findIndex((u) => u.name === pair);
     if (idx === -1) {
       console.warn(`[Hyperliquid] Pair ${pair} not found in universe`);
