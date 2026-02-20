@@ -145,6 +145,3 @@ export function stopHealthServer(): void {
   }
 }
 
-export function isHealthServerRunning(): boolean {
-  return server !== null;
-}

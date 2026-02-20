@@ -1,7 +1,12 @@
 import { ethers } from "ethers";
 import { loadEnv, isPaperMode } from "../../config/env.js";
-import { NewPair } from "./detector.js";
 import { insertTrade, insertPosition, closePosition, getOpenPositions } from "../database/trades.js";
+
+export interface NewPair {
+  newToken: string;
+  pairAddress: string;
+  dex: string;
+}
 import { recordTrade, validateTrade } from "../risk/manager.js";
 
 // Arbitrum configuration - RPC URL loaded from env

@@ -313,7 +313,3 @@ export function getTodayTrades(): Trade[] {
   }));
 }
 
-// Check if in paper mode
-export function isInPaperMode(): boolean {
-  return isPaperMode();
-}

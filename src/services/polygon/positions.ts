@@ -1,12 +1,8 @@
 import {
-  TARGET_ARBITRAGE_PROFIT_PCT,
   ARBITRAGE_PAIR_TIMEOUT_MS,
   STAGNATION_TIMEOUT_MS,
-  ESTIMATED_GAS_FEE_MATIC,
-  ESTIMATED_SLIPPAGE_POLYMARKET,
 } from "../../config/constants.js";
 import {
-  savePosition as savePositionToDb,
   markPositionClosed as markPositionClosedInDb,
   loadOpenPositions as loadOpenPositionsFromDb,
 } from "../database/arbitrage-positions.js";
@@ -39,71 +35,6 @@ export interface PositionResult {
 
 // Active positions storage
 const activePositions = new Map<string, Position>();
-
-// Generate unique position ID
-function generatePositionId(): string {
-  return `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-// Calculate fees for the position
-function calculateFees(sizeUsd: number = 10): number {
-  // Polymarket fees: gas (MATIC converted to USD) + slippage
-  // Entry: gas + slippage, Exit: gas + slippage
-  const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.065; // ~$0.000107 per MATIC gas, 2 transactions
-  const slippageFeeUsd = sizeUsd * ESTIMATED_SLIPPAGE_POLYMARKET * 2; // Entry and exit
-  return gasFeeUsd + slippageFeeUsd;
-}
-
-// Create a new position
-export function createPosition(
-  tokenId: string,
-  side: "BUY" | "SELL",
-  price: number,
-  sizeUsd: number,
-  spotSymbol?: string,
-  spotEntryPrice?: number
-): Position {
-  const id = generatePositionId();
-
-  // Determine spot hedge details
-  let spotSide: "LONG" | "SHORT" | null = null;
-  let spotSize: number | null = null;
-
-  if (spotSymbol && spotEntryPrice !== undefined) {
-    // Spot hedge is opposite of Polymarket side
-    spotSide = side === "BUY" ? "SHORT" : "LONG";
-    spotSize = sizeUsd; // Dollar-neutral hedge
-  }
-
-  // Calculate estimated fees
-  const estimatedFees = calculateFees(sizeUsd);
-
-  // Calculate target profit in USD
-  const targetProfit = sizeUsd * (TARGET_ARBITRAGE_PROFIT_PCT / 100);
-
-  const position: Position = {
-    id,
-    polymarketTokenId: tokenId,
-    side,
-    entryPrice: price,
-    size: sizeUsd,
-    entryTimestamp: Date.now(),
-    status: "pending",
-    targetProfit,
-    estimatedFees,
-    spotSymbol: spotSymbol || null,
-    spotSide,
-    spotEntryPrice: spotEntryPrice !== undefined ? spotEntryPrice : null,
-    spotSize,
-  };
-
-  activePositions.set(id, position);
-
-  // Persist to database
-  savePositionToDb(position);
-
-  return position;
-}
 
 // Calculate P&L for closing a position
 export function closePosition(
@@ -158,11 +89,6 @@ export function closePosition(
     fees: position.estimatedFees,
     holdTimeMs,
   };
-}
-
-// Get all active positions
-export function getActivePositions(): Position[] {
-  return Array.from(activePositions.values()).filter((p) => p.status !== "closed");
 }
 
 // Get a specific position
@@ -239,31 +165,6 @@ export function shouldExitPosition(
     shouldExit: false,
     reason: "",
   };
-}
-
-// Get count of active positions
-export function getActivePositionCount(): number {
-  return getActivePositions().length;
-}
-
-// Update position status
-export function updatePositionStatus(positionId: string, status: PositionStatus): void {
-  const position = activePositions.get(positionId);
-  if (position) {
-    position.status = status;
-    // Persist status update to database
-    savePositionToDb(position);
-  }
-}
-
-// Set position order ID
-export function setPositionOrderId(positionId: string, orderId: string): void {
-  const position = activePositions.get(positionId);
-  if (position) {
-    position.orderId = orderId;
-    // Persist order ID to database
-    savePositionToDb(position);
-  }
 }
 
 // Load positions from DB into memory (for startup recovery)

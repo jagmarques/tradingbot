@@ -1,5 +1,5 @@
 export * from "./types.js";
-export { callDeepSeek, validateDeepSeekConnection } from "./deepseek.js";
+export { callDeepSeek } from "./deepseek.js";
 export { discoverMarkets } from "./scanner.js";
 export { fetchNewsForMarket } from "./news.js";
 export { analyzeMarket } from "./analyzer.js";

@@ -158,19 +158,4 @@ describe("Polymarket CLOB Client", () => {
     expect(isValid).toBe(false);
   });
 
-  it("should get open orders", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve([
-          { id: "order-1", status: "open" },
-          { id: "order-2", status: "open" },
-        ]),
-    });
-
-    const { getOpenOrders } = await import("./polymarket.js");
-    const orders = await getOpenOrders();
-
-    expect(orders).toHaveLength(2);
-  });
 });

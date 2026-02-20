@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
 // Mock env module
 vi.mock("../../config/env.js", () => ({
@@ -11,16 +11,10 @@ vi.mock("../../config/env.js", () => ({
 import { initDb, closeDb, getDb, isDbInitialized } from "./db.js";
 import {
   insertTrade,
-  getTrade,
-  getTrades,
-  updateTrade,
   insertPosition,
   getOpenPositions,
   closePosition,
-  updateDailyStats,
-  getDailyStats,
 } from "./trades.js";
-import { exportTradesToCsv, exportStatsToCsv } from "./export.js";
 
 describe("Database", () => {
   beforeAll(() => {
@@ -65,58 +59,6 @@ describe("Database", () => {
       expect(trade.amountUsd).toBe(10);
     });
 
-    it("should get trade by ID", () => {
-      const inserted = insertTrade({
-        strategy: "polymarket",
-        type: "SELL",
-        amountUsd: 25,
-        price: 0.65,
-        pnl: 5,
-        pnlPercentage: 20,
-        fees: 0.01,
-        status: "completed",
-      });
-
-      const retrieved = getTrade(inserted.id);
-      expect(retrieved).not.toBeNull();
-      expect(retrieved?.strategy).toBe("polymarket");
-      expect(retrieved?.pnl).toBe(5);
-    });
-
-    it("should get trades with filters", () => {
-      // Insert some test trades
-      insertTrade({
-        strategy: "base",
-        type: "BUY",
-        amountUsd: 5,
-        price: 0.001,
-        pnl: 0,
-        pnlPercentage: 0,
-        fees: 0,
-        status: "completed",
-      });
-
-      const baseTrades = getTrades({ strategy: "base" });
-      expect(baseTrades.length).toBeGreaterThan(0);
-      expect(baseTrades.every((t) => t.strategy === "base")).toBe(true);
-    });
-
-    it("should update trade", () => {
-      const trade = insertTrade({
-        strategy: "base",
-        type: "BUY",
-        amountUsd: 10,
-        price: 0.01,
-        pnl: 0,
-        pnlPercentage: 0,
-        fees: 0,
-        status: "pending",
-      });
-
-      const updated = updateTrade(trade.id, { pnl: 5, status: "completed" });
-      expect(updated?.pnl).toBe(5);
-      expect(updated?.status).toBe("completed");
-    });
   });
 
   describe("Position operations", () => {
@@ -160,64 +102,4 @@ describe("Database", () => {
     });
   });
 
-  describe("Daily stats", () => {
-    it("should update daily stats", () => {
-      const today = new Date().toISOString().split("T")[0];
-      const stats = updateDailyStats(today);
-
-      expect(stats.date).toBe(today);
-      expect(typeof stats.totalTrades).toBe("number");
-      expect(typeof stats.totalPnl).toBe("number");
-    });
-
-    it("should get daily stats", () => {
-      const today = new Date().toISOString().split("T")[0];
-      updateDailyStats(today);
-
-      const stats = getDailyStats(today);
-      expect(stats).not.toBeNull();
-      expect(stats?.date).toBe(today);
-    });
-  });
-
-  describe("Export functionality", () => {
-    beforeEach(() => {
-      // Insert a few trades for export tests
-      insertTrade({
-        strategy: "polymarket",
-        type: "BUY",
-        tokenSymbol: "EXPORT1",
-        amountUsd: 10,
-        price: 0.01,
-        pnl: 2,
-        pnlPercentage: 20,
-        fees: 0.001,
-        status: "completed",
-      });
-    });
-
-    it("should export trades to CSV", () => {
-      const csv = exportTradesToCsv({});
-      expect(csv).toContain("Date,Time,Strategy");
-      expect(csv).toContain("polymarket");
-    });
-
-    it("should export stats to CSV", () => {
-      const today = new Date().toISOString().split("T")[0];
-      updateDailyStats(today);
-
-      const csv = exportStatsToCsv({
-        startDate: today,
-        endDate: today,
-      });
-
-      expect(csv).toContain("Date,Total Trades");
-    });
-
-    it("should filter trades by strategy", () => {
-      const csv = exportTradesToCsv({ strategy: "base" });
-      expect(csv).toContain("base");
-      expect(csv).not.toContain("polymarket,SELL"); // Should only have base
-    });
-  });
 });

@@ -167,19 +167,3 @@ export async function callDeepSeek(
   throw lastError || new Error("DeepSeek call failed");
 }
 
-export async function validateDeepSeekConnection(): Promise<boolean> {
-  try {
-    const response = await callDeepSeek(
-      'Respond with exactly: {"status": "ok"}',
-      "deepseek-chat",
-      undefined,
-      undefined,
-      "validation"
-    );
-    const parsed = JSON.parse(response);
-    return parsed.status === "ok";
-  } catch (error) {
-    console.error("[DeepSeek] Connection validation failed:", error);
-    return false;
-  }
-}

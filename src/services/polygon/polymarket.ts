@@ -24,15 +24,6 @@ interface Order {
   sizeMatched: string;
 }
 
-interface Market {
-  conditionId: string;
-  questionId: string;
-  tokens: Array<{
-    tokenId: string;
-    outcome: string;
-  }>;
-}
-
 function generateSignature(
   method: string,
   path: string,
@@ -87,10 +78,6 @@ async function request<T>(
     console.error("[Polymarket] Request failed:", error);
     return null;
   }
-}
-
-export async function getMarket(conditionId: string): Promise<Market | null> {
-  return request<Market>("GET", `/markets/${conditionId}`);
 }
 
 export async function getOrderbook(
@@ -158,25 +145,6 @@ export async function placeFokOrder(
 export async function cancelOrder(orderId: string): Promise<boolean> {
   const result = await request<{ success: boolean }>("DELETE", `/order/${orderId}`);
   return result?.success ?? false;
-}
-
-export async function getOpenOrders(): Promise<Order[]> {
-  const result = await request<Order[]>("GET", "/open-orders");
-  return result ?? [];
-}
-
-export async function cancelAllOrders(): Promise<number> {
-  const orders = await getOpenOrders();
-  let cancelled = 0;
-
-  for (const order of orders) {
-    if (await cancelOrder(order.id)) {
-      cancelled++;
-    }
-  }
-
-  console.log(`[Polymarket] Cancelled ${cancelled} orders`);
-  return cancelled;
 }
 
 export async function validateApiConnection(): Promise<boolean> {

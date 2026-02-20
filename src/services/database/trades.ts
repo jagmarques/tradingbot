@@ -41,18 +41,6 @@ export interface PositionRecord {
   updatedAt: string;
 }
 
-export interface DailyStats {
-  date: string;
-  totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
-  totalPnl: number;
-  polymarketPnl: number;
-  totalFees: number;
-  startingBalance?: number;
-  endingBalance?: number;
-}
-
 // Generate unique ID
 function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -109,19 +97,8 @@ export function insertTrade(trade: Omit<TradeRecord, "id" | "createdAt" | "updat
   };
 }
 
-// Get trade by ID
-export function getTrade(id: string): TradeRecord | null {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM trades WHERE id = ?");
-  const row = stmt.get(id) as Record<string, unknown> | undefined;
-
-  if (!row) return null;
-
-  return mapRowToTrade(row);
-}
-
 // Get trades with filters
-export function getTrades(options: {
+function getTrades(options: {
   strategy?: "polymarket" | "base" | "arbitrum" | "avalanche";
   type?: "BUY" | "SELL";
   startDate?: string;
@@ -185,42 +162,6 @@ export function getTrades(options: {
 export function getTodayTrades(): TradeRecord[] {
   const today = new Date().toISOString().split("T")[0];
   return getTrades({ startDate: today + "T00:00:00.000Z" });
-}
-
-// Update trade
-export function updateTrade(
-  id: string,
-  updates: Partial<Omit<TradeRecord, "id" | "createdAt">>
-): TradeRecord | null {
-  const db = getDb();
-  const fields: string[] = [];
-  const params: unknown[] = [];
-
-  const fieldMap: Record<string, string> = {
-    pnl: "pnl",
-    pnlPercentage: "pnl_percentage",
-    status: "status",
-    txHash: "tx_hash",
-    errorMessage: "error_message",
-    currentPrice: "current_price",
-  };
-
-  for (const [key, value] of Object.entries(updates)) {
-    const dbField = fieldMap[key] || key;
-    fields.push(`${dbField} = ?`);
-    params.push(value);
-  }
-
-  if (fields.length === 0) return getTrade(id);
-
-  fields.push("updated_at = ?");
-  params.push(new Date().toISOString());
-  params.push(id);
-
-  const stmt = db.prepare(`UPDATE trades SET ${fields.join(", ")} WHERE id = ?`);
-  stmt.run(...params);
-
-  return getTrade(id);
 }
 
 // Insert position
@@ -288,90 +229,6 @@ export function closePosition(id: string, realizedPnl: number): PositionRecord |
 
   const row = db.prepare("SELECT * FROM positions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   return row ? mapRowToPosition(row) : null;
-}
-
-// Get daily stats
-export function getDailyStats(date: string): DailyStats | null {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM daily_stats WHERE date = ?");
-  const row = stmt.get(date) as Record<string, unknown> | undefined;
-
-  if (!row) return null;
-
-  return {
-    date: row.date as string,
-    totalTrades: row.total_trades as number,
-    winningTrades: row.winning_trades as number,
-    losingTrades: row.losing_trades as number,
-    totalPnl: row.total_pnl as number,
-    polymarketPnl: row.polymarket_pnl as number,
-    totalFees: row.total_fees as number,
-    startingBalance: row.starting_balance as number | undefined,
-    endingBalance: row.ending_balance as number | undefined,
-  };
-}
-
-// Update daily stats
-export function updateDailyStats(date: string): DailyStats {
-  const db = getDb();
-  const startOfDay = date + "T00:00:00.000Z";
-  const endOfDay = date + "T23:59:59.999Z";
-
-  // Calculate stats from trades
-  const trades = getTrades({ startDate: startOfDay, endDate: endOfDay });
-
-  const stats: DailyStats = {
-    date,
-    totalTrades: trades.length,
-    winningTrades: trades.filter((t) => t.pnl > 0).length,
-    losingTrades: trades.filter((t) => t.pnl < 0).length,
-    totalPnl: trades.reduce((sum, t) => sum + t.pnl, 0),
-    polymarketPnl: trades.filter((t) => t.strategy === "polymarket").reduce((sum, t) => sum + t.pnl, 0),
-    totalFees: trades.reduce((sum, t) => sum + t.fees, 0),
-  };
-
-  const stmt = db.prepare(`
-    INSERT INTO daily_stats (date, total_trades, winning_trades, losing_trades, total_pnl, polymarket_pnl, total_fees)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(date) DO UPDATE SET
-      total_trades = excluded.total_trades,
-      winning_trades = excluded.winning_trades,
-      losing_trades = excluded.losing_trades,
-      total_pnl = excluded.total_pnl,
-      polymarket_pnl = excluded.polymarket_pnl,
-      total_fees = excluded.total_fees
-  `);
-
-  stmt.run(
-    stats.date,
-    stats.totalTrades,
-    stats.winningTrades,
-    stats.losingTrades,
-    stats.totalPnl,
-    stats.polymarketPnl,
-    stats.totalFees
-  );
-
-  return stats;
-}
-
-// Get stats for date range
-export function getStatsRange(startDate: string, endDate: string): DailyStats[] {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM daily_stats WHERE date >= ? AND date <= ? ORDER BY date");
-  const rows = stmt.all(startDate, endDate) as Record<string, unknown>[];
-
-  return rows.map((row) => ({
-    date: row.date as string,
-    totalTrades: row.total_trades as number,
-    winningTrades: row.winning_trades as number,
-    losingTrades: row.losing_trades as number,
-    totalPnl: row.total_pnl as number,
-    polymarketPnl: row.polymarket_pnl as number,
-    totalFees: row.total_fees as number,
-    startingBalance: row.starting_balance as number | undefined,
-    endingBalance: row.ending_balance as number | undefined,
-  }));
 }
 
 // Helper to map database row to TradeRecord

@@ -1,7 +1,12 @@
 import { ethers } from "ethers";
 import { isPaperMode, loadEnv } from "../../config/env.js";
-import { NewPair } from "./detector.js";
 import { insertTrade } from "../database/trades.js";
+
+export interface NewPair {
+  newToken: string;
+  pairAddress: string;
+  dex: "uniswap_v2" | "uniswap_v3" | "aerodrome";
+}
 import { validateTrade, getDailyPnlPercentage } from "../risk/manager.js";
 
 // Base chain configuration - RPC URL loaded from env

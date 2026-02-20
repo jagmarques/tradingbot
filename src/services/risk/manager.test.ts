@@ -11,7 +11,6 @@ import {
   canTrade,
   checkSlippage,
   getTodayTrades,
-  isInPaperMode,
 } from "./manager.js";
 import { initDb, closeDb, getDb } from "../database/db.js";
 
@@ -204,12 +203,6 @@ describe("Risk Manager", () => {
       const result = checkSlippage(100, 99, 0.02); // -1% (better price)
       expect(result.allowed).toBe(true);
       expect(result.slippage).toBeCloseTo(0.01, 4);
-    });
-  });
-
-  describe("Paper mode", () => {
-    it("should return paper mode status", () => {
-      expect(isInPaperMode()).toBe(true);
     });
   });
 
