@@ -234,6 +234,60 @@ export async function notifyCopyTrade(params: {
   await sendMessage(message);
 }
 
+// Quant Trade Entry Notification
+export async function notifyQuantTradeEntry(params: {
+  pair: string;
+  direction: "long" | "short";
+  size: number;
+  entryPrice: number;
+  leverage: number;
+  tradeType: "directional" | "funding";
+  stopLoss: number;
+  takeProfit: number;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : "Directional";
+  const message =
+    `${mode}<b>QUANT ENTRY</b>\n\n` +
+    `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
+    `Direction: ${dirLabel}\n` +
+    `Size: $${params.size.toFixed(2)}\n` +
+    `Entry: ${params.entryPrice}\n` +
+    `Leverage: ${params.leverage}x\n` +
+    `Type: ${typeLabel}\n` +
+    `Stop-Loss: ${params.stopLoss}\n` +
+    `Take-Profit: ${params.takeProfit}`;
+  await sendMessage(message);
+}
+
+// Quant Trade Exit Notification
+export async function notifyQuantTradeExit(params: {
+  pair: string;
+  direction: "long" | "short";
+  entryPrice: number;
+  exitPrice: number;
+  size: number;
+  pnl: number;
+  exitReason: string;
+  tradeType: "directional" | "funding";
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const indicator = params.pnl >= 0 ? "+" : "-";
+  const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
+  const pnlPct = (params.pnl / params.size) * 100;
+  const message =
+    `${mode}<b>QUANT EXIT</b>\n\n` +
+    `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
+    `Direction: ${dirLabel}\n` +
+    `Entry: ${params.entryPrice}\n` +
+    `Exit: ${params.exitPrice}\n` +
+    `Size: $${params.size.toFixed(2)}\n` +
+    `P&L: ${indicator}$${Math.abs(params.pnl).toFixed(2)} (${indicator}${Math.abs(pnlPct).toFixed(1)}%)\n` +
+    `Reason: ${escapeHtml(params.exitReason)}`;
+  await sendMessage(message);
+}
+
 // Helper to escape HTML
 function escapeHtml(text: string): string {
   return text

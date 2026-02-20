@@ -7,6 +7,7 @@ import {
   loadOpenQuantPositions,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
+import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 
 let virtualBalance: number = QUANT_DEFAULT_VIRTUAL_BALANCE;
 const paperPositions = new Map<string, QuantPosition>();
@@ -110,6 +111,16 @@ export async function paperOpenPosition(
   paperPositions.set(position.id, position);
   saveQuantPosition(position);
   positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
+  void notifyQuantTradeEntry({
+    pair,
+    direction,
+    size: sizeUsd,
+    entryPrice: price,
+    leverage,
+    tradeType,
+    stopLoss,
+    takeProfit,
+  });
 
   console.log(
     `[Quant Paper] OPEN ${direction} ${pair} $${sizeUsd} @ ${price} (${leverage}x)`,
@@ -183,6 +194,16 @@ export async function paperClosePosition(
     tradeType: position.tradeType ?? "directional",
   });
   positionContext.delete(positionId);
+  void notifyQuantTradeExit({
+    pair: position.pair,
+    direction: position.direction,
+    entryPrice: position.entryPrice,
+    exitPrice: currentPrice,
+    size: position.size,
+    pnl,
+    exitReason: reason,
+    tradeType: position.tradeType ?? "directional",
+  });
 
   const pnlStr =
     pnl >= 0 ? `+$${pnl.toFixed(4)}` : `-$${Math.abs(pnl).toFixed(4)}`;
