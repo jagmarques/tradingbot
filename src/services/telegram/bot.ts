@@ -830,6 +830,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     const todayTrades = getTodayTrades();
     const schedulerStatus = getAIBettingStatus();
     const polyStats = getCopyStats();
+    const env = loadEnv();
 
     const statusEmoji = status.tradingEnabled ? "🟢" : "🔴";
     const modeTag = status.isPaperMode ? "Paper" : "Live";
@@ -892,6 +893,36 @@ async function handleStatus(ctx: Context): Promise<void> {
       if (openCopyTrades.length > 0) line += ` | $${insiderInvested.toFixed(2)} inv | ${unrealSign}$${unrealizedPnl.toFixed(2)} unreal`;
       if (closedCopyTrades.length > 0) line += ` | ${realSign}$${realizedPnl.toFixed(2)} real (${closedCopyTrades.length} closed)`;
       message += `${line}\n`;
+    }
+
+    // Quant trading
+    const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
+    if (quantEnabled) {
+      const quantPositions = getOpenQuantPositions();
+      let quantUnrealized = 0;
+      if (quantPositions.length > 0) {
+        try {
+          const sdk = getClient();
+          const mids = (await sdk.info.getAllMids()) as Record<string, string>;
+          for (const pos of quantPositions) {
+            const rawMid = mids[pos.pair];
+            if (rawMid) {
+              const currentPrice = parseFloat(rawMid);
+              if (!isNaN(currentPrice)) {
+                quantUnrealized += pos.direction === "long"
+                  ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+                  : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+              }
+            }
+          }
+        } catch { /* Prices unavailable - show without unrealized */ }
+      }
+      const quantMode = isPaperMode() ? "Paper" : "Live";
+      const quantKilled = isQuantKilled();
+      const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
+      const quantPnlStr = quantPositions.length > 0 ? ` | ${quantUnrealized >= 0 ? "+" : ""}$${quantUnrealized.toFixed(2)}` : "";
+      const quantKillStr = quantKilled ? " | HALTED" : "";
+      message += `Quant (${quantMode}): ${quantPositions.length} open | $${quantInvested.toFixed(2)} invested${quantPnlStr}${quantKillStr}\n`;
     }
 
     if (status.pauseReason) {
