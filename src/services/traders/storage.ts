@@ -815,6 +815,12 @@ export function closeCopyTrade(walletAddress: string, tokenAddress: string, chai
   db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ? WHERE id = ?").run(Date.now(), exitReason, id);
 }
 
+export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: string, chain: string, pairAddress: string): void {
+  const db = getDb();
+  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  db.prepare("UPDATE insider_copy_trades SET pair_address = ? WHERE id = ? AND pair_address IS NULL").run(pairAddress, id);
+}
+
 export function cleanupOldClosedCopyTrades(): number {
   const db = getDb();
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;

@@ -6,6 +6,7 @@ import {
   closeCopyTrade,
   updateCopyTradePriceWithRugFee,
   incrementRugCount,
+  updateCopyTradePairAddress,
 } from "./storage.js";
 import { COPY_TRADE_CONFIG } from "./types.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -32,6 +33,7 @@ const pendingRequests = new Map<number, { chain: string; pairAddress: string }>(
 let monitorRunning = false;
 let syncInterval: NodeJS.Timeout | null = null;
 let rpcId = 1;
+const pendingRechecks = new Set<string>();
 
 function nextRpcId(): number {
   return rpcId++;
@@ -60,6 +62,7 @@ function subscribePair(chain: string, pairAddress: string, trade: { walletAddres
   const normalizedPair = pairAddress.toLowerCase();
   const tradeKey = `${normalizedPair}_${chain}`;
   pairToTrade.set(tradeKey, { ...trade, chain });
+  console.log(`[RugMonitor] Subscribed to ${trade.tokenSymbol} (${chain}) pair ${pairAddress.slice(0, 10)}...`);
 
   const id = nextRpcId();
   pendingRequests.set(id, { chain, pairAddress: normalizedPair });
@@ -98,6 +101,7 @@ function unsubscribePair(chain: string, pairAddress: string): void {
 
   const tradeKey = `${normalizedPair}_${chain}`;
   pairToTrade.delete(tradeKey);
+  console.log(`[RugMonitor] Unsubscribed from ${pairAddress.slice(0, 10)}... (${chain})`);
 }
 
 async function handleBurnEvent(chain: string, pairAddress: string): Promise<void> {
@@ -111,6 +115,7 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
   }
 
   const { walletAddress, tokenAddress, tokenSymbol } = tradeInfo;
+  console.log(`[RugMonitor] Burn event: ${tokenSymbol} (${chain})`);
 
   try {
     const pair = await dexScreenerFetch(chain, tokenAddress);
@@ -160,7 +165,17 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
 
       unsubscribePair(chain, pairAddress);
     } else {
-      console.log(`[RugMonitor] Burn event for ${tokenSymbol} but liquidity ok ($${liquidityUsd.toFixed(0)}), ignoring`);
+      if (pendingRechecks.has(tradeKey)) {
+        // Already a recheck, don't schedule another
+        pendingRechecks.delete(tradeKey);
+        console.log(`[RugMonitor] Recheck: ${tokenSymbol} liquidity still ok ($${liquidityUsd.toFixed(0)}), no rug`);
+      } else {
+        console.log(`[RugMonitor] Burn event for ${tokenSymbol} but liquidity ok ($${liquidityUsd.toFixed(0)}), scheduling recheck in 15s`);
+        pendingRechecks.add(tradeKey);
+        setTimeout(() => {
+          handleBurnEvent(chain, pairAddress).catch(() => {});
+        }, 15_000);
+      }
     }
   } catch (err) {
     console.error(`[RugMonitor] Error handling burn event for ${tokenSymbol}:`, err instanceof Error ? err.message : err);
@@ -249,10 +264,28 @@ function connectChain(chain: string): WebSocket | null {
   return ws;
 }
 
-function syncSubscriptions(): void {
+async function syncSubscriptions(): Promise<void> {
   if (!monitorRunning) return;
 
   const openTrades = getOpenCopyTrades();
+
+  // Backfill missing pairAddress from DexScreener
+  const missingPair = openTrades.filter(t => !t.pairAddress);
+  if (missingPair.length > 0) {
+    for (const trade of missingPair) {
+      try {
+        const pair = await dexScreenerFetch(trade.chain, trade.tokenAddress);
+        if (pair?.pairAddress) {
+          updateCopyTradePairAddress(trade.walletAddress, trade.tokenAddress, trade.chain, pair.pairAddress);
+          trade.pairAddress = pair.pairAddress;
+          console.log(`[RugMonitor] Backfilled pairAddress for ${trade.tokenSymbol} (${trade.chain}): ${pair.pairAddress.slice(0, 10)}...`);
+        }
+      } catch {
+        // Skip this trade, try again next sync
+      }
+    }
+  }
+
   const tradesByChain = new Map<string, typeof openTrades>();
 
   for (const trade of openTrades) {
@@ -301,6 +334,10 @@ function syncSubscriptions(): void {
       }
     }
   }
+
+  const totalSubs = Array.from(subscriptions.values()).reduce((sum, m) => sum + m.size, 0);
+  const connectedChains = connections.size;
+  console.log(`[RugMonitor] Sync: ${totalSubs} subscriptions across ${connectedChains} chains`);
 }
 
 export function startRugMonitor(): void {
@@ -314,10 +351,14 @@ export function startRugMonitor(): void {
   monitorRunning = true;
 
   console.log("[RugMonitor] Started (Alchemy WebSocket)");
-  syncSubscriptions();
+  const openTrades = getOpenCopyTrades();
+  const withPair = openTrades.filter(t => t.pairAddress).length;
+  const withoutPair = openTrades.length - withPair;
+  console.log(`[RugMonitor] Open trades: ${openTrades.length} total, ${withPair} with pairAddress, ${withoutPair} pending backfill`);
+  syncSubscriptions().catch(() => {});
 
   syncInterval = setInterval(() => {
-    syncSubscriptions();
+    syncSubscriptions().catch(() => {});
   }, 30_000);
 }
 
@@ -338,6 +379,7 @@ export function stopRugMonitor(): void {
   subscriptions.clear();
   pairToTrade.clear();
   pendingRequests.clear();
+  pendingRechecks.clear();
 
   for (const [chain, ws] of connections) {
     ws.close();
