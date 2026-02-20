@@ -4,6 +4,7 @@ import { runInsiderScan } from "./scanner.js";
 import type { InsiderScanResult } from "./types.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import { startInsiderWatcher, stopInsiderWatcher, isInsiderWatcherRunning } from "./watcher.js";
+import { startRugMonitor, stopRugMonitor } from "./rug-monitor.js";
 
 let running = false;
 let scanning = false;
@@ -31,14 +32,14 @@ async function scanLoop(): Promise<void> {
   }
 }
 
-async function rugDetectionLoop(): Promise<void> {
+async function priceRefreshLoop(): Promise<void> {
   while (running) {
     try {
       const { refreshCopyTradePrices, revalidateHeldGems } = await import("./gem-analyzer.js");
       await refreshCopyTradePrices();
       await revalidateHeldGems();
     } catch (err) {
-      console.error("[RugDetection] Check error:", err);
+      console.error("[PriceRefresh] Error:", err);
     }
     if (running) {
       await new Promise((r) => setTimeout(r, COPY_TRADE_CONFIG.RUG_CHECK_INTERVAL_MS));
@@ -61,23 +62,25 @@ export function startInsiderScanner(): void {
     );
   }, 10000);
 
-  // Rug detection every 2 min
+  // Price refresh + trailing stops every 2 min
   setTimeout(() => {
-    console.log(`[RugDetection] Started (every ${COPY_TRADE_CONFIG.RUG_CHECK_INTERVAL_MS / 60000} min)`);
-    rugDetectionLoop().catch((err) =>
-      console.error("[RugDetection] Loop crashed:", err)
+    console.log(`[PriceRefresh] Started (every ${COPY_TRADE_CONFIG.RUG_CHECK_INTERVAL_MS / 60000} min)`);
+    priceRefreshLoop().catch((err) =>
+      console.error("[PriceRefresh] Loop crashed:", err)
     );
   }, 30000);
 
   startInsiderWatcher();
+
+  setTimeout(() => startRugMonitor(), 5000);
 }
 
 export function stopInsiderScanner(): void {
   if (!running) return;
   running = false;
   stopInsiderWatcher();
+  stopRugMonitor();
   console.log("[InsiderScanner] Stopped");
-  console.log("[RugDetection] Stopped");
 }
 
 export async function runManualInsiderScan(): Promise<InsiderScanResult | null> {

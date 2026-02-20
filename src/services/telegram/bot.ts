@@ -25,7 +25,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades, getRugStats } from "../traders/storage.js";
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
@@ -891,6 +891,12 @@ async function handleStatus(ctx: Context): Promise<void> {
       if (openCopyTrades.length > 0) line += ` ${pnl(unrealizedPnl)}`;
       if (closedCopyTrades.length > 0) line += ` / ${pnl(realizedPnl)}r`;
       lines.push(line);
+    }
+
+    // Rug stats
+    const rugStats = getRugStats();
+    if (rugStats.count > 0) {
+      lines.push(`${"Rugs".padEnd(10)} ${rugStats.count} | -${$(rugStats.lostUsd)}`);
     }
 
     // Quant trading

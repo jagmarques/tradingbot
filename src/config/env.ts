@@ -64,6 +64,7 @@ const envSchema = z.object({
   HYPERLIQUID_WALLET_ADDRESS: z.string().min(1).optional(),
   QUANT_ENABLED: z.enum(["true", "false"]).default("false"),
   QUANT_VIRTUAL_BALANCE: numericString("10"),
+  ALCHEMY_API_KEY: z.string().min(1).optional(),
 
 });
 

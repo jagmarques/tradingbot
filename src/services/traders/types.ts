@@ -179,6 +179,7 @@ export interface CopyTrade {
   tokenSymbol: string;
   tokenAddress: string;
   chain: string;
+  pairAddress: string | null;
   side: "buy" | "sell";
   buyPriceUsd: number;
   currentPriceUsd: number;

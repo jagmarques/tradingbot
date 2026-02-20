@@ -152,6 +152,7 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN insider_count INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_reason TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN pair_address TEXT DEFAULT NULL"); } catch { /* already exists */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_rug_counts (
@@ -703,6 +704,7 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     tokenSymbol: row.token_symbol as string,
     tokenAddress: row.token_address as string,
     chain: row.chain as string,
+    pairAddress: (row.pair_address as string) || null,
     side: row.side as "buy" | "sell",
     buyPriceUsd: row.buy_price_usd as number,
     currentPriceUsd: row.current_price_usd as number,
@@ -731,8 +733,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
       id, wallet_address, token_symbol, token_address, chain, side,
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
       liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
-      exit_reason, insider_count, peak_pnl_pct
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exit_reason, insider_count, peak_pnl_pct, pair_address
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -752,7 +754,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.closeTimestamp ?? null,
     trade.exitReason ?? null,
     trade.insiderCount ?? 1,
-    trade.peakPnlPct ?? 0
+    trade.peakPnlPct ?? 0,
+    trade.pairAddress ?? null
   );
 }
 
@@ -856,4 +859,33 @@ export function getAllCopyTrades(): CopyTrade[] {
 
   const rows = db.prepare("SELECT * FROM insider_copy_trades ORDER BY buy_timestamp DESC").all() as Record<string, unknown>[];
   return rows.map(mapRowToCopyTrade);
+}
+
+export function getRugStats(): { count: number; lostUsd: number } {
+  const db = getDb();
+
+  // Copy trade rugs: exit_reason = 'liquidity_rug', full amount_usd is the loss
+  const copyRow = db.prepare(`
+    SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
+    FROM insider_copy_trades
+    WHERE exit_reason = 'liquidity_rug'
+  `).get() as { count: number; lost: number };
+
+  // Gem paper trade rugs: closed gem trades whose token appears in token_rug_counts
+  // Match by id format: ${symbol.toLowerCase()}_${chain}
+  const gemRow = db.prepare(`
+    SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
+    FROM insider_gem_paper_trades
+    WHERE status = 'closed'
+      AND id IN (
+        SELECT LOWER(h.token_symbol) || '_' || h.chain
+        FROM insider_gem_hits h
+        JOIN token_rug_counts r ON LOWER(h.token_address) = LOWER(r.token_address) AND h.chain = r.chain
+      )
+  `).get() as { count: number; lost: number };
+
+  return {
+    count: (copyRow.count ?? 0) + (gemRow.count ?? 0),
+    lostUsd: (copyRow.lost ?? 0) + (gemRow.lost ?? 0),
+  };
 }
