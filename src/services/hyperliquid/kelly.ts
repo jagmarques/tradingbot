@@ -5,6 +5,8 @@ import {
   HYPERLIQUID_MAX_LEVERAGE,
 } from "../../config/constants.js";
 
+const MIN_POSITION_USD = 1; // $1 minimum position size
+
 export function calculateQuantPositionSize(
   confidence: number, // 0-100
   entryPrice: number,
@@ -44,8 +46,10 @@ export function calculateQuantPositionSize(
   const maxSize = balance * 0.2;
   const size = Math.min(rawSize, maxSize);
 
-  // Minimum viable position: $1
-  if (size < 1) return 0;
+  if (size < MIN_POSITION_USD) {
+    console.log(`[Kelly] Size $${size.toFixed(2)} below $${MIN_POSITION_USD} min (balance=$${balance.toFixed(2)}, kelly=${(kellyFractional * 100).toFixed(1)}%)`);
+    return 0;
+  }
 
   // Round down to 2 decimal places
   return Math.floor(size * 100) / 100;

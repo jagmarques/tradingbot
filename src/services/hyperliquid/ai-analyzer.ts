@@ -235,6 +235,7 @@ export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
       1, // Leverage passed to executor/risk layer (Phase 28), not used for sizing here
     );
 
+    if (sizeUsd <= 0) continue;
     actionable.push({ ...decision, suggestedSizeUsd: sizeUsd });
   }
 
