@@ -529,9 +529,9 @@ export async function revalidateHeldGems(): Promise<void> {
     if (!pair) continue;
 
     const liquidityUsd = pair.liquidity?.usd ?? 0;
-    if (liquidityUsd < 500) {
+    if (liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
       await sellGemPosition(token.symbol, token.chain);
-      console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $500 (rug)`);
+      console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD} (rug)`);
     }
   }
 }
@@ -641,17 +641,28 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
 
     // Liquidity revalidation - auto-close if pool drained (rug)
+    // Three triggers: zero liquidity, static floor ($5k), OR 70% drop from entry
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
-    if (priceUsd > 0 && liquidityUsd < 500) {
+    if (priceUsd > 0) {
       const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
       if (trade) {
-        console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $500`);
-        closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
-        notifyCopyTrade({
-          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-          side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
-          skipReason: "liquidity rug", pnlPct: trade.pnlPct,
-        }).catch(() => {});
+        const belowFloor = liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
+        const entryLiq = trade.liquidityUsd;
+        const droppedFromEntry = entryLiq > 0 && liquidityUsd > 0 && liquidityUsd < entryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
+        if (belowFloor || droppedFromEntry) {
+          const reason = liquidityUsd === 0
+            ? "liquidity is zero"
+            : droppedFromEntry
+              ? `liquidity dropped ${((1 - liquidityUsd / entryLiq) * 100).toFixed(0)}% ($${entryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
+              : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
+          console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - ${reason}`);
+          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
+          notifyCopyTrade({
+            walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+            side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
+            skipReason: "liquidity rug", pnlPct: trade.pnlPct,
+          }).catch(() => {});
+        }
       }
     }
   }
