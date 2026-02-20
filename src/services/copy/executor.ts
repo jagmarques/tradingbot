@@ -12,6 +12,7 @@ import {
 } from "../../config/constants.js";
 import { filterCryptoCopy, getApproxUsdValue, type CopyFilterResult } from "./filter.js";
 import { isLogOnlyMode } from "../aibetting/scheduler.js";
+import { dexScreenerFetch } from "../shared/dexscreener.js";
 
 // Crypto copied position tracking
 export interface CryptoCopyPosition {
@@ -128,8 +129,24 @@ export async function closeCopiedPosition(
   let sellResult: { success: boolean; amountReceived?: number; error?: string };
 
   if (isPaperMode()) {
-    // Paper mode: skip real sell, assume break-even minus fees
-    sellResult = { success: true, amountReceived: position.entryAmountNative };
+    // Paper mode: use DexScreener price to calculate actual value of held tokens
+    let amountReceived = position.entryAmountNative; // fallback to break-even
+    try {
+      const pair = await dexScreenerFetch(position.chain, position.tokenAddress);
+      if (pair?.priceUsd) {
+        const tokenPriceUsd = parseFloat(pair.priceUsd);
+        const nativePriceUsd = getApproxUsdValue(1, position.chain);
+        // tokensReceived is in wei (18 decimals assumed)
+        const tokensHeld = parseFloat(position.tokensReceived) / 1e18;
+        if (tokenPriceUsd > 0 && nativePriceUsd > 0 && tokensHeld > 0) {
+          const valueUsd = tokensHeld * tokenPriceUsd;
+          amountReceived = valueUsd / nativePriceUsd;
+        }
+      }
+    } catch (err) {
+      console.log(`[CopyTrade] Paper close price fetch failed, using break-even:`, err instanceof Error ? err.message : err);
+    }
+    sellResult = { success: true, amountReceived };
   } else if (isChainSupported(position.chain)) {
     sellResult = await execute1inchSell(position.chain, position.tokenAddress, position.tokensReceived);
   } else {

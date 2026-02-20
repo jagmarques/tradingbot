@@ -537,6 +537,7 @@ export function getOpenGemPaperTrades(): GemPaperTrade[] {
 export function updateGemPaperTradePrice(symbol: string, chain: string, currentPriceUsd: number): void {
   const db = getDb();
   const id = `${symbol.toLowerCase()}_${chain}`;
+  const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
 
   db.prepare(`
     UPDATE insider_gem_paper_trades
@@ -546,11 +547,11 @@ export function updateGemPaperTradePrice(symbol: string, chain: string, currentP
           ELSE current_pump_multiple
         END,
         pnl_pct = CASE
-          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100)
+          WHEN buy_price_usd > 0 AND ? > 0 THEN ((? / buy_price_usd - 1) * 100 - ?)
           ELSE 0
         END
     WHERE id = ?
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, id);
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
 }
 
 export function closeGemPaperTrade(symbol: string, chain: string, sellTxHash?: string): void {
