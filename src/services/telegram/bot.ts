@@ -1285,6 +1285,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     }
 
     if (tab === "wallets") {
+      try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
       const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
       const walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | undefined);
 
