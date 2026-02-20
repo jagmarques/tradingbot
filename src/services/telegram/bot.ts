@@ -864,11 +864,11 @@ async function handleStatus(ctx: Context): Promise<void> {
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
     const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
     const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
-    lines.push(`${"AI Bets".padEnd(10)} ${openBets.length} | ${$(aiInvested).padEnd(5)} ${aiPnlStr}${logOnly}`);
+    lines.push(`AI Bets: ${openBets.length} | ${$(aiInvested)}${aiPnlStr}${logOnly}`);
 
     const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
     const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    lines.push(`${"Poly Copy".padEnd(10)} ${polyStats.openPositions} | ${$(copyInvested).padEnd(5)} ${copyPnlStr}`);
+    lines.push(`Poly Copy: ${polyStats.openPositions} | ${$(copyInvested)}${copyPnlStr}`);
 
     // Gem paper trades
     try { await refreshGemPaperPrices(); } catch { /* DexScreener failure non-fatal */ }
@@ -876,7 +876,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     if (gemPaperTrades.length > 0) {
       const gemInvested = gemPaperTrades.reduce((sum, t) => sum + t.amountUsd, 0);
       const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      lines.push(`${"Gems".padEnd(10)} ${gemPaperTrades.length} | ${$(gemInvested).padEnd(5)} ${pnl(gemTotalPnl)}`);
+      lines.push(`Gems: ${gemPaperTrades.length} | ${$(gemInvested)} ${pnl(gemTotalPnl)}`);
     }
 
     // Insider copy trades
@@ -887,7 +887,7 @@ async function handleStatus(ctx: Context): Promise<void> {
       const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
       const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
       const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      let line = `${"Insider".padEnd(10)} ${openCopyTrades.length} | ${$(insiderInvested).padEnd(5)}`;
+      let line = `Insider: ${openCopyTrades.length} | ${$(insiderInvested)}`;
       if (openCopyTrades.length > 0) line += ` ${pnl(unrealizedPnl)}`;
       if (closedCopyTrades.length > 0) line += ` / ${pnl(realizedPnl)}r`;
       lines.push(line);
@@ -896,7 +896,7 @@ async function handleStatus(ctx: Context): Promise<void> {
     // Rug stats
     const rugStats = getRugStats();
     if (rugStats.count > 0) {
-      lines.push(`${"Rugs".padEnd(10)} ${rugStats.count} | -${$(rugStats.lostUsd)}`);
+      lines.push(`Rugs: ${rugStats.count} | -${$(rugStats.lostUsd)}`);
     }
 
     // Quant trading
@@ -925,7 +925,7 @@ async function handleStatus(ctx: Context): Promise<void> {
       const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
       const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
       const quantKillStr = quantKilled ? " HALTED" : "";
-      lines.push(`${"Quant".padEnd(10)} ${quantPositions.length} | ${$(quantInvested).padEnd(5)} ${quantPnlStr}${quantKillStr}`);
+      lines.push(`Quant: ${quantPositions.length} | ${$(quantInvested)}${quantPnlStr}${quantKillStr}`);
     }
 
     message += lines.join("\n");
@@ -953,8 +953,8 @@ async function handleBalance(ctx: Context): Promise<void> {
 
   if (isPaperMode()) {
     const lines = [
-      `${"Capital".padEnd(9)} ${fmt(STARTING_CAPITAL_USD)}`,
-      `${"Per Strat".padEnd(9)} ${fmt(CAPITAL_PER_STRATEGY_USD)}`,
+      `Capital: ${fmt(STARTING_CAPITAL_USD)}`,
+      `Per Strategy: ${fmt(CAPITAL_PER_STRATEGY_USD)}`,
     ];
     const message = `<b>Balance</b> | Paper\n${lines.join("\n")}`;
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
@@ -973,11 +973,11 @@ async function handleBalance(ctx: Context): Promise<void> {
     const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
 
     const lines = [
-      `${"Polygon".padEnd(9)} ${"MATIC".padEnd(5)} ${maticBalance}`,
-      `${"".padEnd(9)} ${"USDC".padEnd(5)} ${usdcBalance}`,
-      `${"Base".padEnd(9)} ${"ETH".padEnd(5)} ${formatWei(baseEthBalance)}`,
-      `${"Arbitrum".padEnd(9)} ${"ETH".padEnd(5)} ${formatWei(arbitrumEthBalance)}`,
-      `${"Avax".padEnd(9)} ${"AVAX".padEnd(5)} ${formatWei(avaxBalance)}`,
+      `Polygon MATIC: ${maticBalance}`,
+      `Polygon USDC: ${usdcBalance}`,
+      `Base ETH: ${formatWei(baseEthBalance)}`,
+      `Arbitrum ETH: ${formatWei(arbitrumEthBalance)}`,
+      `Avax AVAX: ${formatWei(avaxBalance)}`,
     ];
     const message = `<b>Balance</b>\n${lines.join("\n")}`;
 
@@ -1053,12 +1053,12 @@ function formatBreakdown(cryptoCopy: number, polyCopy: number, aiBetting: number
   const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
-    { name: "Crypto Cp", value: cryptoCopy },
+    { name: "Crypto Copy", value: cryptoCopy },
     { name: "Poly Copy", value: polyCopy },
     { name: "AI Bets", value: aiBetting },
   ];
 
-  const rows = sources.filter(s => s.value !== 0).map(s => `${s.name.padEnd(11)} ${pnl(s.value)}`);
+  const rows = sources.filter(s => s.value !== 0).map(s => `${s.name}: ${pnl(s.value)}`);
 
   if (rows.length === 0) return `No closed positions`;
   return rows.join("\n");
@@ -1082,8 +1082,9 @@ async function handleTrades(ctx: Context): Promise<void> {
     if (cryptoCopyPositions.length > 0) {
       message += `<b>Crypto Copy</b> ${cryptoCopyPositions.length} open\n`;
       for (const pos of cryptoCopyPositions) {
-        message += `${pos.tokenSymbol.padEnd(10)}${pos.chain.padEnd(7)}${pos.entryAmountNative.toFixed(4)} native\n`;
+        message += `${pos.tokenSymbol} | ${pos.chain} | ${pos.entryAmountNative.toFixed(4)} native\n`;
       }
+      message += `\n`;
     }
 
     // Gem paper trades
@@ -1096,9 +1097,10 @@ async function handleTrades(ctx: Context): Promise<void> {
       for (const t of gemPaperTrades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const buyPump = t.buyPriceUsd > 0 && t.currentPriceUsd > 0 ? t.currentPriceUsd / t.buyPriceUsd : 0;
-        message += `${t.tokenSymbol.padEnd(10)} ${$(t.amountUsd).padEnd(6)}${buyPump.toFixed(1)}x  ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+        message += `${t.tokenSymbol} | ${$(t.amountUsd)} | ${buyPump.toFixed(1)}x | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         message += `  @${formatTokenPrice(t.buyPriceUsd)} -> ${formatTokenPrice(t.currentPriceUsd)}\n`;
       }
+      message += `\n`;
     }
 
     // Insider copy trades
@@ -1117,7 +1119,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         for (const t of openCopyTrades) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
-          message += `${t.tokenSymbol.padEnd(10)} ${$(t.amountUsd).padEnd(6)}${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          message += `${t.tokenSymbol} | ${$(t.amountUsd)} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
           message += `  ${walletShort}\n`;
         }
       }
@@ -1126,7 +1128,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         for (const t of closedCopyTrades.slice(0, 5)) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const chainTag = t.chain.toUpperCase().slice(0, 3);
-          message += `${t.tokenSymbol} ${chainTag} ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          message += `${t.tokenSymbol} | ${chainTag} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         }
         if (closedCopyTrades.length > 5) message += `... +${closedCopyTrades.length - 5} more\n`;
       }
@@ -1138,7 +1140,7 @@ async function handleTrades(ctx: Context): Promise<void> {
       message += `<b>Today</b> ${trades.length} trades\n`;
       for (const trade of trades) {
         const time = new Date(trade.timestamp).toLocaleTimeString().slice(0, 5);
-        message += `${time} ${trade.strategy.padEnd(10)}${$(trade.amount).padEnd(6)}${pnl(trade.pnl)}\n`;
+        message += `${time} | ${trade.strategy} | ${$(trade.amount)} | ${pnl(trade.pnl)}\n`;
       }
     } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
       message += "No trades or positions.";
@@ -1182,7 +1184,7 @@ async function handleBettors(ctx: Context): Promise<void> {
       const roi = `${(b.roi * 100).toFixed(1)}%`;
       const bPnl = `${b.pnl >= 0 ? "+" : ""}$${b.pnl.toFixed(0)}`;
       const vol = `$${(b.vol / 1000).toFixed(0)}k`;
-      return `${name.padEnd(14)} ${roi.padStart(6)} ${bPnl.padStart(7)} ${vol.padStart(5)}`;
+      return `${name} | ${roi} | ${bPnl} | ${vol}`;
     });
 
     message += rows.join("\n");
@@ -1281,7 +1283,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peak = Math.max(t.peakPump, t.currentPump);
         const peakStr = peak > t.currentPump ? ` pk${peak.toFixed(1)}x` : "";
         const foundStr = ago(t.launchTs);
-        return `${t.symbol} ${chainTag} ${scoreStr} ${t.currentPump.toFixed(1)}x${peakStr} ${t.holders}w ${foundStr}`;
+        return `${t.symbol} | ${chainTag} | ${scoreStr} | ${t.currentPump.toFixed(1)}x${peakStr} | ${t.holders}w | ${foundStr}`;
       });
 
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
@@ -1310,7 +1312,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const lines = walletStats.map((w) => {
         const addrShort = `0x${w.address.slice(2, 4)}..${w.address.slice(-4)}`;
         const gainSign = w.avgGainPct >= 0 ? "+" : "";
-        return `${addrShort} ${w.score} ${w.gemHitCount}g ${gainSign}${w.avgGainPct.toFixed(0)}%`;
+        return `${addrShort} | ${w.score} | ${w.gemHitCount}g | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
       const header = `<b>Insiders - Wallets</b>\n\n`;
@@ -1352,8 +1354,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const pctSign = trade.pnlPct >= 0 ? "+" : "";
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }).replace(" ", "");
 
-        const l1 = `${trade.tokenSymbol} ${chainTag} ${scoreStr} ${$(trade.amountUsd)} @ ${buyPriceStr}`;
-        const l2 = `  ${sinceBuyStr}${peakStr} ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}% ${buyDate}`;
+        const l1 = `${trade.tokenSymbol} | ${chainTag} | ${scoreStr} | ${$(trade.amountUsd)} @ ${buyPriceStr}`;
+        const l2 = `  ${sinceBuyStr}${peakStr} | ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}% | ${buyDate}`;
         return l1 + "\n" + l2;
       });
 
@@ -1412,7 +1414,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         for (const g of sorted) {
           const pct = g.totalInv > 0 ? (g.totalPnlUsd / g.totalInv * 100) : 0;
           const wStr = g.wallets > 1 ? ` (${g.wallets}w)` : "";
-          text += `${g.symbol} ${$(g.totalInv)}${wStr} ${pnl(g.totalPnlUsd)} ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%\n`;
+          text += `${g.symbol} | ${$(g.totalInv)}${wStr} | ${pnl(g.totalPnlUsd)} ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%\n`;
         }
       }
 
@@ -1422,13 +1424,13 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         for (const t of closedCopies) reasonCounts.set(t.exitReason || "unknown", (reasonCounts.get(t.exitReason || "unknown") || 0) + 1);
         const labels: Record<string, string> = { insider_sold: "sold", trailing_stop: "trail", stop_loss: "SL", target_500: "5x", stale_price: "stale", liquidity_rug: "rug", unknown: "?" };
         const parts: string[] = [];
-        for (const [r, c] of reasonCounts) parts.push(`${labels[r] || r}:${c}`);
+        for (const [r, c] of reasonCounts) parts.push(`${labels[r] || r}: ${c}`);
         if (parts.length > 0) text += parts.join(" | ") + "\n";
 
         const topClosed = closedCopies.sort((a, b) => Math.abs((b.pnlPct / 100) * b.amountUsd) - Math.abs((a.pnlPct / 100) * a.amountUsd)).slice(0, 5);
         for (const t of topClosed) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
-          text += `${t.tokenSymbol} ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          text += `${t.tokenSymbol} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         }
         if (closedCopies.length > 5) text += `+${closedCopies.length - 5} more\n`;
       }
@@ -1457,7 +1459,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peakStr = peak > (hit.pumpMultiple || 0) ? ` pk${peak.toFixed(1)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
         const foundStr = ts > 0 ? ago(ts) : "?";
-        return `${statusStr} ${hit.tokenSymbol} ${chainTag} ${scoreStr} ${hit.pumpMultiple.toFixed(1)}x${peakStr} ${foundStr}`;
+        return `${statusStr} ${hit.tokenSymbol} | ${chainTag} | ${scoreStr} | ${hit.pumpMultiple.toFixed(1)}x${peakStr} | ${foundStr}`;
       });
 
       const header = `<b>Insiders - Activity</b>\n\n`;
@@ -1561,7 +1563,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         positionLines += `\n`;
         const conf = (bet.confidence * 100).toFixed(0);
         const ev = (bet.expectedValue * 100).toFixed(0);
-        positionLines += `  ${conf}%conf ${ev}%ev ${shortDate(bet.entryTimestamp)}\n\n`;
+        positionLines += `  ${conf}%conf | ${ev}%ev | ${shortDate(bet.entryTimestamp)}\n\n`;
       }
 
       message += `Unreal: ${pnl(totalPnlVal)} | Real: ${pnl(aiStats.totalPnl)}\n`;
@@ -1600,7 +1602,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
           closedLines += `->${c(bet.exitPrice)}`;
         }
         closedLines += ` ${pnl(betPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%\n`;
-        closedLines += `  ${bet.exitReason ? bet.exitReason + " " : ""}${exitDate}\n\n`;
+        closedLines += `  ${bet.exitReason ? bet.exitReason + " | " : ""}${exitDate}\n\n`;
       }
 
       message += `Real: ${pnl(closedTotalPnl)}\n`;
@@ -1677,7 +1679,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         if (pos.exitPrice !== undefined) {
           copyClosedLines += `->${c(pos.exitPrice)}`;
         }
-        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}% ${exitDate}\n\n`;
+        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}% | ${exitDate}\n\n`;
       }
 
       message += `Real: ${pnl(copyClosedPnlVal)}\n`;
@@ -2472,26 +2474,26 @@ async function handleSettings(ctx: Context): Promise<void> {
     const bayAI = ((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0);
 
     const settingsLines = [
-      `${"Copy".padEnd(10)}${copyStatus}`,
-      `${"Score".padEnd(10)}${settings.minTraderScore.toString().padEnd(6)}${"Max/Day".padEnd(9)}${settings.maxCopyPerDay}`,
-      `${"Today".padEnd(10)}${settings.dailyCopyCount}/${settings.maxCopyPerDay}`,
+      `Copy: ${copyStatus}`,
+      `Score: ${settings.minTraderScore} | Max/Day: ${settings.maxCopyPerDay}`,
+      `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay}`,
       ``,
-      `${"ETH".padEnd(10)}${settings.copyAmountEth}`,
-      `${"MATIC".padEnd(10)}${settings.copyAmountMatic.toString().padEnd(8)}${"Other".padEnd(7)}${settings.copyAmountDefault}`,
-      `${"Poly".padEnd(10)}$${settings.polymarketCopyUsd}`,
+      `ETH: ${settings.copyAmountEth}`,
+      `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}`,
+      `Poly: $${settings.polymarketCopyUsd}`,
     ];
 
     if (aiEnabled) {
       settingsLines.push(``);
-      settingsLines.push(`${"AI Bets".padEnd(10)}ON`);
-      settingsLines.push(`${"MaxBet".padEnd(10)}$${env.AIBETTING_MAX_BET.toString().padEnd(5)}${"MaxExp".padEnd(9)}$${env.AIBETTING_MAX_EXPOSURE}`);
-      settingsLines.push(`${"Edge".padEnd(10)}${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}%`.padEnd(16) + `${"Conf".padEnd(9)}${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%`);
-      settingsLines.push(`${"Bayesian".padEnd(10)}${bayMkt}/${bayAI}`);
-      settingsLines.push(`${"TP".padEnd(10)}+${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}%`.padEnd(16) + `${"SL".padEnd(9)}-${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%`);
-      settingsLines.push(`${"Hold".padEnd(10)}${env.AIBETTING_HOLD_RESOLUTION_DAYS}d`);
+      settingsLines.push(`AI Bets: ON`);
+      settingsLines.push(`MaxBet: $${env.AIBETTING_MAX_BET} | MaxExp: $${env.AIBETTING_MAX_EXPOSURE}`);
+      settingsLines.push(`Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Conf: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%`);
+      settingsLines.push(`Bayesian: ${bayMkt}/${bayAI}`);
+      settingsLines.push(`TP: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | SL: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%`);
+      settingsLines.push(`Hold: ${env.AIBETTING_HOLD_RESOLUTION_DAYS}d`);
     } else {
       settingsLines.push(``);
-      settingsLines.push(`${"AI Bets".padEnd(10)}OFF`);
+      settingsLines.push(`AI Bets: OFF`);
     }
 
     const message = `<b>Settings</b>\n\n${settingsLines.join("\n")}`;
@@ -2620,7 +2622,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
-  text += `Bal: ${$(balance)} | Pos: ${openPositions.length} | Loss: ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT}\n`;
+  text += `Balance: ${$(balance)} | Positions: ${openPositions.length} | Daily Loss: ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT}\n`;
 
   let mids: Record<string, string> = {};
   if (openPositions.length > 0) {
@@ -2649,7 +2651,7 @@ async function handleQuant(ctx: Context): Promise<void> {
           upnlStr = ` ${pnl(unrealizedPnl)}`;
         }
       }
-      posLines.push(`${tag}${dir} ${pos.pair}  ${$(pos.size)}  @${pos.entryPrice} ${pos.leverage}x${upnlStr}`);
+      posLines.push(`${tag}${dir} ${pos.pair} | ${$(pos.size)} | @${pos.entryPrice} ${pos.leverage}x${upnlStr}`);
     }
     text += `\n<b>Pos</b>\n${posLines.join("\n")}\n`;
   }
@@ -2659,7 +2661,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     const tradeLines: string[] = [];
     for (const t of recentTrades) {
       const dir = t.direction === "long" ? "L" : "S";
-      tradeLines.push(`${dir} ${t.pair}  ${$(t.size)}  ${pnl(t.pnl)}`);
+      tradeLines.push(`${dir} ${t.pair} | ${$(t.size)} | ${pnl(t.pnl)}`);
     }
     text += `\n<b>Trades</b>\n${tradeLines.join("\n")}\n`;
   }
@@ -2669,9 +2671,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   const totalPnl = directionalPnl + fundingPnl;
 
   const pnlLines: string[] = [];
-  pnlLines.push(`${"Dir".padEnd(6)}${pnl(directionalPnl)}  ${directionalStats.totalTrades}t ${directionalStats.winRate.toFixed(0)}%w`);
-  pnlLines.push(`${"Fund".padEnd(6)}${pnl(fundingPnl)}  ${funding.tradeCount}t`);
-  pnlLines.push(`${"Total".padEnd(6)}${pnl(totalPnl)}`);
+  pnlLines.push(`Directional: ${pnl(directionalPnl)} | ${directionalStats.totalTrades}t ${directionalStats.winRate.toFixed(0)}%w`);
+  pnlLines.push(`Funding: ${pnl(fundingPnl)} | ${funding.tradeCount}t`);
+  pnlLines.push(`Total: ${pnl(totalPnl)}`);
   text += `\n<b>P&L</b>\n${pnlLines.join("\n")}\n`;
 
   const validation = getQuantValidationMetrics();
@@ -2680,7 +2682,7 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const valLines: string[] = [];
   valLines.push(`Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} | Sharpe ${validation.sharpeRatio.toFixed(2)}`);
-  valLines.push(`DD ${validation.maxDrawdownPct.toFixed(1)}% | Avg ${validation.avgTradeDurationHours.toFixed(1)}h`);
+  valLines.push(`Drawdown: ${validation.maxDrawdownPct.toFixed(1)}% | Avg Duration: ${validation.avgTradeDurationHours.toFixed(1)}h`);
   if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
     valLines.push("Ready for live");
   } else {
