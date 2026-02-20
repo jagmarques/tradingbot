@@ -1477,6 +1477,22 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       if (closedCopies.length > 0) {
         const realPnlTotal = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
         closedLines.push(`-- Closed (${closedCopies.length}) ${pnl(realPnlTotal)} --`);
+        const reasonCounts = new Map<string, number>();
+        for (const t of closedCopies) {
+          const reason = t.exitReason || "unknown";
+          reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+        }
+        const reasonLabels: Record<string, string> = {
+          insider_sold: "sold", trailing_stop: "trail", stop_loss: "SL",
+          target_500: "5x", stale_price: "stale", liquidity_rug: "rug", unknown: "?",
+        };
+        const breakdownParts: string[] = [];
+        for (const [reason, count] of reasonCounts) {
+          breakdownParts.push(`${reasonLabels[reason] || reason}:${count}`);
+        }
+        if (breakdownParts.length > 0) {
+          closedLines.push(breakdownParts.join(" | "));
+        }
         for (const trade of closedCopies.slice(0, 10)) {
           const chainTag = trade.chain.toUpperCase().slice(0, 3);
           const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
