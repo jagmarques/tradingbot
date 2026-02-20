@@ -744,6 +744,13 @@ export function closeCopyTrade(walletAddress: string, tokenAddress: string, chai
   db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ? WHERE id = ?").run(Date.now(), id);
 }
 
+export function getClosedCopyTrades(): CopyTrade[] {
+  const db = getDb();
+
+  const rows = db.prepare("SELECT * FROM insider_copy_trades WHERE status = 'closed' ORDER BY close_timestamp DESC").all() as Record<string, unknown>[];
+  return rows.map(mapRowToCopyTrade);
+}
+
 export function getAllCopyTrades(): CopyTrade[] {
   const db = getDb();
 

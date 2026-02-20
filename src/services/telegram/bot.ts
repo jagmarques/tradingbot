@@ -25,9 +25,10 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
-import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades } from "../traders/storage.js";
+import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemPaperTrades, getPeakPumpForToken, getRecentGemHits, getOpenCopyTrades, getClosedCopyTrades } from "../traders/storage.js";
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
+import { getClient } from "../hyperliquid/client.js";
 import { loadClosedQuantTrades, getQuantStats, getFundingIncome } from "../database/quant.js";
 
 let bot: Bot | null = null;
@@ -807,11 +808,17 @@ async function handleStatus(ctx: Context): Promise<void> {
     // Insider copy trades
     try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
     const openCopyTrades = getOpenCopyTrades();
-    if (openCopyTrades.length > 0) {
+    const closedCopyTrades = getClosedCopyTrades();
+    if (openCopyTrades.length > 0 || closedCopyTrades.length > 0) {
       const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-      const insiderTotalPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const insiderSign = insiderTotalPnl >= 0 ? "+" : "";
-      message += `Insider Copy: ${openCopyTrades.length} open | $${insiderInvested.toFixed(2)} invested | ${insiderSign}$${insiderTotalPnl.toFixed(2)}\n`;
+      const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const unrealSign = unrealizedPnl >= 0 ? "+" : "";
+      const realSign = realizedPnl >= 0 ? "+" : "";
+      let line = `Insider Copy: ${openCopyTrades.length} open`;
+      if (openCopyTrades.length > 0) line += ` | $${insiderInvested.toFixed(2)} inv | ${unrealSign}$${unrealizedPnl.toFixed(2)} unreal`;
+      if (closedCopyTrades.length > 0) line += ` | ${realSign}$${realizedPnl.toFixed(2)} real (${closedCopyTrades.length} closed)`;
+      message += `${line}\n`;
     }
 
     if (status.pauseReason) {
@@ -1006,11 +1013,18 @@ async function handleTrades(ctx: Context): Promise<void> {
     // Insider copy trades
     try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
     const openCopyTrades = getOpenCopyTrades();
-    if (openCopyTrades.length > 0) {
+    const closedCopyTrades = getClosedCopyTrades();
+    if (openCopyTrades.length > 0 || closedCopyTrades.length > 0) {
       const copyInvested = openCopyTrades.reduce((s, t) => s + t.amountUsd, 0);
-      const copyTotalPnl = openCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      const copySign = copyTotalPnl >= 0 ? "+" : "";
-      message += `<b>Insider Copy</b> (${openCopyTrades.length} open | $${copyInvested.toFixed(0)} invested | ${copySign}$${copyTotalPnl.toFixed(2)})\n\n`;
+      const unrealPnl = openCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
+      const realPnl = closedCopyTrades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
+      const unrealSign = unrealPnl >= 0 ? "+" : "";
+      const realSign = realPnl >= 0 ? "+" : "";
+      let header = `<b>Insider Copy</b> (${openCopyTrades.length} open`;
+      if (openCopyTrades.length > 0) header += ` | $${copyInvested.toFixed(0)} inv | ${unrealSign}$${unrealPnl.toFixed(2)} unreal`;
+      if (closedCopyTrades.length > 0) header += ` | ${realSign}$${realPnl.toFixed(2)} real`;
+      header += `)\n\n`;
+      message += header;
       for (const t of openCopyTrades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const sign = pnlUsd >= 0 ? "+" : "";
@@ -1019,6 +1033,17 @@ async function handleTrades(ctx: Context): Promise<void> {
         message += `<b>${t.tokenSymbol}</b> (${chainTag})\n`;
         message += `$${t.amountUsd.toFixed(0)} @ ${formatTokenPrice(t.buyPriceUsd)} | Now: ${formatTokenPrice(t.currentPriceUsd)}\n`;
         message += `P&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%) | ${walletShort}\n\n`;
+      }
+      if (closedCopyTrades.length > 0) {
+        message += `<b>Closed</b> (${closedCopyTrades.length} trades | ${realSign}$${realPnl.toFixed(2)})\n`;
+        for (const t of closedCopyTrades.slice(0, 5)) {
+          const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+          const sign = pnlUsd >= 0 ? "+" : "";
+          const chainTag = t.chain.toUpperCase().slice(0, 3);
+          message += `${t.tokenSymbol} (${chainTag}) ${sign}$${pnlUsd.toFixed(2)} (${sign}${t.pnlPct.toFixed(0)}%)\n`;
+        }
+        if (closedCopyTrades.length > 5) message += `... and ${closedCopyTrades.length - 5} more\n`;
+        message += `\n`;
       }
     }
 
@@ -1030,7 +1055,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString();
         message += `${emoji} ${trade.type} ${trade.strategy} $${trade.amount.toFixed(2)} | P&L: $${trade.pnl.toFixed(2)} | ${time}\n`;
       }
-    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0) {
+    } else if (cryptoCopyPositions.length === 0 && gemPaperTrades.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
       message += "No trades or positions.";
     }
 
@@ -1339,18 +1364,20 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       await refreshCopyTradePrices();
 
       let openCopyTrades = getOpenCopyTrades();
+      let closedCopies = getClosedCopyTrades();
 
       if (chain) {
         openCopyTrades = openCopyTrades.filter((t) => t.chain === chain);
+        closedCopies = closedCopies.filter((t) => t.chain === chain);
       }
 
-      if (openCopyTrades.length === 0) {
+      if (openCopyTrades.length === 0 && closedCopies.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(`<b>Insider Wallets</b> - Copies\n\nNo open copy trades yet.`, buttons);
+        await sendDataMessage(`<b>Insider Wallets</b> - Copies\n\nNo copy trades yet.`, buttons);
         return;
       }
 
-      const tokenBlocks = openCopyTrades.map((trade) => {
+      const tokenBlocks: string[] = openCopyTrades.map((trade) => {
         const chainTag = trade.chain.toUpperCase().slice(0, 3);
         const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
         const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
@@ -1363,11 +1390,29 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return `<b>${trade.tokenSymbol}</b> (${chainTag})\n$${trade.amountUsd.toFixed(0)} @ ${buyPriceStr} | Now: ${currentPriceStr}\nP&L: ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | ${liqStr}\nWallet: ${walletShort} | ${buyDate}`;
       });
 
-      const totalPnlUsd = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const avgPnlPct = openCopyTrades.reduce((sum, t) => sum + t.pnlPct, 0) / openCopyTrades.length;
-      const totalSign = totalPnlUsd >= 0 ? "+" : "";
-      const avgSign = avgPnlPct >= 0 ? "+" : "";
-      const summary = `\nCopy Portfolio: ${openCopyTrades.length} positions | P&L: ${totalSign}$${totalPnlUsd.toFixed(2)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
+      // Closed trades
+      if (closedCopies.length > 0) {
+        const realPnl = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+        const realSign = realPnl >= 0 ? "+" : "";
+        tokenBlocks.push(`<b>-- Closed (${closedCopies.length}) | ${realSign}$${realPnl.toFixed(2)} realized --</b>`);
+        for (const trade of closedCopies.slice(0, 10)) {
+          const chainTag = trade.chain.toUpperCase().slice(0, 3);
+          const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
+          const sign = pnlUsd >= 0 ? "+" : "";
+          const closeDate = trade.closeTimestamp ? new Date(trade.closeTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+          tokenBlocks.push(`${trade.tokenSymbol} (${chainTag}) ${sign}$${pnlUsd.toFixed(2)} (${sign}${trade.pnlPct.toFixed(0)}%) | ${closeDate}`);
+        }
+        if (closedCopies.length > 10) tokenBlocks.push(`... and ${closedCopies.length - 10} more`);
+      }
+
+      const unrealPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const realPnl = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const unrealSign = unrealPnl >= 0 ? "+" : "";
+      const realSign = realPnl >= 0 ? "+" : "";
+      const parts = [`${openCopyTrades.length} open`];
+      if (openCopyTrades.length > 0) parts.push(`${unrealSign}$${unrealPnl.toFixed(2)} unreal`);
+      if (closedCopies.length > 0) parts.push(`${closedCopies.length} closed | ${realSign}$${realPnl.toFixed(2)} real`);
+      const summary = `\nCopy Portfolio: ${parts.join(" | ")}`;
 
       const copiesHeader = `<b>Insider Wallets</b> - Copies\n\n`;
       const footer = `\n${summary}`;
@@ -2549,11 +2594,35 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += `Kill switch: <b>${killed ? "ACTIVE (halted)" : "OFF"}</b>\n`;
   text += `Daily loss: <b>$${dailyLoss.toFixed(2)}</b> / $${QUANT_DAILY_DRAWDOWN_LIMIT}\n\n`;
 
+  let mids: Record<string, string> = {};
+  if (openPositions.length > 0) {
+    try {
+      const sdk = getClient();
+      mids = (await sdk.info.getAllMids()) as Record<string, string>;
+    } catch {
+      // Prices unavailable - show positions without unrealized P&L
+    }
+  }
+
   if (openPositions.length > 0) {
     text += "<b>Open Positions:</b>\n";
     for (const pos of openPositions) {
       const label = pos.tradeType === "funding" ? "[FUND] " : "";
-      text += `  ${label}${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)\n`;
+      let upnlStr = "";
+      const rawMid = mids[pos.pair];
+      if (rawMid) {
+        const currentPrice = parseFloat(rawMid);
+        if (!isNaN(currentPrice)) {
+          const unrealizedPnl =
+            pos.direction === "long"
+              ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+              : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+          const upnlPct = (unrealizedPnl / pos.size) * 100;
+          const sign = unrealizedPnl >= 0 ? "+" : "-";
+          upnlStr = ` | uPnL: ${sign}$${Math.abs(unrealizedPnl).toFixed(2)} (${sign}${Math.abs(upnlPct).toFixed(1)}%)`;
+        }
+      }
+      text += `  ${label}${pos.direction.toUpperCase()} ${pos.pair} $${pos.size.toFixed(2)} @ ${pos.entryPrice} (${pos.leverage}x)${upnlStr}\n`;
     }
     text += "\n";
   }
