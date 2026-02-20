@@ -1285,39 +1285,16 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peak = Math.max(t.peakPump, t.currentPump);
         const peakStr = peak > t.currentPump ? ` pk${peak.toFixed(1)}x` : "";
         const foundStr = ago(t.launchTs);
-        return `${t.symbol.padEnd(7)}${chainTag.padEnd(4)}${scoreStr.padEnd(4)}${t.currentPump.toFixed(1)}x${peakStr} ${t.holders}w ${foundStr}`;
+        return `${t.symbol} ${chainTag} ${scoreStr} ${t.currentPump.toFixed(1)}x${peakStr} ${t.holders}w ${foundStr}`;
       });
 
       const hiddenStr = hiddenCount > 0 ? ` + ${hiddenCount} unscored` : "";
       const header = `<b>Insiders - Holding</b>\n\n`;
       const footer = `\n${qualifiedEntries.length} holdings${hiddenStr}`;
-      const maxLen = 3900;
-
-      const messages: string[] = [];
-      let current = header + "<pre>";
-      for (const line of lines) {
-        if (current.length + line.length + 7 > maxLen) {
-          current += "</pre>";
-          messages.push(current);
-          current = "<pre>";
-        }
-        current += (current === "<pre>" ? "" : "\n") + line;
-      }
-      current += "</pre>" + footer;
-      messages.push(current);
+      const text = header + lines.join("\n") + footer;
 
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      for (let i = 0; i < messages.length; i++) {
-        const isLast = i === messages.length - 1;
-        if (isLast) {
-          await sendDataMessage(messages[i], buttons);
-        } else {
-          if (bot && chatId) {
-            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
-            insiderExtraMessageIds.push(overflowMsg.message_id);
-          }
-        }
-      }
+      await sendDataMessage(text, buttons);
 
       return;
     }
@@ -1337,38 +1314,15 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const lines = walletStats.map((w) => {
         const addrShort = `0x${w.address.slice(2, 4)}..${w.address.slice(-4)}`;
         const gainSign = w.avgGainPct >= 0 ? "+" : "";
-        return `${addrShort.padEnd(12)}${w.score.toString().padEnd(4)}${(w.gemHitCount + "g").padEnd(5)}${gainSign}${w.avgGainPct.toFixed(0)}%`;
+        return `${addrShort} ${w.score} ${w.gemHitCount}g ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
       const header = `<b>Insiders - Wallets</b>\n\n`;
       const footer = `\n${walletStats.length} insiders`;
-      const maxLen = 3900;
-
-      const messages: string[] = [];
-      let current = header + "<pre>";
-      for (const line of lines) {
-        if (current.length + line.length + 7 > maxLen) {
-          current += "</pre>";
-          messages.push(current);
-          current = "<pre>";
-        }
-        current += (current === "<pre>" ? "" : "\n") + line;
-      }
-      current += "</pre>" + footer;
-      messages.push(current);
+      const text = header + lines.join("\n") + footer;
 
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      for (let i = 0; i < messages.length; i++) {
-        const isLast = i === messages.length - 1;
-        if (isLast) {
-          await sendDataMessage(messages[i], buttons);
-        } else {
-          if (bot && chatId) {
-            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
-            insiderExtraMessageIds.push(overflowMsg.message_id);
-          }
-        }
-      }
+      await sendDataMessage(text, buttons);
 
       return;
     }
@@ -1402,8 +1356,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const pctSign = trade.pnlPct >= 0 ? "+" : "";
         const buyDate = new Date(trade.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }).replace(" ", "");
 
-        const l1 = `${trade.tokenSymbol.padEnd(7)}${chainTag.padEnd(4)}${scoreStr.padEnd(4)}${$(trade.amountUsd)} @ ${buyPriceStr}`;
-        const l2 = `  ${sinceBuyStr}${peakStr}  ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}%  ${buyDate}`;
+        const l1 = `${trade.tokenSymbol} ${chainTag} ${scoreStr} ${$(trade.amountUsd)} @ ${buyPriceStr}`;
+        const l2 = `  ${sinceBuyStr}${peakStr} ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}% ${buyDate}`;
         return l1 + "\n" + l2;
       });
 
@@ -1412,33 +1366,10 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
       const avgPnlPct = openPaperTrades.reduce((sum, trade) => sum + trade.pnlPct, 0) / openPaperTrades.length;
       const avgSign = avgPnlPct >= 0 ? "+" : "";
       const footer = `\n${openPaperTrades.length} pos | PnL: ${pnl(totalPnlUsd)} (${avgSign}${avgPnlPct.toFixed(0)}%)`;
-      const maxLen = 3900;
-
-      const messages: string[] = [];
-      let current = header + "<pre>";
-      for (const line of lines) {
-        if (current.length + line.length + 7 > maxLen) {
-          current += "</pre>";
-          messages.push(current);
-          current = "<pre>";
-        }
-        current += (current === "<pre>" ? "" : "\n") + line;
-      }
-      current += "</pre>" + footer;
-      messages.push(current);
+      const text = header + lines.join("\n") + footer;
 
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      for (let i = 0; i < messages.length; i++) {
-        const isLast = i === messages.length - 1;
-        if (isLast) {
-          await sendDataMessage(messages[i], buttons);
-        } else {
-          if (bot && chatId) {
-            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
-            insiderExtraMessageIds.push(overflowMsg.message_id);
-          }
-        }
-      }
+      await sendDataMessage(text, buttons);
 
       return;
     }
@@ -1530,11 +1461,11 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         const peakStr = peak > (hit.pumpMultiple || 0) ? ` pk${peak.toFixed(1)}x` : "";
         const ts = hit.buyTimestamp || hit.buyDate || 0;
         const foundStr = ts > 0 ? ago(ts) : "?";
-        return `${statusStr.padEnd(5)}${hit.tokenSymbol.padEnd(7)}${chainTag.padEnd(4)}${scoreStr.padEnd(4)}${hit.pumpMultiple.toFixed(1)}x${peakStr} ${foundStr}`;
+        return `${statusStr} ${hit.tokenSymbol} ${chainTag} ${scoreStr} ${hit.pumpMultiple.toFixed(1)}x${peakStr} ${foundStr}`;
       });
 
       const header = `<b>Insiders - Activity</b>\n\n`;
-      const body = "<pre>" + lines.join("\n") + "</pre>";
+      const body = lines.join("\n");
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage(header + body, buttons);
       return;
