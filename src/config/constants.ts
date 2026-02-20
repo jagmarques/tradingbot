@@ -30,8 +30,8 @@ export const MAX_ACTIVE_HEDGED_PAIRS = 5; // Capital management
 export const POLYMARKET_FEE_BPS = 0; // Polymarket has no trading fees, only gas
 
 // Realistic fee estimation for paper trading
-export const ESTIMATED_GAS_FEE_MATIC = 0.001; // ~0.001 MATIC (~$0.00011) for Polygon gas
-export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% estimated slippage on Polymarket
+export const ESTIMATED_GAS_FEE_MATIC = 0.1; // ~$0.10 per Polygon tx (sourced from Polymarket docs 2026)
+export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% slippage on Polymarket CLOB
 
 // EVM chain gas fees (in native token)
 export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {

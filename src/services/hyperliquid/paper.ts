@@ -152,8 +152,8 @@ export async function paperClosePosition(
         position.size *
         position.leverage;
 
-  // Estimate fees: 0.035% taker fee on entry + exit notional
-  const fees = position.size * 0.00035 * 2;
+  // Tier 0 taker 0.045% on entry + exit
+  const fees = position.size * 0.00045 * 2;
   const pnl = rawPnl - fees;
 
   // Return size + pnl to virtual balance
