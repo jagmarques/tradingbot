@@ -1460,89 +1460,54 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" | "opps" 
         return;
       }
 
-      const openLines = openCopyTrades.map((trade) => {
-        const chainTag = trade.chain.toUpperCase().slice(0, 3);
-        const buyPriceStr = formatTokenPrice(trade.buyPriceUsd);
-        const currentPriceStr = formatTokenPrice(trade.currentPriceUsd);
-        const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
-        const pctSign = trade.pnlPct >= 0 ? "+" : "";
-        const walletShort = `0x${trade.walletAddress.slice(2, 4)}..${trade.walletAddress.slice(-4)}`;
-
-        const l1 = `${trade.tokenSymbol.padEnd(7)}${chainTag.padEnd(4)}${$(trade.amountUsd)} @ ${buyPriceStr}`;
-        const l2 = `  now ${currentPriceStr}  ${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}%  ${walletShort}`;
-        return l1 + "\n" + l2;
-      });
-
-      const closedLines: string[] = [];
-      if (closedCopies.length > 0) {
-        const realPnlTotal = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-        closedLines.push(`-- Closed (${closedCopies.length}) ${pnl(realPnlTotal)} --`);
-        const reasonCounts = new Map<string, number>();
-        for (const t of closedCopies) {
-          const reason = t.exitReason || "unknown";
-          reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
-        }
-        const reasonLabels: Record<string, string> = {
-          insider_sold: "sold", trailing_stop: "trail", stop_loss: "SL",
-          target_500: "5x", stale_price: "stale", liquidity_rug: "rug", unknown: "?",
-        };
-        const breakdownParts: string[] = [];
-        for (const [reason, count] of reasonCounts) {
-          breakdownParts.push(`${reasonLabels[reason] || reason}:${count}`);
-        }
-        if (breakdownParts.length > 0) {
-          closedLines.push(breakdownParts.join(" | "));
-        }
-        for (const trade of closedCopies.slice(0, 10)) {
-          const chainTag = trade.chain.toUpperCase().slice(0, 3);
-          const pnlUsd = (trade.pnlPct / 100) * trade.amountUsd;
-          const pctSign = trade.pnlPct >= 0 ? "+" : "";
-          const closeDate = trade.closeTimestamp ? new Date(trade.closeTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }).replace(" ", "") : "";
-          closedLines.push(`${trade.tokenSymbol.padEnd(7)}${chainTag.padEnd(4)}${pnl(pnlUsd)} ${pctSign}${trade.pnlPct.toFixed(0)}% ${closeDate}`);
-        }
-        if (closedCopies.length > 10) closedLines.push(`... +${closedCopies.length - 10} more`);
+      // Group open trades by token
+      const tokenGroups = new Map<string, { symbol: string; chain: string; totalInv: number; totalPnlUsd: number; wallets: number }>();
+      for (const t of openCopyTrades) {
+        const key = `${t.tokenAddress}_${t.chain}`;
+        const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+        const g = tokenGroups.get(key);
+        if (g) { g.totalInv += t.amountUsd; g.totalPnlUsd += pnlUsd; g.wallets++; }
+        else tokenGroups.set(key, { symbol: t.tokenSymbol, chain: t.chain, totalInv: t.amountUsd, totalPnlUsd: pnlUsd, wallets: 1 });
       }
+      const sorted = [...tokenGroups.values()].sort((a, b) => b.totalPnlUsd - a.totalPnlUsd);
 
       const unrealPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
       const realPnl = closedCopies.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      const parts = [`${openCopyTrades.length} open`];
-      if (openCopyTrades.length > 0) parts.push(`${pnl(unrealPnl)} unreal`);
-      if (closedCopies.length > 0) parts.push(`${closedCopies.length} closed | ${pnl(realPnl)} real`);
+      const totalInv = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
 
-      const copiesHeader = `<b>Insiders - Copies</b>\n\n`;
-      const footer = `\n${parts.join(" | ")}`;
-      const maxLen = 3900;
-      const allLines = [...openLines];
-      if (closedLines.length > 0) {
-        allLines.push(""); // blank separator
-        allLines.push(...closedLines);
-      }
+      let text = `<b>Insiders - Copies</b>\n`;
+      text += `${openCopyTrades.length} open | ${$(totalInv)} inv | ${pnl(unrealPnl)} unreal`;
+      if (closedCopies.length > 0) text += ` | ${pnl(realPnl)} real`;
+      text += "\n";
 
-      const messages: string[] = [];
-      let current = copiesHeader + "<pre>";
-      for (const line of allLines) {
-        if (current.length + line.length + 7 > maxLen) {
-          current += "</pre>";
-          messages.push(current);
-          current = "<pre>";
+      if (sorted.length > 0) {
+        text += "\n<b>Open</b>\n";
+        for (const g of sorted) {
+          const pct = g.totalInv > 0 ? (g.totalPnlUsd / g.totalInv * 100) : 0;
+          const wStr = g.wallets > 1 ? ` (${g.wallets}w)` : "";
+          text += `${g.symbol} ${$(g.totalInv)}${wStr} ${pnl(g.totalPnlUsd)} ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%\n`;
         }
-        current += (current === "<pre>" ? "" : "\n") + line;
       }
-      current += "</pre>" + footer;
-      messages.push(current);
+
+      if (closedCopies.length > 0) {
+        text += `\n<b>Closed</b> (${closedCopies.length}) ${pnl(realPnl)}\n`;
+        const reasonCounts = new Map<string, number>();
+        for (const t of closedCopies) reasonCounts.set(t.exitReason || "unknown", (reasonCounts.get(t.exitReason || "unknown") || 0) + 1);
+        const labels: Record<string, string> = { insider_sold: "sold", trailing_stop: "trail", stop_loss: "SL", target_500: "5x", stale_price: "stale", liquidity_rug: "rug", unknown: "?" };
+        const parts: string[] = [];
+        for (const [r, c] of reasonCounts) parts.push(`${labels[r] || r}:${c}`);
+        if (parts.length > 0) text += parts.join(" | ") + "\n";
+
+        const topClosed = closedCopies.sort((a, b) => Math.abs((b.pnlPct / 100) * b.amountUsd) - Math.abs((a.pnlPct / 100) * a.amountUsd)).slice(0, 5);
+        for (const t of topClosed) {
+          const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
+          text += `${t.tokenSymbol} ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+        }
+        if (closedCopies.length > 5) text += `+${closedCopies.length - 5} more\n`;
+      }
 
       const copyButtons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
-      for (let i = 0; i < messages.length; i++) {
-        const isLast = i === messages.length - 1;
-        if (isLast) {
-          await sendDataMessage(messages[i], copyButtons);
-        } else {
-          if (bot && chatId) {
-            const overflowMsg = await bot.api.sendMessage(chatId, messages[i], { parse_mode: "HTML" });
-            insiderExtraMessageIds.push(overflowMsg.message_id);
-          }
-        }
-      }
+      await sendDataMessage(text, copyButtons);
 
       return;
     }
