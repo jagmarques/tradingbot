@@ -4,6 +4,7 @@ import { loadOpenQuantPositions } from "../database/quant.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
+import { startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -31,6 +32,7 @@ export function initQuant(): number {
   }
 
   startPositionMonitor();
+  startFundingArbMonitor();
 
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
@@ -39,6 +41,7 @@ export function initQuant(): number {
 }
 
 export function stopQuant(): void {
+  stopFundingArbMonitor();
   stopPositionMonitor();
   console.log("[Quant] Stopped");
 }
@@ -77,3 +80,6 @@ export {
 
 // Position Monitor
 export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
+
+// Funding Rate Arbitrage
+export { runFundingArbCycle, startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
