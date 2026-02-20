@@ -118,7 +118,7 @@ export async function startBot(): Promise<void> {
       await handleInsiders(ctx, "wallets");
     } catch (err) {
       console.error("[Telegram] Command error (insiders):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
     }
   });
 
@@ -126,169 +126,187 @@ export async function startBot(): Promise<void> {
   bot.callbackQuery("status", async (ctx) => {
     try {
       await handleStatus(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (status):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load status. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("balance", async (ctx) => {
     try {
       await handleBalance(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (balance):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load balance. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl", async (ctx) => {
     try {
       currentPnlPeriod = "today";
       await handlePnl(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl_today", async (ctx) => {
     try {
       currentPnlPeriod = "today";
       await handlePnl(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl_today):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl_7d", async (ctx) => {
     try {
       currentPnlPeriod = "7d";
       await handlePnl(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl_7d):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl_30d", async (ctx) => {
     try {
       currentPnlPeriod = "30d";
       await handlePnl(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl_30d):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("pnl_all", async (ctx) => {
     try {
       currentPnlPeriod = "all";
       await handlePnl(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl_all):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("trades", async (ctx) => {
     try {
       await handleTrades(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (trades):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load trades. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("timezone", async (ctx) => {
     try {
       await handleTimezone(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (timezone):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update timezone. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("stop", async (ctx) => {
     try {
       await handleStop(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (stop):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to stop bot. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("resume", async (ctx) => {
     try {
       await handleResume(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (resume):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to resume bot. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bettors", async (ctx) => {
     try {
       await handleBettors(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bettors):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bettors. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders", async (ctx) => {
     try {
       await handleInsiders(ctx, "wallets");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_holding", async (ctx) => {
     try {
       await handleInsiders(ctx, "holding");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_holding):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_opps", async (ctx) => {
     try {
       await handleInsiders(ctx, "opps");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_opps):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_wallets", async (ctx) => {
     try {
       await handleInsiders(ctx, "wallets");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_wallets):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_activity", async (ctx) => {
     try {
       await handleInsiders(ctx, "activity");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_activity):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("insiders_copies", async (ctx) => {
     try {
       await handleInsiders(ctx, "copies");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_copies):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
     try {
@@ -298,56 +316,62 @@ export async function startBot(): Promise<void> {
       const tabVal = match[2] as "holding" | "wallets" | "opps" | "activity" | "copies";
       const resolvedChain = chainVal === "all" ? undefined : chainVal;
       await handleInsiders(ctx, tabVal, resolvedChain);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_chain):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets", async (ctx) => {
     try {
       await handleBets(ctx, "open");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bets):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets_open", async (ctx) => {
     try {
       await handleBets(ctx, "open");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bets_open):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets_closed", async (ctx) => {
     try {
       await handleBets(ctx, "closed");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bets_closed):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets_copy", async (ctx) => {
     try {
       await handleBets(ctx, "copy");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bets_copy):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("bets_copy_closed", async (ctx) => {
     try {
       await handleBets(ctx, "copy_closed");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (bets_copy_closed):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
 
   bot.callbackQuery("clear_chat", async (ctx) => {
@@ -357,194 +381,215 @@ export async function startBot(): Promise<void> {
       }
       alertMessageIds.length = 0;
       await sendMainMenu();
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (clear_chat):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to clear chat. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
 
   // Settings
   bot.callbackQuery("settings", async (ctx) => {
     try {
       await handleSettings(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (settings):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load settings. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("toggle_autocopy", async (ctx) => {
     try {
       await handleToggleAutoCopy(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (toggle_autocopy):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to toggle auto-copy. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_min_score", async (ctx) => {
     try {
       await handleSetMinScore(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_min_score):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update min score. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_max_daily", async (ctx) => {
     try {
       await handleSetMaxDaily(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_max_daily):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update max daily. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_eth", async (ctx) => {
     try {
       await handleSetCopyAmount(ctx, "copy_eth");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_copy_eth):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update ETH copy amount. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_matic", async (ctx) => {
     try {
       await handleSetCopyAmount(ctx, "copy_matic");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_copy_matic):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update MATIC copy amount. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_default", async (ctx) => {
     try {
       await handleSetCopyAmount(ctx, "copy_default");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_copy_default):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update default copy amount. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("set_copy_poly", async (ctx) => {
     try {
       await handleSetCopyAmount(ctx, "copy_poly");
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (set_copy_poly):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to update Polymarket copy amount. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("main_menu", async (ctx) => {
     try {
       await sendMainMenu();
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (main_menu):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load menu. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage", async (ctx) => {
     try {
       await handleManage(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (manage):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load management panel. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_close_bets", async (ctx) => {
     try {
       await handleCloseAllBets(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (manage_close_bets):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to close bets. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_close_copies", async (ctx) => {
     try {
       await handleCloseAllCopies(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (manage_close_copies):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to close copies. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("manage_resetpaper", async (ctx) => {
     try {
       await handleReset(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (manage_resetpaper):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to reset paper trading. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("confirm_resetpaper", async (ctx) => {
     try {
       await handleResetConfirm(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (confirm_resetpaper):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to confirm reset. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("cancel_resetpaper", async (ctx) => {
     try {
       const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
       await sendDataMessage("Reset cancelled.", backButton);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (cancel_resetpaper):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to cancel reset. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode", async (ctx) => {
     try {
       await handleMode(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (mode):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load mode settings. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_switch_live", async (ctx) => {
     try {
       await handleModeSwitchLive(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (mode_switch_live):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to switch to live mode. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_confirm_live", async (ctx) => {
     try {
       await handleModeConfirmLive(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (mode_confirm_live):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to confirm live mode. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("mode_switch_paper", async (ctx) => {
     try {
       await handleModeSwitchPaper(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (mode_switch_paper):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to switch to paper mode. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
   bot.callbackQuery("quant", async (ctx) => {
     try {
       await handleQuant(ctx);
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (quant):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to load quant panel. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
 
   bot.callbackQuery("quant_go_live", async (ctx) => {
@@ -567,11 +612,12 @@ export async function startBot(): Promise<void> {
           [[{ text: "Back", callback_data: "quant" }]],
         );
       }
+      await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (quant_go_live):", err);
-      await ctx.reply("Error processing request. Try again.").catch(() => {});
+      await ctx.reply("Failed to go live. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
     }
-    await ctx.answerCallbackQuery();
   });
 
   // Text handler for timezone detection during setup
