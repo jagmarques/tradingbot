@@ -1,5 +1,5 @@
 import { getDb } from "../database/db.js";
-import type { CopyTrade, GemHit, InsiderWallet, ScanChain } from "./types.js";
+import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, ScanChain } from "./types.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
@@ -151,6 +151,7 @@ export function initInsiderTables(): void {
   // Add insider_count and peak_pnl_pct columns (safe if already exist)
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN insider_count INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_reason TEXT DEFAULT NULL"); } catch { /* already exists */ }
 
   console.log("[InsiderScanner] Database tables initialized");
 }
@@ -677,6 +678,7 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     skipReason: (row.skip_reason as string) || null,
     buyTimestamp: row.buy_timestamp as number,
     closeTimestamp: (row.close_timestamp as number) || null,
+    exitReason: (row.exit_reason as CopyTrade["exitReason"]) || null,
     insiderCount: (row.insider_count as number) || 1,
     peakPnlPct: (row.peak_pnl_pct as number) || 0,
   };
@@ -693,8 +695,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
       id, wallet_address, token_symbol, token_address, chain, side,
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
       liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
-      insider_count, peak_pnl_pct
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exit_reason, insider_count, peak_pnl_pct
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -712,6 +714,7 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.skipReason ?? null,
     trade.buyTimestamp,
     trade.closeTimestamp ?? null,
+    trade.exitReason ?? null,
     trade.insiderCount ?? 1,
     trade.peakPnlPct ?? 0
   );
@@ -750,11 +753,20 @@ export function updateCopyTradePrice(walletAddress: string, tokenAddress: string
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
 }
 
-export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string): void {
+export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason): void {
   const db = getDb();
   const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
 
-  db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ? WHERE id = ?").run(Date.now(), id);
+  db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ? WHERE id = ?").run(Date.now(), exitReason, id);
+}
+
+export function cleanupOldClosedCopyTrades(): number {
+  const db = getDb();
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const result = db.prepare(
+    "DELETE FROM insider_copy_trades WHERE status = 'closed' AND close_timestamp < ?"
+  ).run(cutoff);
+  return result.changes;
 }
 
 export function getClosedCopyTrades(): CopyTrade[] {

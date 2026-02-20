@@ -171,6 +171,8 @@ export const WATCHER_CONFIG = {
   MAX_BUY_PUMP: 10,                  // Skip buying if already pumped 10x (lower than scanner's 20x)
 };
 
+export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "target_500" | "stale_price" | "liquidity_rug";
+
 export interface CopyTrade {
   id: string; // format: `${walletAddress}_${tokenAddress}_${chain}`
   walletAddress: string;
@@ -188,6 +190,7 @@ export interface CopyTrade {
   skipReason: string | null;
   buyTimestamp: number;
   closeTimestamp: number | null;
+  exitReason: CopyExitReason | null;
   insiderCount: number;
   peakPnlPct: number;
 }

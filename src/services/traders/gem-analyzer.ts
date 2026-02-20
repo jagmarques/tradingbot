@@ -1,5 +1,6 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
+import type { CopyExitReason } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -628,7 +629,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
         const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
         if (trade) {
           console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${COPY_MAX_PRICE_FAILURES} attempts`);
-          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_price");
           notifyCopyTrade({
             walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
             side: "sell", priceUsd: 0, liquidityOk: false, liquidityUsd: 0,
@@ -645,7 +646,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
       if (trade) {
         console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - liquidity $${liquidityUsd.toFixed(0)} < $500`);
-        closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+        closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
           side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
@@ -671,7 +672,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     // Auto-close at +500%
     if (trade.pnlPct >= 500) {
       console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
-      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "target_500");
       notifyCopyTrade({
         walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
         side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
@@ -692,8 +693,9 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
     if (trade.pnlPct <= stopLevel) {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
+      const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain);
+      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason);
       notifyCopyTrade({
         walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
         side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,

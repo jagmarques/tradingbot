@@ -117,7 +117,7 @@ async function watchInsiderWallets(): Promise<void> {
         // Close ALL copy trade positions for this token when any insider sells
         const primaryTrade = getOpenCopyTradeByToken(tx.contractAddress, wallet.chain);
         if (primaryTrade) {
-          closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain);
+          closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain, "insider_sold");
           console.log(`[CopyTrade] Insider sell: closing ${primaryTrade.tokenSymbol} (${wallet.address.slice(0, 8)} sold, P&L ${primaryTrade.pnlPct.toFixed(1)}%)`);
           notifyCopyTrade({
             walletAddress: wallet.address,
@@ -313,6 +313,7 @@ async function watchInsiderWallets(): Promise<void> {
           skipReason: `accumulated into ${existingTokenTrade.id}`,
           buyTimestamp: Date.now(),
           closeTimestamp: null,
+          exitReason: null,
           insiderCount: 0,
           peakPnlPct: 0,
         });
@@ -336,6 +337,7 @@ async function watchInsiderWallets(): Promise<void> {
           skipReason: "no price",
           buyTimestamp: Date.now(),
           closeTimestamp: null,
+          exitReason: null,
           insiderCount: 1,
           peakPnlPct: 0,
         });
@@ -372,6 +374,7 @@ async function watchInsiderWallets(): Promise<void> {
           skipReason: "GoPlus kill-switch",
           buyTimestamp: Date.now(),
           closeTimestamp: null,
+          exitReason: null,
           insiderCount: 1,
           peakPnlPct: 0,
         });
@@ -406,6 +409,7 @@ async function watchInsiderWallets(): Promise<void> {
         skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
         buyTimestamp: Date.now(),
         closeTimestamp: null,
+        exitReason: null,
         insiderCount: 1,
         peakPnlPct: 0,
       });
