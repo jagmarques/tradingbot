@@ -901,7 +901,7 @@ async function handleStatus(ctx: Context): Promise<void> {
       if (quantPositions.length > 0) {
         try {
           const sdk = getClient();
-          const mids = (await sdk.info.getAllMids()) as Record<string, string>;
+          const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
           for (const pos of quantPositions) {
             const rawMid = mids[pos.pair];
             if (rawMid) {
@@ -2742,7 +2742,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     try {
       const sdk = getClient();
-      mids = (await sdk.info.getAllMids()) as Record<string, string>;
+      mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
     } catch {
       // Prices unavailable - show positions without unrealized P&L
     }

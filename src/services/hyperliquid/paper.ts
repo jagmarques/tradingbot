@@ -50,7 +50,7 @@ export function getPaperPositions(): QuantPosition[] {
 async function fetchMidPrice(pair: string): Promise<number | null> {
   try {
     const sdk = getClient();
-    const mids = await sdk.info.getAllMids() as Record<string, string>;
+    const mids = await sdk.info.getAllMids(true) as Record<string, string>;
     const raw = mids[pair];
     if (!raw) return null;
     const price = parseFloat(raw);

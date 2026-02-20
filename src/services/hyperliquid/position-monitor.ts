@@ -20,7 +20,7 @@ async function checkPositionStops(): Promise<void> {
     }
 
     const sdk = getClient();
-    const mids = (await sdk.info.getAllMids()) as Record<string, string>;
+    const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
 
     for (const position of positions) {
       const rawPrice = mids[position.pair];
