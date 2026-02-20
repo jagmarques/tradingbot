@@ -1,6 +1,6 @@
 import { initHyperliquid, isHyperliquidInitialized } from "./client.js";
 import { initPaperEngine } from "./paper.js";
-import { loadOpenQuantPositions } from "../database/quant.js";
+import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
@@ -30,6 +30,7 @@ export function initQuant(): number {
 
   if (isPaperMode()) {
     initPaperEngine(startBalance);
+    setPaperStartDate(new Date().toISOString());
   }
 
   startPositionMonitor();

@@ -267,6 +267,12 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_quant_trades_created ON quant_trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_quant_positions_status ON quant_positions(status);
 
+    CREATE TABLE IF NOT EXISTS quant_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)

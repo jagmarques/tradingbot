@@ -182,6 +182,113 @@ export function getQuantStats(tradeType?: "directional" | "funding"): {
   };
 }
 
+export function setPaperStartDate(date: string): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR IGNORE INTO quant_config (key, value, updated_at)
+    VALUES ('paper_start_date', ?, CURRENT_TIMESTAMP)
+  `).run(date);
+}
+
+export function getPaperStartDate(): string | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT value FROM quant_config WHERE key = 'paper_start_date'
+  `).get() as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function getQuantValidationMetrics(): {
+  sharpeRatio: number;
+  maxDrawdownPct: number;
+  avgTradeDurationHours: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnl: number;
+  paperDaysElapsed: number;
+} {
+  const db = getDb();
+
+  // Load all closed directional trades ordered chronologically
+  const rows = db.prepare(`
+    SELECT pnl, size, created_at, updated_at
+    FROM quant_trades
+    WHERE status = 'closed' AND trade_type = 'directional'
+    ORDER BY updated_at ASC
+  `).all() as Array<{
+    pnl: number;
+    size: number;
+    created_at: string;
+    updated_at: string;
+  }>;
+
+  const totalTrades = rows.length;
+
+  // Sharpe ratio: mean(pnl/size) / stddev(pnl/size) * sqrt(252)
+  let sharpeRatio = 0;
+  if (totalTrades >= 2) {
+    const returns = rows.map((r) => (r.size > 0 ? r.pnl / r.size : 0));
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((acc, r) => acc + (r - mean) ** 2, 0) / returns.length;
+    const stddev = Math.sqrt(variance);
+    if (stddev > 0) {
+      sharpeRatio = (mean / stddev) * Math.sqrt(252);
+    }
+  }
+
+  // Max drawdown %: walk cumulative P&L, record (peak - trough) / $10 starting balance
+  let maxDrawdownPct = 0;
+  if (totalTrades > 0) {
+    const STARTING_BALANCE = 10;
+    let cumPnl = 0;
+    let peak = 0;
+    for (const row of rows) {
+      cumPnl += row.pnl;
+      if (cumPnl > peak) {
+        peak = cumPnl;
+      }
+      const drawdown = peak - cumPnl;
+      const drawdownPct = (drawdown / STARTING_BALANCE) * 100;
+      if (drawdownPct > maxDrawdownPct) {
+        maxDrawdownPct = drawdownPct;
+      }
+    }
+  }
+
+  // Avg trade duration in hours
+  let avgTradeDurationHours = 0;
+  if (totalTrades > 0) {
+    const durations = rows.map((r) => {
+      const openMs = new Date(r.created_at).getTime();
+      const closeMs = new Date(r.updated_at).getTime();
+      return (closeMs - openMs) / (1000 * 60 * 60); // hours
+    });
+    avgTradeDurationHours = durations.reduce((a, b) => a + b, 0) / durations.length;
+  }
+
+  // Paper days elapsed
+  let paperDaysElapsed = 0;
+  const startDate = getPaperStartDate();
+  if (startDate) {
+    const startMs = new Date(startDate).getTime();
+    const nowMs = Date.now();
+    paperDaysElapsed = (nowMs - startMs) / (1000 * 60 * 60 * 24);
+  }
+
+  // Win rate and total P&L from stats helper
+  const stats = getQuantStats("directional");
+
+  return {
+    sharpeRatio,
+    maxDrawdownPct,
+    avgTradeDurationHours,
+    totalTrades: stats.totalTrades,
+    winRate: stats.winRate,
+    totalPnl: stats.totalPnl,
+    paperDaysElapsed,
+  };
+}
+
 export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
   const db = getDb();
   const result = db
