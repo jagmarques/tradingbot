@@ -8,10 +8,10 @@ import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1in
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import type { Chain } from "./types.js";
 
-// Price failure tracking for copy trades (auto-close after repeated failures)
+// Price failure tracking (shared across copy trades and gem buys)
+const MAX_PRICE_FAILURES = 3;
+const PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
 const copyPriceFailures = new Map<string, { count: number; lastFailAt: number }>();
-const COPY_MAX_PRICE_FAILURES = 3;
-const COPY_PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 const GOPLUS_CHAIN_IDS: Record<string, string> = {
   ethereum: "1",
@@ -316,8 +316,6 @@ export async function analyzeGem(symbol: string, chain: string, tokenAddress: st
   return analysis;
 }
 
-const MAX_PRICE_FAILURES = 3;
-const PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000;
 const priceFetchFailures = new Map<string, { count: number; lastFailAt: number }>();
 
 const buyingLock = new Set<string>();
@@ -626,16 +624,16 @@ export async function refreshCopyTradePrices(): Promise<void> {
     } else {
       // Track price fetch failures - auto-close after repeated failures
       const prev = copyPriceFailures.get(failKey);
-      if (prev && Date.now() - prev.lastFailAt > COPY_PRICE_FAILURE_EXPIRY_MS) {
+      if (prev && Date.now() - prev.lastFailAt > PRICE_FAILURE_EXPIRY_MS) {
         copyPriceFailures.delete(failKey);
       }
       const entry = copyPriceFailures.get(failKey);
       const newCount = (entry?.count ?? 0) + 1;
       copyPriceFailures.set(failKey, { count: newCount, lastFailAt: Date.now() });
-      if (newCount >= COPY_MAX_PRICE_FAILURES) {
+      if (newCount >= MAX_PRICE_FAILURES) {
         const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
         if (trade) {
-          console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${COPY_MAX_PRICE_FAILURES} attempts`);
+          console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${MAX_PRICE_FAILURES} attempts`);
           closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_price");
           notifyCopyTrade({
             walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
@@ -646,7 +644,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
         copyPriceFailures.delete(failKey);
       }
     }
-
   }
 
   if (updated > 0) {

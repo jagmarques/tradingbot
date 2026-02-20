@@ -1,5 +1,6 @@
 // Shared types for copy trading and telegram consumers
-export type Chain = "ethereum" | "polygon" | "base" | "arbitrum" | "optimism" | "avalanche";
+export type EvmChain = "ethereum" | "polygon" | "base" | "arbitrum" | "optimism" | "avalanche";
+export type Chain = EvmChain;
 
 export interface Trader {
   address: string;
@@ -93,8 +94,7 @@ export const KNOWN_DEX_ROUTERS: Record<string, string[]> = {
   ],
 };
 
-// Insider wallet detection types
-export type EvmChain = "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche";
+// Backward compat alias
 export type ScanChain = EvmChain;
 
 export interface PumpedToken {
@@ -205,5 +205,5 @@ export const COPY_TRADE_CONFIG = {
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 70,
-  RUG_CHECK_INTERVAL_MS: 2 * 60 * 1000,
+  PRICE_REFRESH_INTERVAL_MS: 2 * 60 * 1000,
 };
