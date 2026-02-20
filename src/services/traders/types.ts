@@ -200,6 +200,7 @@ export const COPY_TRADE_CONFIG = {
   AMOUNT_USD: 10,
   STOP_LOSS_PCT: -80,
   ESTIMATED_FEE_PCT: 1.5, // ~0.3% swap fee x2 + slippage on micro-caps
+  ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 70,
