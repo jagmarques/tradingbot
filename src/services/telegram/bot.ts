@@ -80,7 +80,7 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🕵 Insiders", callback_data: "insiders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
-    { text: "🤖 Quant", callback_data: "quant" },
+    { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
