@@ -1,5 +1,6 @@
 import { getDb } from "./db.js";
 import type { QuantTrade, QuantPosition, TradeType } from "../hyperliquid/types.js";
+import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 
 export function generateQuantId(): string {
   return `qt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -241,10 +242,10 @@ export function getQuantValidationMetrics(): {
     }
   }
 
-  // Max drawdown %: walk cumulative P&L, record (peak - trough) / $10 starting balance
+  // Max drawdown %: walk cumulative P&L, record (peak - trough) / starting balance
   let maxDrawdownPct = 0;
   if (totalTrades > 0) {
-    const STARTING_BALANCE = 10;
+    const STARTING_BALANCE = QUANT_DEFAULT_VIRTUAL_BALANCE;
     let cumPnl = 0;
     let peak = 0;
     for (const row of rows) {

@@ -63,7 +63,7 @@ const envSchema = z.object({
   HYPERLIQUID_PRIVATE_KEY: z.string().min(1).optional(),
   HYPERLIQUID_WALLET_ADDRESS: z.string().min(1).optional(),
   QUANT_ENABLED: z.enum(["true", "false"]).default("false"),
-  QUANT_VIRTUAL_BALANCE: numericString("10"),
+  QUANT_VIRTUAL_BALANCE: numericString("100"),
   ALCHEMY_API_KEY: z.string().min(1).optional(),
 
   // Explorer API keys (optional, improves rate limits)
