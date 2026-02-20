@@ -943,12 +943,14 @@ async function handleBalance(ctx: Context): Promise<void> {
     return;
   }
 
+  const fmt = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+
   if (isPaperMode()) {
-    const message =
-      `<b>Wallet Balances (Paper Mode)</b>\n\n` +
-      `Paper mode active - real balances not fetched.\n` +
-      `Starting capital: $${STARTING_CAPITAL_USD}\n` +
-      `Capital per strategy: $${CAPITAL_PER_STRATEGY_USD}`;
+    const lines = [
+      `${"Capital".padEnd(9)} ${fmt(STARTING_CAPITAL_USD)}`,
+      `${"Per Strat".padEnd(9)} ${fmt(CAPITAL_PER_STRATEGY_USD)}`,
+    ];
+    const message = `<b>Balance</b> | Paper\n<pre>${lines.join("\n")}</pre>`;
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, backButton);
     return;
@@ -964,17 +966,14 @@ async function handleBalance(ctx: Context): Promise<void> {
     const arbitrumEthBalance = await getArbitrumEthBalance().catch(() => BigInt(0));
     const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
 
-    const message =
-      `<b>Wallet Balances</b>\n\n` +
-      `<b>Polygon</b>\n` +
-      `MATIC: ${maticBalance}\n` +
-      `USDC: ${usdcBalance}\n\n` +
-      `<b>Base</b>\n` +
-      `ETH: ${formatWei(baseEthBalance)}\n\n` +
-      `<b>Arbitrum</b>\n` +
-      `ETH: ${formatWei(arbitrumEthBalance)}\n\n` +
-      `<b>Avalanche</b>\n` +
-      `AVAX: ${formatWei(avaxBalance)}`;
+    const lines = [
+      `${"Polygon".padEnd(9)} ${"MATIC".padEnd(5)} ${maticBalance}`,
+      `${"".padEnd(9)} ${"USDC".padEnd(5)} ${usdcBalance}`,
+      `${"Base".padEnd(9)} ${"ETH".padEnd(5)} ${formatWei(baseEthBalance)}`,
+      `${"Arbitrum".padEnd(9)} ${"ETH".padEnd(5)} ${formatWei(arbitrumEthBalance)}`,
+      `${"Avax".padEnd(9)} ${"AVAX".padEnd(5)} ${formatWei(avaxBalance)}`,
+    ];
+    const message = `<b>Balance</b>\n<pre>${lines.join("\n")}</pre>`;
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, backButton);
@@ -995,7 +994,9 @@ async function handlePnl(ctx: Context): Promise<void> {
     const period = currentPnlPeriod;
     const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
 
-    let message = `<b>P&L - ${periodLabels[period]}</b>\n\n`;
+    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+
+    let message = `<b>PnL</b> | ${periodLabels[period]}\n`;
 
     // Period tab buttons
     const tabButtons = [[
@@ -1011,9 +1012,9 @@ async function handlePnl(ctx: Context): Promise<void> {
       const pnlPct = getDailyPnlPercentage();
       const trades = getTodayTrades();
 
-      const emoji = breakdown.total >= 0 ? "+" : "";
-      message += `Total: ${emoji}$${breakdown.total.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n`;
-      message += `Trades: ${trades.length} | W: ${trades.filter((t) => t.pnl > 0).length} | L: ${trades.filter((t) => t.pnl < 0).length}\n\n`;
+      const wins = trades.filter((t) => t.pnl > 0).length;
+      const losses = trades.filter((t) => t.pnl < 0).length;
+      message += `Total: ${pnl(breakdown.total)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%) | ${wins}W ${losses}L\n`;
 
       message += formatBreakdown(breakdown.cryptoCopy, breakdown.polyCopy, breakdown.aiBetting);
     } else {
@@ -1021,8 +1022,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
       const data = getPnlForPeriod(days);
 
-      const sign = data.totalPnl >= 0 ? "+" : "";
-      message += `Total: ${sign}$${data.totalPnl.toFixed(2)}\n\n`;
+      message += `Total: ${pnl(data.totalPnl)}\n`;
 
       message += formatBreakdown(data.cryptoCopyPnl, data.polyCopyPnl, data.aiBettingPnl);
 
@@ -1044,28 +1044,18 @@ async function handlePnl(ctx: Context): Promise<void> {
 }
 
 function formatBreakdown(cryptoCopy: number, polyCopy: number, aiBetting: number): string {
-  let msg = "<b>By Source</b>\n";
-  let hasAny = false;
+  const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
-    { name: "Crypto Copy", value: cryptoCopy },
+    { name: "Crypto Cp", value: cryptoCopy },
     { name: "Poly Copy", value: polyCopy },
-    { name: "AI Betting", value: aiBetting },
+    { name: "AI Bets", value: aiBetting },
   ];
 
-  for (const source of sources) {
-    if (source.value !== 0) {
-      hasAny = true;
-      const sign = source.value >= 0 ? "+" : "";
-      msg += `${source.name}: ${sign}$${source.value.toFixed(2)}\n`;
-    }
-  }
+  const rows = sources.filter(s => s.value !== 0).map(s => `${s.name.padEnd(11)} ${pnl(s.value)}`);
 
-  if (!hasAny) {
-    msg += `<i>No closed positions</i>\n`;
-  }
-
-  return msg;
+  if (rows.length === 0) return `<pre>No closed positions</pre>`;
+  return `<pre>${rows.join("\n")}</pre>`;
 }
 
 async function handleTrades(ctx: Context): Promise<void> {
@@ -1181,13 +1171,12 @@ async function handleBettors(ctx: Context): Promise<void> {
   try {
     const trackedBettors = getTrackedTraders();
     const copyStats = getCopyStats();
+    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
 
     // Only show bettors we copy (10%+ ROI)
     const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
 
-    let message = `<b>Copied Bettors</b>\n\n`;
-    message += `Open: ${copyStats.openPositions} | Closed: ${copyStats.closedPositions}\n`;
-    message += `Win Rate: ${copyStats.winRate.toFixed(0)}% | PnL: $${copyStats.totalPnl.toFixed(2)}\n\n`;
+    let message = `<b>Bettors</b> | ${copyStats.openPositions} open ${copyStats.closedPositions} closed | WR ${copyStats.winRate.toFixed(0)}% | ${pnl(copyStats.totalPnl)}\n`;
 
     if (copiedBettors.length === 0) {
       message += "No bettors with 10%+ ROI found.";
@@ -1196,12 +1185,15 @@ async function handleBettors(ctx: Context): Promise<void> {
       return;
     }
 
-    for (const bettor of copiedBettors) {
-      const roiPct = (bettor.roi * 100).toFixed(1);
-      const pnlSign = bettor.pnl >= 0 ? "+" : "";
-      message += `<b>${bettor.name}</b>\n`;
-      message += `ROI: ${roiPct}% | PnL: ${pnlSign}$${bettor.pnl.toFixed(0)} | Vol: $${(bettor.vol / 1000).toFixed(0)}k\n\n`;
-    }
+    const rows = copiedBettors.map(b => {
+      const name = b.name.length > 13 ? b.name.slice(0, 12) + "..." : b.name;
+      const roi = `${(b.roi * 100).toFixed(1)}%`;
+      const bPnl = `${b.pnl >= 0 ? "+" : ""}$${b.pnl.toFixed(0)}`;
+      const vol = `$${(b.vol / 1000).toFixed(0)}k`;
+      return `${name.padEnd(14)} ${roi.padStart(6)} ${bPnl.padStart(7)} ${vol.padStart(5)}`;
+    });
+
+    message += `<pre>${rows.join("\n")}</pre>`;
 
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, backButton);
