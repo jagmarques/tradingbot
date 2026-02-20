@@ -114,7 +114,7 @@ export function generatePnlChart(history: Array<{ date: string; pnl: number }>):
   if (history.length === 0) return "<i>No data for chart</i>";
   if (history.length === 1) {
     const sign = history[0].pnl >= 0 ? "+" : "";
-    return `<pre>${history[0].date}: ${sign}$${history[0].pnl.toFixed(2)}</pre>`;
+    return `${history[0].date}: ${sign}$${history[0].pnl.toFixed(2)}`;
   }
 
   // Calculate cumulative P&L
@@ -186,7 +186,7 @@ export function generatePnlChart(history: Array<{ date: string; pnl: number }>):
     lines.push(first + " ".repeat(gap) + last);
   }
 
-  return `<pre>${lines.join("\n")}</pre>`;
+  return lines.join("\n");
 }
 
 // Start midnight cron job for daily P&L snapshots

@@ -35,7 +35,7 @@ export async function notifyCriticalError(error: string, context?: string): Prom
   const message =
     `🚨 <b>CRITICAL ERROR</b>\n\n` +
     (context ? `Context: ${context}\n\n` : "") +
-    `<code>${escapeHtml(error)}</code>\n\n` +
+    `${escapeHtml(error)}\n\n` +
     `Trading may be affected. Check immediately!`;
 
   await sendMessage(message);
@@ -190,11 +190,11 @@ export async function notifyInsiderBuyDetected(params: {
   const scoreStr = params.gemScore !== undefined ? ` (gem score: ${params.gemScore})` : "";
   const message =
     `👀 <b>INSIDER BUY DETECTED</b>\n\n` +
-    `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
+    `Wallet: ${escapeHtml(params.walletAddress.slice(0, 8))}...\n` +
     `Wallet score: ${params.walletScore}\n` +
     `Chain: ${escapeHtml(params.chain)}\n\n` +
     `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
-    `Address: <code>${escapeHtml(params.tokenAddress.slice(0, 10))}...</code>${scoreStr}\n\n` +
+    `Address: ${escapeHtml(params.tokenAddress.slice(0, 10))}...${scoreStr}\n\n` +
     `Action: ${escapeHtml(params.action)}`;
   await sendMessage(message);
 }
@@ -221,7 +221,7 @@ export async function notifyCopyTrade(params: {
       : `Skipped: ${escapeHtml(params.skipReason || "unknown")}`;
     message =
       `<b>${header}</b>\n\n` +
-      `Wallet: <code>${escapeHtml(params.walletAddress.slice(0, 8))}...</code>\n` +
+      `Wallet: ${escapeHtml(params.walletAddress.slice(0, 8))}...\n` +
       `Chain: ${escapeHtml(params.chain)}\n` +
       `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
       `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
