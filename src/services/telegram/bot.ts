@@ -1,6 +1,6 @@
 import { Bot, Context } from "grammy";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -29,7 +29,7 @@ import { getAllHeldGemHits, getCachedGemAnalysis, getGemHolderCount, getOpenGemP
 import { refreshGemPaperPrices, refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { loadClosedQuantTrades, getQuantStats, getFundingIncome } from "../database/quant.js";
+import { loadClosedQuantTrades, getQuantStats, getFundingIncome, getQuantValidationMetrics, getPaperStartDate } from "../database/quant.js";
 
 let bot: Bot | null = null;
 let chatId: string | null = null;
@@ -542,6 +542,33 @@ export async function startBot(): Promise<void> {
       await handleQuant(ctx);
     } catch (err) {
       console.error("[Telegram] Callback error (quant):", err);
+      await ctx.reply("Error processing request. Try again.").catch(() => {});
+    }
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("quant_go_live", async (ctx) => {
+    if (!isAuthorized(ctx)) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    try {
+      const validation = getQuantValidationMetrics();
+      if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
+        setTradingMode("live");
+        await sendDataMessage(
+          "Quant trading switched to LIVE mode with $10 capital. Use /stop to halt if needed.",
+          [[{ text: "Back", callback_data: "quant" }]],
+        );
+      } else {
+        const daysRemaining = Math.max(0, QUANT_PAPER_VALIDATION_DAYS - Math.floor(validation.paperDaysElapsed));
+        await sendDataMessage(
+          `Paper validation incomplete. ${daysRemaining} days remaining.`,
+          [[{ text: "Back", callback_data: "quant" }]],
+        );
+      }
+    } catch (err) {
+      console.error("[Telegram] Callback error (quant_go_live):", err);
       await ctx.reply("Error processing request. Try again.").catch(() => {});
     }
     await ctx.answerCallbackQuery();
@@ -2647,6 +2674,29 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += `  Funding Arb: ${fmtPnl(fundingPnl)}  (${funding.tradeCount} trades)\n`;
   text += `  Combined: ${fmtPnl(totalPnl)}\n`;
 
-  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage(text, backButton);
+  const validation = getQuantValidationMetrics();
+  const startDate = getPaperStartDate();
+  const daysElapsed = Math.floor(validation.paperDaysElapsed);
+  const daysRemaining = Math.max(0, QUANT_PAPER_VALIDATION_DAYS - daysElapsed);
+
+  text += "\n<b>Paper Validation:</b>\n";
+  text += `  Started: ${startDate ? new Date(startDate).toISOString().slice(0, 10) : "Not started"}\n`;
+  text += `  Days running: ${daysElapsed} / ${QUANT_PAPER_VALIDATION_DAYS}\n`;
+  text += `  Sharpe ratio: ${validation.sharpeRatio.toFixed(2)}\n`;
+  text += `  Max drawdown: ${validation.maxDrawdownPct.toFixed(1)}%\n`;
+  text += `  Avg trade duration: ${validation.avgTradeDurationHours.toFixed(1)}h\n`;
+
+  if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
+    text += `  Status: READY for live\n`;
+  } else {
+    text += `  Status: Paper validation in progress (${daysRemaining} days remaining)\n`;
+  }
+
+  const buttons: { text: string; callback_data: string }[][] = [];
+  if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS && isPaperMode()) {
+    buttons.push([{ text: "Go Live", callback_data: "quant_go_live" }]);
+  }
+  buttons.push([{ text: "Back", callback_data: "main_menu" }]);
+
+  await sendDataMessage(text, buttons);
 }
