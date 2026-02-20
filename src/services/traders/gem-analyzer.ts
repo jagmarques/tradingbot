@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, updateCopyTradePriceWithRugFee, closeCopyTrade, updateCopyTradePeakPnl, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, updateCopyTradePriceWithRugFee, closeCopyTrade, updateCopyTradePeakPnl, incrementRugCount, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -531,6 +531,7 @@ export async function revalidateHeldGems(): Promise<void> {
     const liquidityUsd = pair.liquidity?.usd ?? 0;
     if (liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
       await sellGemPosition(token.symbol, token.chain);
+      incrementRugCount(token.tokenAddress, token.chain);
       console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD} (rug)`);
     }
   }
@@ -657,6 +658,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
           console.log(`[CopyTrade] RUG DETECTED: ${trade.tokenSymbol} (${trade.chain}) - ${reason}`);
           updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, priceUsd);
           closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "liquidity_rug");
+          incrementRugCount(trade.tokenAddress, trade.chain);
           notifyCopyTrade({
             walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
             side: "sell", priceUsd, liquidityOk: false, liquidityUsd,
