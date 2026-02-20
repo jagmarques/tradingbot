@@ -1604,6 +1604,12 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
   }
 
   try {
+    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+    const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "." : s;
+    const c = (n: number) => `${(n * 100).toFixed(0)}c`;
+    const shortDate = (ts: number) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
     let message = `<b>Bets</b>\n\n`;
 
     const tabButtons = [
@@ -1622,9 +1628,8 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       const aiStats = getBettingStats();
 
       if (openBets.length === 0) {
-        const rSign = aiStats.totalPnl >= 0 ? "+" : "";
-        message += `<b>Unrealized: $0.00 | Realized: ${rSign}$${aiStats.totalPnl.toFixed(2)}</b>\n`;
-        message += `0 open | $0 invested | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+        message += `Unreal: ${pnl(0)} | Real: ${pnl(aiStats.totalPnl)}\n`;
+        message += `0 open | $0 inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
         message += "No open AI bets.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
         await sendDataMessage(message, allButtons);
@@ -1632,47 +1637,46 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       }
 
       let totalInvested = 0;
-      let totalPnl = 0;
+      let totalPnlVal = 0;
       let positionLines = "";
 
       for (const bet of openBets) {
         const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-        let pnl = 0;
+        let betPnl = 0;
         if (currentPrice !== null) {
           const priceDiff = bet.side === "YES"
             ? currentPrice - bet.entryPrice
             : bet.entryPrice - currentPrice;
-          pnl = (bet.size / bet.entryPrice) * priceDiff;
+          betPnl = (bet.size / bet.entryPrice) * priceDiff;
           totalInvested += bet.size;
-          totalPnl += pnl;
+          totalPnlVal += betPnl;
         }
 
-        positionLines += `<b>${bet.marketTitle}</b>\n`;
-        positionLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
-
+        positionLines += `${trunc(bet.marketTitle, 30)}\n`;
+        const side = bet.side === "YES" ? "Y" : "N";
+        positionLines += `  ${side} ${$(bet.size)} @${c(bet.entryPrice)}`;
         if (currentPrice !== null) {
-          const pnlPct = (pnl / bet.size) * 100;
-          const sign = pnl >= 0 ? "+" : "";
-          positionLines += ` | Now: ${(currentPrice * 100).toFixed(0)}c`;
-          positionLines += `\nP&L: ${sign}$${pnl.toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+          const pnlPct = (betPnl / bet.size) * 100;
+          positionLines += `->${c(currentPrice)} ${pnl(betPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
         }
-
-        const entryDate = new Date(bet.entryTimestamp).toLocaleDateString();
-        positionLines += `\nConf: ${(bet.confidence * 100).toFixed(0)}% | EV: ${(bet.expectedValue * 100).toFixed(0)}% | ${entryDate}\n\n`;
+        positionLines += `\n`;
+        const conf = (bet.confidence * 100).toFixed(0);
+        const ev = (bet.expectedValue * 100).toFixed(0);
+        positionLines += `  ${conf}%conf ${ev}%ev ${shortDate(bet.entryTimestamp)}\n\n`;
       }
 
-      const uSign = totalPnl >= 0 ? "+" : "";
-      const rSign = aiStats.totalPnl >= 0 ? "+" : "";
-      message += `<b>Unrealized: ${uSign}$${totalPnl.toFixed(2)} | Realized: ${rSign}$${aiStats.totalPnl.toFixed(2)}</b>\n`;
-      message += `${openBets.length} open | $${totalInvested.toFixed(0)} invested | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += `Unreal: ${pnl(totalPnlVal)} | Real: ${pnl(aiStats.totalPnl)}\n`;
+      message += `${openBets.length} open | ${$(totalInvested)} inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += `<pre>`;
       message += positionLines;
+      message += `</pre>`;
 
     } else if (tab === "closed") {
       const closedBets = loadClosedPositions(1000);
       const aiStats = getBettingStats();
 
       if (closedBets.length === 0) {
-        message += `<b>Realized: $0.00</b>\n`;
+        message += `Real: ${pnl(0)}\n`;
         message += `0 closed\n\n`;
         message += "No closed AI bets yet.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1685,32 +1689,28 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       let closedLines = "";
 
       for (const bet of closedBets) {
-        const pnl = bet.pnl ?? 0;
-        const pnlPct = bet.size > 0 ? (pnl / bet.size) * 100 : 0;
-        const pnlSign = pnl >= 0 ? "+" : "";
-        const exitDate = bet.exitTimestamp
-          ? new Date(bet.exitTimestamp).toLocaleDateString()
-          : "?";
+        const betPnl = bet.pnl ?? 0;
+        const pnlPct = bet.size > 0 ? (betPnl / bet.size) * 100 : 0;
+        const exitDate = bet.exitTimestamp ? shortDate(bet.exitTimestamp) : "?";
 
         closedTotalInvested += bet.size;
-        closedTotalPnl += pnl;
+        closedTotalPnl += betPnl;
 
-        closedLines += `<b>${bet.marketTitle}</b>\n`;
-        closedLines += `${bet.side} $${bet.size.toFixed(0)} @ ${(bet.entryPrice * 100).toFixed(0)}c`;
+        closedLines += `${trunc(bet.marketTitle, 30)}\n`;
+        const side = bet.side === "YES" ? "Y" : "N";
+        closedLines += `  ${side} ${$(bet.size)} @${c(bet.entryPrice)}`;
         if (bet.exitPrice !== undefined) {
-          closedLines += ` -> ${(bet.exitPrice * 100).toFixed(0)}c`;
+          closedLines += `->${c(bet.exitPrice)}`;
         }
-        closedLines += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
-        if (bet.exitReason) {
-          closedLines += ` | ${bet.exitReason}`;
-        }
-        closedLines += ` | ${exitDate}\n\n`;
+        closedLines += ` ${pnl(betPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%\n`;
+        closedLines += `  ${bet.exitReason ? bet.exitReason + " " : ""}${exitDate}\n\n`;
       }
 
-      const rSign = closedTotalPnl >= 0 ? "+" : "";
-      message += `<b>Realized: ${rSign}$${closedTotalPnl.toFixed(2)}</b>\n`;
-      message += `${aiStats.totalBets} closed | $${closedTotalInvested.toFixed(0)} invested | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += `Real: ${pnl(closedTotalPnl)}\n`;
+      message += `${aiStats.totalBets} closed | ${$(closedTotalInvested)} inv | ${aiStats.winRate.toFixed(0)}% win\n\n`;
+      message += `<pre>`;
       message += closedLines;
+      message += `</pre>`;
 
     } else if (tab === "copy") {
       // Copy Open tab - Polymarket copy positions
@@ -1718,9 +1718,8 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       const polyStats = getCopyStats();
 
       if (positionsWithValues.length === 0) {
-        const rSign = polyStats.totalPnl >= 0 ? "+" : "";
-        message += `<b>Unrealized: $0.00 | Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
-        message += `0 open | $0 invested | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+        message += `Unreal: ${pnl(0)} | Real: ${pnl(polyStats.totalPnl)}\n`;
+        message += `0 open | $0 inv | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
         message += "No open copy positions.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
         await sendDataMessage(message, allButtons);
@@ -1732,15 +1731,14 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       let copyLines = "";
 
       for (const pos of positionsWithValues) {
-        copyLines += `<b>${pos.marketTitle}</b>\n`;
-        copyLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
+        copyLines += `${trunc(pos.marketTitle, 30)}\n`;
+        copyLines += `  ${$(pos.size)} @${c(pos.entryPrice)}`;
 
         if (pos.currentPrice !== null) {
           const currentVal = pos.currentValue ?? 0;
           const pnlPct = pos.unrealizedPnlPct ?? 0;
-          const sign = pnlPct >= 0 ? "+" : "";
-          copyLines += ` | Now: ${(pos.currentPrice * 100).toFixed(0)}c`;
-          copyLines += `\nP&L: ${sign}$${((pos.currentValue ?? 0) - pos.size).toFixed(2)} (${sign}${pnlPct.toFixed(0)}%)`;
+          const posPnl = (pos.currentValue ?? 0) - pos.size;
+          copyLines += `->${c(pos.currentPrice)} ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
           totalInvested += pos.size;
           totalCurrentValue += currentVal;
         }
@@ -1749,11 +1747,11 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       }
 
       const unrealizedPnl = totalCurrentValue - totalInvested;
-      const uSign = unrealizedPnl >= 0 ? "+" : "";
-      const rSign = polyStats.totalPnl >= 0 ? "+" : "";
-      message += `<b>Unrealized: ${uSign}$${unrealizedPnl.toFixed(2)} | Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
-      message += `${positionsWithValues.length} open | $${totalInvested.toFixed(0)} invested | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += `Unreal: ${pnl(unrealizedPnl)} | Real: ${pnl(polyStats.totalPnl)}\n`;
+      message += `${positionsWithValues.length} open | ${$(totalInvested)} inv | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += `<pre>`;
       message += copyLines;
+      message += `</pre>`;
 
     } else {
       // Copy Closed tab
@@ -1761,8 +1759,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       const polyStats = getCopyStats();
 
       if (closedCopies.length === 0) {
-        const rSign = polyStats.totalPnl >= 0 ? "+" : "";
-        message += `<b>Realized: ${rSign}$${polyStats.totalPnl.toFixed(2)}</b>\n`;
+        message += `Real: ${pnl(polyStats.totalPnl)}\n`;
         message += `0 closed\n\n`;
         message += "No closed copy positions yet.";
         const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1771,33 +1768,30 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
       }
 
       let copyClosedInvested = 0;
-      let copyClosedPnl = 0;
+      let copyClosedPnlVal = 0;
       let copyClosedLines = "";
 
       for (const pos of closedCopies) {
-        const pnl = pos.pnl ?? 0;
-        const pnlPct = pos.size > 0 ? (pnl / pos.size) * 100 : 0;
-        const pnlSign = pnl >= 0 ? "+" : "";
-        const exitDate = pos.exitTimestamp
-          ? new Date(pos.exitTimestamp).toLocaleDateString()
-          : "?";
+        const posPnl = pos.pnl ?? 0;
+        const pnlPct = pos.size > 0 ? (posPnl / pos.size) * 100 : 0;
+        const exitDate = pos.exitTimestamp ? shortDate(pos.exitTimestamp) : "?";
 
         copyClosedInvested += pos.size;
-        copyClosedPnl += pnl;
+        copyClosedPnlVal += posPnl;
 
-        copyClosedLines += `<b>${pos.marketTitle}</b>\n`;
-        copyClosedLines += `$${pos.size.toFixed(0)} @ ${(pos.entryPrice * 100).toFixed(0)}c`;
+        copyClosedLines += `${trunc(pos.marketTitle, 30)}\n`;
+        copyClosedLines += `  ${$(pos.size)} @${c(pos.entryPrice)}`;
         if (pos.exitPrice !== undefined) {
-          copyClosedLines += ` -> ${(pos.exitPrice * 100).toFixed(0)}c`;
+          copyClosedLines += `->${c(pos.exitPrice)}`;
         }
-        copyClosedLines += `\nP&L: ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(0)}%)`;
-        copyClosedLines += ` | ${exitDate}\n\n`;
+        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}% ${exitDate}\n\n`;
       }
 
-      const rSign = copyClosedPnl >= 0 ? "+" : "";
-      message += `<b>Realized: ${rSign}$${copyClosedPnl.toFixed(2)}</b>\n`;
-      message += `${polyStats.closedPositions} closed | $${copyClosedInvested.toFixed(0)} invested | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += `Real: ${pnl(copyClosedPnlVal)}\n`;
+      message += `${polyStats.closedPositions} closed | ${$(copyClosedInvested)} inv | ${polyStats.winRate.toFixed(0)}% win\n\n`;
+      message += `<pre>`;
       message += copyClosedLines;
+      message += `</pre>`;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
