@@ -2567,28 +2567,34 @@ async function handleSettings(ctx: Context): Promise<void> {
     const env = loadEnv();
 
     const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
-
     const aiEnabled = env.AIBETTING_ENABLED === "true";
-    const aiBettingSection = aiEnabled
-      ? `\n\n<b>AI BETTING</b>\n` +
-        `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
-        `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
-        `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
-        `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
-        `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
-      : `\n\n<b>AI BETTING</b>\nDisabled`;
+    const bayMkt = (env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0);
+    const bayAI = ((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0);
 
-    const message =
-      `<b>Settings</b>\n\n` +
-      `<b>AUTO-COPY [${copyStatus}]</b>\n` +
-      `Copy trades from profitable wallets (all chains)\n\n` +
-      `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
-      `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
-      `<b>Copy Amounts (fixed per trade):</b>\n` +
-      `ETH: ${settings.copyAmountEth}\n` +
-      `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
-      `Polymarket: $${settings.polymarketCopyUsd}` +
-      aiBettingSection;
+    const settingsLines = [
+      `${"Copy".padEnd(10)}${copyStatus}`,
+      `${"Score".padEnd(10)}${settings.minTraderScore.toString().padEnd(6)}${"Max/Day".padEnd(9)}${settings.maxCopyPerDay}`,
+      `${"Today".padEnd(10)}${settings.dailyCopyCount}/${settings.maxCopyPerDay}`,
+      ``,
+      `${"ETH".padEnd(10)}${settings.copyAmountEth}`,
+      `${"MATIC".padEnd(10)}${settings.copyAmountMatic.toString().padEnd(8)}${"Other".padEnd(7)}${settings.copyAmountDefault}`,
+      `${"Poly".padEnd(10)}$${settings.polymarketCopyUsd}`,
+    ];
+
+    if (aiEnabled) {
+      settingsLines.push(``);
+      settingsLines.push(`${"AI Bets".padEnd(10)}ON`);
+      settingsLines.push(`${"MaxBet".padEnd(10)}$${env.AIBETTING_MAX_BET.toString().padEnd(5)}${"MaxExp".padEnd(9)}$${env.AIBETTING_MAX_EXPOSURE}`);
+      settingsLines.push(`${"Edge".padEnd(10)}${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}%`.padEnd(16) + `${"Conf".padEnd(9)}${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%`);
+      settingsLines.push(`${"Bayesian".padEnd(10)}${bayMkt}/${bayAI}`);
+      settingsLines.push(`${"TP".padEnd(10)}+${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}%`.padEnd(16) + `${"SL".padEnd(9)}-${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%`);
+      settingsLines.push(`${"Hold".padEnd(10)}${env.AIBETTING_HOLD_RESOLUTION_DAYS}d`);
+    } else {
+      settingsLines.push(``);
+      settingsLines.push(`${"AI Bets".padEnd(10)}OFF`);
+    }
+
+    const message = `<b>Settings</b>\n\n<pre>${settingsLines.join("\n")}</pre>`;
 
     const keyboard = [
       [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
