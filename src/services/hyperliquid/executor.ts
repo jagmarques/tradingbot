@@ -18,8 +18,11 @@ export async function openPosition(
   regime: MarketRegime,
   aiConfidence?: number,
   aiReasoning?: string,
+  tradeType: "directional" | "funding" = "directional",
 ): Promise<QuantPosition | null> {
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime });
+  // Funding positions bypass volatile regime check (they're regime-agnostic)
+  const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;
@@ -29,7 +32,7 @@ export async function openPosition(
   void aiReasoning;
 
   if (isPaperMode()) {
-    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit);
+    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType);
   }
 
   // Live mode: not yet implemented (Phase 26+)

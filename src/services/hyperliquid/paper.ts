@@ -61,6 +61,7 @@ export async function paperOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
+  tradeType: "directional" | "funding" = "directional",
 ): Promise<QuantPosition | null> {
   if (virtualBalance < sizeUsd) {
     console.log(
@@ -92,6 +93,7 @@ export async function paperOpenPosition(
     exitPrice: undefined,
     realizedPnl: undefined,
     exitReason: undefined,
+    tradeType,
   };
 
   virtualBalance -= sizeUsd;
@@ -164,6 +166,7 @@ export async function paperClosePosition(
     aiReasoning: undefined,
     createdAt: position.openedAt,
     updatedAt: now,
+    tradeType: position.tradeType ?? "directional",
   });
 
   const pnlStr =
