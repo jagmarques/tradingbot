@@ -67,13 +67,13 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   const delays = [15_000, 30_000, 60_000];
   for (let attempt = 1; attempt <= 3; attempt++) {
     const delay = delays[attempt - 1];
-    const endpoint = url.replace("https://api.geckoterminal.com/api/v2", "");
+    const endpoint = url.replace("https://api.geckoterminal.com/api/v2", "").slice(0, 60);
     console.log(`[InsiderScanner] GeckoTerminal 429 on ${endpoint}, retry ${attempt}/3 in ${delay / 1000}s`);
     await new Promise((r) => setTimeout(r, delay));
     const retry = await fetchWithTimeout(url);
     if (retry.status !== 429) return retry;
   }
-  const exhaustedEndpoint = url.replace("https://api.geckoterminal.com/api/v2", "");
+  const exhaustedEndpoint = url.replace("https://api.geckoterminal.com/api/v2", "").slice(0, 60);
   console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${exhaustedEndpoint}`);
   return response;
 }

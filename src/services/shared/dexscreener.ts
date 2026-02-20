@@ -27,6 +27,10 @@ async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<
   try {
     const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
     const resp = await fetchWithTimeout(url, { timeoutMs: 10_000 });
+    if (resp.status === 429) {
+      console.log(`[DexScreener] GeckoTerminal 429 for ${network}/${tokenAddress.slice(0, 10)}`);
+      return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+    }
     if (!resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     const data = await resp.json() as {
       data?: {

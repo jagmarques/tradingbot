@@ -1,6 +1,6 @@
 import type { EvmChain, GemHit } from "./types.js";
 import { WATCHER_CONFIG, INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade } from "./storage.js";
+import { getInsiderWallets, getGemHitsForWallet, upsertGemHit, getGemPaperTrade, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { analyzeGem, buyGems, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -247,9 +247,10 @@ async function watchInsiderWallets(): Promise<void> {
     }
   }
 
-  // Copy-trade path (unfiltered)
+  // Copy-trade path (deduplicate by token - one position per token, accumulate on repeat)
   for (const tokenInfo of allWalletBuys) {
     try {
+      // Skip if this specific wallet already has a copy trade for this token
       const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
       if (existingCopy) continue;
 
@@ -258,6 +259,46 @@ async function watchInsiderWallets(): Promise<void> {
       const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
       const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+
+      // Check if ANY wallet already has an open position for this token
+      const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
+      if (existingTokenTrade) {
+        // Accumulate: add 10% of current position for each additional insider
+        const addAmount = existingTokenTrade.amountUsd * 0.10;
+        increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
+        console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
+        notifyCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          chain: tokenInfo.chain,
+          side: "buy",
+          priceUsd,
+          liquidityOk: true,
+          liquidityUsd,
+          skipReason: null,
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
+        // Still record this wallet's copy trade so we don't double-count
+        insertCopyTrade({
+          walletAddress: tokenInfo.walletAddress,
+          tokenSymbol: symbol,
+          tokenAddress: tokenInfo.tokenAddress,
+          chain: tokenInfo.chain,
+          side: "buy",
+          buyPriceUsd: priceUsd,
+          currentPriceUsd: priceUsd,
+          amountUsd: 0,
+          pnlPct: 0,
+          status: "skipped",
+          liquidityOk: true,
+          liquidityUsd,
+          skipReason: `accumulated into ${existingTokenTrade.id}`,
+          buyTimestamp: Date.now(),
+          closeTimestamp: null,
+          insiderCount: 0,
+          peakPnlPct: 0,
+        });
+        continue;
+      }
 
       if (priceUsd <= 0) {
         insertCopyTrade({
@@ -276,6 +317,8 @@ async function watchInsiderWallets(): Promise<void> {
           skipReason: "no price",
           buyTimestamp: Date.now(),
           closeTimestamp: null,
+          insiderCount: 1,
+          peakPnlPct: 0,
         });
         console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
         notifyCopyTrade({
@@ -308,6 +351,8 @@ async function watchInsiderWallets(): Promise<void> {
         skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
         buyTimestamp: Date.now(),
         closeTimestamp: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
       });
       console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
       notifyCopyTrade({
