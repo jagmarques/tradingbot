@@ -80,7 +80,7 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🕵 Insiders", callback_data: "insiders" },
     { text: "🎲 Bettors", callback_data: "bettors" },
-    { text: "Quant", callback_data: "quant" },
+    { text: "🤖 Quant", callback_data: "quant" },
   ],
   [
     { text: "⚙️ Mode", callback_data: "mode" },
@@ -805,6 +805,16 @@ async function handleStatus(ctx: Context): Promise<void> {
       const gemTotalPnl = gemPaperTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
       const gemSign = gemTotalPnl >= 0 ? "+" : "";
       message += `Gem Paper: ${gemPaperTrades.length} open | $${gemInvested.toFixed(2)} invested | ${gemSign}$${gemTotalPnl.toFixed(2)}\n`;
+    }
+
+    // Insider copy trades
+    try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
+    const openCopyTrades = getOpenCopyTrades();
+    if (openCopyTrades.length > 0) {
+      const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+      const insiderTotalPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+      const insiderSign = insiderTotalPnl >= 0 ? "+" : "";
+      message += `Insider Copy: ${openCopyTrades.length} open | $${insiderInvested.toFixed(2)} invested | ${insiderSign}$${insiderTotalPnl.toFixed(2)}\n`;
     }
 
     if (status.pauseReason) {
