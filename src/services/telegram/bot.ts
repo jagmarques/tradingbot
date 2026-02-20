@@ -890,7 +890,7 @@ async function handleStatus(ctx: Context): Promise<void> {
       const unrealSign = unrealizedPnl >= 0 ? "+" : "";
       const realSign = realizedPnl >= 0 ? "+" : "";
       let line = `Insider Copy: ${openCopyTrades.length} open`;
-      if (openCopyTrades.length > 0) line += ` | $${insiderInvested.toFixed(2)} inv | ${unrealSign}$${unrealizedPnl.toFixed(2)} unreal`;
+      if (openCopyTrades.length > 0) line += ` | $${insiderInvested.toFixed(2)} invested | ${unrealSign}$${unrealizedPnl.toFixed(2)} unreal`;
       if (closedCopyTrades.length > 0) line += ` | ${realSign}$${realizedPnl.toFixed(2)} real (${closedCopyTrades.length} closed)`;
       message += `${line}\n`;
     }
@@ -1125,7 +1125,7 @@ async function handleTrades(ctx: Context): Promise<void> {
       const unrealSign = unrealPnl >= 0 ? "+" : "";
       const realSign = realPnl >= 0 ? "+" : "";
       let header = `<b>Insider Copy</b> (${openCopyTrades.length} open`;
-      if (openCopyTrades.length > 0) header += ` | $${copyInvested.toFixed(0)} inv | ${unrealSign}$${unrealPnl.toFixed(2)} unreal`;
+      if (openCopyTrades.length > 0) header += ` | $${copyInvested.toFixed(0)} invested | ${unrealSign}$${unrealPnl.toFixed(2)} unreal`;
       if (closedCopyTrades.length > 0) header += ` | ${realSign}$${realPnl.toFixed(2)} real`;
       header += `)\n\n`;
       message += header;
