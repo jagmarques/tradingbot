@@ -185,6 +185,31 @@ async function watchInsiderWallets(): Promise<void> {
           console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} + $${addAmount.toFixed(2)} > $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
           continue;
         }
+        if (liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
+          console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - low liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`);
+          insertCopyTrade({
+            walletAddress: tokenInfo.walletAddress,
+            tokenSymbol: symbol,
+            tokenAddress: tokenInfo.tokenAddress,
+            chain: tokenInfo.chain,
+            pairAddress: pair?.pairAddress ?? null,
+            side: "buy",
+            buyPriceUsd: priceUsd,
+            currentPriceUsd: priceUsd,
+            amountUsd: 0,
+            pnlPct: 0,
+            status: "skipped",
+            liquidityOk: false,
+            liquidityUsd,
+            skipReason: `accumulated skipped - low liquidity $${liquidityUsd.toFixed(0)}`,
+            buyTimestamp: Date.now(),
+            closeTimestamp: null,
+            exitReason: null,
+            insiderCount: 0,
+            peakPnlPct: 0,
+          });
+          continue;
+        }
         increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
         console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
         notifyCopyTrade({
