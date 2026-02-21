@@ -37,8 +37,9 @@ Tracks top Polymarket bettors by ROI, copies their trades with configurable sizi
 Copies EVM token buys from high-scoring insider wallets.
 
 - Real-time buy/sell detection via Alchemy WebSocket (ERC20 Transfer events, ~2-5s latency)
+- DEX router validation: only treats outgoing transfers to known DEX routers as sells
 - Polling fallback every 10 min when WebSocket active, 2.5 min standalone
-- Auto-sells when the insider sells
+- Auto-sells when the insider sells (closes all trades for token, idempotent)
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
 - Trailing stop: +25%/-10%, +50%/0%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - GoPlus security checks, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
@@ -98,10 +99,15 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 
 | | Paper | Live |
 |---|-------|------|
-| Bankroll | Virtual $10k | Real USDC |
-| Position limits | None | 5 |
-| Exposure limit | None | $50 |
-| Orders | Midpoint prices | Real orderbook (CLOB/1inch) |
+| AI Betting bankroll | Virtual $100 (persists P&L across restarts) | Real USDC |
+| Quant bankroll | Virtual $100 (tracks balance, fees, funding) | Real Hyperliquid balance |
+| Position limits | Same as live (5 AI bets, 6 quant, $200 copy exposure) | Same |
+| AI Betting pricing | Public orderbook bid/ask, midpoint fallback | Real orderbook (CLOB FOK) |
+| AI Betting fees | 0.15%/side CLOB + 0.5% slippage + gas | Real CLOB fees |
+| Copy trading fees | 3-15% dynamic (liquidity-based) + AMM price impact | Real DEX swap (1inch) |
+| Quant fees | 0.045%/side taker (matches Hyperliquid Tier 0) | Real Hyperliquid fees |
+| Quant funding | Accrued hourly from live predicted rates | Real funding settlement |
+| Quant liquidation | Per-pair rates (BTC 2%, ETH 1.25%, SOL 1% of notional) | Real Hyperliquid margin |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 
 ## Config
