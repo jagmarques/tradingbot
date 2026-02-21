@@ -165,12 +165,16 @@ async function handleTransferLog(chain: string, log: {
     if (processingLock.has(lockKey)) return;
     processingLock.add(lockKey);
     try {
-      // Circuit breaker: hard floor + consecutive loss gate
+      // Circuit breaker
       const copyStats = getWalletCopyTradeStats(toAddress);
-      if (copyStats.totalTrades >= 5) {
+      if (copyStats.totalTrades >= 10) {
         const winRate = copyStats.wins / copyStats.totalTrades;
-        if (winRate < 0.30) {
-          console.log(`[InsiderWS] Rejecting ${toAddress.slice(0, 8)}: ${(winRate * 100).toFixed(0)}% WR after ${copyStats.totalTrades} trades`);
+        const losses = copyStats.totalTrades - copyStats.wins;
+        const avgWinPct = copyStats.wins > 0 ? copyStats.grossProfit / copyStats.wins : 0;
+        const avgLossPct = losses > 0 ? copyStats.grossLoss / losses : 0;
+        const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+        if (expectancy <= 0) {
+          console.log(`[InsiderWS] Rejecting ${toAddress.slice(0, 8)}: negative expectancy after ${copyStats.totalTrades} trades`);
           return;
         }
       }

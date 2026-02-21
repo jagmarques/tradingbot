@@ -365,12 +365,16 @@ async function watchInsiderWallets(): Promise<void> {
         pausedWallets.delete(wallet.address); // pause expired
       }
 
-      // Hard floor + circuit breaker from copy trade stats
+      // Circuit breaker
       const copyStats = getWalletCopyTradeStats(wallet.address);
-      if (copyStats.totalTrades >= 5) {
+      if (copyStats.totalTrades >= 10) {
         const winRate = copyStats.wins / copyStats.totalTrades;
-        if (winRate < 0.30) {
-          console.log(`[Watcher] Rejecting ${wallet.address.slice(0, 8)}: ${(winRate * 100).toFixed(0)}% WR after ${copyStats.totalTrades} trades`);
+        const losses = copyStats.totalTrades - copyStats.wins;
+        const avgWinPct = copyStats.wins > 0 ? copyStats.grossProfit / copyStats.wins : 0;
+        const avgLossPct = losses > 0 ? copyStats.grossLoss / losses : 0;
+        const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+        if (expectancy <= 0) {
+          console.log(`[Watcher] Rejecting ${wallet.address.slice(0, 8)}: negative expectancy after ${copyStats.totalTrades} trades`);
           continue;
         }
       }
