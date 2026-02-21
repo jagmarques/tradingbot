@@ -175,10 +175,11 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
       const rugFeePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
       for (const trade of matchingTrades) {
         updateCopyTradePriceWithRugFee(trade.walletAddress, tokenAddress, chain, priceUsd);
-        closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug");
         const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
           ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
           : 0;
+        const closed = closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug", priceUsd, computedPnl);
+        if (!closed) continue; // already closed by another path
         notifyCopyTrade({
           walletAddress: trade.walletAddress,
           tokenSymbol,

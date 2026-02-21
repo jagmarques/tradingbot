@@ -193,9 +193,7 @@ async function handleTransferLog(chain: string, log: {
     } finally {
       processingLock.delete(lockKey);
     }
-  }
-
-  if (isSell) {
+  } else if (isSell) {
     // Circuit breaker: skip silently if wallet is durably paused
     if (isWalletPaused(fromAddress)) return;
 
@@ -236,6 +234,17 @@ function handleMessage(chain: string, raw: string): void {
         sellSubIds.set(pending.chain, msg.result);
         console.log(`[InsiderWS] Sell subscription active (${pending.chain}): ${msg.result}`);
       }
+      pendingRequests.delete(msg.id);
+    }
+    return;
+  }
+
+  // Handle subscription error
+  if (typeof msg.id === "number" && msg.error) {
+    const pending = pendingRequests.get(msg.id);
+    const errorObj = msg.error as Record<string, unknown>;
+    console.error(`[InsiderWS] Subscription failed (${pending?.chain ?? "unknown"}, ${pending?.type ?? "unknown"}): code=${errorObj.code} message=${errorObj.message}`);
+    if (pending) {
       pendingRequests.delete(msg.id);
     }
     return;

@@ -808,11 +808,14 @@ export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddre
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
 }
 
-export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason): void {
+export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason, finalPriceUsd: number, pnlPct: number): boolean {
   const db = getDb();
   const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
 
-  db.prepare("UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ? WHERE id = ?").run(Date.now(), exitReason, id);
+  const result = db.prepare(
+    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, current_price_usd = ?, pnl_pct = ? WHERE id = ? AND status = 'open'"
+  ).run(Date.now(), exitReason, finalPriceUsd, pnlPct, id);
+  return result.changes > 0;
 }
 
 export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: string, chain: string, pairAddress: string): void {
@@ -839,7 +842,7 @@ export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeS
   const wa = normalizeAddr(walletAddress);
 
   const rows = db.prepare(
-    "SELECT pnl_pct FROM insider_copy_trades WHERE wallet_address = ? AND status = 'closed' ORDER BY close_timestamp DESC"
+    "SELECT pnl_pct FROM insider_copy_trades WHERE wallet_address = ? AND status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL ORDER BY close_timestamp DESC"
   ).all(wa) as Array<{ pnl_pct: number }>;
 
   let wins = 0;

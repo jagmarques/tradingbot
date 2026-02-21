@@ -36,6 +36,8 @@ Tracks top Polymarket bettors by ROI, copies their trades with configurable sizi
 
 Copies EVM token buys from high-scoring insider wallets.
 
+- Real-time buy/sell detection via Alchemy WebSocket (ERC20 Transfer events, ~2-5s latency)
+- Polling fallback every 10 min when WebSocket active, 2.5 min standalone
 - Auto-sells when the insider sells
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
 - Trailing stop-loss ladder, +500% target, -80% floor
@@ -47,7 +49,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Transition (5-15 trades): 50% legacy + 50% new formula
 - Full new formula (15+ trades): gems(25) + median pump(15) + win rate(25) + profit factor(10) + recency(25)
 - Hard floor: <30% win rate after 5+ trades = score capped at 50 (rejected)
-- Circuit breaker: 3+ consecutive losing copy trades pauses further copying
+- Circuit breaker: 3+ consecutive losing copy trades pauses wallet for 24h
 - Full copy trade history preserved (no 7-day cleanup)
 
 ### Rug Monitor

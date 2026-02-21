@@ -639,12 +639,14 @@ export async function refreshCopyTradePrices(): Promise<void> {
         const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
         if (trade) {
           console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${MAX_PRICE_FAILURES} attempts`);
-          closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_price");
-          notifyCopyTrade({
-            walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-            side: "sell", priceUsd: 0, liquidityOk: false, liquidityUsd: 0,
-            skipReason: "stale price", pnlPct: trade.pnlPct,
-          }).catch(() => {});
+          const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_price", 0, trade.pnlPct);
+          if (closed) {
+            notifyCopyTrade({
+              walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+              side: "sell", priceUsd: 0, liquidityOk: false, liquidityUsd: 0,
+              skipReason: "stale price", pnlPct: trade.pnlPct,
+            }).catch(() => {});
+          }
         }
         copyPriceFailures.delete(failKey);
       }
@@ -667,12 +669,14 @@ export async function refreshCopyTradePrices(): Promise<void> {
     // Auto-close at +500%
     if (trade.pnlPct >= 500) {
       console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
-      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "target_500");
-      notifyCopyTrade({
-        walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-        side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-        skipReason: "target +500%", pnlPct: trade.pnlPct,
-      }).catch(() => {});
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "target_500", trade.currentPriceUsd, trade.pnlPct);
+      if (closed) {
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+          skipReason: "target +500%", pnlPct: trade.pnlPct,
+        }).catch(() => {});
+      }
       continue;
     }
 
@@ -690,12 +694,14 @@ export async function refreshCopyTradePrices(): Promise<void> {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
       const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason);
-      notifyCopyTrade({
-        walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-        side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-        skipReason: reason, pnlPct: trade.pnlPct,
-      }).catch(() => {});
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, trade.pnlPct);
+      if (closed) {
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+          skipReason: reason, pnlPct: trade.pnlPct,
+        }).catch(() => {});
+      }
     }
   }
 }

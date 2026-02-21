@@ -1,5 +1,5 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
@@ -76,11 +76,13 @@ export async function processInsiderSell(
 
   for (const trade of matchingTrades) {
     const tradePriceUsd = fetchFreshPrice && priceUsd > 0 ? priceUsd : trade.currentPriceUsd;
-    const pnlPct = trade.buyPriceUsd > 0
+    const rawPnlPct = trade.buyPriceUsd > 0
       ? ((tradePriceUsd - trade.buyPriceUsd) / trade.buyPriceUsd) * 100
       : trade.pnlPct;
+    const pnlPct = rawPnlPct - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
 
-    closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold");
+    const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold", tradePriceUsd, pnlPct);
+    if (!closed) continue; // already closed by another path
     console.log(`[CopyTrade] Insider sell: closing ${trade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
     notifyCopyTrade({
       walletAddress,
@@ -91,7 +93,7 @@ export async function processInsiderSell(
       liquidityOk: trade.liquidityOk,
       liquidityUsd: trade.liquidityUsd,
       skipReason: "insider sell",
-      pnlPct: pnlPct - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT,
+      pnlPct,
     }).catch(err => console.error("[CopyTrade] Notification error:", err));
   }
 }
@@ -410,16 +412,23 @@ async function watchInsiderWallets(): Promise<void> {
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
 
-      // Detect sells
+      // Detect sells (only outgoing transfers to known DEX routers are sells)
       const recentOutgoing = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
-        return ts > lastSeenTs && tx.from.toLowerCase() === wallet.address.toLowerCase();
+        if (ts <= lastSeenTs) return false;
+        if (tx.from.toLowerCase() !== wallet.address.toLowerCase()) return false;
+        // Only treat as sell if destination is a known DEX router
+        const toAddr = tx.to.toLowerCase();
+        const routers = KNOWN_DEX_ROUTERS[wallet.chain];
+        if (!routers || !routers.some(r => r.toLowerCase() === toAddr)) return false;
+        return true;
       });
 
       for (const tx of recentOutgoing) {
         if (tx.hash && isTransferProcessed(tx.hash)) continue;
         try {
           await processInsiderSell(wallet.address, tx.contractAddress, wallet.chain);
+          if (tx.hash) markTransferProcessed(tx.hash);
         } catch (err) {
           console.error(`[CopyTrade] Sell error ${tx.contractAddress.slice(0, 10)}:`, err);
         }
@@ -449,6 +458,7 @@ async function watchInsiderWallets(): Promise<void> {
             tokenSymbol: tx.tokenSymbol || "UNKNOWN",
             chain: wallet.chain,
           });
+          if (tx.hash) markTransferProcessed(tx.hash);
           walletNewCount++;
           newBuysTotal++;
         } catch (err) {
