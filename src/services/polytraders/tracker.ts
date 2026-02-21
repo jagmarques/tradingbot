@@ -233,7 +233,7 @@ function getTraderMultiplierFromHistory(traderName: string): number | null {
 
   if (winRate >= 0.60) return 1.5;
   if (winRate >= 0.45) return 1.0;
-  if (winRate >= 0.30) return 0.5;
+  if (winRate >= 0.35) return 0.5;
   return 0;
 }
 
