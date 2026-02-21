@@ -1,6 +1,6 @@
 import { getClient } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_MAINTENANCE_MARGIN_PCT, QUANT_LIQUIDATION_PENALTY_PCT } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
@@ -50,12 +50,13 @@ async function checkPositionStops(): Promise<void> {
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;
         const unrealizedPnl = (priceDiff / position.entryPrice) * position.size * position.leverage;
-        const initialMargin = position.size; // margin = size (notional / leverage, but size IS the margin for us)
-        const maintenanceMargin = initialMargin * (QUANT_MAINTENANCE_MARGIN_PCT / 100);
+        const maintRate = HYPERLIQUID_MAINTENANCE_MARGIN_RATE[position.pair] ?? 0.02;
+        const notional = position.size * position.leverage;
+        const maintenanceMargin = maintRate * notional;
 
         if (unrealizedPnl < 0 && Math.abs(unrealizedPnl) >= maintenanceMargin) {
           console.log(
-            `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} unrealized $${unrealizedPnl.toFixed(2)} exceeds maintenance margin $${maintenanceMargin.toFixed(2)}`
+            `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} unrealized $${unrealizedPnl.toFixed(2)} exceeds maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
           );
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);

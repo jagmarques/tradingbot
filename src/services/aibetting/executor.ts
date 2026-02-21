@@ -26,6 +26,26 @@ function generatePositionId(): string {
   return `aib_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 }
 
+// Get public orderbook from CLOB API (no auth headers required)
+async function fetchPublicOrderbook(
+  tokenId: string
+): Promise<{ bids: Array<[string, string]>; asks: Array<[string, string]> } | null> {
+  try {
+    const response = await fetchWithTimeout(
+      `${CLOB_API_URL}/book?token_id=${tokenId}`
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      bids?: Array<[string, string]>;
+      asks?: Array<[string, string]>;
+    };
+    if (data.bids && data.asks) return { bids: data.bids, asks: data.asks };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Get midpoint price from CLOB API (public, no auth needed)
 async function fetchMidpointPrice(tokenId: string): Promise<number | null> {
   try {
@@ -62,20 +82,19 @@ export async function enterPosition(
   let orderId: string;
 
   if (isPaperMode()) {
-    // Paper mode: use public midpoint first (no auth), fall back to orderbook, then scanner price
-    const midpoint = await fetchMidpointPrice(decision.tokenId);
-    if (midpoint !== null) {
-      price = midpoint;
-      console.log(`[Executor] PAPER: using midpoint price ${price.toFixed(3)}`);
+    // Paper mode: use public orderbook best ask first, fall back to midpoint, then scanner price
+    const book = await fetchPublicOrderbook(decision.tokenId);
+    if (book && book.asks.length > 0) {
+      price = parseFloat(book.asks[0][0]);
+      console.log(`[Executor] PAPER: using public book ask ${price.toFixed(3)}`);
     } else {
-      // Fallback to orderbook (may fail without auth credentials)
-      console.log(`[Executor] PAPER: midpoint unavailable, falling back to orderbook`);
-      const book = await getOrderbook(decision.tokenId);
-      if (book && book.asks.length > 0) {
-        price = parseFloat(book.asks[0][0]);
+      const midpoint = await fetchMidpointPrice(decision.tokenId);
+      if (midpoint !== null) {
+        price = midpoint;
+        console.log(`[Executor] PAPER: book empty, using midpoint ${price.toFixed(3)}`);
       } else {
         price = decision.side === "YES" ? decision.marketPrice : 1 - decision.marketPrice;
-        console.log(`[Executor] PAPER: orderbook also unavailable, using scanner price ${price.toFixed(3)}`);
+        console.log(`[Executor] PAPER: midpoint also unavailable, using scanner price ${price.toFixed(3)}`);
       }
     }
     orderId = `paper_${Date.now()}`;
@@ -168,16 +187,17 @@ export async function exitPosition(
   let pnl = shares * (currentPrice - position.entryPrice);
 
   if (isPaperMode()) {
-    // Use public midpoint for exit first (no auth), fall back to orderbook bid
-    const midpoint = await fetchMidpointPrice(position.tokenId);
+    // Use public orderbook best bid first for exit, fall back to midpoint, then currentPrice
+    const exitBook = await fetchPublicOrderbook(position.tokenId);
     let exitPrice = currentPrice;
-    if (midpoint !== null) {
-      exitPrice = midpoint;
+    if (exitBook && exitBook.bids.length > 0) {
+      exitPrice = parseFloat(exitBook.bids[0][0]);
+      console.log(`[Executor] PAPER: using public book bid ${exitPrice.toFixed(3)}`);
     } else {
-      console.log(`[Executor] PAPER: exit midpoint unavailable, falling back to orderbook`);
-      const book = await getOrderbook(position.tokenId);
-      if (book && book.bids.length > 0) {
-        exitPrice = parseFloat(book.bids[0][0]);
+      const midpoint = await fetchMidpointPrice(position.tokenId);
+      if (midpoint !== null) {
+        exitPrice = midpoint;
+        console.log(`[Executor] PAPER: book empty, using midpoint ${exitPrice.toFixed(3)}`);
       }
     }
     pnl = shares * (exitPrice - position.entryPrice);
@@ -331,8 +351,8 @@ export async function getCurrentPrice(tokenId: string): Promise<number | null> {
   const midpoint = await fetchMidpointPrice(tokenId);
   if (midpoint !== null) return midpoint;
 
-  // Fall back to orderbook if midpoint unavailable
-  const book = await getOrderbook(tokenId);
+  // Fall back to public orderbook if midpoint unavailable
+  const book = await fetchPublicOrderbook(tokenId);
   if (!book || book.bids.length === 0 || book.asks.length === 0) {
     return null;
   }

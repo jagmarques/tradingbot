@@ -71,4 +71,10 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
-export const QUANT_MAINTENANCE_MARGIN_PCT = 50; // Liquidation when loss reaches 50% of initial margin (size/leverage)
+
+// Per-pair maintenance margin rates matching real Hyperliquid Tier 1
+export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
+  BTC: 0.02,    // 2% of notional (40x max leverage)
+  ETH: 0.0125,  // 1.25% of notional (25x max leverage)
+  SOL: 0.01,    // 1% of notional (20x max leverage)
+};

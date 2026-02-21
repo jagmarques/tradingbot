@@ -71,7 +71,7 @@ function makeMarket(overrides: Partial<PolymarketEvent> = {}): PolymarketEvent {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Default: midpoint returns 0.50
+  // Default: orderbook returns empty (no bids/asks), midpoint returns 0.50
   mockFetch.mockResolvedValue({
     ok: true,
     json: () => Promise.resolve({ mid: "0.50" }),
@@ -79,10 +79,11 @@ beforeEach(() => {
 });
 
 describe("enterPosition (paper mode)", () => {
-  it("should create position using midpoint price", async () => {
+  it("should create position using public orderbook ask price", async () => {
+    // Orderbook call returns best ask 0.55
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ mid: "0.55" }),
+      json: () => Promise.resolve({ bids: [["0.52", "100"]], asks: [["0.55", "100"]] }),
     });
 
     const position = await enterPosition(makeDecision(), makeMarket());
@@ -94,8 +95,10 @@ describe("enterPosition (paper mode)", () => {
     expect(position?.status).toBe("open");
   });
 
-  it("should fall back to scanner price when midpoint unavailable", async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false });
+  it("should fall back to scanner price when both orderbook and midpoint unavailable", async () => {
+    // Orderbook fails, midpoint also fails
+    mockFetch.mockResolvedValueOnce({ ok: false }); // orderbook fails
+    mockFetch.mockResolvedValueOnce({ ok: false }); // midpoint fails
 
     const position = await enterPosition(
       makeDecision({ marketId: "fallback-test", tokenId: "token-fallback", marketPrice: 0.45 }),
@@ -219,15 +222,14 @@ describe("getCurrentPrice", () => {
     expect(price).toBe(0.65);
   });
 
-  it("should fall back to orderbook when midpoint unavailable", async () => {
+  it("should fall back to public orderbook when midpoint unavailable", async () => {
     // Midpoint fails
     mockFetch.mockResolvedValueOnce({ ok: false });
 
-    // Mock getOrderbook via polymarket module
-    const { getOrderbook } = await import("../polygon/polymarket.js");
-    vi.mocked(getOrderbook).mockResolvedValueOnce({
-      bids: [["0.48", "100"]],
-      asks: [["0.52", "100"]],
+    // Public orderbook call returns bids/asks
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ bids: [["0.48", "100"]], asks: [["0.52", "100"]] }),
     });
 
     const price = await getCurrentPrice("token-test");
