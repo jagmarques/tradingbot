@@ -41,4 +41,5 @@ coverage/
 
 # Prompt spec (internal)
 PROMPT.md
+LOGS.md
 data/
