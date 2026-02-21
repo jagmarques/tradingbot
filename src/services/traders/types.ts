@@ -221,5 +221,5 @@ export function getPositionSize(score: number): number {
   if (score >= 95) return 15;
   if (score >= 90) return 13;
   if (score >= 85) return 10;
-  return 8; // score 75-84
+  return 8;
 }
