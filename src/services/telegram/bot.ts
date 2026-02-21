@@ -780,7 +780,6 @@ async function handleStatus(ctx: Context): Promise<void> {
 
   try {
     const status = await getRiskStatus();
-    const todayTrades = getTodayTrades();
     const schedulerStatus = getAIBettingStatus();
     const polyStats = getCopyStats();
     const env = loadEnv();
@@ -812,7 +811,6 @@ async function handleStatus(ctx: Context): Promise<void> {
 
     const breakdown = getDailyPnlBreakdown();
     let message = `<b>Status</b> | ${modeTag}${killTag}\n`;
-    message += `PnL: ${pnl(breakdown.total)} (${todayTrades.length} trades)\n\n`;
 
     const lines: string[] = [];
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
@@ -844,9 +842,9 @@ async function handleStatus(ctx: Context): Promise<void> {
 
     // Quant trading
     const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
+    let quantUnrealized = 0;
     if (quantEnabled) {
       const quantPositions = getOpenQuantPositions();
-      let quantUnrealized = 0;
       if (quantPositions.length > 0) {
         try {
           const sdk = getClient();
@@ -871,6 +869,9 @@ async function handleStatus(ctx: Context): Promise<void> {
       lines.push(`Quant: ${quantPositions.length} | ${$(quantInvested)}${quantPnlStr}${quantKillStr}`);
     }
 
+    const totalUnrealized = aiBetUnrealized + copyUnrealized + unrealizedPnl + quantUnrealized;
+    const totalPnl = breakdown.total + totalUnrealized;
+    message += `PnL: ${pnl(totalPnl)} (${pnl(breakdown.total)}r)\n\n`;
     message += lines.join("\n");
 
     if (status.pauseReason) {
