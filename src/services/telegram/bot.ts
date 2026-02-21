@@ -1783,6 +1783,8 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const aiAnalysesDeleted = deleteAllAnalyses();
     clearAllPositions();
     clearAnalysisCache();
+    const { resetAIBettingBalance } = await import("../aibetting/scheduler.js");
+    resetAIBettingBalance();
 
     // 2. Polymarket copy trades - use existing clear function
     const { clearAllCopiedPositions } = await import("../polytraders/index.js");

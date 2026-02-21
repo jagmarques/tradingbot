@@ -24,6 +24,10 @@ import cron from "node-cron";
 const AI_BETTING_STARTING_BALANCE = 100; // $100 realistic paper bankroll
 let aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE;
 
+export function resetAIBettingBalance(): void {
+  aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE;
+}
+
 function detectSiblingMarkets(markets: PolymarketEvent[]): string[][] {
   const byEndDate = new Map<string, PolymarketEvent[]>();
 

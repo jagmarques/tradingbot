@@ -559,6 +559,7 @@ export function isInsiderWatcherRunning(): boolean {
 export function clearWatcherMemory(): void {
   lastSeenTxTimestamp.clear();
   pausedWallets.clear();
+  processedTxHashes.clear();
 }
 
 export function pauseWallet(address: string): void {
