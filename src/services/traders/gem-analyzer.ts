@@ -10,6 +10,7 @@ import type { Chain } from "./types.js";
 
 // Price failure tracking (shared across copy trades and gem buys)
 const MAX_PRICE_FAILURES = 3;
+let lastCopyTradeRefresh = 0;
 const PRICE_FAILURE_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
 const copyPriceFailures = new Map<string, { count: number; lastFailAt: number }>();
 
@@ -588,6 +589,10 @@ export async function refreshGemPaperPrices(): Promise<void> {
 }
 
 export async function refreshCopyTradePrices(): Promise<void> {
+  const now = Date.now();
+  if (now - lastCopyTradeRefresh < 30_000) return;
+  lastCopyTradeRefresh = now;
+
   const openTrades = getOpenCopyTrades();
   if (openTrades.length === 0) return;
 

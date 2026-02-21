@@ -5,6 +5,7 @@ import { cleanupOldClosedCopyTrades } from "../traders/storage.js";
 
 let cronJob: cron.ScheduledTask | null = null;
 let weeklyCleanupJob: cron.ScheduledTask | null = null;
+let lastSnapshotTime = 0;
 
 export interface DailySnapshot {
   date: string;
@@ -19,6 +20,10 @@ export interface DailySnapshot {
 
 // Take a snapshot of today's P&L and persist to daily_stats
 export function takeDailySnapshot(): void {
+  const now = Date.now();
+  if (now - lastSnapshotTime < 60_000) return;
+  lastSnapshotTime = now;
+
   const db = getDb();
   const today = new Date().toISOString().split("T")[0];
   const breakdown = getDailyPnlBreakdown();

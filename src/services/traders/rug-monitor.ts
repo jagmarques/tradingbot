@@ -61,6 +61,15 @@ function subscribePair(chain: string, pairAddress: string, token: { tokenAddress
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
   const normalizedPair = pairAddress.toLowerCase();
+
+  const chainSubs = getChainSubscriptions(chain);
+  if (chainSubs.has(normalizedPair)) return;
+
+  // Also check pending (RPC sent, awaiting subscription ID)
+  for (const req of pendingRequests.values()) {
+    if (req.chain === chain && req.pairAddress === normalizedPair) return;
+  }
+
   const tradeKey = `${normalizedPair}_${chain}`;
   pairToToken.set(tradeKey, { ...token, chain });
   console.log(`[RugMonitor] Subscribing to ${token.tokenSymbol} (${chain}) pair ${pairAddress.slice(0, 10)}...`);
