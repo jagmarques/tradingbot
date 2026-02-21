@@ -57,7 +57,7 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 - Monitors all open insider copy trade positions
 - Auto-sells on rug detection
 - Tracks rugged tokens in DB to skip future buys
-- /status shows total rug count and USD lost
+- Rug count and USD lost shown in P&L Status view
 
 ### Hyperliquid Quant Trading
 
@@ -75,19 +75,18 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 
 | Command | Description |
 |---------|-------------|
-| `/status` | Positions across all strategies |
 | `/balance` | Wallet balances (Polygon, Base, Arbitrum, Avax) |
 | `/pnl` | P&L with period tabs (today/7d/30d/all-time) |
 | `/trades` | Open positions and recent trades |
 | `/insiders` | Insider wallets and holdings (2 tabs + chain filter) |
 | `/stop` / `/resume` | Kill switch |
 | `/mode` | Switch paper/live |
-| `/resetpaper` | Wipe paper data |
+| `/resetpaper` | Wipe paper data (preserves scoring history) |
 | `/clearcopies` | Clear copied positions |
 | `/ai <question>` | Query DeepSeek |
 | `/timezone` | Set display timezone |
 
-**Menu buttons:** Status, Balance, P&L, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
+**Menu buttons:** P&L Status, Balance, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
 
 - **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
 - **Bettors** - Tracked Polymarket bettors by ROI

@@ -494,6 +494,14 @@ export function clearWatcherMemory(): void {
   pausedWallets.clear();
 }
 
-export function clearWalletPauses(): void {
-  pausedWallets.clear();
+export function pauseWallet(address: string): void {
+  pausedWallets.set(address, Date.now() + 24 * 60 * 60 * 1000);
+}
+
+export function isWalletPaused(address: string): boolean {
+  const pausedUntil = pausedWallets.get(address);
+  if (!pausedUntil) return false;
+  if (Date.now() < pausedUntil) return true;
+  pausedWallets.delete(address);
+  return false;
 }

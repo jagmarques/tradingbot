@@ -3,7 +3,7 @@ import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG } from "./types.js";
-import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive } from "./watcher.js";
+import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
 
 const ALCHEMY_CHAIN_MAP: Record<string, string> = {
   ethereum: "eth",
@@ -153,6 +153,9 @@ async function handleTransferLog(chain: string, log: {
   const isSell = wallets.has(fromAddress);
 
   if (isBuy) {
+    // Circuit breaker: skip silently if wallet is durably paused
+    if (isWalletPaused(toAddress)) return;
+
     const lockKey = `buy_${toAddress}_${tokenAddress}_${chain}`;
     if (processingLock.has(lockKey)) return;
     processingLock.add(lockKey);
@@ -167,7 +170,8 @@ async function handleTransferLog(chain: string, log: {
         }
       }
       if (copyStats.consecutiveLosses >= 3) {
-        console.log(`[InsiderWS] Pausing ${toAddress.slice(0, 8)}: ${copyStats.consecutiveLosses} consecutive losses`);
+        console.log(`[InsiderWS] Pausing ${toAddress.slice(0, 8)} for 24h: ${copyStats.consecutiveLosses} consecutive losses`);
+        pauseWallet(toAddress);
         return;
       }
       console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} received token ${tokenAddress.slice(0, 10)} (${chain})`);
@@ -186,6 +190,9 @@ async function handleTransferLog(chain: string, log: {
   }
 
   if (isSell) {
+    // Circuit breaker: skip silently if wallet is durably paused
+    if (isWalletPaused(fromAddress)) return;
+
     const lockKey = `sell_${fromAddress}_${tokenAddress}_${chain}`;
     if (processingLock.has(lockKey)) return;
     processingLock.add(lockKey);
