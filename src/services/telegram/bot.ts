@@ -1155,7 +1155,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         }
       }
       if (closedCopyTrades.length > 0) {
-        message += `<b>Closed</b> ${closedCopyTrades.length} | ${pnl(realPnl)}\n`;
+        message += `\n<b>Closed</b> ${closedCopyTrades.length} | ${pnl(realPnl)}\n`;
         for (const t of closedCopyTrades.slice(0, 5)) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const chainTag = t.chain.toUpperCase().slice(0, 3);
