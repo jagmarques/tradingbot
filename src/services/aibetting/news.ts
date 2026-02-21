@@ -124,7 +124,8 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   if (!query || query.split(/\s+/).filter(w => w.length >= 3).length === 0) return [];
 
   const cleanedQuery = query.split(/\s+/).filter(w => w.length >= 3).join(" ");
-  const url = `${GDELT_API_URL}?query=${encodeURIComponent(cleanedQuery)}+sourcelang:eng&mode=artlist&format=json&maxrecords=10&timespan=7d`;
+  const fullQuery = `${cleanedQuery} sourcelang:eng`;
+  const url = `${GDELT_API_URL}?query=${encodeURIComponent(fullQuery)}&mode=artlist&format=json&maxrecords=10&timespan=7d`;
 
   let response: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -151,7 +152,14 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   if (!response || !response.ok) return [];
 
   const text = await response.text();
-  if (!text.startsWith("{")) return [];
+  if (!text.startsWith("{")) {
+    if (text.toLowerCase().includes("please limit") || text.toLowerCase().includes("rate limit")) {
+      console.warn(`[News] GDELT rate limited: "${text.slice(0, 120)}"`);
+    } else {
+      console.warn(`[News] GDELT non-JSON response: "${text.slice(0, 120)}"`);
+    }
+    return [];
+  }
 
   const data = JSON.parse(text) as { articles?: GdeltArticle[] };
   return data.articles ?? [];
@@ -271,7 +279,7 @@ export async function fetchNewsForMarket(
     if (contentFetched < 2) {
       const altQuery = buildAlternativeQuery(market.title, query);
       if (altQuery && altQuery !== query) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 6000));
         const altArticles = await fetchGdeltArticles(altQuery);
         const altItems = altArticles
           .filter(a => !isPredictionMarketContent(a.title))

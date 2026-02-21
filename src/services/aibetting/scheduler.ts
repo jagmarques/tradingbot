@@ -166,7 +166,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       }
 
       const news = await fetchNewsForMarket(market);
-      await new Promise((r) => setTimeout(r, 2000)); // GDELT rate limit spacing
+      await new Promise((r) => setTimeout(r, 6000)); // GDELT rate limit spacing
       if (news.length < 1) {
         console.log(`[AIBetting] SKIP (0 news articles): ${market.title}`);
         continue;
