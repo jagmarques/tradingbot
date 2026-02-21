@@ -50,7 +50,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 - DeepSeek analysis with market data pipeline (technical indicators, regime classification)
 - Kelly criterion position sizing (quarter Kelly, 20% balance cap)
 - Funding rate arbitrage (short when funding > 15% APR, close when < 5%)
-- Max 5x leverage, 6 concurrent positions, $5 daily drawdown limit
+- Max 5x leverage, 6 concurrent positions, $25 daily drawdown limit
 - 14-day paper validation required before live trading
 
 ## Telegram
@@ -105,7 +105,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$10` | Quant paper trading balance |
+| `QUANT_VIRTUAL_BALANCE` | `$100` | Quant paper trading balance |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
@@ -124,7 +124,7 @@ npm run dev
 
 1. Set environment variables in dashboard
 2. Mount `/data` volume for SQLite persistence
-3. Health check: `GET /health` on port 3000
+3. Health check: `GET /health` on port 4000
 
 ## Tech Stack
 
