@@ -24,6 +24,14 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 
 Tracks top Polymarket bettors by ROI, copies their trades with configurable sizing. Penny-collector filter removes traders with median entry >95c or <5c. Settlement-trader filter excludes traders where >50% of trades are within 2h of expiry.
 
+**Quality gates:**
+- Win rate gate: traders with <35% win rate after 5+ copy outcomes excluded from tracking pool
+- Composite scoring: traders sorted by ROI * winRateBonus (60%+ WR = 1.5x, 45%+ = 1.2x)
+- Fast-ban: <25% win rate after 10 trades = multiplier 0 (no copies)
+- Profit factor gate: PF < 1.2 after 15 trades = multiplier 0
+- Mid-cycle removal: zero-multiplier traders dropped from tracked pool immediately
+- Learning threshold: 15 trades (was 30) before applying per-trader multipliers
+
 ### Insider Copy Trading
 
 Copies EVM token buys from high-scoring insider wallets.
@@ -33,6 +41,14 @@ Copies EVM token buys from high-scoring insider wallets.
 - Trailing stop-loss ladder, +500% target, -80% floor
 - GoPlus security checks (honeypot, high tax, scam detection)
 - $200 max exposure, $10 per position, 15% rug exit fee
+
+**Consistency scoring (MIN_WALLET_SCORE = 80):**
+- Cold start (<5 copy trades): legacy formula (gems + avg pump + hold rate + recency)
+- Transition (5-15 trades): 50% legacy + 50% new formula
+- Full new formula (15+ trades): gems(25) + median pump(15) + win rate(25) + profit factor(10) + recency(25)
+- Hard floor: <30% win rate after 5+ trades = score capped at 50 (rejected)
+- Circuit breaker: 3+ consecutive losing copy trades pauses further copying
+- Full copy trade history preserved (no 7-day cleanup)
 
 ### Rug Monitor
 

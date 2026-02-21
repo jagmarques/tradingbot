@@ -77,7 +77,7 @@ function addToCache(cache: Set<string>, key: string): void {
   cache.add(key);
 }
 
-const LEARNING_THRESHOLD = 30;
+const LEARNING_THRESHOLD = 15;
 
 // Copied position tracking
 interface CopiedPosition {
@@ -181,7 +181,7 @@ interface CopyLearningStats {
   totalTrades: number;
   wins: number;
   netPnl: number;
-  traderStats: Map<string, { wins: number; total: number; pnl: number }>;
+  traderStats: Map<string, { wins: number; total: number; pnl: number; grossProfit: number; grossLoss: number }>;
 }
 
 function getCopyLearningStats(): CopyLearningStats {
@@ -198,10 +198,15 @@ function getCopyLearningStats(): CopyLearningStats {
   };
 
   for (const row of rows) {
-    const existing = stats.traderStats.get(row.trader_name) ?? { wins: 0, total: 0, pnl: 0 };
+    const existing = stats.traderStats.get(row.trader_name) ?? { wins: 0, total: 0, pnl: 0, grossProfit: 0, grossLoss: 0 };
     existing.total++;
     if (row.won) existing.wins++;
     existing.pnl += row.pnl;
+    if (row.pnl > 0) {
+      existing.grossProfit += row.pnl;
+    } else {
+      existing.grossLoss += Math.abs(row.pnl);
+    }
     stats.traderStats.set(row.trader_name, existing);
   }
 
@@ -216,6 +221,16 @@ function getTraderMultiplierFromHistory(traderName: string): number | null {
   if (!traderData || traderData.total < 3) return null;
 
   const winRate = traderData.wins / traderData.total;
+
+  // Fast-ban: <25% win rate after 10+ trades
+  if (traderData.total >= 10 && winRate < 0.25) return 0;
+
+  // Profit factor gate: <1.2 after 15+ trades
+  if (traderData.total >= 15) {
+    const pf = traderData.grossProfit / Math.max(traderData.grossLoss, 0.01);
+    if (pf < 1.2) return 0;
+  }
+
   if (winRate >= 0.60) return 1.5;
   if (winRate >= 0.45) return 1.0;
   if (winRate >= 0.30) return 0.5;
@@ -781,10 +796,30 @@ async function refreshTopTraders(): Promise<void> {
     }
   }
 
-  // Sort by ROI descending, take top 20
+  // Composite scoring: ROI * winRateBonus from copy outcomes
+  const learningStats = getCopyLearningStats();
+
+  function getWinRateBonus(trader: LeaderboardEntry): number {
+    const name = trader.userName || trader.proxyWallet.substring(0, 10);
+    const traderData = learningStats.traderStats.get(name);
+    if (!traderData || traderData.total < 5) return 1.0;
+    const wr = traderData.wins / traderData.total;
+    if (wr >= 0.60) return 1.5;
+    if (wr >= 0.45) return 1.2;
+    if (wr >= 0.35) return 1.0;
+    return 0;
+  }
+
+  // Sort by ROI * winRateBonus descending, take top 20
   const sorted = [...best.values()]
     .filter((t) => t.vol > 0 && t.pnl / t.vol > 0.15)
-    .sort((a, b) => b.pnl / b.vol - a.pnl / a.vol)
+    .sort((a, b) => {
+      const aRoi = a.pnl / a.vol;
+      const bRoi = b.pnl / b.vol;
+      const aBonus = getWinRateBonus(a);
+      const bBonus = getWinRateBonus(b);
+      return (bRoi * bBonus) - (aRoi * aBonus);
+    })
     .slice(0, 20);
 
   // Filter penny-collectors and day-traders by sampling recent trades
@@ -792,7 +827,7 @@ async function refreshTopTraders(): Promise<void> {
   for (const trader of sorted) {
     try {
       const wallet = trader.proxyWallet.toLowerCase();
-      const recentTrades = await fetchTraderActivity(wallet, 5);
+      const recentTrades = await fetchTraderActivity(wallet, 20);
       const buyTrades = recentTrades.filter(t => t.side === "BUY" && t.price > 0);
 
       if (buyTrades.length === 0) {
@@ -831,6 +866,17 @@ async function refreshTopTraders(): Promise<void> {
       if (expiryChecked >= 2 && settlementTrades / expiryChecked > 0.5) {
         console.log(`[PolyTraders] Filtered settlement-trader: ${trader.userName || wallet} (${settlementTrades}/${expiryChecked} trades <2h to resolution)`);
         continue;
+      }
+
+      // Win rate gate: filter traders with <35% win rate from copy_outcomes
+      const traderName = trader.userName || wallet;
+      const traderData = learningStats.traderStats.get(traderName);
+      if (traderData && traderData.total >= 5) {
+        const winRate = traderData.wins / traderData.total;
+        if (winRate < 0.35) {
+          console.log(`[PolyTraders] Filtered low win rate: ${traderName} (${(winRate * 100).toFixed(0)}% WR, ${traderData.total} trades)`);
+          continue;
+        }
       }
 
       qualified.push(trader);
@@ -1042,6 +1088,18 @@ async function checkCopiedPositionExits(): Promise<void> {
         saveCopyOutcome(pos, pnl);
         const stats = getCopyLearningStats();
         console.log(`[PolyTraders] Market resolved ${outcome}: ${pos.marketTitle} PnL: $${pnl.toFixed(2)} (${stats.totalTrades} trades, net: $${stats.netPnl.toFixed(2)})`);
+
+        // Mid-cycle removal: drop zero-multiplier traders
+        const learnedMultiplier = getTraderMultiplierFromHistory(pos.traderName);
+        if (learnedMultiplier === 0) {
+          for (const [wallet, info] of trackedTraders) {
+            if (info.name === pos.traderName) {
+              trackedTraders.delete(wallet);
+              console.log(`[PolyTraders] Mid-cycle removal: ${pos.traderName} (multiplier=0)`);
+              break;
+            }
+          }
+        }
 
         await notifyTopTraderCopyClose({
           traderName: pos.traderName,

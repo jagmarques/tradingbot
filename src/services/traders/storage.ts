@@ -821,13 +821,133 @@ export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: 
   db.prepare("UPDATE insider_copy_trades SET pair_address = ? WHERE id = ? AND pair_address IS NULL").run(pairAddress, id);
 }
 
+// Disabled: preserving full copy trade history for scoring
 export function cleanupOldClosedCopyTrades(): number {
+  return 0;
+}
+
+export interface WalletCopyTradeStats {
+  totalTrades: number;
+  wins: number;
+  grossProfit: number;
+  grossLoss: number;
+  consecutiveLosses: number;
+}
+
+export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeStats {
   const db = getDb();
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const result = db.prepare(
-    "DELETE FROM insider_copy_trades WHERE status = 'closed' AND close_timestamp < ?"
-  ).run(cutoff);
-  return result.changes;
+  const wa = normalizeAddr(walletAddress);
+
+  const rows = db.prepare(
+    "SELECT pnl_pct FROM insider_copy_trades WHERE wallet_address = ? AND status = 'closed' ORDER BY close_timestamp DESC"
+  ).all(wa) as Array<{ pnl_pct: number }>;
+
+  let wins = 0;
+  let grossProfit = 0;
+  let grossLoss = 0;
+  let consecutiveLosses = 0;
+  let countingLosses = true;
+
+  for (const row of rows) {
+    if (row.pnl_pct > 0) {
+      wins++;
+      grossProfit += row.pnl_pct;
+      countingLosses = false;
+    } else {
+      grossLoss += Math.abs(row.pnl_pct);
+      if (countingLosses) consecutiveLosses++;
+    }
+  }
+
+  return {
+    totalTrades: rows.length,
+    wins,
+    grossProfit,
+    grossLoss,
+    consecutiveLosses,
+  };
+}
+
+export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> {
+  const db = getDb();
+
+  // Batch query: all closed, valid trades grouped by wallet
+  const groupRows = db.prepare(`
+    SELECT wallet_address,
+           COUNT(*) as total_trades,
+           SUM(CASE WHEN pnl_pct > 0 THEN 1 ELSE 0 END) as wins,
+           SUM(CASE WHEN pnl_pct > 0 THEN pnl_pct ELSE 0 END) as gross_profit,
+           SUM(CASE WHEN pnl_pct <= 0 THEN ABS(pnl_pct) ELSE 0 END) as gross_loss
+    FROM insider_copy_trades
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+    GROUP BY wallet_address
+  `).all() as Array<{
+    wallet_address: string;
+    total_trades: number;
+    wins: number;
+    gross_profit: number;
+    gross_loss: number;
+  }>;
+
+  // Compute consecutiveLosses per wallet from ordered trades
+  const orderRows = db.prepare(`
+    SELECT wallet_address, pnl_pct
+    FROM insider_copy_trades
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+    ORDER BY wallet_address, close_timestamp DESC
+  `).all() as Array<{ wallet_address: string; pnl_pct: number }>;
+
+  const consecutiveMap = new Map<string, number>();
+  let currentWallet = "";
+  let counting = true;
+  let count = 0;
+  for (const row of orderRows) {
+    if (row.wallet_address !== currentWallet) {
+      if (currentWallet) consecutiveMap.set(currentWallet, count);
+      currentWallet = row.wallet_address;
+      counting = true;
+      count = 0;
+    }
+    if (counting) {
+      if (row.pnl_pct <= 0) {
+        count++;
+      } else {
+        counting = false;
+      }
+    }
+  }
+  if (currentWallet) consecutiveMap.set(currentWallet, count);
+
+  const result = new Map<string, WalletCopyTradeStats>();
+  for (const row of groupRows) {
+    result.set(row.wallet_address, {
+      totalTrades: row.total_trades,
+      wins: row.wins,
+      grossProfit: row.gross_profit,
+      grossLoss: row.gross_loss,
+      consecutiveLosses: consecutiveMap.get(row.wallet_address) ?? 0,
+    });
+  }
+  return result;
+}
+
+export function getConsecutiveLosses(walletAddress: string): number {
+  const db = getDb();
+  const wa = normalizeAddr(walletAddress);
+
+  const rows = db.prepare(
+    "SELECT pnl_pct FROM insider_copy_trades WHERE wallet_address = ? AND status = 'closed' ORDER BY close_timestamp DESC"
+  ).all(wa) as Array<{ pnl_pct: number }>;
+
+  let count = 0;
+  for (const row of rows) {
+    if (row.pnl_pct <= 0) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
 }
 
 export function getClosedCopyTrades(): CopyTrade[] {

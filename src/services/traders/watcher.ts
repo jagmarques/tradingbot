@@ -1,22 +1,314 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount } from "./storage.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG } from "./types.js";
+import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
+const pausedWallets = new Map<string, number>();
 
 // LP/wrapper token symbols to skip (not real tradeable tokens)
-const LP_TOKEN_SYMBOLS = new Set([
+export const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
   "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
   "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
   "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
 ]);
 
+// Dedup: tx hashes already processed by WebSocket (shared with insider-ws.ts)
+const processedTxHashes = new Map<string, number>();
+
+export function markTransferProcessed(txHash: string): void {
+  processedTxHashes.set(txHash.toLowerCase(), Date.now());
+}
+
+export function isTransferProcessed(txHash: string): boolean {
+  const ts = processedTxHashes.get(txHash.toLowerCase());
+  if (!ts) return false;
+  if (Date.now() - ts > INSIDER_WS_CONFIG.DEDUP_TTL_MS) {
+    processedTxHashes.delete(txHash.toLowerCase());
+    return false;
+  }
+  return true;
+}
+
+export function cleanupProcessedTxHashes(): void {
+  const now = Date.now();
+  for (const [hash, ts] of processedTxHashes) {
+    if (now - ts > INSIDER_WS_CONFIG.DEDUP_TTL_MS) {
+      processedTxHashes.delete(hash);
+    }
+  }
+}
+
+export function isLpToken(symbol: string): boolean {
+  return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
+}
+
+// Shared sell processing: close copy trade when insider sells
+export async function processInsiderSell(
+  walletAddress: string,
+  tokenAddress: string,
+  chain: string,
+  fetchFreshPrice: boolean = false,
+): Promise<void> {
+  const primaryTrade = getOpenCopyTradeByToken(tokenAddress, chain);
+  if (!primaryTrade) return;
+
+  let priceUsd = primaryTrade.currentPriceUsd;
+
+  // Fetch fresh price for real-time exits (WebSocket path)
+  if (fetchFreshPrice) {
+    const pair = await dexScreenerFetch(chain, tokenAddress);
+    const freshPrice = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    if (freshPrice > 0) {
+      priceUsd = freshPrice;
+      updateCopyTradePrice(primaryTrade.walletAddress, tokenAddress, chain, freshPrice);
+    }
+  }
+
+  // Recompute P&L with current price (may have been refreshed above)
+  const pnlPct = primaryTrade.buyPriceUsd > 0
+    ? ((priceUsd - primaryTrade.buyPriceUsd) / primaryTrade.buyPriceUsd) * 100
+    : primaryTrade.pnlPct;
+
+  closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain, "insider_sold");
+  console.log(`[CopyTrade] Insider sell: closing ${primaryTrade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
+  notifyCopyTrade({
+    walletAddress,
+    tokenSymbol: primaryTrade.tokenSymbol,
+    chain: primaryTrade.chain,
+    side: "sell",
+    priceUsd,
+    liquidityOk: primaryTrade.liquidityOk,
+    liquidityUsd: primaryTrade.liquidityUsd,
+    skipReason: "insider sell",
+    pnlPct,
+  }).catch(err => console.error("[CopyTrade] Notification error:", err));
+}
+
+// Shared buy processing: open or accumulate copy trade
+export async function processInsiderBuy(tokenInfo: {
+  walletAddress: string;
+  walletScore: number;
+  tokenAddress: string;
+  tokenSymbol: string;
+  chain: string;
+}): Promise<void> {
+  // Skip if this specific wallet already has a copy trade for this token
+  const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
+  if (existingCopy) return;
+
+  // Skip tokens that have rugged us before
+  const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
+  if (rugCount > 0) {
+    console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
+    return;
+  }
+
+  // Check exposure budget before opening new positions (accumulation still allowed)
+  const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
+  if (!existingTokenTrade) {
+    const openTrades = getOpenCopyTrades();
+    const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+    if (currentExposure + COPY_TRADE_CONFIG.AMOUNT_USD > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
+      console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} >= $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
+      return;
+    }
+  }
+
+  const pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
+  const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+  const liquidityUsd = pair?.liquidity?.usd ?? 0;
+  const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+
+  // Accumulate if another wallet already has an open position for this token
+  if (existingTokenTrade) {
+    const addAmount = existingTokenTrade.amountUsd * 0.10;
+    const openTrades = getOpenCopyTrades();
+    const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
+    if (currentExposure + addAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
+      console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} + $${addAmount.toFixed(2)} > $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
+      return;
+    }
+    if (liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
+      console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - low liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`);
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: 0,
+        pnlPct: 0,
+        status: "skipped",
+        liquidityOk: false,
+        liquidityUsd,
+        skipReason: `accumulated skipped - low liquidity $${liquidityUsd.toFixed(0)}`,
+        buyTimestamp: Date.now(),
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 0,
+        peakPnlPct: 0,
+      });
+      return;
+    }
+    increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
+    console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
+    notifyCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      chain: tokenInfo.chain,
+      side: "buy",
+      priceUsd,
+      liquidityOk: true,
+      liquidityUsd,
+      skipReason: null,
+    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: 0,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: true,
+      liquidityUsd,
+      skipReason: `accumulated into ${existingTokenTrade.id}`,
+      buyTimestamp: Date.now(),
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 0,
+      peakPnlPct: 0,
+    });
+    return;
+  }
+
+  if (priceUsd <= 0) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: 0,
+      currentPriceUsd: 0,
+      amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: false,
+      liquidityUsd: 0,
+      skipReason: "no price",
+      buyTimestamp: Date.now(),
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+    });
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
+    notifyCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      chain: tokenInfo.chain,
+      side: "buy",
+      priceUsd: 0,
+      liquidityOk: false,
+      liquidityUsd: 0,
+      skipReason: "no price",
+    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    return;
+  }
+
+  // GoPlus safety check
+  const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
+  if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: true,
+      liquidityUsd,
+      skipReason: "GoPlus kill-switch",
+      buyTimestamp: Date.now(),
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+    });
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
+    notifyCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      chain: tokenInfo.chain,
+      side: "buy",
+      priceUsd,
+      liquidityOk: false,
+      liquidityUsd,
+      skipReason: "GoPlus kill-switch",
+    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    return;
+  }
+
+  const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
+  insertCopyTrade({
+    walletAddress: tokenInfo.walletAddress,
+    tokenSymbol: symbol,
+    tokenAddress: tokenInfo.tokenAddress,
+    chain: tokenInfo.chain,
+    pairAddress: pair?.pairAddress ?? null,
+    side: "buy",
+    buyPriceUsd: priceUsd,
+    currentPriceUsd: priceUsd,
+    amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+    pnlPct: 0,
+    status: liquidityOk ? "open" : "skipped",
+    liquidityOk,
+    liquidityUsd,
+    skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
+    buyTimestamp: Date.now(),
+    closeTimestamp: null,
+    exitReason: null,
+    insiderCount: 1,
+    peakPnlPct: 0,
+  });
+  console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
+  notifyCopyTrade({
+    walletAddress: tokenInfo.walletAddress,
+    tokenSymbol: symbol,
+    chain: tokenInfo.chain,
+    side: "buy",
+    priceUsd,
+    liquidityOk,
+    liquidityUsd,
+    skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
+  }).catch(err => console.error("[CopyTrade] Notification error:", err));
+}
+
 let watcherRunning = false;
+let wsActive = false;
+
+export function setWebSocketActive(active: boolean): void {
+  wsActive = active;
+}
 
 async function watchInsiderWallets(): Promise<void> {
   // Get qualified wallets
@@ -31,21 +323,36 @@ async function watchInsiderWallets(): Promise<void> {
     return;
   }
 
-  // Copy path: all wallet+token pairs
-  const allWalletBuys: Array<{
-    walletAddress: string;
-    walletScore: number;
-    tokenAddress: string;
-    tokenSymbol: string;
-    chain: string;
-  }> = [];
-
   let newBuysTotal = 0;
 
   for (const wallet of qualifiedWallets) {
     const walletKey = `${wallet.address}_${wallet.chain}`;
 
     try {
+      // Circuit breaker: check if wallet is paused
+      const pausedUntil = pausedWallets.get(wallet.address);
+      if (pausedUntil) {
+        if (Date.now() < pausedUntil) {
+          continue; // still paused
+        }
+        pausedWallets.delete(wallet.address); // pause expired
+      }
+
+      // Hard floor + circuit breaker from copy trade stats
+      const copyStats = getWalletCopyTradeStats(wallet.address);
+      if (copyStats.totalTrades >= 5) {
+        const winRate = copyStats.wins / copyStats.totalTrades;
+        if (winRate < 0.30) {
+          console.log(`[Watcher] Rejecting ${wallet.address.slice(0, 8)}: ${(winRate * 100).toFixed(0)}% WR after ${copyStats.totalTrades} trades`);
+          continue;
+        }
+      }
+      if (copyStats.consecutiveLosses >= 3) {
+        pausedWallets.set(wallet.address, Date.now() + 24 * 60 * 60 * 1000);
+        console.log(`[Watcher] Pausing ${wallet.address.slice(0, 8)} for 24h: ${copyStats.consecutiveLosses} consecutive losses`);
+        continue;
+      }
+
       const url = buildExplorerUrl(
         wallet.chain as EvmChain,
         `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=desc`
@@ -59,6 +366,7 @@ async function watchInsiderWallets(): Promise<void> {
       const data = (await response.json()) as {
         status: string;
         result: Array<{
+          hash: string;
           contractAddress: string;
           tokenSymbol: string;
           tokenDecimal: string;
@@ -75,7 +383,6 @@ async function watchInsiderWallets(): Promise<void> {
       const lastSeenTs = lastSeenTxTimestamp.get(walletKey);
 
       if (lastSeenTs === undefined) {
-        // First time: establish baseline
         const maxTs = data.result.reduce((max, tx) => {
           const ts = parseInt(tx.timeStamp);
           return ts > max ? ts : max;
@@ -84,23 +391,12 @@ async function watchInsiderWallets(): Promise<void> {
         continue;
       }
 
-      // Update baseline
       let maxTs = lastSeenTs;
       for (const tx of data.result) {
         const ts = parseInt(tx.timeStamp);
         if (ts > maxTs) maxTs = ts;
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
-
-      // Recent incoming transfers (skip LP tokens and wrappers)
-      const recentIncoming = data.result.filter((tx) => {
-        const ts = parseInt(tx.timeStamp);
-        if (ts <= lastSeenTs) return false;
-        if (tx.to.toLowerCase() !== wallet.address.toLowerCase()) return false;
-        if (LP_TOKEN_SYMBOLS.has(tx.tokenSymbol)) return false;
-        if (tx.tokenSymbol.includes("-LP") || tx.tokenSymbol.startsWith("UNI-")) return false;
-        return true;
-      });
 
       // Detect sells
       const recentOutgoing = data.result.filter((tx) => {
@@ -109,45 +405,43 @@ async function watchInsiderWallets(): Promise<void> {
       });
 
       for (const tx of recentOutgoing) {
-        // Close ALL copy trade positions for this token when any insider sells
-        const primaryTrade = getOpenCopyTradeByToken(tx.contractAddress, wallet.chain);
-        if (primaryTrade) {
-          closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain, "insider_sold");
-          console.log(`[CopyTrade] Insider sell: closing ${primaryTrade.tokenSymbol} (${wallet.address.slice(0, 8)} sold, P&L ${primaryTrade.pnlPct.toFixed(1)}%)`);
-          notifyCopyTrade({
-            walletAddress: wallet.address,
-            tokenSymbol: primaryTrade.tokenSymbol,
-            chain: primaryTrade.chain,
-            side: "sell",
-            priceUsd: primaryTrade.currentPriceUsd,
-            liquidityOk: primaryTrade.liquidityOk,
-            liquidityUsd: primaryTrade.liquidityUsd,
-            skipReason: "insider sell",
-            pnlPct: primaryTrade.pnlPct,
-          }).catch(err => console.error("[CopyTrade] Notification error:", err));
+        if (tx.hash && isTransferProcessed(tx.hash)) continue;
+        try {
+          await processInsiderSell(wallet.address, tx.contractAddress, wallet.chain);
+        } catch (err) {
+          console.error(`[CopyTrade] Sell error ${tx.contractAddress.slice(0, 10)}:`, err);
         }
       }
 
+      // Recent incoming transfers (skip LP tokens and wrappers)
+      const recentIncoming = data.result.filter((tx) => {
+        const ts = parseInt(tx.timeStamp);
+        if (ts <= lastSeenTs) return false;
+        if (tx.to.toLowerCase() !== wallet.address.toLowerCase()) return false;
+        if (isLpToken(tx.tokenSymbol)) return false;
+        return true;
+      });
+
       if (recentIncoming.length === 0) continue;
 
-      // Collect new tokens
       let walletNewCount = 0;
       for (const tx of recentIncoming) {
         if (walletNewCount >= WATCHER_CONFIG.MAX_NEW_TOKENS_PER_WALLET) break;
+        if (tx.hash && isTransferProcessed(tx.hash)) continue;
 
-        const tokenAddress = tx.contractAddress.toLowerCase();
-
-        const buyInfo = {
-          walletAddress: wallet.address,
-          walletScore: wallet.score,
-          tokenAddress,
-          tokenSymbol: tx.tokenSymbol || "UNKNOWN",
-          chain: wallet.chain,
-        };
-
-        allWalletBuys.push(buyInfo);
-        walletNewCount++;
-        newBuysTotal++;
+        try {
+          await processInsiderBuy({
+            walletAddress: wallet.address,
+            walletScore: wallet.score,
+            tokenAddress: tx.contractAddress.toLowerCase(),
+            tokenSymbol: tx.tokenSymbol || "UNKNOWN",
+            chain: wallet.chain,
+          });
+          walletNewCount++;
+          newBuysTotal++;
+        } catch (err) {
+          console.error(`[CopyTrade] Buy error ${tx.contractAddress.slice(0, 10)}:`, err);
+        }
       }
     } catch (err) {
       console.error(`[InsiderWatcher] Error checking ${wallet.address.slice(0, 8)} (${wallet.chain}):`, err);
@@ -156,229 +450,17 @@ async function watchInsiderWallets(): Promise<void> {
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
 
-  // Copy-trade path (deduplicate by token - one position per token, accumulate on repeat)
-  for (const tokenInfo of allWalletBuys) {
-    try {
-      // Skip if this specific wallet already has a copy trade for this token
-      const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
-      if (existingCopy) continue;
-
-      // Skip tokens that have rugged us before
-      const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
-      if (rugCount > 0) {
-        console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
-        continue;
-      }
-
-      // Check exposure budget before opening new positions (accumulation still allowed)
-      const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
-      if (!existingTokenTrade) {
-        const openTrades = getOpenCopyTrades();
-        const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-        if (currentExposure + COPY_TRADE_CONFIG.AMOUNT_USD > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
-          console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} >= $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
-          continue;
-        }
-      }
-
-      const pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
-      const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
-      const liquidityUsd = pair?.liquidity?.usd ?? 0;
-      const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
-
-      // Accumulate if another wallet already has an open position for this token
-      if (existingTokenTrade) {
-        // Accumulate: add 10% of current position for each additional insider
-        const addAmount = existingTokenTrade.amountUsd * 0.10;
-        // Check exposure budget before accumulating
-        const openTrades = getOpenCopyTrades();
-        const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-        if (currentExposure + addAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
-          console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} + $${addAmount.toFixed(2)} > $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
-          continue;
-        }
-        if (liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
-          console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - low liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`);
-          insertCopyTrade({
-            walletAddress: tokenInfo.walletAddress,
-            tokenSymbol: symbol,
-            tokenAddress: tokenInfo.tokenAddress,
-            chain: tokenInfo.chain,
-            pairAddress: pair?.pairAddress ?? null,
-            side: "buy",
-            buyPriceUsd: priceUsd,
-            currentPriceUsd: priceUsd,
-            amountUsd: 0,
-            pnlPct: 0,
-            status: "skipped",
-            liquidityOk: false,
-            liquidityUsd,
-            skipReason: `accumulated skipped - low liquidity $${liquidityUsd.toFixed(0)}`,
-            buyTimestamp: Date.now(),
-            closeTimestamp: null,
-            exitReason: null,
-            insiderCount: 0,
-            peakPnlPct: 0,
-          });
-          continue;
-        }
-        increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
-        console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
-        notifyCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          chain: tokenInfo.chain,
-          side: "buy",
-          priceUsd,
-          liquidityOk: true,
-          liquidityUsd,
-          skipReason: null,
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-        // Still record this wallet's copy trade so we don't double-count
-        insertCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          tokenAddress: tokenInfo.tokenAddress,
-          chain: tokenInfo.chain,
-          pairAddress: pair?.pairAddress ?? null,
-          side: "buy",
-          buyPriceUsd: priceUsd,
-          currentPriceUsd: priceUsd,
-          amountUsd: 0,
-          pnlPct: 0,
-          status: "skipped",
-          liquidityOk: true,
-          liquidityUsd,
-          skipReason: `accumulated into ${existingTokenTrade.id}`,
-          buyTimestamp: Date.now(),
-          closeTimestamp: null,
-          exitReason: null,
-          insiderCount: 0,
-          peakPnlPct: 0,
-        });
-        continue;
-      }
-
-      if (priceUsd <= 0) {
-        insertCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          tokenAddress: tokenInfo.tokenAddress,
-          chain: tokenInfo.chain,
-          pairAddress: pair?.pairAddress ?? null,
-          side: "buy",
-          buyPriceUsd: 0,
-          currentPriceUsd: 0,
-          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
-          pnlPct: 0,
-          status: "skipped",
-          liquidityOk: false,
-          liquidityUsd: 0,
-          skipReason: "no price",
-          buyTimestamp: Date.now(),
-          closeTimestamp: null,
-          exitReason: null,
-          insiderCount: 1,
-          peakPnlPct: 0,
-        });
-        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
-        notifyCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          chain: tokenInfo.chain,
-          side: "buy",
-          priceUsd: 0,
-          liquidityOk: false,
-          liquidityUsd: 0,
-          skipReason: "no price",
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-        continue;
-      }
-
-      // GoPlus safety check - reject honeypots, high-tax tokens, etc.
-      const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
-      if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
-        insertCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          tokenAddress: tokenInfo.tokenAddress,
-          chain: tokenInfo.chain,
-          pairAddress: pair?.pairAddress ?? null,
-          side: "buy",
-          buyPriceUsd: priceUsd,
-          currentPriceUsd: priceUsd,
-          amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
-          pnlPct: 0,
-          status: "skipped",
-          liquidityOk: true,
-          liquidityUsd,
-          skipReason: "GoPlus kill-switch",
-          buyTimestamp: Date.now(),
-          closeTimestamp: null,
-          exitReason: null,
-          insiderCount: 1,
-          peakPnlPct: 0,
-        });
-        console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
-        notifyCopyTrade({
-          walletAddress: tokenInfo.walletAddress,
-          tokenSymbol: symbol,
-          chain: tokenInfo.chain,
-          side: "buy",
-          priceUsd,
-          liquidityOk: false,
-          liquidityUsd,
-          skipReason: "GoPlus kill-switch",
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-        continue;
-      }
-
-      const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
-      insertCopyTrade({
-        walletAddress: tokenInfo.walletAddress,
-        tokenSymbol: symbol,
-        tokenAddress: tokenInfo.tokenAddress,
-        chain: tokenInfo.chain,
-        pairAddress: pair?.pairAddress ?? null,
-        side: "buy",
-        buyPriceUsd: priceUsd,
-        currentPriceUsd: priceUsd,
-        amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
-        pnlPct: 0,
-        status: liquidityOk ? "open" : "skipped",
-        liquidityOk,
-        liquidityUsd,
-        skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
-        buyTimestamp: Date.now(),
-        closeTimestamp: null,
-        exitReason: null,
-        insiderCount: 1,
-        peakPnlPct: 0,
-      });
-      console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
-      notifyCopyTrade({
-        walletAddress: tokenInfo.walletAddress,
-        tokenSymbol: symbol,
-        chain: tokenInfo.chain,
-        side: "buy",
-        priceUsd,
-        liquidityOk,
-        liquidityUsd,
-        skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
-      }).catch(err => console.error("[CopyTrade] Notification error:", err));
-    } catch (err) {
-      console.error(`[CopyTrade] Error processing ${tokenInfo.tokenAddress}:`, err);
-    }
-  }
+  // Periodic dedup cleanup
+  cleanupProcessedTxHashes();
 }
 
 export function startInsiderWatcher(): void {
   if (watcherRunning) return;
   watcherRunning = true;
 
-  console.log(`[InsiderWatcher] Starting (every ${WATCHER_CONFIG.INTERVAL_MS / 60000} min, after 30s delay)`);
+  const intervalMs = wsActive ? INSIDER_WS_CONFIG.FALLBACK_POLL_INTERVAL_MS : WATCHER_CONFIG.INTERVAL_MS;
+  console.log(`[InsiderWatcher] Starting (every ${intervalMs / 60000} min, after 30s delay${wsActive ? ", WS fallback mode" : ""})`);
 
-  // Delay start for scanner
   setTimeout(() => {
     (async (): Promise<void> => {
       while (watcherRunning) {
@@ -389,7 +471,8 @@ export function startInsiderWatcher(): void {
         }
 
         if (watcherRunning) {
-          await new Promise((r) => setTimeout(r, WATCHER_CONFIG.INTERVAL_MS));
+          const interval = wsActive ? INSIDER_WS_CONFIG.FALLBACK_POLL_INTERVAL_MS : WATCHER_CONFIG.INTERVAL_MS;
+          await new Promise((r) => setTimeout(r, interval));
         }
       }
     })().catch((err) => console.error("[InsiderWatcher] Loop crashed:", err));
@@ -408,4 +491,9 @@ export function isInsiderWatcherRunning(): boolean {
 
 export function clearWatcherMemory(): void {
   lastSeenTxTimestamp.clear();
+  pausedWallets.clear();
+}
+
+export function clearWalletPauses(): void {
+  pausedWallets.clear();
 }

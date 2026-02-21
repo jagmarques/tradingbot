@@ -2,7 +2,8 @@ import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
 import { loadEnv } from "../../config/env.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan, getAllWalletCopyTradeStats } from "./storage.js";
+import type { WalletCopyTradeStats } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
@@ -790,7 +791,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     await new Promise((r) => setTimeout(r, INSIDER_CONFIG.INTER_CHAIN_DELAY_MS));
   }
 
-  // Multi-factor wallet scoring (0-100)
+  // Multi-factor wallet scoring (0-100) with cold-start blending
   function computeWalletScore(wallet: {
     gem_count: number;
     avg_pump: number;
@@ -798,23 +799,47 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     unique_tokens: number;
     first_seen: number;
     last_seen: number;
-  }): number {
-    // 1. Gem count (30 points max) - need 100+ gems for max, 50=20, 20=13, 10=8
+  }, copyStats?: WalletCopyTradeStats, medianPump?: number): number {
+    // Legacy formula: gems(30) + avg_pump(30) + hold_rate(20) + recency(20) = 100
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
-
-    // 2. Average pump multiple (30 points max) - need 50x+ for max
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
-
-    // 3. Hold rate (20 points max)
     const holdRate = wallet.gem_count > 0 ? wallet.holding_count / wallet.gem_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
-
-    // 4. Recency (20 points max) - decays over 90 days
     const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
-    const recencyScore = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 90)));
+    const recencyScoreLegacy = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 90)));
+    const legacyScore = Math.min(100, gemCountScore + avgPumpScore + holdRateScore + recencyScoreLegacy);
 
-    const total = gemCountScore + avgPumpScore + holdRateScore + recencyScore;
-    return Math.min(100, total);
+    const totalTrades = copyStats?.totalTrades ?? 0;
+
+    // Cold start (<5 trades or no copyStats): use legacy formula
+    if (totalTrades < 5) return legacyScore;
+
+    // New formula: gems(25) + median_pump(15) + win_rate(25) + profit_factor(10) + recency(25) = 100
+    const newGemScore = Math.min(25, Math.round(25 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
+    const mp = medianPump ?? wallet.avg_pump;
+    const medianPumpScore = Math.min(15, Math.round(15 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
+    const cs = copyStats as WalletCopyTradeStats;
+    const winRate = cs.wins / cs.totalTrades;
+    const winRateScore = Math.round(25 * winRate);
+    const pf = cs.grossProfit / Math.max(cs.grossLoss, 1);
+    const profitFactorScore = Math.min(10, Math.round(10 * Math.min(pf, 3) / 3));
+    const recencyScoreNew = Math.max(0, Math.round(25 * Math.max(0, 1 - daysSinceLastSeen / 90)));
+    const newScore = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + recencyScoreNew);
+
+    // Transition (5-15 trades): blend 50% old + 50% new
+    let score: number;
+    if (totalTrades < 15) {
+      score = Math.round(0.5 * legacyScore + 0.5 * newScore);
+    } else {
+      score = newScore;
+    }
+
+    // Hard floor: <30% win rate after 5+ trades -> cap at 50
+    if (winRate < 0.30) {
+      score = Math.min(score, 50);
+    }
+
+    return score;
   }
 
   // Recalculate insider wallets from gem_hits
@@ -857,12 +882,40 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       unique_tokens: number;
     }>;
 
+    // Pre-compute median pump multiples for all wallets
+    const allPumps = db.prepare(`
+      SELECT wallet_address, chain, pump_multiple
+      FROM insider_gem_hits
+      WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
+            AND (sell_date - buy_date) < ?)
+      ORDER BY wallet_address, chain, pump_multiple ASC
+    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS) as Array<{
+      wallet_address: string; chain: string; pump_multiple: number;
+    }>;
+
+    const medianPumpMap = new Map<string, number>();
+    const pumpsByWallet = new Map<string, number[]>();
+    for (const row of allPumps) {
+      const key = `${row.wallet_address}_${row.chain}`;
+      const arr = pumpsByWallet.get(key) || [];
+      arr.push(row.pump_multiple);
+      pumpsByWallet.set(key, arr);
+    }
+    for (const [key, pumps] of pumpsByWallet) {
+      const mid = Math.floor(pumps.length / 2);
+      medianPumpMap.set(key, pumps.length % 2 === 0 ? (pumps[mid - 1] + pumps[mid]) / 2 : pumps[mid]);
+    }
+
+    const copyStatsMap = getAllWalletCopyTradeStats();
     const scores: number[] = [];
     let qualifiedCount = 0;
 
     for (const group of walletGroups) {
       const gems = group.token_symbols.split(",").filter(Boolean);
-      const score = computeWalletScore(group);
+      const copyStats = copyStatsMap.get(group.wallet_address);
+      const mpKey = `${group.wallet_address}_${group.chain}`;
+      const medianPump = medianPumpMap.get(mpKey);
+      const score = computeWalletScore(group, copyStats && copyStats.totalTrades > 0 ? copyStats : undefined, medianPump);
       scores.push(score);
 
       if (score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
