@@ -58,7 +58,7 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 - Monitors all open insider copy trade positions
 - Auto-sells on rug detection
 - Tracks rugged tokens in DB to skip future buys
-- Rug count and USD lost shown in P&L Status view
+- Rug count and USD lost shown in Status view
 
 ### Hyperliquid Quant Trading
 
