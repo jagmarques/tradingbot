@@ -822,6 +822,11 @@ async function handleStatus(ctx: Context): Promise<void> {
     const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
     lines.push(`Poly Copy: ${polyStats.openPositions} | ${$(copyInvested)}${copyPnlStr}`);
 
+    // Crypto copy (realized only from DB)
+    if (breakdown.cryptoCopy !== 0) {
+      lines.push(`Crypto Copy: ${pnl(breakdown.cryptoCopy)}`);
+    }
+
     // Insider copy trades
     try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
     const openCopyTrades = getOpenCopyTrades();
@@ -834,11 +839,10 @@ async function handleStatus(ctx: Context): Promise<void> {
     if (closedCopyTrades.length > 0) insiderLine += ` / ${pnl(realizedPnl)}r`;
     lines.push(insiderLine);
 
-    // Rug stats
+    // Rug stats (always shown for consistency)
     const rugStats = getRugStats();
-    if (rugStats.count > 0) {
-      lines.push(`Rugs: ${rugStats.count} | -${$(rugStats.lostUsd)}`);
-    }
+    const rugPnl = -rugStats.lostUsd;
+    lines.push(`Rugs: ${rugStats.count} | -${$(rugStats.lostUsd)}`);
 
     // Quant trading
     const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
@@ -869,9 +873,16 @@ async function handleStatus(ctx: Context): Promise<void> {
       lines.push(`Quant: ${quantPositions.length} | ${$(quantInvested)}${quantPnlStr}${quantKillStr}`);
     }
 
-    const totalUnrealized = aiBetUnrealized + copyUnrealized + unrealizedPnl + quantUnrealized;
-    const totalPnl = breakdown.total + totalUnrealized;
-    message += `PnL: ${pnl(totalPnl)} (${pnl(breakdown.total)}r)\n\n`;
+    // Header total = sum of exactly the same values shown on each strategy line
+    const insiderPnl = unrealizedPnl + realizedPnl;
+    const headerTotal =
+      aiBetUnrealized +
+      copyUnrealized +
+      breakdown.cryptoCopy +
+      insiderPnl +
+      rugPnl +
+      quantUnrealized;
+    message += `PnL: ${pnl(headerTotal)} (${pnl(breakdown.total)}r)\n\n`;
     message += lines.join("\n");
 
     if (status.pauseReason) {
