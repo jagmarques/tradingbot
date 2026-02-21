@@ -1305,7 +1305,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
         return;
       }
 
-      walletStats.sort((a, b) => b.avgGainPct - a.avgGainPct);
+      walletStats.sort((a, b) => b.score - a.score);
 
       const lines = walletStats.map((w) => {
         const addrShort = `0x${w.address.slice(2, 4)}..${w.address.slice(-4)}`;
