@@ -84,10 +84,22 @@ async function watchInsiderWallets(): Promise<void> {
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
 
-      // Recent incoming transfers
+      // LP/wrapper token symbols to skip (not real tradeable tokens)
+      const LP_TOKEN_SYMBOLS = new Set([
+        "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
+        "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
+        "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
+        "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
+      ]);
+
+      // Recent incoming transfers (skip LP tokens and wrappers)
       const recentIncoming = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
-        return ts > lastSeenTs && tx.to.toLowerCase() === wallet.address.toLowerCase();
+        if (ts <= lastSeenTs) return false;
+        if (tx.to.toLowerCase() !== wallet.address.toLowerCase()) return false;
+        if (LP_TOKEN_SYMBOLS.has(tx.tokenSymbol)) return false;
+        if (tx.tokenSymbol.includes("-LP") || tx.tokenSymbol.startsWith("UNI-")) return false;
+        return true;
       });
 
       // Detect sells
