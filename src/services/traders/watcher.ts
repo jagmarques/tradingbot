@@ -268,16 +268,6 @@ export async function processInsiderBuy(tokenInfo: {
       exitDetail: null,
     });
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
-    notifyCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      chain: tokenInfo.chain,
-      side: "buy",
-      priceUsd: 0,
-      liquidityOk: false,
-      liquidityUsd: 0,
-      skipReason: "no price",
-    }).catch(err => console.error("[CopyTrade] Notification error:", err));
     return;
   }
 
@@ -308,16 +298,6 @@ export async function processInsiderBuy(tokenInfo: {
       exitDetail: null,
     });
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
-    notifyCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      chain: tokenInfo.chain,
-      side: "buy",
-      priceUsd,
-      liquidityOk: false,
-      liquidityUsd,
-      skipReason: "GoPlus kill-switch",
-    }).catch(err => console.error("[CopyTrade] Notification error:", err));
     return;
   }
 
@@ -346,16 +326,18 @@ export async function processInsiderBuy(tokenInfo: {
     exitDetail: null,
   });
   console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
-  notifyCopyTrade({
-    walletAddress: tokenInfo.walletAddress,
-    tokenSymbol: symbol,
-    chain: tokenInfo.chain,
-    side: "buy",
-    priceUsd,
-    liquidityOk,
-    liquidityUsd,
-    skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
-  }).catch(err => console.error("[CopyTrade] Notification error:", err));
+  if (liquidityOk) {
+    notifyCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      chain: tokenInfo.chain,
+      side: "buy",
+      priceUsd,
+      liquidityOk,
+      liquidityUsd,
+      skipReason: null,
+    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+  }
 }
 
 let watcherRunning = false;
