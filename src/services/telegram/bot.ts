@@ -53,7 +53,7 @@ function isAuthorized(ctx: Context): boolean {
 
 const MAIN_MENU_BUTTONS = [
   [
-    { text: "📈 P&L Status", callback_data: "pnl" },
+    { text: "📊 Status", callback_data: "pnl" },
     { text: "💰 Balance", callback_data: "balance" },
   ],
   [
@@ -824,7 +824,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const modeTag = status.isPaperMode ? "Paper" : "Live";
     const killTag = status.killSwitchActive ? " | Kill" : "";
 
-    let message = `<b>P&L Status</b> | ${modeTag}${killTag} | ${periodLabels[period]}\n`;
+    let message = `<b>Status</b> | ${modeTag}${killTag} | ${periodLabels[period]}\n`;
 
     // Period tab buttons
     const tabButtons = [[

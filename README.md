@@ -44,7 +44,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Trailing stop: +25%/-10%, +50%/0%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - GoPlus security checks, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
 
-**Consistency scoring (MIN_WALLET_SCORE = 80):**
+**Consistency scoring (MIN_WALLET_SCORE = 75):**
 - Wilson Score lower bound for effective win rate (smooth cold-start penalization)
 - Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
 - Expectancy floor: negative expectancy after 10+ trades = rejected
@@ -87,7 +87,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 | `/ai <question>` | Query DeepSeek |
 | `/timezone` | Set display timezone |
 
-**Menu buttons:** P&L Status, Balance, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
+**Menu buttons:** Status, Balance, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
 
 - **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
 - **Bettors** - Tracked Polymarket bettors by ROI
