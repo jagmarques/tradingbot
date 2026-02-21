@@ -3,6 +3,7 @@ import { runInsiderScan } from "./scanner.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import { startInsiderWatcher, stopInsiderWatcher } from "./watcher.js";
 import { startRugMonitor, stopRugMonitor } from "./rug-monitor.js";
+import { startInsiderWebSocket, stopInsiderWebSocket } from "./insider-ws.js";
 
 let running = false;
 
@@ -62,6 +63,9 @@ export function startInsiderScanner(): void {
   startInsiderWatcher();
 
   setTimeout(() => startRugMonitor(), 5000);
+
+  // Real-time insider buy/sell detection via Alchemy WebSocket
+  setTimeout(() => startInsiderWebSocket(), 8000);
 }
 
 export function stopInsiderScanner(): void {
@@ -69,6 +73,7 @@ export function stopInsiderScanner(): void {
   running = false;
   stopInsiderWatcher();
   stopRugMonitor();
+  stopInsiderWebSocket();
   console.log("[InsiderScanner] Stopped");
 }
 

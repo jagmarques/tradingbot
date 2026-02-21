@@ -18,6 +18,11 @@
   "keywords": [],
   "license": "MIT",
   "private": true,
+  "overrides": {
+    "minimatch": "^10.2.2",
+    "axios": "^1.8.2",
+    "qs": "^6.14.2"
+  },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "@types/node": "^25.0.10",
