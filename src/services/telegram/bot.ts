@@ -1795,8 +1795,8 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const { clearCryptoCopyMemory } = await import("../copy/executor.js");
     clearCryptoCopyMemory();
 
-    // 4. Insider copy trades - keep closed (scoring history), delete open only
-    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades WHERE status = 'open'").run();
+    // 4. Insider copy trades - delete all (scoring rebuilds from new trades)
+    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades").run();
 
     // 5. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
