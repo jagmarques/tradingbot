@@ -876,6 +876,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       }
     }
 
+    message += "\n\n-------------------";
+
     // Positions section (open positions) - shown for all periods
     const unrealizedLines: string[] = [];
 
@@ -954,7 +956,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const rugStats = getRugStats();
     unrealizedLines.push(`Rugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`);
 
-    message += `\n\n<b>Positions</b>\n${unrealizedLines.join("\n")}`;
+    message += `\n\n<b>Open Positions</b>\n${unrealizedLines.join("\n")}`;
 
     if (status.pauseReason) {
       message += `\n\n${status.pauseReason}`;
