@@ -834,54 +834,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       { text: period === "all" ? "* All" : "All", callback_data: "pnl_all" },
     ]];
 
-    if (period === "today") {
-      // Real-time today data
-      const breakdown = getDailyPnlBreakdown();
-      const pnlPct = getDailyPnlPercentage();
-      const trades = getTodayTrades();
-
-      const wins = trades.filter((t) => t.pnl > 0).length;
-      const losses = trades.filter((t) => t.pnl < 0).length;
-      message += `Total: ${pnl(breakdown.total)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%) | ${wins}W ${losses}L\n`;
-
-      message += formatBreakdown(
-        breakdown.cryptoCopy,
-        breakdown.polyCopy,
-        breakdown.aiBetting,
-        breakdown.quantPnl,
-        breakdown.insiderCopyPnl,
-        breakdown.rugLosses,
-      );
-    } else {
-      // Historical data from snapshots
-      const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
-      const data = getPnlForPeriod(days);
-
-      message += `Total: ${pnl(data.totalPnl)}\n`;
-
-      message += formatBreakdown(
-        data.cryptoCopyPnl,
-        data.polyCopyPnl,
-        data.aiBettingPnl,
-        data.quantPnl,
-        data.insiderCopyPnl,
-        data.rugPnl,
-      );
-
-      // Chart
-      const history = getDailyPnlHistory(days);
-      if (history.length > 1) {
-        message += `\n<b>Cumulative P&L</b>\n`;
-        message += generatePnlChart(history);
-      }
-    }
-
-    message += "\n\n-------------------";
-
-    // Positions section (open positions) - shown for all periods
-    const unrealizedLines: string[] = [];
-
-    // AI bets
+    // Compute unrealized P&L first (needed for total)
     const openBets = loadOpenPositions();
     let aiBetUnrealized = 0;
     for (const bet of openBets) {
@@ -891,13 +844,7 @@ async function handlePnl(ctx: Context): Promise<void> {
         aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
       }
     }
-    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
-    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
-    const schedulerStatus = getAIBettingStatus();
-    const logOnly = schedulerStatus.logOnly ? " Log" : "";
-    unrealizedLines.push(`AI Bets: ${openBets.length} | ${$fmt(aiInvested)}${aiPnlStr}${logOnly}`);
 
-    // Poly copy
     let copyPositions: Awaited<ReturnType<typeof getOpenPositionsWithValues>> = [];
     try {
       copyPositions = await getOpenPositionsWithValues();
@@ -908,25 +855,13 @@ async function handlePnl(ctx: Context): Promise<void> {
         copyUnrealized += (pos.currentValue ?? 0) - pos.size;
       }
     }
-    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    unrealizedLines.push(`Poly Copy: ${copyPositions.length} | ${$fmt(copyInvested)}${copyPnlStr}`);
 
-    // Insider copy
     try {
       await refreshCopyTradePrices();
     } catch { /* DexScreener failure non-fatal */ }
     const openInsider = getOpenCopyTrades();
-    const closedInsider = getClosedCopyTrades();
-    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
     const insiderUnrealized = openInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-    const insiderRealized = closedInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-    let insiderLine = `Insider: ${openInsider.length} | ${$fmt(insiderInvested)}`;
-    if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
-    if (closedInsider.length > 0) insiderLine += ` / ${pnl(insiderRealized)}r`;
-    unrealizedLines.push(insiderLine);
 
-    // Quant
     const env = loadEnv();
     const quantPositions = getOpenQuantPositions();
     let quantUnrealized = 0;
@@ -947,16 +882,83 @@ async function handlePnl(ctx: Context): Promise<void> {
         }
       } catch { /* prices unavailable */ }
     }
+
+    const totalUnrealized = aiBetUnrealized + copyUnrealized + insiderUnrealized + quantUnrealized;
+
+    // Total (realized + unrealized)
+    if (period === "today") {
+      const breakdown = getDailyPnlBreakdown();
+      const trades = getTodayTrades();
+      const wins = trades.filter((t) => t.pnl > 0).length;
+      const losses = trades.filter((t) => t.pnl < 0).length;
+      const total = breakdown.total + totalUnrealized;
+      message += `<b>Total: ${pnl(total)}</b> | ${wins}W ${losses}L`;
+
+      // Realized
+      message += `\n\n-------------------\n\n`;
+      message += `<b>Realized</b> ${pnl(breakdown.total)}\n`;
+      message += formatBreakdown(
+        breakdown.cryptoCopy,
+        breakdown.polyCopy,
+        breakdown.aiBetting,
+        breakdown.quantPnl,
+        breakdown.insiderCopyPnl,
+        breakdown.rugLosses,
+      );
+      const rugStats = getRugStats();
+      message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
+    } else {
+      const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
+      const data = getPnlForPeriod(days);
+      const total = data.totalPnl + totalUnrealized;
+      message += `<b>Total: ${pnl(total)}</b>`;
+
+      // Realized
+      message += `\n\n-------------------\n\n`;
+      message += `<b>Realized</b> ${pnl(data.totalPnl)}\n`;
+      message += formatBreakdown(
+        data.cryptoCopyPnl,
+        data.polyCopyPnl,
+        data.aiBettingPnl,
+        data.quantPnl,
+        data.insiderCopyPnl,
+        data.rugPnl,
+      );
+      const rugStats = getRugStats();
+      message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
+
+      const history = getDailyPnlHistory(days);
+      if (history.length > 1) {
+        message += `\n<b>Cumulative P&L</b>\n`;
+        message += generatePnlChart(history);
+      }
+    }
+
+    // Unrealized (open positions)
+    message += `\n\n-------------------\n\n`;
+    const unrealizedLines: string[] = [];
+
+    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
+    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
+    const schedulerStatus = getAIBettingStatus();
+    const logOnly = schedulerStatus.logOnly ? " Log" : "";
+    unrealizedLines.push(`AI Bets: ${openBets.length} | ${$fmt(aiInvested)}${aiPnlStr}${logOnly}`);
+
+    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
+    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
+    unrealizedLines.push(`Poly Copy: ${copyPositions.length} | ${$fmt(copyInvested)}${copyPnlStr}`);
+
+    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
+    let insiderLine = `Insider: ${openInsider.length} | ${$fmt(insiderInvested)}`;
+    if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
+    unrealizedLines.push(insiderLine);
+
     const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
     const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
     const quantKillStr = isQuantKilled() ? " HALTED" : "";
     unrealizedLines.push(`Quant: ${quantPositions.length} | ${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
 
-    // Rugs (always shown)
-    const rugStats = getRugStats();
-    unrealizedLines.push(`Rugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`);
-
-    message += `\n\n<b>Open Positions</b>\n${unrealizedLines.join("\n")}`;
+    message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
 
     if (status.pauseReason) {
       message += `\n\n${status.pauseReason}`;
