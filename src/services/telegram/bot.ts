@@ -895,7 +895,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `<b>Total: ${pnl(total)}</b> | ${wins}W ${losses}L`;
 
       // Realized
-      message += `\n\n-------------------\n\n`;
+      message += `\n-------------------\n`;
       message += `<b>Realized</b> ${pnl(breakdown.total)}\n`;
       message += formatBreakdown(
         breakdown.cryptoCopy,
@@ -914,7 +914,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `<b>Total: ${pnl(total)}</b>`;
 
       // Realized
-      message += `\n\n-------------------\n\n`;
+      message += `\n-------------------\n`;
       message += `<b>Realized</b> ${pnl(data.totalPnl)}\n`;
       message += formatBreakdown(
         data.cryptoCopyPnl,
@@ -935,7 +935,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     }
 
     // Unrealized (open positions)
-    message += `\n\n-------------------\n\n`;
+    message += `\n-------------------\n`;
     const unrealizedLines: string[] = [];
 
     const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
