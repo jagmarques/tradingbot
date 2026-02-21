@@ -7,11 +7,7 @@ import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import type { Chain } from "./types.js";
-
-function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
-  if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
-  return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
-}
+import { estimatePriceImpactPct } from "./watcher.js";
 
 // Price failure tracking (shared across copy trades and gem buys)
 const MAX_PRICE_FAILURES = 3;

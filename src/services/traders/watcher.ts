@@ -14,7 +14,7 @@ const pausedWallets = new Map<string, number>();
  * For AMM-style DEXes, impact ~= amountUsd / (2 * liquidityUsd) * 100
  * Returns percentage points to add to fee estimate.
  */
-function estimatePriceImpact(amountUsd: number, liquidityUsd: number): number {
+export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
   if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
   // Simplified AMM constant-product impact: amount / (2 * liquidity) * 100
   // Capped at 50% to avoid absurd values
@@ -104,7 +104,7 @@ export async function processInsiderSell(
     }
 
     // Add price impact estimate
-    const priceImpactPct = estimatePriceImpact(trade.amountUsd, effectiveLiquidity);
+    const priceImpactPct = estimatePriceImpactPct(trade.amountUsd, effectiveLiquidity);
     feePct += priceImpactPct;
 
     const pnlPct = rawPnlPct - feePct;

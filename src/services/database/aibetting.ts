@@ -173,6 +173,17 @@ export function loadClosedPositions(limit: number = 10): AIBettingPosition[] {
   }));
 }
 
+// Get total realized P&L from all closed positions
+export function getClosedPositionsTotalPnl(): number {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(pnl), 0) as total_pnl
+    FROM aibetting_positions
+    WHERE status = 'closed' AND pnl IS NOT NULL
+  `).get() as { total_pnl: number };
+  return row.total_pnl;
+}
+
 // Get betting performance stats (for AI learning context)
 export function getBettingStats(): {
   totalBets: number;

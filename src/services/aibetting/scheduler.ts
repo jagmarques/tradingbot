@@ -14,7 +14,7 @@ import {
   getTotalExposure,
   clearClosedPositions,
 } from "./executor.js";
-import { logCalibrationEntry } from "../database/aibetting.js";
+import { logCalibrationEntry, getClosedPositionsTotalPnl } from "../database/aibetting.js";
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { isPaperMode } from "../../config/env.js";
 import { updateCalibrationScores } from "../database/calibration.js";
@@ -478,8 +478,9 @@ export function startAIBetting(cfg: AIBettingConfig): void {
   // Restore paper balance from open positions on startup
   if (isPaperMode()) {
     const lockedCapital = getOpenPositions().reduce((sum, p) => sum + p.size, 0);
-    aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE - lockedCapital;
-    console.log(`[AIBetting] Paper balance: $${aiBettingVirtualBalance.toFixed(2)} (${lockedCapital > 0 ? `$${lockedCapital.toFixed(2)} locked` : "no open positions"})`);
+    const realizedPnl = getClosedPositionsTotalPnl();
+    aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE + realizedPnl - lockedCapital;
+    console.log(`[AIBetting] Paper balance: $${aiBettingVirtualBalance.toFixed(2)} (realized P&L: $${realizedPnl.toFixed(2)}, locked: $${lockedCapital.toFixed(2)})`);
   }
 
   console.log("[AIBetting] Started");
