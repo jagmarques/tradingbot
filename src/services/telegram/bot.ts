@@ -952,7 +952,7 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     // Rugs (always shown)
     const rugStats = getRugStats();
-    unrealizedLines.push(`Rugs: ${rugStats.count} | -${$fmt(rugStats.lostUsd)}`);
+    unrealizedLines.push(`Rugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`);
 
     message += `\n\n<b>Positions</b>\n${unrealizedLines.join("\n")}`;
 
@@ -988,7 +988,7 @@ function formatBreakdown(
     { name: "Rugs", value: rugPnl },
   ];
 
-  const rows = sources.map(s => `${s.name}: ${pnl(s.value)}`);
+  const rows = sources.map(s => `${s.name}: ${s.name === "Rugs" && s.value === 0 ? "$0.00" : pnl(s.value)}`);
   return rows.join("\n");
 }
 
