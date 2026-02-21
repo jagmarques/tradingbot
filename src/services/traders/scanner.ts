@@ -57,11 +57,11 @@ export function buildExplorerUrl(chain: EvmChain, params: string): string {
 // Zero address
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-// GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented)
+// GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented), 15s spacing
 let geckoQueue: Promise<void> = Promise.resolve();
 
 async function geckoRateLimitedFetch(url: string): Promise<Response> {
-  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 10_000)));
+  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 15_000)));
   geckoQueue = myTurn;
   await myTurn;
   const response = await fetchWithTimeout(url);
