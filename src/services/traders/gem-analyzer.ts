@@ -666,35 +666,39 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
 
-    // Auto-close at +500%
-    if (trade.pnlPct >= 500) {
-      console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% (target reached)`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "target_500", trade.currentPriceUsd, trade.pnlPct);
-      if (closed) {
-        notifyCopyTrade({
-          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-          skipReason: "target +500%", pnlPct: trade.pnlPct,
-        }).catch(() => {});
-      }
-      continue;
-    }
-
     // Trailing stop ladder based on peak profit (aggressive for micro-caps)
-    let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -80% floor
-    if (peak >= 200) {
+    let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
+    if (peak >= 500) {
+      stopLevel = peak - 100; // dynamic trailing: 100pt gap above +500%
+    } else if (peak >= 200) {
       stopLevel = 100; // lock in +100% if we hit +200%
     } else if (peak >= 100) {
       stopLevel = 50; // lock in +50% if we hit +100%
     } else if (peak >= 50) {
       stopLevel = 0; // breakeven if we hit +50%
+    } else if (peak >= 25) {
+      stopLevel = -10; // limit loss to -10% if we hit +25%
     }
 
     if (trade.pnlPct <= stopLevel) {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
       const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
+      let exitDetail = "";
+      if (peak >= 500) {
+        exitDetail = `dynamic_peak_${peak.toFixed(0)}_stop_${stopLevel.toFixed(0)}`;
+      } else if (peak >= 200) {
+        exitDetail = "peak_200_stop_100";
+      } else if (peak >= 100) {
+        exitDetail = "peak_100_stop_50";
+      } else if (peak >= 50) {
+        exitDetail = "peak_50_stop_0";
+      } else if (peak >= 25) {
+        exitDetail = "peak_25_stop_-10";
+      } else {
+        exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
+      }
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, trade.pnlPct);
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, trade.pnlPct, exitDetail);
       if (closed) {
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,

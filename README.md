@@ -40,17 +40,15 @@ Copies EVM token buys from high-scoring insider wallets.
 - Polling fallback every 10 min when WebSocket active, 2.5 min standalone
 - Auto-sells when the insider sells
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
-- Trailing stop-loss ladder, +500% target, -80% floor
-- GoPlus security checks (honeypot, high tax, scam detection)
-- $200 max exposure, $10 per position, 15% rug exit fee
+- Trailing stop: +25%/-10%, +50%/0%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
+- GoPlus security checks, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
 
 **Consistency scoring (MIN_WALLET_SCORE = 80):**
-- Cold start (<5 copy trades): legacy formula (gems + avg pump + hold rate + recency)
-- Transition (5-15 trades): 50% legacy + 50% new formula
-- Full new formula (15+ trades): gems(25) + median pump(15) + win rate(25) + profit factor(10) + recency(25)
-- Hard floor: <30% win rate after 5+ trades = score capped at 50 (rejected)
-- Circuit breaker: 3+ consecutive losing copy trades pauses wallet for 24h
-- Full copy trade history preserved (no 7-day cleanup)
+- Wilson Score lower bound for effective win rate (smooth cold-start penalization)
+- Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
+- Expectancy floor: negative expectancy after 10+ trades = rejected
+- Exponential recency decay (14-day half-life), score-based sizing ($8-$15)
+- Circuit breaker: 3 consecutive losses = 24h pause
 
 ### Rug Monitor
 

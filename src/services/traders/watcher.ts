@@ -1,5 +1,5 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
@@ -117,13 +117,16 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
+  // Score-based position sizing
+  const positionAmount = getPositionSize(tokenInfo.walletScore);
+
   // Check exposure budget before opening new positions (accumulation still allowed)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!existingTokenTrade) {
     const openTrades = getOpenCopyTrades();
     const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-    if (currentExposure + COPY_TRADE_CONFIG.AMOUNT_USD > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
-      console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} >= $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
+    if (currentExposure + positionAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
+      console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - exposure $${currentExposure.toFixed(0)} + $${positionAmount} >= $${COPY_TRADE_CONFIG.MAX_EXPOSURE_USD} limit`);
       return;
     }
   }
@@ -169,6 +172,8 @@ export async function processInsiderBuy(tokenInfo: {
         exitReason: null,
         insiderCount: 0,
         peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
       });
       return;
     }
@@ -204,6 +209,8 @@ export async function processInsiderBuy(tokenInfo: {
       exitReason: null,
       insiderCount: 0,
       peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
     });
     return;
   }
@@ -218,7 +225,7 @@ export async function processInsiderBuy(tokenInfo: {
       side: "buy",
       buyPriceUsd: 0,
       currentPriceUsd: 0,
-      amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+      amountUsd: positionAmount,
       pnlPct: 0,
       status: "skipped",
       liquidityOk: false,
@@ -229,6 +236,8 @@ export async function processInsiderBuy(tokenInfo: {
       exitReason: null,
       insiderCount: 1,
       peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
     });
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
     notifyCopyTrade({
@@ -256,7 +265,7 @@ export async function processInsiderBuy(tokenInfo: {
       side: "buy",
       buyPriceUsd: priceUsd,
       currentPriceUsd: priceUsd,
-      amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+      amountUsd: positionAmount,
       pnlPct: 0,
       status: "skipped",
       liquidityOk: true,
@@ -267,6 +276,8 @@ export async function processInsiderBuy(tokenInfo: {
       exitReason: null,
       insiderCount: 1,
       peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
     });
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
     notifyCopyTrade({
@@ -292,7 +303,7 @@ export async function processInsiderBuy(tokenInfo: {
     side: "buy",
     buyPriceUsd: priceUsd,
     currentPriceUsd: priceUsd,
-    amountUsd: COPY_TRADE_CONFIG.AMOUNT_USD,
+    amountUsd: positionAmount,
     pnlPct: 0,
     status: liquidityOk ? "open" : "skipped",
     liquidityOk,
@@ -303,6 +314,8 @@ export async function processInsiderBuy(tokenInfo: {
     exitReason: null,
     insiderCount: 1,
     peakPnlPct: 0,
+    walletScoreAtBuy: tokenInfo.walletScore,
+    exitDetail: null,
   });
   console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
   notifyCopyTrade({

@@ -52,7 +52,7 @@ export function startInsiderScanner(): void {
     );
   }, 10000);
 
-  // Price refresh + trailing stops every 2 min
+  // Price refresh + trailing stops every 1 min
   setTimeout(() => {
     console.log(`[PriceRefresh] Started (every ${COPY_TRADE_CONFIG.PRICE_REFRESH_INTERVAL_MS / 60000} min)`);
     priceRefreshLoop().catch((err) =>

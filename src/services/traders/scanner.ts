@@ -791,7 +791,14 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     await new Promise((r) => setTimeout(r, INSIDER_CONFIG.INTER_CHAIN_DELAY_MS));
   }
 
-  // Multi-factor wallet scoring (0-100) with cold-start blending
+  // Wilson Score lower bound: conservative estimate of true win rate given limited samples
+  function wilsonLowerBound(wins: number, n: number, z = 1.96): number {
+    if (n === 0) return 0;
+    const p = wins / n;
+    return (p + z * z / (2 * n) - z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / (1 + z * z / n);
+  }
+
+  // Multi-factor wallet scoring (0-100)
   function computeWalletScore(wallet: {
     gem_count: number;
     avg_pump: number;
@@ -811,31 +818,38 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
 
     const totalTrades = copyStats?.totalTrades ?? 0;
 
-    // Cold start (<5 trades or no copyStats): use legacy formula
-    if (totalTrades < 5) return legacyScore;
+    // No copy trade history: use legacy formula
+    if (totalTrades < 1) return legacyScore;
 
-    // New formula: gems(25) + median_pump(15) + win_rate(25) + profit_factor(10) + recency(25) = 100
-    const newGemScore = Math.min(25, Math.round(25 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
+    // New formula: gems(15) + median_pump(10) + win_rate(15) + profit_factor(20) + expectancy(20) + recency(20) = 100
+    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
     const mp = medianPump ?? wallet.avg_pump;
-    const medianPumpScore = Math.min(15, Math.round(15 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
+    const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
     const cs = copyStats as WalletCopyTradeStats;
     const winRate = cs.wins / cs.totalTrades;
-    const winRateScore = Math.round(25 * winRate);
+
+    // Wilson lower bound as effective win rate: naturally penalises low-sample wallets
+    const effectiveWR = wilsonLowerBound(cs.wins, cs.totalTrades);
+    const winRateScore = Math.round(15 * effectiveWR);
+
     const pf = cs.grossProfit / Math.max(cs.grossLoss, 1);
-    const profitFactorScore = Math.min(10, Math.round(10 * Math.min(pf, 3) / 3));
-    const recencyScoreNew = Math.max(0, Math.round(25 * Math.max(0, 1 - daysSinceLastSeen / 90)));
-    const newScore = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + recencyScoreNew);
+    const profitFactorScore = Math.min(20, Math.round(20 * Math.min(pf, 3) / 3));
 
-    // Transition (5-15 trades): blend 50% old + 50% new
-    let score: number;
-    if (totalTrades < 15) {
-      score = Math.round(0.5 * legacyScore + 0.5 * newScore);
-    } else {
-      score = newScore;
-    }
+    // Expectancy: (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct)
+    const losses = cs.totalTrades - cs.wins;
+    const avgWinPct = cs.wins > 0 ? cs.grossProfit / cs.wins : 0;
+    const avgLossPct = losses > 0 ? cs.grossLoss / losses : 0;
+    const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
+    const expectancyScore = Math.round(20 * Math.max(0, Math.min(rawExpectancy / 100, 1)));
 
-    // Hard floor: <30% win rate after 5+ trades -> cap at 50
-    if (winRate < 0.30) {
+    // Recency: exponential decay with 14-day half-life
+    const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 14));
+
+    let score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
+
+    // Expectancy floor: negative expectancy after 10+ trades caps score at 50
+    const rawExpectancyForFloor = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+    if (rawExpectancyForFloor <= 0 && cs.totalTrades >= 10) {
       score = Math.min(score, 50);
     }
 

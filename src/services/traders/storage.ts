@@ -153,6 +153,8 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_reason TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN pair_address TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN wallet_score_at_buy REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_detail TEXT DEFAULT NULL"); } catch { /* already exists */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_rug_counts (
@@ -719,6 +721,8 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     exitReason: (row.exit_reason as CopyTrade["exitReason"]) || null,
     insiderCount: (row.insider_count as number) || 1,
     peakPnlPct: (row.peak_pnl_pct as number) || 0,
+    walletScoreAtBuy: (row.wallet_score_at_buy as number) || 0,
+    exitDetail: (row.exit_detail as string) || null,
   };
 }
 
@@ -733,8 +737,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
       id, wallet_address, token_symbol, token_address, chain, side,
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
       liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
-      exit_reason, insider_count, peak_pnl_pct, pair_address
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exit_reason, insider_count, peak_pnl_pct, pair_address, wallet_score_at_buy
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -755,7 +759,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.exitReason ?? null,
     trade.insiderCount ?? 1,
     trade.peakPnlPct ?? 0,
-    trade.pairAddress ?? null
+    trade.pairAddress ?? null,
+    trade.walletScoreAtBuy ?? 0
   );
 }
 
@@ -808,13 +813,13 @@ export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddre
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
 }
 
-export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason, finalPriceUsd: number, pnlPct: number): boolean {
+export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason, finalPriceUsd: number, pnlPct: number, exitDetail?: string): boolean {
   const db = getDb();
   const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
 
   const result = db.prepare(
-    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, current_price_usd = ?, pnl_pct = ? WHERE id = ? AND status = 'open'"
-  ).run(Date.now(), exitReason, finalPriceUsd, pnlPct, id);
+    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ? WHERE id = ? AND status = 'open'"
+  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, id);
   return result.changes > 0;
 }
 
