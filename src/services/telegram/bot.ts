@@ -1793,8 +1793,8 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const { clearCryptoCopyMemory } = await import("../copy/executor.js");
     clearCryptoCopyMemory();
 
-    // 4. Insider copy trades - DB
-    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades").run();
+    // 4. Insider copy trades - keep closed (scoring history), delete open only
+    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades WHERE status = 'open'").run();
 
     // 5. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
@@ -1808,8 +1808,8 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 8. Arbitrage positions
     const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
 
-    // 9. Copy outcomes
-    const copyOutcomesResult = db.prepare("DELETE FROM copy_outcomes").run();
+    // 9. Copy outcomes - preserved for scoring history
+    const copyOutcomesResult = { changes: 0 };
 
     // 12. Calibration data
     const calPredResult = db.prepare("DELETE FROM calibration_predictions").run();
@@ -1930,12 +1930,12 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     clearAllCopiedPositions();
 
     db.prepare("DELETE FROM crypto_copy_positions").run();
-    db.prepare("DELETE FROM insider_copy_trades").run();
+    db.prepare("DELETE FROM insider_copy_trades WHERE status = 'open'").run();
     db.prepare("DELETE FROM trades").run();
     db.prepare("DELETE FROM positions").run();
     db.prepare("DELETE FROM daily_stats").run();
     db.prepare("DELETE FROM arbitrage_positions").run();
-    db.prepare("DELETE FROM copy_outcomes").run();
+    // copy_outcomes preserved for scoring history
     db.prepare("DELETE FROM calibration_predictions").run();
     db.prepare("DELETE FROM calibration_scores").run();
     db.prepare("DELETE FROM calibration_log").run();
