@@ -7,7 +7,7 @@ import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
 import { isPaperMode } from "../../config/env.js";
 import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
-import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL } from "../../config/constants.js";
+import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, POLYMARKET_TAKER_FEE_PCT } from "../../config/constants.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 
 // In-memory position storage
@@ -62,18 +62,25 @@ export async function enterPosition(
   let orderId: string;
 
   if (isPaperMode()) {
-    // Paper mode: use midpoint price, fall back to scanner price
+    // Paper mode: use public midpoint first (no auth), fall back to orderbook, then scanner price
     const midpoint = await fetchMidpointPrice(decision.tokenId);
-    if (midpoint) {
+    if (midpoint !== null) {
       price = midpoint;
+      console.log(`[Executor] PAPER: using midpoint price ${price.toFixed(3)}`);
     } else {
-      price = decision.side === "YES" ? decision.marketPrice : 1 - decision.marketPrice;
+      // Fallback to orderbook (may fail without auth credentials)
+      console.log(`[Executor] PAPER: midpoint unavailable, falling back to orderbook`);
+      const book = await getOrderbook(decision.tokenId);
+      if (book && book.asks.length > 0) {
+        price = parseFloat(book.asks[0][0]);
+      } else {
+        price = decision.side === "YES" ? decision.marketPrice : 1 - decision.marketPrice;
+        console.log(`[Executor] PAPER: orderbook also unavailable, using scanner price ${price.toFixed(3)}`);
+      }
     }
     orderId = `paper_${Date.now()}`;
     const shares = decision.recommendedSize / price;
-    console.log(
-      `[Executor] PAPER: ${decision.side} ${shares.toFixed(2)} shares @ ${price.toFixed(3)}`
-    );
+    console.log(`[Executor] PAPER: ${decision.side} ${shares.toFixed(2)} shares @ ${price.toFixed(3)}`);
   } else {
     // Live mode: get real orderbook price and place order
     const book = await getOrderbook(decision.tokenId);
@@ -160,12 +167,31 @@ export async function exitPosition(
   const shares = position.size / position.entryPrice;
   let pnl = shares * (currentPrice - position.entryPrice);
 
-  // Deduct estimated fees in paper mode (gas + slippage on entry and exit)
   if (isPaperMode()) {
-    const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.10 * 2; // ~$0.001 MATIC at $1.10 * 2 transactions
-    const slippageFeeUsd = position.size * ESTIMATED_SLIPPAGE_POLYMARKET * 2; // Entry + exit
-    pnl -= (gasFeeUsd + slippageFeeUsd);
-    console.log(`[Executor] PAPER: Exit @ ${currentPrice}, P&L: $${pnl.toFixed(2)} (after $${(gasFeeUsd + slippageFeeUsd).toFixed(4)} fees)`);
+    // Use public midpoint for exit first (no auth), fall back to orderbook bid
+    const midpoint = await fetchMidpointPrice(position.tokenId);
+    let exitPrice = currentPrice;
+    if (midpoint !== null) {
+      exitPrice = midpoint;
+    } else {
+      console.log(`[Executor] PAPER: exit midpoint unavailable, falling back to orderbook`);
+      const book = await getOrderbook(position.tokenId);
+      if (book && book.bids.length > 0) {
+        exitPrice = parseFloat(book.bids[0][0]);
+      }
+    }
+    pnl = shares * (exitPrice - position.entryPrice);
+
+    // Deduct CLOB taker fee (0.15% per side): entry on position.size, exit on shares * exitPrice
+    const entryFee = position.size * POLYMARKET_TAKER_FEE_PCT;
+    const exitFee = shares * exitPrice * POLYMARKET_TAKER_FEE_PCT;
+    const clobFee = entryFee + exitFee;
+    const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.10 * 2;
+    const slippageFeeUsd = position.size * ESTIMATED_SLIPPAGE_POLYMARKET * 2;
+    pnl -= (clobFee + gasFeeUsd + slippageFeeUsd);
+    // Update currentPrice to exitPrice for position record
+    currentPrice = exitPrice;
+    console.log(`[Executor] PAPER: Exit @ ${exitPrice.toFixed(3)}, P&L: $${pnl.toFixed(2)} (after $${(clobFee + gasFeeUsd + slippageFeeUsd).toFixed(4)} fees)`);
   } else {
     // Live trading - place sell order
     const book = await getOrderbook(position.tokenId);
@@ -230,9 +256,10 @@ export async function resolvePosition(
 
   // Deduct estimated fees in paper mode
   if (isPaperMode()) {
+    const clobFee = position.size * POLYMARKET_TAKER_FEE_PCT; // entry only (no exit order on resolution)
     const gasFeeUsd = ESTIMATED_GAS_FEE_MATIC * 1.10;
     const slippageFeeUsd = position.size * ESTIMATED_SLIPPAGE_POLYMARKET;
-    pnl -= (gasFeeUsd + slippageFeeUsd);
+    pnl -= (clobFee + gasFeeUsd + slippageFeeUsd);
   }
 
   const outcome = finalPrice > 0.5 ? "WON" : "LOST";

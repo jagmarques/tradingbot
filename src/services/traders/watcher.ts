@@ -9,6 +9,18 @@ import { notifyCopyTrade } from "../telegram/notifications.js";
 const lastSeenTxTimestamp = new Map<string, number>();
 const pausedWallets = new Map<string, number>();
 
+/**
+ * Estimate price impact as a percentage based on trade size vs pool liquidity.
+ * For AMM-style DEXes, impact ~= amountUsd / (2 * liquidityUsd) * 100
+ * Returns percentage points to add to fee estimate.
+ */
+function estimatePriceImpact(amountUsd: number, liquidityUsd: number): number {
+  if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
+  // Simplified AMM constant-product impact: amount / (2 * liquidity) * 100
+  // Capped at 50% to avoid absurd values
+  return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
+}
+
 // LP/wrapper token symbols to skip (not real tradeable tokens)
 export const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
@@ -61,11 +73,13 @@ export async function processInsiderSell(
   if (matchingTrades.length === 0) return;
 
   let priceUsd = matchingTrades[0].currentPriceUsd;
+  let freshLiquidityUsd = 0;
 
   // Fetch fresh price once for real-time exits (WebSocket path)
   if (fetchFreshPrice) {
     const pair = await dexScreenerFetch(chain, tokenAddress);
     const freshPrice = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    freshLiquidityUsd = pair?.liquidity?.usd ?? 0;
     if (freshPrice > 0) {
       priceUsd = freshPrice;
       for (const trade of matchingTrades) {
@@ -79,7 +93,21 @@ export async function processInsiderSell(
     const rawPnlPct = trade.buyPriceUsd > 0
       ? ((tradePriceUsd - trade.buyPriceUsd) / trade.buyPriceUsd) * 100
       : trade.pnlPct;
-    const pnlPct = rawPnlPct - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+
+    // Liquidity-aware fee: use rug fee when liquidity is very low
+    const effectiveLiquidity = (fetchFreshPrice && freshLiquidityUsd > 0) ? freshLiquidityUsd : trade.liquidityUsd;
+    let feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT; // default 3%
+    if (effectiveLiquidity > 0 && effectiveLiquidity < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+      // Scale fee between ESTIMATED_FEE_PCT and ESTIMATED_RUG_FEE_PCT based on liquidity
+      const t = Math.max(0, Math.min(1, effectiveLiquidity / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+      feePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+    }
+
+    // Add price impact estimate
+    const priceImpactPct = estimatePriceImpact(trade.amountUsd, effectiveLiquidity);
+    feePct += priceImpactPct;
+
+    const pnlPct = rawPnlPct - feePct;
 
     const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold", tradePriceUsd, pnlPct);
     if (!closed) continue; // already closed by another path

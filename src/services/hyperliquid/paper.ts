@@ -8,6 +8,7 @@ import {
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
+import { fetchFundingRate } from "./market-data.js";
 
 let virtualBalance: number = QUANT_DEFAULT_VIRTUAL_BALANCE;
 const paperPositions = new Map<string, QuantPosition>();
@@ -18,6 +19,12 @@ const positionContext = new Map<string, {
   aiReasoning?: string;
   indicatorsAtEntry?: string;
 }>();
+
+// Track last funding accrual per position
+const lastFundingAccrual = new Map<string, number>();
+
+// Track accumulated funding income per position (for inclusion in close P&L record)
+const accumulatedFunding = new Map<string, number>();
 
 export function initPaperEngine(startingBalance: number): void {
   virtualBalance = startingBalance;
@@ -59,6 +66,70 @@ async function fetchMidPrice(pair: string): Promise<number | null> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Quant Paper] Failed to fetch mid price for ${pair}: ${msg}`);
     return null;
+  }
+}
+
+/**
+ * Accrue funding rate income for open funding arb positions.
+ * Called periodically from position monitor. Funding on Hyperliquid settles every 1h.
+ * For paper trading, we accrue proportionally based on time elapsed since last accrual.
+ */
+export async function accrueFundingIncome(): Promise<void> {
+  const openPositions = getPaperPositions();
+  const fundingPositions = openPositions.filter(p => p.tradeType === "funding");
+
+  if (fundingPositions.length === 0) return;
+
+  const now = Date.now();
+  const FUNDING_PERIOD_MS = 1 * 60 * 60 * 1000; // 1 hour
+
+  for (const position of fundingPositions) {
+    const lastAccrual = lastFundingAccrual.get(position.id) ?? new Date(position.openedAt).getTime();
+    const elapsed = now - lastAccrual;
+
+    // Only accrue if at least 1 hour has passed (avoid micro-accruals)
+    if (elapsed < 60 * 60 * 1000) continue;
+
+    try {
+      const fundingInfo = await fetchFundingRate(position.pair);
+      if (!fundingInfo) continue;
+
+      // Funding payment per period = position.size * leverage * fundingRate
+      // Positive rate: shorts collect, longs pay. Negative rate: longs collect, shorts pay.
+      const rate = fundingInfo.currentRate;
+      let fundingPayment: number;
+
+      if (position.direction === "short") {
+        fundingPayment = rate * position.size * position.leverage; // positive rate = shorts collect
+      } else {
+        fundingPayment = -rate * position.size * position.leverage; // negative rate = longs collect
+      }
+
+      // Pro-rate based on elapsed time vs full 1h period
+      const periodFraction = elapsed / FUNDING_PERIOD_MS;
+      const accruedPayment = fundingPayment * periodFraction;
+
+      if (Math.abs(accruedPayment) < 0.001) {
+        lastFundingAccrual.set(position.id, now);
+        continue;
+      }
+
+      // Apply to virtual balance (funding income, not position P&L)
+      virtualBalance += accruedPayment;
+      lastFundingAccrual.set(position.id, now);
+
+      // Also accumulate per position for inclusion in close P&L record
+      const prev = accumulatedFunding.get(position.id) ?? 0;
+      accumulatedFunding.set(position.id, prev + accruedPayment);
+
+      const sign = accruedPayment >= 0 ? "+" : "";
+      console.log(
+        `[Quant Paper] Funding accrual: ${position.pair} ${position.direction} ${sign}$${accruedPayment.toFixed(4)} (rate ${(rate * 100).toFixed(4)}%, ${(periodFraction * 100).toFixed(0)}% of period)`
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Quant Paper] Funding accrual error for ${position.pair}: ${msg}`);
+    }
   }
 }
 
@@ -154,10 +225,12 @@ export async function paperClosePosition(
 
   // Tier 0 taker 0.045% on entry + exit
   const fees = position.size * 0.00045 * 2;
-  const pnl = rawPnl - fees;
+  // Include accumulated funding income in reported P&L (already applied to virtualBalance during accrual)
+  const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
+  const pnl = rawPnl - fees + fundingPnl;
 
-  // Return size + pnl to virtual balance
-  virtualBalance += position.size + pnl;
+  // Return size + trading pnl to virtual balance (funding already applied during accrual, not here)
+  virtualBalance += position.size + (rawPnl - fees);
 
   const now = new Date().toISOString();
   const closedPosition: QuantPosition = {
@@ -194,6 +267,8 @@ export async function paperClosePosition(
     tradeType: position.tradeType ?? "directional",
   });
   positionContext.delete(positionId);
+  lastFundingAccrual.delete(positionId);
+  accumulatedFunding.delete(positionId);
   void notifyQuantTradeExit({
     pair: position.pair,
     direction: position.direction,
@@ -207,15 +282,25 @@ export async function paperClosePosition(
 
   const pnlStr =
     pnl >= 0 ? `+$${pnl.toFixed(4)}` : `-$${Math.abs(pnl).toFixed(4)}`;
+  const fundingStr = fundingPnl !== 0
+    ? ` (incl funding ${fundingPnl >= 0 ? "+" : ""}$${fundingPnl.toFixed(4)})`
+    : "";
   console.log(
-    `[Quant Paper] CLOSE ${position.direction} ${position.pair} @ ${currentPrice} ${pnlStr} (${reason})`,
+    `[Quant Paper] CLOSE ${position.direction} ${position.pair} @ ${currentPrice} ${pnlStr}${fundingStr} (${reason})`,
   );
 
   return { success: true, pnl };
 }
 
+export function deductLiquidationPenalty(positionId: string, penaltyUsd: number): void {
+  virtualBalance -= penaltyUsd;
+  console.log(`[Quant Paper] Liquidation penalty for ${positionId}: -$${penaltyUsd.toFixed(4)}`);
+}
+
 export function clearPaperMemory(): void {
   paperPositions.clear();
   positionContext.clear();
+  lastFundingAccrual.clear();
+  accumulatedFunding.clear();
   virtualBalance = QUANT_DEFAULT_VIRTUAL_BALANCE;
 }

@@ -6,7 +6,6 @@ import type {
   AIBettingPosition,
 } from "./types.js";
 import { hoursUntil } from "../../utils/dates.js";
-import { isPaperMode } from "../../config/env.js";
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
@@ -204,9 +203,8 @@ export function evaluateBetOpportunity(
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
 
   const availableBankroll = bankroll - currentExposure;
-  const maxAllowedBet = isPaperMode()
-    ? config.maxBetSize
-    : Math.min(config.maxBetSize, config.maxTotalExposure - currentExposure);
+  const remainingExposure = Math.max(0, config.maxTotalExposure - currentExposure);
+  const maxAllowedBet = Math.min(config.maxBetSize, remainingExposure);
 
   const recommendedSize = calculateBetSize(
     aiProbability,
@@ -302,9 +300,7 @@ export function evaluateAllOpportunities(
   // Limit correlated bets (max 1 per event group, accounting for existing positions)
   const decorrelated = limitCorrelatedBets(approved, markets, currentPositions);
 
-  // Apply position limit after ranking (best edges first). Paper mode: no limit.
-  if (isPaperMode()) return decorrelated;
-
+  // Apply position limit after ranking (best edges first)
   const openPositionCount = currentPositions.filter(
     (p) => p.status === "open"
   ).length;

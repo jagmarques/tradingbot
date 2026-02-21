@@ -14,6 +14,7 @@ export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold ti
 // Realistic fee estimation for paper trading
 export const ESTIMATED_GAS_FEE_MATIC = 0.1; // ~$0.10 per Polygon tx (sourced from Polymarket docs 2026)
 export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005; // 0.5% slippage on Polymarket CLOB
+export const POLYMARKET_TAKER_FEE_PCT = 0.0015; // 0.15% per side (Polymarket CLOB taker fee)
 
 // EVM chain gas fees (in native token)
 export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
@@ -67,3 +68,7 @@ export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading period
+
+// Quant liquidation simulation
+export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
+export const QUANT_MAINTENANCE_MARGIN_PCT = 50; // Liquidation when loss reaches 50% of initial margin (size/leverage)

@@ -21,6 +21,9 @@ import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";
 
+const AI_BETTING_STARTING_BALANCE = 100; // $100 realistic paper bankroll
+let aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE;
+
 function detectSiblingMarkets(markets: PolymarketEvent[]): string[][] {
   const byEndDate = new Map<string, PolymarketEvent[]>();
 
@@ -312,8 +315,8 @@ OUTPUT JSON ONLY:
     let usdcBalance: number;
     if (isPaperMode()) {
       const currentExposure = getTotalExposure();
-      usdcBalance = 10000; // Unlimited paper bankroll
-      console.log(`[AIBetting] PAPER mode (exposure: $${currentExposure.toFixed(2)}, ${openPositions.length} positions)`);
+      usdcBalance = aiBettingVirtualBalance;
+      console.log(`[AIBetting] PAPER mode (balance: $${aiBettingVirtualBalance.toFixed(2)}, exposure: $${currentExposure.toFixed(2)}, ${openPositions.length} positions)`);
     } else {
       usdcBalance = parseFloat(await getUsdcBalanceFormatted());
       console.log(`[AIBetting] USDC balance: $${usdcBalance.toFixed(2)}`);
@@ -339,7 +342,7 @@ OUTPUT JSON ONLY:
         console.log(`[AIBetting] LOG-ONLY: ${decision.side} ${market?.title} $${decision.recommendedSize.toFixed(2)} (edge=${(Math.abs(decision.edge) * 100).toFixed(1)}%)`);
       }
     } else {
-      const maxNewBets = isPaperMode() ? decisions.length : config.maxPositions - openPositions.length;
+      const maxNewBets = config.maxPositions - openPositions.length;
       for (const decision of decisions.slice(0, maxNewBets)) {
         try {
           const market = markets.find((m) => m.conditionId === decision.marketId);
@@ -348,6 +351,9 @@ OUTPUT JSON ONLY:
           const position = await enterPosition(decision, market);
           if (position) {
             result.betsPlaced++;
+            if (isPaperMode()) {
+              aiBettingVirtualBalance -= position.size;
+            }
             console.log(`[AIBetting] BET: ${decision.side} ${market.title} @ $${decision.recommendedSize.toFixed(2)}`);
           }
         } catch (err) {
@@ -415,6 +421,9 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
       if (resolution.resolved && resolution.finalPrice !== null) {
         const { success, pnl } = await resolvePosition(position, resolution.finalPrice);
         if (success) {
+          if (isPaperMode()) {
+            aiBettingVirtualBalance += position.size + pnl;
+          }
           const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
           console.log(`[AIBetting] RESOLVED: ${position.marketTitle} ${pnlStr}`);
         }
@@ -430,6 +439,9 @@ async function checkExits(analyses: Map<string, AIAnalysis>): Promise<void> {
       if (shouldExit) {
         const { success, pnl } = await exitPosition(position, currentPrice, reason);
         if (success) {
+          if (isPaperMode()) {
+            aiBettingVirtualBalance += position.size + pnl;
+          }
           const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
           console.log(`[AIBetting] EXIT: ${position.marketTitle} ${pnlStr} (${reason})`);
         }
@@ -453,11 +465,22 @@ async function updateCalibrationScoresJob(): Promise<void> {
   }
 }
 
+export function getAIBettingVirtualBalance(): number {
+  return aiBettingVirtualBalance;
+}
+
 export function startAIBetting(cfg: AIBettingConfig): void {
   if (isRunning) return;
 
   config = cfg;
   isRunning = true;
+
+  // Restore paper balance from open positions on startup
+  if (isPaperMode()) {
+    const lockedCapital = getOpenPositions().reduce((sum, p) => sum + p.size, 0);
+    aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE - lockedCapital;
+    console.log(`[AIBetting] Paper balance: $${aiBettingVirtualBalance.toFixed(2)} (${lockedCapital > 0 ? `$${lockedCapital.toFixed(2)} locked` : "no open positions"})`);
+  }
 
   console.log("[AIBetting] Started");
   console.log(`[AIBetting] Max bet $${cfg.maxBetSize}, exposure $${cfg.maxTotalExposure}, edge ${(cfg.minEdge * 100).toFixed(0)}%`);

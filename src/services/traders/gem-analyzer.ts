@@ -8,6 +8,11 @@ import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1in
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import type { Chain } from "./types.js";
 
+function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
+  if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
+  return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
+}
+
 // Price failure tracking (shared across copy trades and gem buys)
 const MAX_PRICE_FAILURES = 3;
 let lastCopyTradeRefresh = 0;
@@ -697,13 +702,24 @@ export async function refreshCopyTradePrices(): Promise<void> {
       } else {
         exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
       }
+      // Adjust P&L for liquidity-based exit fee (replace flat 3% with dynamic estimate)
+      let adjustedPnlPct = trade.pnlPct;
+      if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+        const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+        const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+        const extraFee = dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT; // already deducted 3% in price refresh
+        adjustedPnlPct -= extraFee;
+      }
+      // Add price impact for exit
+      const exitImpact = estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
+      adjustedPnlPct -= exitImpact;
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, trade.pnlPct, exitDetail);
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail);
       if (closed) {
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
           side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-          skipReason: reason, pnlPct: trade.pnlPct,
+          skipReason: reason, pnlPct: adjustedPnlPct,
         }).catch(() => {});
       }
     }
