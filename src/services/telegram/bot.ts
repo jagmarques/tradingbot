@@ -1285,8 +1285,9 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
       for (const t of trades) {
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
+        const buyDate = new Date(t.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
         message += `${t.tokenSymbol} | ${fmtUsd(t.amountUsd)} | ${fmtPnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
-        message += `  ${walletShort}\n`;
+        message += `  ${walletShort} | ${buyDate}\n`;
       }
 
       await sendDataMessage(message, buttons);
