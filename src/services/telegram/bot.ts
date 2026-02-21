@@ -53,9 +53,8 @@ function isAuthorized(ctx: Context): boolean {
 
 const MAIN_MENU_BUTTONS = [
   [
-    { text: "📊 Status", callback_data: "status" },
+    { text: "📈 P&L Status", callback_data: "pnl" },
     { text: "💰 Balance", callback_data: "balance" },
-    { text: "📈 P&L", callback_data: "pnl" },
   ],
   [
     { text: "🔄 Trades", callback_data: "trades" },
@@ -85,7 +84,6 @@ export async function startBot(): Promise<void> {
 
   // Command handlers
   bot.command("start", handleStart);
-  bot.command("status", handleStatus);
   bot.command("balance", handleBalance);
   bot.command("pnl", handlePnl);
   bot.command("trades", handleTrades);
@@ -106,16 +104,6 @@ export async function startBot(): Promise<void> {
   });
 
   // Callback handlers
-  bot.callbackQuery("status", async (ctx) => {
-    try {
-      await handleStatus(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (status):", err);
-      await ctx.reply("Failed to load status. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
   bot.callbackQuery("balance", async (ctx) => {
     try {
       await handleBalance(ctx);
@@ -772,132 +760,6 @@ async function handleStart(ctx: Context): Promise<void> {
   await sendMainMenu();
 }
 
-async function handleStatus(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /status from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const status = await getRiskStatus();
-    const schedulerStatus = getAIBettingStatus();
-    const polyStats = getCopyStats();
-    const env = loadEnv();
-
-    const modeTag = status.isPaperMode ? "Paper" : "Live";
-    const killTag = status.killSwitchActive ? " | Kill" : "";
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
-
-    // Compute unrealized P&L for AI bets
-    const openBets = loadOpenPositions();
-    let aiBetUnrealized = 0;
-    for (const bet of openBets) {
-      const price = await getAIBetCurrentPrice(bet.tokenId);
-      if (price !== null) {
-        const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
-        aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
-      }
-    }
-
-    // Compute unrealized P&L for copy positions
-    const copyPositions = await getOpenPositionsWithValues();
-    let copyUnrealized = 0;
-    for (const pos of copyPositions) {
-      if (pos.currentValue !== null) {
-        copyUnrealized += (pos.currentValue ?? 0) - pos.size;
-      }
-    }
-
-    const breakdown = getDailyPnlBreakdown();
-    let message = `<b>Status</b> | ${modeTag}${killTag}\n`;
-
-    const lines: string[] = [];
-    const logOnly = schedulerStatus.logOnly ? " Log" : "";
-    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
-    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
-    lines.push(`AI Bets: ${openBets.length} | ${$(aiInvested)}${aiPnlStr}${logOnly}`);
-
-    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    lines.push(`Poly Copy: ${polyStats.openPositions} | ${$(copyInvested)}${copyPnlStr}`);
-
-    // Crypto copy (realized only from DB)
-    if (breakdown.cryptoCopy !== 0) {
-      lines.push(`Crypto Copy: ${pnl(breakdown.cryptoCopy)}`);
-    }
-
-    // Insider copy trades
-    try { await refreshCopyTradePrices(); } catch { /* DexScreener failure non-fatal */ }
-    const openCopyTrades = getOpenCopyTrades();
-    const closedCopyTrades = getClosedCopyTrades();
-    const insiderInvested = openCopyTrades.reduce((sum, t) => sum + t.amountUsd, 0);
-    const unrealizedPnl = openCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-    const realizedPnl = closedCopyTrades.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-    let insiderLine = `Insider: ${openCopyTrades.length} | ${$(insiderInvested)}`;
-    if (openCopyTrades.length > 0) insiderLine += ` ${pnl(unrealizedPnl)}`;
-    if (closedCopyTrades.length > 0) insiderLine += ` / ${pnl(realizedPnl)}r`;
-    lines.push(insiderLine);
-
-    // Rug stats (always shown for consistency)
-    const rugStats = getRugStats();
-    const rugPnl = -rugStats.lostUsd;
-    lines.push(`Rugs: ${rugStats.count} | -${$(rugStats.lostUsd)}`);
-
-    // Quant trading
-    const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
-    let quantUnrealized = 0;
-    if (quantEnabled) {
-      const quantPositions = getOpenQuantPositions();
-      if (quantPositions.length > 0) {
-        try {
-          const sdk = getClient();
-          const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
-          for (const pos of quantPositions) {
-            const rawMid = mids[pos.pair];
-            if (rawMid) {
-              const currentPrice = parseFloat(rawMid);
-              if (!isNaN(currentPrice)) {
-                quantUnrealized += pos.direction === "long"
-                  ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-                  : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-              }
-            }
-          }
-        } catch { /* Prices unavailable - show without unrealized */ }
-      }
-      const quantKilled = isQuantKilled();
-      const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
-      const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
-      const quantKillStr = quantKilled ? " HALTED" : "";
-      lines.push(`Quant: ${quantPositions.length} | ${$(quantInvested)}${quantPnlStr}${quantKillStr}`);
-    }
-
-    // Header total = sum of exactly the same values shown on each strategy line
-    const insiderPnl = unrealizedPnl + realizedPnl;
-    const headerTotal =
-      aiBetUnrealized +
-      copyUnrealized +
-      breakdown.cryptoCopy +
-      insiderPnl +
-      rugPnl +
-      quantUnrealized;
-    message += `PnL: ${pnl(headerTotal)} (${pnl(breakdown.total)}r)\n\n`;
-    message += lines.join("\n");
-
-    if (status.pauseReason) {
-      message += `\n\n${status.pauseReason}`;
-    }
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
-  } catch (err) {
-    console.error("[Telegram] Status error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to load status", backButton);
-  }
-}
-
 async function handleBalance(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /balance from user ${ctx.from?.id}`);
@@ -956,8 +818,13 @@ async function handlePnl(ctx: Context): Promise<void> {
     const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
 
     const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $fmt = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
-    let message = `<b>PnL</b> | ${periodLabels[period]}\n`;
+    const status = await getRiskStatus();
+    const modeTag = status.isPaperMode ? "Paper" : "Live";
+    const killTag = status.killSwitchActive ? " | Kill" : "";
+
+    let message = `<b>P&L Status</b> | ${modeTag}${killTag} | ${periodLabels[period]}\n`;
 
     // Period tab buttons
     const tabButtons = [[
@@ -1009,10 +876,10 @@ async function handlePnl(ctx: Context): Promise<void> {
       }
     }
 
-    // Unrealized P&L (open positions) - shown for all periods
+    // Positions section (open positions) - shown for all periods
     const unrealizedLines: string[] = [];
 
-    // AI bets unrealized
+    // AI bets
     const openBets = loadOpenPositions();
     let aiBetUnrealized = 0;
     for (const bet of openBets) {
@@ -1022,61 +889,75 @@ async function handlePnl(ctx: Context): Promise<void> {
         aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
       }
     }
-    if (openBets.length > 0) {
-      unrealizedLines.push(`AI Bets: ${openBets.length} open ${pnl(aiBetUnrealized)}`);
-    }
+    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
+    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
+    const schedulerStatus = getAIBettingStatus();
+    const logOnly = schedulerStatus.logOnly ? " Log" : "";
+    unrealizedLines.push(`AI Bets: ${openBets.length} | ${$fmt(aiInvested)}${aiPnlStr}${logOnly}`);
 
-    // Poly copy unrealized
+    // Poly copy
+    let copyPositions: Awaited<ReturnType<typeof getOpenPositionsWithValues>> = [];
     try {
-      const copyPositions = await getOpenPositionsWithValues();
-      let copyUnrealized = 0;
-      for (const pos of copyPositions) {
-        if (pos.currentValue !== null) {
-          copyUnrealized += (pos.currentValue ?? 0) - pos.size;
-        }
-      }
-      if (copyPositions.length > 0) {
-        unrealizedLines.push(`Poly Copy: ${copyPositions.length} open ${pnl(copyUnrealized)}`);
-      }
+      copyPositions = await getOpenPositionsWithValues();
     } catch { /* non-fatal */ }
+    let copyUnrealized = 0;
+    for (const pos of copyPositions) {
+      if (pos.currentValue !== null) {
+        copyUnrealized += (pos.currentValue ?? 0) - pos.size;
+      }
+    }
+    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
+    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
+    unrealizedLines.push(`Poly Copy: ${copyPositions.length} | ${$fmt(copyInvested)}${copyPnlStr}`);
 
-    // Insider copy unrealized
+    // Insider copy
     try {
       await refreshCopyTradePrices();
     } catch { /* DexScreener failure non-fatal */ }
     const openInsider = getOpenCopyTrades();
-    if (openInsider.length > 0) {
-      const insiderUnrealized = openInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
-      unrealizedLines.push(`Insider: ${openInsider.length} open ${pnl(insiderUnrealized)}`);
-    }
+    const closedInsider = getClosedCopyTrades();
+    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
+    const insiderUnrealized = openInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+    const insiderRealized = closedInsider.reduce((sum, t) => sum + (t.pnlPct / 100) * t.amountUsd, 0);
+    let insiderLine = `Insider: ${openInsider.length} | ${$fmt(insiderInvested)}`;
+    if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
+    if (closedInsider.length > 0) insiderLine += ` / ${pnl(insiderRealized)}r`;
+    unrealizedLines.push(insiderLine);
 
-    // Quant unrealized
+    // Quant
     const env = loadEnv();
-    if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY) {
-      const quantPositions = getOpenQuantPositions();
-      if (quantPositions.length > 0) {
-        let quantUnrealized = 0;
-        try {
-          const sdk = getClient();
-          const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
-          for (const pos of quantPositions) {
-            const rawMid = mids[pos.pair];
-            if (rawMid) {
-              const currentPrice = parseFloat(rawMid);
-              if (!isNaN(currentPrice)) {
-                quantUnrealized += pos.direction === "long"
-                  ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-                  : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-              }
+    const quantPositions = getOpenQuantPositions();
+    let quantUnrealized = 0;
+    if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY && quantPositions.length > 0) {
+      try {
+        const sdk = getClient();
+        const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+        for (const pos of quantPositions) {
+          const rawMid = mids[pos.pair];
+          if (rawMid) {
+            const currentPrice = parseFloat(rawMid);
+            if (!isNaN(currentPrice)) {
+              quantUnrealized += pos.direction === "long"
+                ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+                : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
             }
           }
-        } catch { /* prices unavailable */ }
-        unrealizedLines.push(`Quant: ${quantPositions.length} open ${pnl(quantUnrealized)}`);
-      }
+        }
+      } catch { /* prices unavailable */ }
     }
+    const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
+    const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
+    const quantKillStr = isQuantKilled() ? " HALTED" : "";
+    unrealizedLines.push(`Quant: ${quantPositions.length} | ${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
 
-    if (unrealizedLines.length > 0) {
-      message += `\n\n<b>Unrealized</b>\n${unrealizedLines.join("\n")}`;
+    // Rugs (always shown)
+    const rugStats = getRugStats();
+    unrealizedLines.push(`Rugs: ${rugStats.count} | -${$fmt(rugStats.lostUsd)}`);
+
+    message += `\n\n<b>Positions</b>\n${unrealizedLines.join("\n")}`;
+
+    if (status.pauseReason) {
+      message += `\n\n${status.pauseReason}`;
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
