@@ -47,46 +47,53 @@ export function isLpToken(symbol: string): boolean {
   return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
 }
 
-// Shared sell processing: close copy trade when insider sells
+// Shared sell processing: close ALL open copy trades for token when insider sells
 export async function processInsiderSell(
   walletAddress: string,
   tokenAddress: string,
   chain: string,
   fetchFreshPrice: boolean = false,
 ): Promise<void> {
-  const primaryTrade = getOpenCopyTradeByToken(tokenAddress, chain);
-  if (!primaryTrade) return;
+  const openTrades = getOpenCopyTrades();
+  const matchingTrades = openTrades.filter(
+    t => t.tokenAddress.toLowerCase() === tokenAddress.toLowerCase() && t.chain === chain
+  );
+  if (matchingTrades.length === 0) return;
 
-  let priceUsd = primaryTrade.currentPriceUsd;
+  let priceUsd = matchingTrades[0].currentPriceUsd;
 
-  // Fetch fresh price for real-time exits (WebSocket path)
+  // Fetch fresh price once for real-time exits (WebSocket path)
   if (fetchFreshPrice) {
     const pair = await dexScreenerFetch(chain, tokenAddress);
     const freshPrice = pair ? parseFloat(pair.priceUsd || "0") : 0;
     if (freshPrice > 0) {
       priceUsd = freshPrice;
-      updateCopyTradePrice(primaryTrade.walletAddress, tokenAddress, chain, freshPrice);
+      for (const trade of matchingTrades) {
+        updateCopyTradePrice(trade.walletAddress, tokenAddress, chain, freshPrice);
+      }
     }
   }
 
-  // Recompute P&L with current price (may have been refreshed above)
-  const pnlPct = primaryTrade.buyPriceUsd > 0
-    ? ((priceUsd - primaryTrade.buyPriceUsd) / primaryTrade.buyPriceUsd) * 100
-    : primaryTrade.pnlPct;
+  for (const trade of matchingTrades) {
+    const tradePriceUsd = fetchFreshPrice && priceUsd > 0 ? priceUsd : trade.currentPriceUsd;
+    const pnlPct = trade.buyPriceUsd > 0
+      ? ((tradePriceUsd - trade.buyPriceUsd) / trade.buyPriceUsd) * 100
+      : trade.pnlPct;
 
-  closeCopyTrade(primaryTrade.walletAddress, primaryTrade.tokenAddress, primaryTrade.chain, "insider_sold");
-  console.log(`[CopyTrade] Insider sell: closing ${primaryTrade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
-  notifyCopyTrade({
-    walletAddress,
-    tokenSymbol: primaryTrade.tokenSymbol,
-    chain: primaryTrade.chain,
-    side: "sell",
-    priceUsd,
-    liquidityOk: primaryTrade.liquidityOk,
-    liquidityUsd: primaryTrade.liquidityUsd,
-    skipReason: "insider sell",
-    pnlPct,
-  }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold");
+    console.log(`[CopyTrade] Insider sell: closing ${trade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
+    notifyCopyTrade({
+      walletAddress,
+      tokenSymbol: trade.tokenSymbol,
+      chain: trade.chain,
+      side: "sell",
+      priceUsd: tradePriceUsd,
+      liquidityOk: trade.liquidityOk,
+      liquidityUsd: trade.liquidityUsd,
+      skipReason: "insider sell",
+      pnlPct: pnlPct - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT,
+    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+  }
 }
 
 // Shared buy processing: open or accumulate copy trade
@@ -123,6 +130,11 @@ export async function processInsiderBuy(tokenInfo: {
   const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+
+  if (isLpToken(symbol)) {
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
+    return;
+  }
 
   // Accumulate if another wallet already has an open position for this token
   if (existingTokenTrade) {

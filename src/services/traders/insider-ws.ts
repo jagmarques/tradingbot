@@ -2,7 +2,7 @@ import WebSocket from "ws";
 import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats } from "./storage.js";
-import { WATCHER_CONFIG, INSIDER_WS_CONFIG } from "./types.js";
+import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS } from "./types.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
 
 const ALCHEMY_CHAIN_MAP: Record<string, string> = {
@@ -129,6 +129,12 @@ function unsubscribe(chain: string, subId: string): void {
   }));
 }
 
+function isDexRouter(address: string, chain: string): boolean {
+  const routers = KNOWN_DEX_ROUTERS[chain];
+  if (!routers) return false;
+  return routers.some(r => r.toLowerCase() === address);
+}
+
 async function handleTransferLog(chain: string, log: {
   address: string;
   topics: string[];
@@ -142,15 +148,14 @@ async function handleTransferLog(chain: string, log: {
   const toAddress = unpadAddress(log.topics[2]);
   const txHash = log.transactionHash;
 
-  // Dedup
+  // Dedup: check before processing; mark only after success
   if (txHash && isTransferProcessed(txHash)) return;
-  if (txHash) markTransferProcessed(txHash);
 
   const wallets = watchedWalletsByChain.get(chain);
   if (!wallets) return;
 
   const isBuy = wallets.has(toAddress);
-  const isSell = wallets.has(fromAddress);
+  const isSell = wallets.has(fromAddress) && isDexRouter(toAddress, chain);
 
   if (isBuy) {
     // Circuit breaker: skip silently if wallet is durably paused
@@ -182,6 +187,7 @@ async function handleTransferLog(chain: string, log: {
         tokenSymbol: "UNKNOWN", // DexScreener will resolve
         chain,
       });
+      if (txHash) markTransferProcessed(txHash);
     } catch (err) {
       console.error(`[InsiderWS] Buy processing error:`, err);
     } finally {
@@ -199,12 +205,16 @@ async function handleTransferLog(chain: string, log: {
     try {
       console.log(`[InsiderWS] Transfer OUT: ${fromAddress.slice(0, 8)} sent token ${tokenAddress.slice(0, 10)} (${chain})`);
       await processInsiderSell(fromAddress, tokenAddress, chain, true);
+      if (txHash) markTransferProcessed(txHash);
     } catch (err) {
       console.error(`[InsiderWS] Sell processing error:`, err);
     } finally {
       processingLock.delete(lockKey);
     }
   }
+
+  // Neither buy nor sell: mark processed to avoid re-processing irrelevant transfers
+  if (!isBuy && !isSell && txHash) markTransferProcessed(txHash);
 }
 
 function handleMessage(chain: string, raw: string): void {
