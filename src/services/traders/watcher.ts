@@ -8,6 +8,14 @@ import { notifyCopyTrade } from "../telegram/notifications.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
 
+// LP/wrapper token symbols to skip (not real tradeable tokens)
+const LP_TOKEN_SYMBOLS = new Set([
+  "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
+  "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
+  "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
+  "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
+]);
+
 let watcherRunning = false;
 
 async function watchInsiderWallets(): Promise<void> {
@@ -83,14 +91,6 @@ async function watchInsiderWallets(): Promise<void> {
         if (ts > maxTs) maxTs = ts;
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
-
-      // LP/wrapper token symbols to skip (not real tradeable tokens)
-      const LP_TOKEN_SYMBOLS = new Set([
-        "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
-        "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
-        "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
-        "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
-      ]);
 
       // Recent incoming transfers (skip LP tokens and wrappers)
       const recentIncoming = data.result.filter((tx) => {

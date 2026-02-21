@@ -54,8 +54,14 @@ export function buildExplorerUrl(chain: EvmChain, params: string): string {
   return `${ETHERSCAN_V2_URL}?chainid=${chainId}&${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
 }
 
-// Zero address
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+// Burn and dead addresses to filter out
+const BURN_ADDRESSES = new Set([
+  "0x0000000000000000000000000000000000000000", // zero address
+  "0x000000000000000000000000000000000000dead", // common burn (lowercase)
+  "0x0000000000000000000000000000000000000001", // ecrecover precompile
+  "0x0000000000000000000000000000000000000002", // SHA-256 precompile
+  "0x0000000000000000000000000000000000000003", // RIPEMD precompile
+]);
 
 // GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented), 15s spacing
 let geckoQueue: Promise<void> = Promise.resolve();
@@ -348,8 +354,8 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
     for (const tx of earlyTransfers) {
       const to = tx.to.toLowerCase();
 
-      // Skip zero address
-      if (to === ZERO_ADDRESS) continue;
+      // Skip burn/dead addresses
+      if (BURN_ADDRESSES.has(to)) continue;
 
       // Skip the token contract itself
       if (to === token.tokenAddress) continue;
@@ -429,7 +435,7 @@ export async function getWalletTokenPnl(
         if (!buyDate) buyDate = ts;
       } else if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
         const dest = tx.to.toLowerCase();
-        if (sellDestinations.has(dest) || dest === ZERO_ADDRESS) {
+        if (sellDestinations.has(dest) || BURN_ADDRESSES.has(dest)) {
           soldTokens += amount;
         } else {
           transferredTokens += amount;
