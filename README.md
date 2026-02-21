@@ -50,7 +50,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 - DeepSeek analysis with market data pipeline (technical indicators, regime classification)
 - Kelly criterion position sizing (quarter Kelly, 20% balance cap)
 - Funding rate arbitrage (short when funding > 15% APR, close when < 5%)
-- Max 5x leverage, 3 concurrent positions, $5 daily drawdown limit
+- Max 5x leverage, 6 concurrent positions, $5 daily drawdown limit
 - 14-day paper validation required before live trading
 
 ## Telegram
