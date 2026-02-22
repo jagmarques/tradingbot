@@ -24,7 +24,7 @@ import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOu
 import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
-import { getPnlForPeriod, getDailyPnlHistory, generatePnlChart } from "../pnl/snapshots.js";
+import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
