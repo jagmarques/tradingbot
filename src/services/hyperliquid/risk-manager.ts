@@ -10,22 +10,7 @@ import { getOpenQuantPositions } from "./executor.js";
 
 let quantKilled = false;
 let dailyLossAccumulator = 0;
-let dailyResetDate = "";
-
-// ---- Helpers ----
-
-function getTodayString(): string {
-  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
-
-function _checkAndResetIfNewDay(): void {
-  const today = getTodayString();
-  if (dailyResetDate !== today) {
-    dailyLossAccumulator = 0;
-    dailyResetDate = today;
-    console.log(`[RiskManager] Daily drawdown reset for ${today}`);
-  }
-}
+let lastLossTimestamp = 0;
 
 // ---- Kill switch ----
 
@@ -43,21 +28,30 @@ export function setQuantKilled(killed: boolean): void {
 // ---- Daily drawdown ----
 
 export function recordDailyLoss(loss: number): void {
-  _checkAndResetIfNewDay();
+  const now = Date.now();
+  // Reset accumulator if 24h have passed since last loss
+  if (lastLossTimestamp > 0 && now - lastLossTimestamp > 86_400_000) {
+    dailyLossAccumulator = 0;
+  }
   dailyLossAccumulator += loss;
+  lastLossTimestamp = now;
   console.log(
-    `[RiskManager] Daily loss accumulated: $${dailyLossAccumulator.toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+    `[RiskManager] Rolling 24h loss: $${dailyLossAccumulator.toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
   );
 }
 
 export function resetDailyDrawdown(): void {
   dailyLossAccumulator = 0;
-  dailyResetDate = getTodayString();
-  console.log(`[RiskManager] Daily drawdown manually reset`);
+  lastLossTimestamp = 0;
+  console.log(`[RiskManager] Rolling 24h drawdown manually reset`);
 }
 
 export function getDailyLossTotal(): number {
-  _checkAndResetIfNewDay();
+  // Auto-reset if 24h have passed since last loss
+  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
+    dailyLossAccumulator = 0;
+    lastLossTimestamp = 0;
+  }
   return dailyLossAccumulator;
 }
 
@@ -90,11 +84,14 @@ export function checkStopLossPresent(stopLoss: number): {
 }
 
 export function checkDailyDrawdown(): { allowed: boolean; reason: string } {
-  _checkAndResetIfNewDay();
+  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
+    dailyLossAccumulator = 0;
+    lastLossTimestamp = 0;
+  }
   if (dailyLossAccumulator >= QUANT_DAILY_DRAWDOWN_LIMIT) {
     return {
       allowed: false,
-      reason: `Daily loss $${dailyLossAccumulator.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+      reason: `Rolling 24h loss $${dailyLossAccumulator.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
     };
   }
   return { allowed: true, reason: "" };
