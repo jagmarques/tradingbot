@@ -47,7 +47,7 @@ export function isTransferProcessed(txHash: string): boolean {
   return true;
 }
 
-function cleanupProcessedTxHashes(): void {
+export function cleanupProcessedTxHashes(): void {
   const now = Date.now();
   for (const [hash, ts] of processedTxHashes) {
     if (now - ts > INSIDER_WS_CONFIG.DEDUP_TTL_MS) {
@@ -253,16 +253,7 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   if (priceUsd <= 0) {
-    // Retry after rate limit cooldown
-    console.log(`[CopyTrade] No price for ${symbol} (${tokenInfo.chain}), retrying in 30s...`);
-    await new Promise(r => setTimeout(r, 30_000));
-    pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
-    priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
-    liquidityUsd = pair?.liquidity?.usd ?? 0;
-    symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
-  }
-
-  if (priceUsd <= 0) {
+    // Skip immediately - blocking 30s would stall the pipeline; next cycle will retry
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -286,13 +277,40 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
-    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price after retry`);
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price, will retry next cycle`);
     return;
   }
 
-  // GoPlus safety check
+  // GoPlus safety check - null response (API failure) is treated as unsafe
   const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
-  if (goPlusData && isGoPlusKillSwitch(goPlusData)) {
+  if (!goPlusData) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: positionAmount,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: true,
+      liquidityUsd,
+      skipReason: "GoPlus unavailable",
+      buyTimestamp: Date.now(),
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
+    });
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus API unavailable`);
+    return;
+  }
+  if (isGoPlusKillSwitch(goPlusData)) {
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,

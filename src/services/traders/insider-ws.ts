@@ -4,7 +4,7 @@ import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker, SKIP_TOKEN_ADDRESSES } from "./types.js";
 import { isBotOrBurnAddress } from "./scanner.js";
-import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
+import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused, cleanupProcessedTxHashes } from "./watcher.js";
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
 
@@ -385,6 +385,9 @@ async function syncSubscriptions(): Promise<void> {
     const totalChains = connections.size;
     const totalWallets = Array.from(watchedWalletsByChain.values()).reduce((sum, s) => sum + s.size, 0);
     console.log(`[InsiderWS] Sync: ${totalWallets} wallets across ${totalChains} chains`);
+
+    // Periodic cleanup of dedup map to prevent unbounded memory growth
+    cleanupProcessedTxHashes();
   } finally {
     syncingWs = false;
   }

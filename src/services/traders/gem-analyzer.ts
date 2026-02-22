@@ -81,7 +81,6 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
     data.selfdestruct === "1" ||
     data.is_blacklisted === "1" ||
     data.slippage_modifiable === "1" ||
-    data.is_proxy === "1" ||
     data.transfer_pausable === "1" ||
     data.anti_whale_modifiable === "1" ||
     data.cannot_sell_all === "1" ||

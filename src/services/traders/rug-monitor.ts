@@ -14,6 +14,7 @@ import { notifyCopyTrade } from "../telegram/notifications.js";
 
 const V2_BURN_TOPIC = keccak256("Burn(address,uint256,uint256,address)"); // Uniswap V2
 const V3_BURN_TOPIC = keccak256("Burn(address,int24,int24,uint128,uint256,uint256)"); // Uniswap V3
+const V3_DECREASE_LIQUIDITY_TOPIC = keccak256("DecreaseLiquidity(uint256,uint128,uint256,uint256)"); // Uniswap V3 NonfungiblePositionManager
 
 const connections = new Map<string, WebSocket>(); // per chain
 const subscriptions = new Map<string, Map<string, string>>(); // chain -> (pair -> subId)
@@ -68,7 +69,7 @@ function subscribePair(chain: string, pairAddress: string, token: { tokenAddress
       "logs",
       {
         address: pairAddress,
-        topics: [[V2_BURN_TOPIC, V3_BURN_TOPIC]],
+        topics: [[V2_BURN_TOPIC, V3_BURN_TOPIC, V3_DECREASE_LIQUIDITY_TOPIC]],
       },
     ],
   }));
