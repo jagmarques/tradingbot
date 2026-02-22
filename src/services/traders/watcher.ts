@@ -137,7 +137,10 @@ export async function processInsiderBuy(tokenInfo: {
   chain: string;
 }): Promise<void> {
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
-  if (tokenBuyLock.has(tokenLockKey)) return;
+  if (tokenBuyLock.has(tokenLockKey)) {
+    setTimeout(() => processInsiderBuy(tokenInfo), 5_000);
+    return;
+  }
   tokenBuyLock.add(tokenLockKey);
 
   try {
@@ -186,7 +189,7 @@ export async function processInsiderBuy(tokenInfo: {
 
   // Accumulate if another wallet already has an open position for this token
   if (existingTokenTrade) {
-    const addAmount = existingTokenTrade.amountUsd * 0.10;
+    const addAmount = existingTokenTrade.amountUsd * 0.50;
     const openTrades = getOpenCopyTrades();
     const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
     if (currentExposure + addAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
