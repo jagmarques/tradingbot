@@ -8,6 +8,12 @@ const GDELT_API_URL = "https://api.gdeltproject.org/api/v2/doc/doc";
 const NEWS_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const newsCache = new Map<string, { items: NewsItem[]; cachedAt: number }>();
 
+// Circuit breaker: after 3 consecutive full-retry-exhaustions, skip GDELT for 30 minutes
+let gdeltConsecutiveFailures = 0;
+let gdeltCooldownUntil = 0;
+const GDELT_CIRCUIT_OPEN_THRESHOLD = 3;
+const GDELT_COOLDOWN_MS = 30 * 60 * 1000;
+
 function getCachedNews(marketId: string): NewsItem[] | null {
   const cached = newsCache.get(marketId);
   if (!cached) return null;
@@ -123,6 +129,10 @@ function buildAlternativeQuery(title: string, originalQuery: string): string | n
 async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   if (!query || query.split(/\s+/).filter(w => w.length >= 3).length === 0) return [];
 
+  if (Date.now() < gdeltCooldownUntil) {
+    return [];
+  }
+
   const cleanedQuery = query.split(/\s+/).filter(w => w.length >= 3).join(" ");
   const fullQuery = `${cleanedQuery} sourcelang:eng`;
   const url = `${GDELT_API_URL}?query=${encodeURIComponent(fullQuery)}&mode=artlist&format=json&maxrecords=10&timespan=7d`;
@@ -130,7 +140,7 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   let response: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       response = await fetch(url, {
         headers: {
@@ -139,13 +149,22 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      gdeltConsecutiveFailures = 0;
       if (response.status !== 429) break;
       const backoff = (attempt + 1) * 5000;
       await new Promise(r => setTimeout(r, backoff));
     } catch (err) {
       clearTimeout(timeout);
       console.warn(`[News] GDELT fetch error (attempt ${attempt + 1}/3): ${err instanceof Error ? err.message : err}`);
-      if (attempt === 2) return [];
+      if (attempt === 2) {
+        gdeltConsecutiveFailures++;
+        if (gdeltConsecutiveFailures >= GDELT_CIRCUIT_OPEN_THRESHOLD) {
+          gdeltCooldownUntil = Date.now() + GDELT_COOLDOWN_MS;
+          console.warn(`[News] GDELT circuit open: ${gdeltConsecutiveFailures} consecutive failures, cooling down 30min`);
+          gdeltConsecutiveFailures = 0;
+        }
+        return [];
+      }
       await new Promise(r => setTimeout(r, 3000));
     }
   }
