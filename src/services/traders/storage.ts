@@ -1,6 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, EvmChain } from "./types.js";
-import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG, PUMP_FUN_LAUNCH_PRICE_USD } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -64,7 +64,7 @@ export function initInsiderTables(): void {
   // Seed max_pump_multiple from existing pump_multiple for old records
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
   // Seed launch price for Pump.fun tokens
-  db.prepare("UPDATE insider_gem_hits SET launch_price_usd = 0.000069 WHERE launch_price_usd = 0 AND token_address LIKE '%pump'").run();
+  db.prepare("UPDATE insider_gem_hits SET launch_price_usd = ? WHERE launch_price_usd = 0 AND token_address LIKE '%pump'").run(PUMP_FUN_LAUNCH_PRICE_USD);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_gem_analyses (
@@ -702,7 +702,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
   const db = getDb();
   const wa = normalizeAddr(trade.walletAddress);
   const ta = normalizeAddr(trade.tokenAddress);
-  const id = `${wa}_${ta}_${trade.chain}`;
+  // Timestamp in ID allows re-entry after a previous trade on the same token is closed/skipped
+  const id = `${wa}_${ta}_${trade.chain}_${trade.buyTimestamp}`;
 
   db.prepare(`
     INSERT OR IGNORE INTO insider_copy_trades (
@@ -738,9 +739,13 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
 
 export function getCopyTrade(walletAddress: string, tokenAddress: string, chain: string): CopyTrade | null {
   const db = getDb();
-  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  const wa = normalizeAddr(walletAddress);
+  const ta = normalizeAddr(tokenAddress);
 
-  const row = db.prepare("SELECT * FROM insider_copy_trades WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  // Only returns open records - closed/skipped records must not block re-entry
+  const row = db.prepare(
+    "SELECT * FROM insider_copy_trades WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open' LIMIT 1"
+  ).get(wa, ta, chain) as Record<string, unknown> | undefined;
   if (!row) return null;
 
   return mapRowToCopyTrade(row);
@@ -755,7 +760,8 @@ export function getOpenCopyTrades(): CopyTrade[] {
 
 export function updateCopyTradePrice(walletAddress: string, tokenAddress: string, chain: string, currentPriceUsd: number): void {
   const db = getDb();
-  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  const wa = normalizeAddr(walletAddress);
+  const ta = normalizeAddr(tokenAddress);
   const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
 
   db.prepare(`
@@ -765,13 +771,14 @@ export function updateCopyTradePrice(walletAddress: string, tokenAddress: string
           WHEN buy_price_usd > 0 AND ? > 0 THEN MAX(((? / buy_price_usd - 1) * 100 - ?), -100)
           ELSE 0
         END
-    WHERE id = ?
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
+    WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, wa, ta, chain);
 }
 
 export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddress: string, chain: string, currentPriceUsd: number): void {
   const db = getDb();
-  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  const wa = normalizeAddr(walletAddress);
+  const ta = normalizeAddr(tokenAddress);
   const feePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
 
   db.prepare(`
@@ -781,24 +788,28 @@ export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddre
           WHEN buy_price_usd > 0 AND ? > 0 THEN MAX(((? / buy_price_usd - 1) * 100 - ?), -100)
           ELSE 0
         END
-    WHERE id = ?
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, id);
+    WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'
+  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, wa, ta, chain);
 }
 
 export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason, finalPriceUsd: number, pnlPct: number, exitDetail?: string): boolean {
   const db = getDb();
-  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
+  const wa = normalizeAddr(walletAddress);
+  const ta = normalizeAddr(tokenAddress);
 
   const result = db.prepare(
-    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ? WHERE id = ? AND status = 'open'"
-  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, id);
+    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'"
+  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, wa, ta, chain);
   return result.changes > 0;
 }
 
 export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: string, chain: string, pairAddress: string): void {
   const db = getDb();
-  const id = `${normalizeAddr(walletAddress)}_${normalizeAddr(tokenAddress)}_${chain}`;
-  db.prepare("UPDATE insider_copy_trades SET pair_address = ? WHERE id = ? AND pair_address IS NULL").run(pairAddress, id);
+  const wa = normalizeAddr(walletAddress);
+  const ta = normalizeAddr(tokenAddress);
+  db.prepare(
+    "UPDATE insider_copy_trades SET pair_address = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open' AND pair_address IS NULL"
+  ).run(pairAddress, wa, ta, chain);
 }
 
 export interface WalletCopyTradeStats {

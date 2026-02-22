@@ -121,6 +121,12 @@ export const SKIP_TOKEN_ADDRESSES: Record<string, Set<string>> = {
     "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359", // USDC
     "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // USDT
   ]),
+  avalanche: new Set([
+    "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7", // WAVAX
+    "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e", // USDC
+    "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7", // USDT
+    "0xd586e7f844cea2f87f50152665bcbc2c279d8d70", // DAI.e
+  ]),
 };
 
 export interface PumpedToken {
@@ -196,7 +202,7 @@ export const WATCHER_CONFIG = {
 export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "stale_price" | "liquidity_rug" | "max_hold_time" | "stale_insider";
 
 export interface CopyTrade {
-  id: string; // format: `${walletAddress}_${tokenAddress}_${chain}`
+  id: string; // format: `${walletAddress}_${tokenAddress}_${chain}_${buyTimestamp}`
   walletAddress: string;
   tokenSymbol: string;
   tokenAddress: string;
@@ -241,6 +247,9 @@ export const COPY_TRADE_CONFIG = {
   MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,         // 48 hours - absolute max hold time
 };
 
+/** Pump.fun initial launch price in USD */
+export const PUMP_FUN_LAUNCH_PRICE_USD = 0.000069;
+
 /** Score-based position sizing: higher score = larger position */
 export function getPositionSize(score: number): number {
   if (score >= 95) return 15;
@@ -255,7 +264,7 @@ export const ALCHEMY_CHAIN_MAP: Record<string, string> = {
   arbitrum: "arb",
   polygon: "polygon",
   optimism: "opt",
-  avalanche: "avax",
+  // avalanche not supported by Alchemy WebSocket - omitted intentionally
 };
 
 export function getAlchemyWssUrl(chain: string): string | null {
