@@ -817,7 +817,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const period = currentPnlPeriod;
     const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
 
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
     const $fmt = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     const status = await getRiskStatus();
@@ -968,7 +968,7 @@ function formatBreakdown(
   quantPnl: number,
   insiderCopyPnl: number,
 ): string {
-  const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
     { name: "Crypto Copy", value: cryptoCopy },
@@ -991,7 +991,7 @@ async function handleTrades(ctx: Context): Promise<void> {
   try {
     const trades = getTodayTrades();
     const cryptoCopyPositions = getCryptoCopyPositions();
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
     const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     let message = `<b>Trades</b>\n\n`;
@@ -1021,7 +1021,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         for (const t of openCopyTrades) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
-          message += `${t.tokenSymbol} | ${$(t.amountUsd)} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          message += `${t.tokenSymbol} | ${$(t.amountUsd)} | ${pnl(pnlUsd)} ${t.pnlPct > 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
           message += `  ${walletShort}\n`;
         }
       }
@@ -1030,7 +1030,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         for (const t of closedCopyTrades.slice(0, 5)) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const chainTag = t.chain.toUpperCase().slice(0, 3);
-          message += `${t.tokenSymbol} | ${chainTag} | ${pnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+          message += `${t.tokenSymbol} | ${chainTag} | ${pnl(pnlUsd)} ${t.pnlPct > 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         }
         if (closedCopyTrades.length > 5) message += `... +${closedCopyTrades.length - 5} more\n`;
       }
@@ -1067,7 +1067,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   try {
     const trackedBettors = getTrackedTraders();
     const copyStats = getCopyStats();
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
     // Only show bettors we copy (10%+ ROI)
     const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
@@ -1084,7 +1084,7 @@ async function handleBettors(ctx: Context): Promise<void> {
     const rows = copiedBettors.map(b => {
       const name = b.name.length > 13 ? b.name.slice(0, 12) + "..." : b.name;
       const roi = `${(b.roi * 100).toFixed(1)}%`;
-      const bPnl = `${b.pnl >= 0 ? "+" : ""}$${b.pnl.toFixed(0)}`;
+      const bPnl = `${b.pnl > 0 ? "+" : ""}$${b.pnl.toFixed(0)}`;
       const vol = `$${(b.vol / 1000).toFixed(0)}k`;
       return `${name} | ${roi} | ${bPnl} | ${vol}`;
     });
@@ -1149,7 +1149,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
       const invested = trades.reduce((s, t) => s + t.amountUsd, 0);
       const unrealPnl = trades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      const fmtPnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+      const fmtPnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
       const fmtUsd = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
       let message = `<b>Insiders - Holding</b> ${trades.length} open | ${fmtUsd(invested)} inv | ${fmtPnl(unrealPnl)} unr\n\n`;
@@ -1157,7 +1157,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
         const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
         const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
         const buyDate = new Date(t.buyTimestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-        message += `${t.tokenSymbol} | ${fmtUsd(t.amountUsd)} | ${fmtPnl(pnlUsd)} ${t.pnlPct >= 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
+        message += `${t.tokenSymbol} | ${fmtUsd(t.amountUsd)} | ${fmtPnl(pnlUsd)} ${t.pnlPct > 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         message += `  ${walletShort} | ${buyDate}\n`;
       }
 
@@ -1180,7 +1180,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
       const lines = walletStats.map((w) => {
         const addrShort = `0x${w.address.slice(2, 4)}..${w.address.slice(-4)}`;
-        const gainSign = w.avgGainPct >= 0 ? "+" : "";
+        const gainSign = w.avgGainPct > 0 ? "+" : "";
         return `${addrShort} | ${w.score} | ${gainSign}${w.avgGainPct.toFixed(0)}%`;
       });
 
@@ -1227,7 +1227,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
   }
 
   try {
-    const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
     const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
     const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "." : s;
     const c = (n: number) => `${(n * 100).toFixed(0)}c`;
@@ -1280,7 +1280,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         positionLines += `  ${side} ${$(bet.size)} @${c(bet.entryPrice)}`;
         if (currentPrice !== null) {
           const pnlPct = (betPnl / bet.size) * 100;
-          positionLines += `->${c(currentPrice)} ${pnl(betPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
+          positionLines += `->${c(currentPrice)} ${pnl(betPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
         }
         positionLines += `\n`;
         const conf = (bet.confidence * 100).toFixed(0);
@@ -1323,7 +1323,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         if (bet.exitPrice !== undefined) {
           closedLines += `->${c(bet.exitPrice)}`;
         }
-        closedLines += ` ${pnl(betPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%\n`;
+        closedLines += ` ${pnl(betPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%\n`;
         closedLines += `  ${bet.exitReason ? bet.exitReason + " | " : ""}${exitDate}\n\n`;
       }
 
@@ -1357,7 +1357,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
           const currentVal = pos.currentValue ?? 0;
           const pnlPct = pos.unrealizedPnlPct ?? 0;
           const posPnl = (pos.currentValue ?? 0) - pos.size;
-          copyLines += `->${c(pos.currentPrice)} ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
+          copyLines += `->${c(pos.currentPrice)} ${pnl(posPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
           totalInvested += pos.size;
           totalCurrentValue += currentVal;
         }
@@ -1401,7 +1401,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         if (pos.exitPrice !== undefined) {
           copyClosedLines += `->${c(pos.exitPrice)}`;
         }
-        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(0)}% | ${exitDate}\n\n`;
+        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}% | ${exitDate}\n\n`;
       }
 
       message += `Real: ${pnl(copyClosedPnlVal)}\n`;
@@ -1618,7 +1618,7 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Kill switch: ${riskStatus.killSwitchActive ? "ACTIVE" : "Off"}
 - Trading enabled: ${riskStatus.tradingEnabled}
 - Paper mode: ${riskStatus.isPaperMode}
-- Daily PnL: $${dailyPnl.toFixed(2)} (${dailyPnlPct >= 0 ? "+" : ""}${dailyPnlPct.toFixed(1)}%)
+- Daily PnL: $${dailyPnl.toFixed(2)} (${dailyPnlPct > 0 ? "+" : ""}${dailyPnlPct.toFixed(1)}%)
 - USDC balance: ${usdcBalance}
 
 === USER SETTINGS ===
@@ -2321,7 +2321,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const funding = getFundingIncome();
   const directionalStats = getQuantStats("directional");
 
-  const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
   const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;

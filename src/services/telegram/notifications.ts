@@ -88,7 +88,7 @@ export async function notifyDailySummary(): Promise<void> {
     `${emoji} <b>Daily Summary</b>\n` +
     `${new Date().toLocaleDateString()}\n\n` +
     `<b>Total P&L</b>\n` +
-    `$${pnl.toFixed(2)} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n\n` +
+    `$${pnl.toFixed(2)} (${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(1)}%)\n\n` +
     `<b>Stats</b>\n` +
     `Total Trades: ${trades.length}\n` +
     `Wins: ${wins} | Losses: ${losses}\n` +
@@ -134,7 +134,7 @@ export async function notifyAIBetClosed(params: {
     `${mode}${emoji} <b>AI BET CLOSED</b>\n\n` +
     `<b>${params.marketTitle}</b>\n\n` +
     `Side: ${params.side}\n` +
-    `P&L: $${params.pnl.toFixed(2)} (${params.pnlPercentage >= 0 ? "+" : ""}${params.pnlPercentage.toFixed(1)}%)\n` +
+    `P&L: $${params.pnl.toFixed(2)} (${params.pnlPercentage > 0 ? "+" : ""}${params.pnlPercentage.toFixed(1)}%)\n` +
     `Reason: ${params.exitReason}`;
   await sendMessage(message);
 }
@@ -168,7 +168,7 @@ export async function notifyTopTraderCopyClose(params: {
   isPaper: boolean;
 }): Promise<void> {
   const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
-  const pnlEmoji = params.pnl >= 0 ? "+" : "";
+  const pnlEmoji = params.pnl > 0 ? "+" : "";
   const message =
     `${modeTag} <b>COPY BET CLOSED</b>\n\n` +
     `Trader: ${escapeHtml(params.traderName)}\n\n` +
@@ -227,7 +227,7 @@ export async function notifyCopyTrade(params: {
       `Status: ${statusStr}`;
   } else {
     const pnlStr = params.pnlPct !== undefined
-      ? `${params.pnlPct >= 0 ? "+" : ""}${params.pnlPct.toFixed(1)}%`
+      ? `${params.pnlPct > 0 ? "+" : ""}${params.pnlPct.toFixed(1)}%`
       : "N/A";
     message =
       `<b>${header}</b>\n\n` +
@@ -280,7 +280,7 @@ export async function notifyQuantTradeExit(params: {
   tradeType: "directional" | "funding";
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
-  const indicator = params.pnl >= 0 ? "+" : "-";
+  const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
   const message =
