@@ -177,7 +177,7 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
           liquidityUsd,
           skipReason: "liquidity rug",
           pnlPct: computedPnl,
-        }).catch(() => {});
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
       incrementRugCount(tokenAddress, chain);
       unsubscribePair(chain, pairAddress);

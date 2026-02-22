@@ -631,7 +631,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
               walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
               side: "sell", priceUsd: 0, liquidityOk: false, liquidityUsd: 0,
               skipReason: "stale price", pnlPct: trade.pnlPct,
-            }).catch(() => {});
+            }).catch(err => console.error("[CopyTrade] Notification error:", err));
           }
         }
         copyPriceFailures.delete(failKey);
@@ -676,7 +676,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
           side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
           skipReason: `max hold ${hours}h`, pnlPct: adjustedPnlPct,
-        }).catch(() => {});
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
       continue;
     }
@@ -693,7 +693,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
           side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
           skipReason: `stale insider ${hours}h`, pnlPct: adjustedPnlPct,
-        }).catch(() => {});
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
       continue;
     }
@@ -751,7 +751,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
           side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
           skipReason: reason, pnlPct: adjustedPnlPct,
-        }).catch(() => {});
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
     }
   }
