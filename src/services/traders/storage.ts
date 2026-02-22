@@ -699,6 +699,10 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     peakPnlPct: (row.peak_pnl_pct as number) || 0,
     walletScoreAtBuy: (row.wallet_score_at_buy as number) || 0,
     exitDetail: (row.exit_detail as string) || null,
+    txHash: (row.tx_hash as string) || null,
+    tokensReceived: (row.tokens_received as string) || null,
+    sellTxHash: (row.sell_tx_hash as string) || null,
+    isLive: (row.is_live as number) === 1,
   };
 }
 
@@ -715,8 +719,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
       liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
       exit_reason, insider_count, peak_pnl_pct, pair_address, wallet_score_at_buy,
-      token_created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      token_created_at, tx_hash, tokens_received, sell_tx_hash, is_live
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -739,7 +743,11 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.peakPnlPct ?? 0,
     trade.pairAddress ?? null,
     trade.walletScoreAtBuy ?? 0,
-    trade.tokenCreatedAt ?? null
+    trade.tokenCreatedAt ?? null,
+    trade.txHash ?? null,
+    trade.tokensReceived ?? null,
+    trade.sellTxHash ?? null,
+    trade.isLive ? 1 : 0
   );
 }
 
@@ -798,14 +806,23 @@ export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddre
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, wa, ta, chain);
 }
 
-export function closeCopyTrade(walletAddress: string, tokenAddress: string, chain: string, exitReason: CopyExitReason, finalPriceUsd: number, pnlPct: number, exitDetail?: string): boolean {
+export function closeCopyTrade(
+  walletAddress: string,
+  tokenAddress: string,
+  chain: string,
+  exitReason: CopyExitReason,
+  finalPriceUsd: number,
+  pnlPct: number,
+  exitDetail?: string,
+  sellTxHash?: string,
+): boolean {
   const db = getDb();
   const wa = normalizeAddr(walletAddress);
   const ta = normalizeAddr(tokenAddress);
 
   const result = db.prepare(
-    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'"
-  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, wa, ta, chain);
+    "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ?, sell_tx_hash = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'",
+  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, sellTxHash ?? null, wa, ta, chain);
   return result.changes > 0;
 }
 
