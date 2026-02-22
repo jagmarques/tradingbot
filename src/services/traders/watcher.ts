@@ -127,7 +127,8 @@ export async function processInsiderSell(
   }
 }
 
-// Shared buy processing: open or accumulate copy trade
+const tokenBuyLock = new Set<string>();
+
 export async function processInsiderBuy(tokenInfo: {
   walletAddress: string;
   walletScore: number;
@@ -135,6 +136,11 @@ export async function processInsiderBuy(tokenInfo: {
   tokenSymbol: string;
   chain: string;
 }): Promise<void> {
+  const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
+  if (tokenBuyLock.has(tokenLockKey)) return;
+  tokenBuyLock.add(tokenLockKey);
+
+  try {
   // Skip if this specific wallet already has a copy trade for this token
   const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
   if (existingCopy) return;
@@ -374,6 +380,9 @@ export async function processInsiderBuy(tokenInfo: {
       liquidityUsd,
       skipReason: null,
     }).catch(err => console.error("[CopyTrade] Notification error:", err));
+  }
+  } finally {
+    tokenBuyLock.delete(tokenLockKey);
   }
 }
 
