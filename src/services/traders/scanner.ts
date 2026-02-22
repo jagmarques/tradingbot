@@ -1,21 +1,17 @@
-import type { EvmChain, ScanChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
+import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
-import { INSIDER_CONFIG, WATCHER_CONFIG } from "./types.js";
+import { INSIDER_CONFIG, WATCHER_CONFIG, stripEmoji } from "./types.js";
 import { loadEnv } from "../../config/env.js";
-import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan, getAllWalletCopyTradeStats } from "./storage.js";
+import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan, getAllWalletCopyTradeStats, deleteInsiderWalletsBelow } from "./storage.js";
 import type { WalletCopyTradeStats } from "./storage.js";
 import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 
-function stripEmoji(s: string): string {
-  return s.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
-}
-
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
-const GECKO_NETWORK_IDS: Record<ScanChain, string> = {
+const GECKO_NETWORK_IDS: Record<EvmChain, string> = {
   ethereum: "eth",
   base: "base",
   arbitrum: "arbitrum",
@@ -88,7 +84,7 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
 }
 
 // Fetch launch price from GeckoTerminal OHLCV (earliest daily candle open)
-async function fetchLaunchPrice(chain: ScanChain, pairAddress: string): Promise<number> {
+async function fetchLaunchPrice(chain: EvmChain, pairAddress: string): Promise<number> {
   if (!pairAddress) return 0;
   const network = GECKO_NETWORK_IDS[chain];
   if (!network) return 0;
@@ -141,7 +137,7 @@ interface GeckoPool {
 }
 
 // Find tokens that pumped 3x+ in 24h on a given chain
-async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]> {
+async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   const networkId = GECKO_NETWORK_IDS[chain];
   const seen = new Set<string>();
   const pumped: PumpedToken[] = [];
@@ -391,7 +387,7 @@ interface WalletTokenPnl {
 }
 
 async function getWalletTokenPnl(
-  walletAddress: string, tokenAddress: string, chain: ScanChain
+  walletAddress: string, tokenAddress: string, chain: EvmChain
 ): Promise<WalletTokenPnl> {
   if (!EXPLORER_SUPPORTED_CHAINS.has(chain)) {
     return { buyTokens: 0, sellTokens: 0, status: "unknown", buyDate: 0, sellDate: 0 };
@@ -579,7 +575,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
 
           const hit: GemHit = {
             walletAddress: wallet.address,
-            chain: wallet.chain as ScanChain,
+            chain: wallet.chain as EvmChain,
             tokenAddress,
             tokenSymbol: stripEmoji(symbol),
             buyTxHash: "",
@@ -643,7 +639,7 @@ async function updateHeldGemPrices(): Promise<void> {
   const heldGems = getAllHeldGemHits();
 
   // Deduplicate by token+chain (many wallets may hold same token)
-  const uniqueTokens = new Map<string, { tokenAddress: string; chain: ScanChain; symbol: string; oldMultiple: number; launchPrice: number }>();
+  const uniqueTokens = new Map<string, { tokenAddress: string; chain: EvmChain; symbol: string; oldMultiple: number; launchPrice: number }>();
   for (const gem of heldGems) {
     const key = `${gem.tokenAddress}_${gem.chain}`;
     if (!uniqueTokens.has(key)) {
@@ -945,7 +941,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       }
     }
 
-    const { deleteInsiderWalletsBelow } = await import("./storage.js");
     const deleted = deleteInsiderWalletsBelow(WATCHER_CONFIG.MIN_WALLET_SCORE);
     if (deleted > 0) {
       console.log(`[InsiderScanner] Removed ${deleted} wallets below score ${WATCHER_CONFIG.MIN_WALLET_SCORE}`);

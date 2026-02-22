@@ -1,5 +1,5 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize, checkCircuitBreaker } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
@@ -385,20 +385,14 @@ async function watchInsiderWallets(): Promise<void> {
 
       // Circuit breaker
       const copyStats = getWalletCopyTradeStats(wallet.address);
-      if (copyStats.totalTrades >= 10) {
-        const winRate = copyStats.wins / copyStats.totalTrades;
-        const losses = copyStats.totalTrades - copyStats.wins;
-        const avgWinPct = copyStats.wins > 0 ? copyStats.grossProfit / copyStats.wins : 0;
-        const avgLossPct = losses > 0 ? copyStats.grossLoss / losses : 0;
-        const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
-        if (expectancy <= 0) {
-          console.log(`[Watcher] Rejecting ${wallet.address.slice(0, 8)}: negative expectancy after ${copyStats.totalTrades} trades`);
-          continue;
+      const cb = checkCircuitBreaker(copyStats);
+      if (cb.blocked) {
+        if (copyStats.consecutiveLosses >= 3) {
+          pausedWallets.set(wallet.address, Date.now() + 24 * 60 * 60 * 1000);
+          console.log(`[Watcher] Pausing ${wallet.address.slice(0, 8)} for 24h: ${cb.reason}`);
+        } else {
+          console.log(`[Watcher] Rejecting ${wallet.address.slice(0, 8)}: ${cb.reason}`);
         }
-      }
-      if (copyStats.consecutiveLosses >= 3) {
-        pausedWallets.set(wallet.address, Date.now() + 24 * 60 * 60 * 1000);
-        console.log(`[Watcher] Pausing ${wallet.address.slice(0, 8)} for 24h: ${copyStats.consecutiveLosses} consecutive losses`);
         continue;
       }
 

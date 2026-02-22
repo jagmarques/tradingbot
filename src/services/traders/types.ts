@@ -1,4 +1,6 @@
 // Shared types for copy trading and telegram consumers
+import { loadEnv } from "../../config/env.js";
+
 export type EvmChain = "ethereum" | "polygon" | "base" | "arbitrum" | "optimism" | "avalanche";
 export type Chain = EvmChain;
 
@@ -94,11 +96,9 @@ export const KNOWN_DEX_ROUTERS: Record<string, string[]> = {
   ],
 };
 
-export type ScanChain = EvmChain;
-
 export interface PumpedToken {
   tokenAddress: string;
-  chain: ScanChain;
+  chain: EvmChain;
   symbol: string;
   pairAddress: string;
   priceChangeH24: number; // e.g. 500 for 5x
@@ -109,7 +109,7 @@ export interface PumpedToken {
 
 export interface GemHit {
   walletAddress: string;
-  chain: ScanChain;
+  chain: EvmChain;
   tokenAddress: string;
   tokenSymbol: string;
   buyTxHash: string;
@@ -126,7 +126,7 @@ export interface GemHit {
 
 export interface InsiderWallet {
   address: string;
-  chain: ScanChain;
+  chain: EvmChain;
   gemHitCount: number;
   gems: string[]; // token symbols
   firstSeenAt: number;
@@ -151,7 +151,7 @@ export const INSIDER_CONFIG = {
   MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
-  SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as ScanChain[],
+  SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as EvmChain[],
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
@@ -201,7 +201,6 @@ export const INSIDER_WS_CONFIG = {
 
 export const COPY_TRADE_CONFIG = {
   MIN_LIQUIDITY_USD: 5000,
-  AMOUNT_USD: 10, // base reference amount (see getPositionSize for score-based sizing)
   STOP_LOSS_PCT: -50,
   ESTIMATED_FEE_PCT: 3, // 1% DEX fee/side + slippage on micro-caps (Uniswap 1% tier)
   ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage
@@ -221,4 +220,45 @@ export function getPositionSize(score: number): number {
   if (score >= 90) return 13;
   if (score >= 85) return 10;
   return 8;
+}
+
+export const ALCHEMY_CHAIN_MAP: Record<string, string> = {
+  ethereum: "eth",
+  base: "base",
+  arbitrum: "arb",
+  polygon: "polygon",
+  optimism: "opt",
+  avalanche: "avax",
+};
+
+export function getAlchemyWssUrl(chain: string): string | null {
+  const env = loadEnv();
+  const alchemyKey = env.ALCHEMY_API_KEY;
+  if (!alchemyKey) return null;
+  const alchemyChain = ALCHEMY_CHAIN_MAP[chain];
+  if (!alchemyChain) return null;
+  return `wss://${alchemyChain}-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+}
+
+export function stripEmoji(s: string): string {
+  return s.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
+}
+
+export function checkCircuitBreaker(
+  stats: { totalTrades: number; wins: number; grossProfit: number; grossLoss: number; consecutiveLosses: number },
+): { blocked: boolean; reason: string } {
+  if (stats.totalTrades >= 10) {
+    const winRate = stats.wins / stats.totalTrades;
+    const losses = stats.totalTrades - stats.wins;
+    const avgWinPct = stats.wins > 0 ? stats.grossProfit / stats.wins : 0;
+    const avgLossPct = losses > 0 ? stats.grossLoss / losses : 0;
+    const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+    if (expectancy <= 0) {
+      return { blocked: true, reason: `negative expectancy after ${stats.totalTrades} trades` };
+    }
+  }
+  if (stats.consecutiveLosses >= 3) {
+    return { blocked: true, reason: `${stats.consecutiveLosses} consecutive losses` };
+  }
+  return { blocked: false, reason: "" };
 }

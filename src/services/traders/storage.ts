@@ -1,5 +1,5 @@
 import { getDb } from "../database/db.js";
-import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, ScanChain } from "./types.js";
+import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, EvmChain } from "./types.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
@@ -242,7 +242,7 @@ export function upsertInsiderWallet(wallet: InsiderWallet): void {
   );
 }
 
-export function getInsiderWallets(chain?: ScanChain, minHits?: number): InsiderWallet[] {
+export function getInsiderWallets(chain?: EvmChain, minHits?: number): InsiderWallet[] {
   const db = getDb();
 
   let query = "SELECT * FROM insider_wallets WHERE 1=1";
@@ -318,7 +318,7 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
 
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
-    chain: row.chain as ScanChain,
+    chain: row.chain as EvmChain,
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
@@ -349,7 +349,7 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
   const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
     walletAddress: row.wallet_address as string,
-    chain: row.chain as ScanChain,
+    chain: row.chain as EvmChain,
     tokenAddress: row.token_address as string,
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
@@ -393,7 +393,7 @@ function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
 
   return {
     address: row.address as string,
-    chain: row.chain as ScanChain,
+    chain: row.chain as EvmChain,
     gemHitCount: row.gem_hit_count as number,
     gems,
     score: row.score as number,
@@ -434,8 +434,8 @@ export function saveGemAnalysis(analysis: GemAnalysis): void {
 
   db.prepare(`
     INSERT OR REPLACE INTO insider_gem_analyses (id, token_symbol, chain, score, summary, analyzed_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, analysis.tokenSymbol, analysis.chain, analysis.score, "", analysis.analyzedAt);
+    VALUES (?, ?, ?, ?, NULL, ?)
+  `).run(id, analysis.tokenSymbol, analysis.chain, analysis.score, analysis.analyzedAt);
 }
 
 export interface GemPaperTrade {
@@ -618,14 +618,14 @@ export function deleteInsiderWalletsBelow(minScore: number): number {
 
 export interface InsiderWalletStats {
   address: string;
-  chain: ScanChain;
+  chain: EvmChain;
   score: number;
   gemHitCount: number;
   avgGainPct: number;
   avgPnlUsd: number;
 }
 
-export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStats[] {
+export function getInsiderWalletsWithStats(chain?: EvmChain): InsiderWalletStats[] {
   const db = getDb();
   let query = `
     SELECT w.address, w.chain, w.score, w.gem_hit_count,
@@ -649,7 +649,7 @@ export function getInsiderWalletsWithStats(chain?: ScanChain): InsiderWalletStat
 
   return rows.map(r => ({
     address: r.address,
-    chain: r.chain as ScanChain,
+    chain: r.chain as EvmChain,
     score: r.score,
     gemHitCount: r.gem_hit_count,
     avgGainPct: r.avg_pump > 0 ? (r.avg_pump - 1) * 100 : 0,
@@ -814,9 +814,12 @@ export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeS
       wins++;
       grossProfit += row.pnl_pct;
       countingLosses = false;
-    } else {
+    } else if (row.pnl_pct < 0) {
       grossLoss += Math.abs(row.pnl_pct);
       if (countingLosses) consecutiveLosses++;
+    } else {
+      // pnl_pct === 0 (breakeven): not a win or loss, stops loss streak
+      countingLosses = false;
     }
   }
 
@@ -838,7 +841,7 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
            COUNT(*) as total_trades,
            SUM(CASE WHEN pnl_pct > 0 THEN 1 ELSE 0 END) as wins,
            SUM(CASE WHEN pnl_pct > 0 THEN pnl_pct ELSE 0 END) as gross_profit,
-           SUM(CASE WHEN pnl_pct <= 0 THEN ABS(pnl_pct) ELSE 0 END) as gross_loss
+           SUM(CASE WHEN pnl_pct < 0 THEN ABS(pnl_pct) ELSE 0 END) as gross_loss
     FROM insider_copy_trades
     WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
     GROUP BY wallet_address
@@ -870,7 +873,7 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
       count = 0;
     }
     if (counting) {
-      if (row.pnl_pct <= 0) {
+      if (row.pnl_pct < 0) {
         count++;
       } else {
         counting = false;

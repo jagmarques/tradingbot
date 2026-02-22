@@ -8,18 +8,9 @@ import {
   incrementRugCount,
   updateCopyTradePairAddress,
 } from "./storage.js";
-import { COPY_TRADE_CONFIG } from "./types.js";
+import { COPY_TRADE_CONFIG, getAlchemyWssUrl } from "./types.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
-
-const ALCHEMY_CHAIN_MAP: Record<string, string> = {
-  ethereum: "eth",
-  base: "base",
-  arbitrum: "arb",
-  polygon: "polygon",
-  optimism: "opt",
-  avalanche: "avax",
-};
 
 const V2_BURN_TOPIC = keccak256("Burn(address,uint256,uint256,address)"); // Uniswap V2
 const V3_BURN_TOPIC = keccak256("Burn(address,int24,int24,uint128,uint256,uint256)"); // Uniswap V3
@@ -38,15 +29,6 @@ const pendingRechecks = new Set<string>();
 
 function nextRpcId(): number {
   return rpcId++;
-}
-
-function getAlchemyWssUrl(chain: string): string | null {
-  const env = loadEnv();
-  const alchemyKey = env.ALCHEMY_API_KEY;
-  if (!alchemyKey) return null;
-  const alchemyChain = ALCHEMY_CHAIN_MAP[chain];
-  if (!alchemyChain) return null;
-  return `wss://${alchemyChain}-mainnet.g.alchemy.com/v2/${alchemyKey}`;
 }
 
 function getChainSubscriptions(chain: string): Map<string, string> {
@@ -309,8 +291,8 @@ async function syncSubscriptions(): Promise<void> {
     for (const trade of missingPair) {
       const key = `${trade.tokenAddress.toLowerCase()}_${trade.chain}`;
       if (seen.has(key)) {
-        // Apply cached pairAddress
-        const donor = missingPair.find(t =>
+        // Apply cached pairAddress from openTrades (missingPair has no pairAddress by definition)
+        const donor = openTrades.find(t =>
           t.tokenAddress.toLowerCase() === trade.tokenAddress.toLowerCase() &&
           t.chain === trade.chain && t.pairAddress
         );

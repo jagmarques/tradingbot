@@ -1,6 +1,6 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import type { CopyExitReason } from "./types.js";
+import type { CopyExitReason, CopyTrade } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -626,6 +626,18 @@ export async function refreshCopyTradePrices(): Promise<void> {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
   }
 
+  // Helper: compute adjusted P&L with liquidity-based fee and price impact
+  function computeAdjustedPnl(trade: CopyTrade): number {
+    let adj = trade.pnlPct;
+    if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+      const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+      const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+      adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+    }
+    adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
+    return adj;
+  }
+
   // Trailing stop-loss check
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
@@ -636,22 +648,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
     const holdTimeMs = Date.now() - trade.buyTimestamp;
 
-    // Helper: compute adjusted P&L with liquidity-based fee and price impact
-    const computeAdjustedPnl = (): number => {
-      let adj = trade.pnlPct;
-      if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-        const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
-        const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
-        adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
-      }
-      adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
-      return adj;
-    };
-
     // Check 1: Max hold time (48h) - unconditional exit
     if (holdTimeMs >= COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
       const hours = Math.round(holdTimeMs / 3_600_000);
-      const adjustedPnlPct = computeAdjustedPnl();
+      const adjustedPnlPct = computeAdjustedPnl(trade);
       const exitDetail = `hold_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
       console.log(`[CopyTrade] MAX HOLD: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% after ${hours}h`);
       const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "max_hold_time", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
@@ -668,7 +668,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     // Check 2: Stale insider exit (24h, profitable only)
     if (holdTimeMs >= COPY_TRADE_CONFIG.STALE_INSIDER_MS && trade.pnlPct > 0) {
       const hours = Math.round(holdTimeMs / 3_600_000);
-      const adjustedPnlPct = computeAdjustedPnl();
+      const adjustedPnlPct = computeAdjustedPnl(trade);
       const exitDetail = `stale_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
       console.log(`[CopyTrade] STALE INSIDER: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% after ${hours}h`);
       const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_insider", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
@@ -727,7 +727,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       } else {
         exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
       }
-      const adjustedPnlPct = computeAdjustedPnl();
+      const adjustedPnlPct = computeAdjustedPnl(trade);
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
       const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail);
       if (closed) {

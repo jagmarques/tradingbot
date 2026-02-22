@@ -2,17 +2,8 @@ import WebSocket from "ws";
 import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
-import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS } from "./types.js";
+import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker } from "./types.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
-
-const ALCHEMY_CHAIN_MAP: Record<string, string> = {
-  ethereum: "eth",
-  base: "base",
-  arbitrum: "arb",
-  polygon: "polygon",
-  optimism: "opt",
-  avalanche: "avax",
-};
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
 
@@ -36,15 +27,6 @@ const processingLock = new Set<string>();
 
 function nextRpcId(): number {
   return rpcId++;
-}
-
-function getAlchemyWssUrl(chain: string): string | null {
-  const env = loadEnv();
-  const alchemyKey = env.ALCHEMY_API_KEY;
-  if (!alchemyKey) return null;
-  const alchemyChain = ALCHEMY_CHAIN_MAP[chain];
-  if (!alchemyChain) return null;
-  return `wss://${alchemyChain}-mainnet.g.alchemy.com/v2/${alchemyKey}`;
 }
 
 function padAddress(address: string): string {
@@ -168,20 +150,14 @@ async function handleTransferLog(chain: string, log: {
     try {
       // Circuit breaker
       const copyStats = getWalletCopyTradeStats(toAddress);
-      if (copyStats.totalTrades >= 10) {
-        const winRate = copyStats.wins / copyStats.totalTrades;
-        const losses = copyStats.totalTrades - copyStats.wins;
-        const avgWinPct = copyStats.wins > 0 ? copyStats.grossProfit / copyStats.wins : 0;
-        const avgLossPct = losses > 0 ? copyStats.grossLoss / losses : 0;
-        const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
-        if (expectancy <= 0) {
-          console.log(`[InsiderWS] Rejecting ${toAddress.slice(0, 8)}: negative expectancy after ${copyStats.totalTrades} trades`);
-          return;
+      const cb = checkCircuitBreaker(copyStats);
+      if (cb.blocked) {
+        if (copyStats.consecutiveLosses >= 3) {
+          console.log(`[InsiderWS] Pausing ${toAddress.slice(0, 8)} for 24h: ${cb.reason}`);
+          pauseWallet(toAddress);
+        } else {
+          console.log(`[InsiderWS] Rejecting ${toAddress.slice(0, 8)}: ${cb.reason}`);
         }
-      }
-      if (copyStats.consecutiveLosses >= 3) {
-        console.log(`[InsiderWS] Pausing ${toAddress.slice(0, 8)} for 24h: ${copyStats.consecutiveLosses} consecutive losses`);
-        pauseWallet(toAddress);
         return;
       }
       console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} received token ${tokenAddress.slice(0, 10)} (${chain})`);
