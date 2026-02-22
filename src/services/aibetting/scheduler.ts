@@ -1,6 +1,6 @@
 import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, PolymarketEvent } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
-import { fetchNewsForMarket } from "./news.js";
+import { fetchNewsForMarket, isGdeltCircuitOpen } from "./news.js";
 import { analyzeMarket, parseAnalysisResponse } from "./analyzer.js";
 import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
 import { callDeepSeek } from "./deepseek.js";
@@ -173,10 +173,15 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
       }
 
       const news = await fetchNewsForMarket(market);
-      await new Promise((r) => setTimeout(r, 6000)); // GDELT rate limit spacing
+      if (!isGdeltCircuitOpen()) {
+        await new Promise((r) => setTimeout(r, 6000)); // GDELT rate limit spacing
+      }
       if (news.length < 1) {
-        console.log(`[AIBetting] SKIP (0 news articles): ${market.title}`);
-        continue;
+        if (!isGdeltCircuitOpen()) {
+          console.log(`[AIBetting] SKIP (0 news articles): ${market.title}`);
+          continue;
+        }
+        console.log(`[AIBetting] PROCEEDING (GDELT down, R1 uses training data): ${market.title}`);
       }
 
       const siblingTitles = siblingClusters

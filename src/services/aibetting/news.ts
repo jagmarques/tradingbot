@@ -14,6 +14,10 @@ let gdeltCooldownUntil = 0;
 const GDELT_CIRCUIT_OPEN_THRESHOLD = 3;
 const GDELT_COOLDOWN_MS = 30 * 60 * 1000;
 
+export function isGdeltCircuitOpen(): boolean {
+  return Date.now() < gdeltCooldownUntil;
+}
+
 function getCachedNews(marketId: string): NewsItem[] | null {
   const cached = newsCache.get(marketId);
   if (!cached) return null;
