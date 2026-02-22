@@ -171,8 +171,8 @@ export interface InsiderScanResult {
 export const INSIDER_CONFIG = {
   MIN_GEM_HITS: 5, // 5+ gems to be considered insider
   MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
-  MIN_GEM_SCORE: 70, // min score to paper-buy
-  RESCORE_THRESHOLD: 50, // re-analyze gems near buy threshold
+  MIN_GEM_SCORE: 60, // min score to paper-buy
+  RESCORE_THRESHOLD: 45, // re-analyze gems near buy threshold
   MAX_BUY_PUMP: 20, // skip buying if already pumped this much
   QUALITY_GEM_HITS: 5, // gem hits required for insider quality scoring
   MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days

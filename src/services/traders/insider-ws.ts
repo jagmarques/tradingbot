@@ -3,7 +3,7 @@ import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker, SKIP_TOKEN_ADDRESSES } from "./types.js";
-import { BURN_ADDRESSES } from "./scanner.js";
+import { isBotOrBurnAddress } from "./scanner.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
@@ -52,7 +52,7 @@ function getQualifiedWalletsByChain(): Map<string, string[]> {
   for (const w of qualified) {
     if (!ALCHEMY_CHAIN_MAP[w.chain]) continue;
     const addr = w.address.toLowerCase();
-    if (BURN_ADDRESSES.has(addr)) continue;
+    if (isBotOrBurnAddress(addr)) continue;
     const list = byChain.get(w.chain) || [];
     list.push(addr);
     byChain.set(w.chain, list);

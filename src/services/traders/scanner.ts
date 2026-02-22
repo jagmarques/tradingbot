@@ -60,6 +60,14 @@ export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000003", // RIPEMD precompile
 ]);
 
+// Detect burn addresses + vanity/bot addresses (8+ leading zeros)
+export function isBotOrBurnAddress(addr: string): boolean {
+  const a = addr.toLowerCase();
+  if (BURN_ADDRESSES.has(a)) return true;
+  if (a.startsWith("0x00000000")) return true;
+  return false;
+}
+
 // GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented), 15s spacing
 let geckoQueue: Promise<void> = Promise.resolve();
 
@@ -353,8 +361,8 @@ async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
     for (const tx of earlyTransfers) {
       const to = tx.to.toLowerCase();
 
-      // Skip burn/dead addresses
-      if (BURN_ADDRESSES.has(to)) continue;
+      // Skip burn/dead/bot addresses
+      if (isBotOrBurnAddress(to)) continue;
 
       // Skip the token contract itself
       if (to === token.tokenAddress) continue;
@@ -434,7 +442,7 @@ async function getWalletTokenPnl(
         if (!buyDate) buyDate = ts;
       } else if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
         const dest = tx.to.toLowerCase();
-        if (sellDestinations.has(dest) || BURN_ADDRESSES.has(dest)) {
+        if (sellDestinations.has(dest) || isBotOrBurnAddress(dest)) {
           soldTokens += amount;
         } else {
           transferredTokens += amount;
@@ -870,6 +878,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
         AND wallet_address NOT IN ('0x0000000000000000000000000000000000000000','0x000000000000000000000000000000000000dead','0x0000000000000000000000000000000000000001','0x0000000000000000000000000000000000000002','0x0000000000000000000000000000000000000003')
+        AND wallet_address NOT LIKE '0x00000000%'
       GROUP BY wallet_address, chain
       HAVING gem_count >= ? AND unique_tokens >= ?
     `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS, INSIDER_CONFIG.MIN_UNIQUE_TOKENS) as Array<{

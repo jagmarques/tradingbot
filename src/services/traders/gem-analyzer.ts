@@ -265,11 +265,11 @@ function scoreGemQuality(
   chain: string
 ): number {
   const liquidity = pair ? scoreLiquidityHealth(pair) : 0;
-  const safety = goPlusData ? scoreContractSafety(goPlusData) : 0;
+  const safety = goPlusData ? scoreContractSafety(goPlusData) : 8; // baseline when GoPlus unavailable
   const growth = pair ? scoreGrowthPotential(pair) : 0;
-  const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 0;
+  const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 5; // baseline when GoPlus unavailable
   const insiderRaw = scoreByInsiders(tokenAddress, chain);
-  const insider = Math.round(insiderRaw / 10);
+  const insider = Math.round(insiderRaw / 4); // max 25 (was /10 = max 10)
 
   const total = safety + liquidity + holders + growth + insider;
 
