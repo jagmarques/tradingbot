@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, updateCopyTradePriceWithRugFee, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason, CopyTrade } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -610,6 +610,52 @@ export async function refreshCopyTradePrices(): Promise<void> {
       if (pair?.pairCreatedAt) {
         const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey && !t.tokenCreatedAt);
         if (trade) updateCopyTradeTokenCreatedAt(trade.tokenAddress, trade.chain, pair.pairCreatedAt);
+      }
+
+      // Periodic liquidity rug check (safety net for missed WebSocket burn events)
+      const liquidityUsd = pair?.liquidity?.usd ?? 0;
+      const tradesForToken = openTrades.filter(
+        t => t.tokenAddress.toLowerCase() === addrKey && t.chain === token.chain
+      );
+
+      if (tradesForToken.length > 0) {
+        const maxEntryLiq = Math.max(...tradesForToken.map(t => t.liquidityUsd));
+        const belowFloor = maxEntryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD
+          && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
+        const droppedFromEntry = maxEntryLiq > 0
+          && liquidityUsd < maxEntryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
+
+        if (belowFloor || droppedFromEntry) {
+          const reason = liquidityUsd === 0
+            ? "liquidity is zero"
+            : droppedFromEntry
+              ? `liquidity dropped ${((1 - liquidityUsd / maxEntryLiq) * 100).toFixed(0)}% ($${maxEntryLiq.toFixed(0)} -> $${liquidityUsd.toFixed(0)})`
+              : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
+          console.log(`[CopyTrade] PERIODIC RUG: ${tradesForToken[0].tokenSymbol} (${token.chain}) - ${reason} (${tradesForToken.length} trades)`);
+
+          const rugFeePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
+          for (const trade of tradesForToken) {
+            updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, priceUsd);
+            const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
+              ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
+              : 0;
+            trade.currentPriceUsd = priceUsd;
+            const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
+            if (!closed) continue;
+            notifyCopyTrade({
+              walletAddress: trade.walletAddress,
+              tokenSymbol: trade.tokenSymbol,
+              chain: trade.chain,
+              side: "sell",
+              priceUsd,
+              liquidityOk: false,
+              liquidityUsd,
+              skipReason: "liquidity rug",
+              pnlPct: computedPnl,
+            }).catch(err => console.error("[CopyTrade] Notification error:", err));
+          }
+          incrementRugCount(tradesForToken[0].tokenAddress, token.chain);
+        }
       }
     } else {
       // Price fetch failure tracking

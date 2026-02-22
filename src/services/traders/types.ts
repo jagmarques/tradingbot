@@ -252,7 +252,7 @@ export const COPY_TRADE_CONFIG = {
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 70,
-  PRICE_REFRESH_INTERVAL_MS: 60 * 1000,
+  PRICE_REFRESH_INTERVAL_MS: 30 * 1000,  // was 60s
   TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000, // 4 hours - tighten trailing stop for profitable positions
   TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
   STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
