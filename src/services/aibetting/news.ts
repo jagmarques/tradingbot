@@ -1,3 +1,4 @@
+import https from "node:https";
 import type { PolymarketEvent, NewsItem } from "./types.js";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
@@ -130,6 +131,23 @@ function buildAlternativeQuery(title: string, originalQuery: string): string | n
   return alt;
 }
 
+function httpsGet(url: string, headers: Record<string, string>, timeoutMs: number): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.get(
+      { hostname: parsed.hostname, path: parsed.pathname + parsed.search, headers, timeout: timeoutMs },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+        res.on("error", reject);
+      },
+    );
+    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
+    req.on("error", reject);
+  });
+}
+
 async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   if (!query || query.split(/\s+/).filter(w => w.length >= 3).length === 0) return [];
 
@@ -140,25 +158,27 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   const cleanedQuery = query.split(/\s+/).filter(w => w.length >= 3).join(" ");
   const fullQuery = `${cleanedQuery} sourcelang:eng`;
   const url = `${GDELT_API_URL}?query=${encodeURIComponent(fullQuery)}&mode=artlist&format=json&maxrecords=10&timespan=7d`;
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+  };
 
-  let response: Response | null = null;
+  let responseText: string | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-        },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      const result = await httpsGet(url, headers, 30000);
+      if (result.status === 429) {
+        const backoff = (attempt + 1) * 5000;
+        await new Promise(r => setTimeout(r, backoff));
+        continue;
+      }
+      if (result.status !== 200) {
+        console.warn(`[News] GDELT HTTP ${result.status}`);
+        return [];
+      }
       gdeltConsecutiveFailures = 0;
-      if (response.status !== 429) break;
-      const backoff = (attempt + 1) * 5000;
-      await new Promise(r => setTimeout(r, backoff));
+      responseText = result.body;
+      break;
     } catch (err) {
-      clearTimeout(timeout);
       console.warn(`[News] GDELT fetch error (attempt ${attempt + 1}/3): ${err instanceof Error ? err.message : err}`);
       if (attempt === 2) {
         gdeltConsecutiveFailures++;
@@ -173,19 +193,18 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
     }
   }
 
-  if (!response || !response.ok) return [];
+  if (!responseText) return [];
 
-  const text = await response.text();
-  if (!text.startsWith("{")) {
-    if (text.toLowerCase().includes("please limit") || text.toLowerCase().includes("rate limit")) {
-      console.warn(`[News] GDELT rate limited: "${text.slice(0, 120)}"`);
+  if (!responseText.startsWith("{")) {
+    if (responseText.toLowerCase().includes("please limit") || responseText.toLowerCase().includes("rate limit")) {
+      console.warn(`[News] GDELT rate limited: "${responseText.slice(0, 120)}"`);
     } else {
-      console.warn(`[News] GDELT non-JSON response: "${text.slice(0, 120)}"`);
+      console.warn(`[News] GDELT non-JSON response: "${responseText.slice(0, 120)}"`);
     }
     return [];
   }
 
-  const data = JSON.parse(text) as { articles?: GdeltArticle[] };
+  const data = JSON.parse(responseText) as { articles?: GdeltArticle[] };
   return data.articles ?? [];
 }
 
