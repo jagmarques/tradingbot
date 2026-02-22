@@ -146,12 +146,12 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
     );
   });
 
-  it("exits trade when liquidity drops 70%+ from entry", async () => {
+  it("exits trade when liquidity drops 40%+ from entry", async () => {
     const trade = makeTrade({ liquidityUsd: 20000, tokenAddress: "0xdef", chain: "base", buyPriceUsd: 0.002 });
     mockGetOpenCopyTrades.mockReturnValue([trade]);
 
-    // 80% drop from 20000 -> 4000
-    const pair = makeDexPair("0.001", 4000);
+    // 50% drop from 20000 -> 10000
+    const pair = makeDexPair("0.001", 10000);
     mockDexScreenerFetchBatch.mockResolvedValue(new Map([["0xdef", pair]]));
     mockCloseCopyTrade.mockReturnValue(true);
 
@@ -173,8 +173,8 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
     const trade = makeTrade({ liquidityUsd: 10000, tokenAddress: "0xghi", chain: "base" });
     mockGetOpenCopyTrades.mockReturnValue([trade]);
 
-    // 20% drop, within tolerance (threshold is 70%)
-    const pair = makeDexPair("0.0009", 8000);
+    // 30% drop, within tolerance (threshold is 40%)
+    const pair = makeDexPair("0.0009", 7000);
     mockDexScreenerFetchBatch.mockResolvedValue(new Map([["0xghi", pair]]));
 
     await refreshCopyTradePrices();

@@ -44,7 +44,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
 - Trailing stop: +10%/0%, +25%/+10%, +50%/+25%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - Time exits: 4h profit tighten (breakeven stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
-- GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
+- GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 30s price refresh
 - Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
 - Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
@@ -64,7 +64,8 @@ Copies EVM token buys from high-scoring insider wallets.
 Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Burn events).
 
 - Monitors all open insider copy trade positions
-- Auto-sells on rug detection
+- Auto-sells on rug detection (WebSocket burn events + periodic liquidity check every 30s)
+- Liquidity rug triggers: absolute floor below $5k OR 40% drop from entry liquidity
 - Tracks rugged tokens in DB to skip future buys
 - Rug count and USD lost shown in Status view
 
