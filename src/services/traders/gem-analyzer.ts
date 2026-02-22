@@ -666,6 +666,53 @@ export async function refreshCopyTradePrices(): Promise<void> {
       updateCopyTradePeakPnl(trade.id, trade.pnlPct);
     }
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
+    const holdTimeMs = Date.now() - trade.buyTimestamp;
+
+    // Helper: compute adjusted P&L with liquidity-based fee and price impact
+    const computeAdjustedPnl = (): number => {
+      let adj = trade.pnlPct;
+      if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+        const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+        const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+        adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+      }
+      adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
+      return adj;
+    };
+
+    // Check 1: Max hold time (48h) - unconditional exit
+    if (holdTimeMs >= COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
+      const hours = Math.round(holdTimeMs / 3_600_000);
+      const adjustedPnlPct = computeAdjustedPnl();
+      const exitDetail = `hold_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
+      console.log(`[CopyTrade] MAX HOLD: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% after ${hours}h`);
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "max_hold_time", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
+      if (closed) {
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+          skipReason: `max hold ${hours}h`, pnlPct: adjustedPnlPct,
+        }).catch(() => {});
+      }
+      continue;
+    }
+
+    // Check 2: Stale insider exit (24h, profitable only)
+    if (holdTimeMs >= COPY_TRADE_CONFIG.STALE_INSIDER_MS && trade.pnlPct > 0) {
+      const hours = Math.round(holdTimeMs / 3_600_000);
+      const adjustedPnlPct = computeAdjustedPnl();
+      const exitDetail = `stale_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
+      console.log(`[CopyTrade] STALE INSIDER: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% after ${hours}h`);
+      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_insider", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
+      if (closed) {
+        notifyCopyTrade({
+          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
+          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
+          skipReason: `stale insider ${hours}h`, pnlPct: adjustedPnlPct,
+        }).catch(() => {});
+      }
+      continue;
+    }
 
     // Trailing stop ladder based on peak profit (aggressive for micro-caps)
     let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
@@ -679,6 +726,11 @@ export async function refreshCopyTradePrices(): Promise<void> {
       stopLevel = 0; // breakeven if we hit +50%
     } else if (peak >= 25) {
       stopLevel = -10; // limit loss to -10% if we hit +25%
+    }
+
+    // Check 3: Time-based trailing stop tightening (4h, profitable)
+    if (holdTimeMs >= COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_MS && trade.pnlPct > 0) {
+      stopLevel = Math.max(stopLevel, COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_STOP_PCT);
     }
 
     if (trade.pnlPct <= stopLevel) {
@@ -698,17 +750,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       } else {
         exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
       }
-      // Adjust P&L for liquidity-based exit fee (replace flat 3% with dynamic estimate)
-      let adjustedPnlPct = trade.pnlPct;
-      if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-        const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
-        const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
-        const extraFee = dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT; // already deducted 3% in price refresh
-        adjustedPnlPct -= extraFee;
-      }
-      // Add price impact for exit
-      const exitImpact = estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
-      adjustedPnlPct -= exitImpact;
+      const adjustedPnlPct = computeAdjustedPnl();
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
       const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail);
       if (closed) {

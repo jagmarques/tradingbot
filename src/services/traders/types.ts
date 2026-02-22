@@ -171,7 +171,7 @@ export const WATCHER_CONFIG = {
   MAX_BUY_PUMP: 10,                  // Skip buying if already pumped 10x (lower than scanner's 20x)
 };
 
-export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "stale_price" | "liquidity_rug";
+export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "stale_price" | "liquidity_rug" | "max_hold_time" | "stale_insider";
 
 export interface CopyTrade {
   id: string; // format: `${walletAddress}_${tokenAddress}_${chain}`
@@ -205,7 +205,7 @@ export const INSIDER_WS_CONFIG = {
 };
 
 export const COPY_TRADE_CONFIG = {
-  MIN_LIQUIDITY_USD: 1000,
+  MIN_LIQUIDITY_USD: 5000,
   AMOUNT_USD: 10, // base reference amount (see getPositionSize for score-based sizing)
   STOP_LOSS_PCT: -50,
   ESTIMATED_FEE_PCT: 3, // 1% DEX fee/side + slippage on micro-caps (Uniswap 1% tier)
@@ -214,6 +214,10 @@ export const COPY_TRADE_CONFIG = {
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 70,
   PRICE_REFRESH_INTERVAL_MS: 60 * 1000,
+  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000,   // 4 hours - tighten trailing stop for profitable positions
+  TIME_PROFIT_TIGHTEN_STOP_PCT: -10,              // tighten trailing stop to this level, or keep current if already tighter
+  STALE_INSIDER_MS: 24 * 60 * 60 * 1000,         // 24 hours - close profitable positions if insider hasn't sold
+  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,         // 48 hours - absolute max hold time
 };
 
 /** Score-based position sizing: higher score = larger position */
