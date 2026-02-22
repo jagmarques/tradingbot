@@ -1,6 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, EvmChain } from "./types.js";
-import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG, getPositionSize } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -665,7 +665,7 @@ export function getInsiderWalletsWithStats(chain?: EvmChain): InsiderWalletStats
     score: r.score,
     gemHitCount: r.gem_hit_count,
     avgGainPct: r.avg_pump > 0 ? (r.avg_pump - 1) * 100 : 0,
-    avgPnlUsd: r.avg_pump > 0 ? (r.avg_pump - 1) * 10 : 0,
+    avgPnlUsd: r.avg_pump > 0 ? (r.avg_pump - 1) * getPositionSize(r.score) : 0,
   }));
 }
 

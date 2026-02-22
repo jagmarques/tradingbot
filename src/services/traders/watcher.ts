@@ -277,7 +277,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
-    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price, will retry next cycle`);
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
     return;
   }
 
@@ -296,7 +296,7 @@ export async function processInsiderBuy(tokenInfo: {
       amountUsd: positionAmount,
       pnlPct: 0,
       status: "skipped",
-      liquidityOk: true,
+      liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
       liquidityUsd,
       skipReason: "GoPlus unavailable",
       buyTimestamp: Date.now(),
