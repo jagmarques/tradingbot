@@ -142,8 +142,9 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
       if (response.status !== 429) break;
       const backoff = (attempt + 1) * 5000;
       await new Promise(r => setTimeout(r, backoff));
-    } catch {
+    } catch (err) {
       clearTimeout(timeout);
+      console.warn(`[News] GDELT fetch error (attempt ${attempt + 1}/3): ${err instanceof Error ? err.message : err}`);
       if (attempt === 2) return [];
       await new Promise(r => setTimeout(r, 3000));
     }
@@ -270,8 +271,8 @@ export async function fetchNewsForMarket(
             console.log(`[News] Dropped irrelevant (${top3[i].source}): ${top3[i].title.slice(0, 80)}`);
           }
         }
-      } catch {
-        // continue
+      } catch (err) {
+        console.warn(`[News] Failed to fetch content from ${top3[i].url}: ${err instanceof Error ? err.message : err}`);
       }
     }
 
