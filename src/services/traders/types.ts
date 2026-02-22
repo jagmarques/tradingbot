@@ -151,7 +151,7 @@ export const INSIDER_CONFIG = {
   MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
-  SCAN_CHAINS: ["ethereum", "avalanche"] as ScanChain[],
+  SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as ScanChain[],
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan

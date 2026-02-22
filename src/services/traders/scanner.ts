@@ -40,8 +40,8 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   avalanche: 43114,
 };
 
-// Chains with working free explorer APIs (ethereum=Etherscan, avalanche=Routescan)
-export const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "avalanche"]);
+// Chains with free explorer APIs (Etherscan V2 free: eth/arb/polygon, Routescan: avax)
+export const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "arbitrum", "polygon", "avalanche"]);
 
 // Build explorer URL based on chain (Routescan for Avalanche, Etherscan V2 for others)
 export function buildExplorerUrl(chain: EvmChain, params: string): string {

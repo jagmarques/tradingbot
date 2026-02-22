@@ -46,7 +46,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
 - Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
-- Scans Ethereum and Avalanche only (chains with explorer API support)
+- Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 5+ gem hits across 3+ unique tokens required
 
 **Consistency scoring (MIN_WALLET_SCORE = 75):**
