@@ -14,6 +14,7 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 - Round-number debiasing: R1 avoids 40%, 35%, uses 37%, 43%
 - Sibling detection: injects competitor names for multi-candidate markets
 - 8h analysis cache, auto-invalidated on new news
+- GDELT circuit breaker: 3 consecutive timeout failures pauses news fetching 30min
 - Prediction market article filter: drops Polymarket/Kalshi articles
 
 **Edge modifiers:** extremization 1.3x, category bonuses, NO-side +1.5% bias
@@ -44,12 +45,13 @@ Copies EVM token buys from high-scoring insider wallets.
 - Trailing stop: +10%/0%, +25%/+10%, +50%/+25%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - Time exits: 4h profit tighten (breakeven stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
 - GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
+- Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
 - Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 5+ gem hits across 3+ unique tokens required
 
-**Consistency scoring (MIN_WALLET_SCORE = 80):**
+**Consistency scoring (MIN_WALLET_SCORE = 75):**
 - Wilson Score lower bound for effective win rate (smooth cold-start penalization)
 - Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
 - Legacy formula uses log2(20) scaling so realistic wallets can score 85+
@@ -72,8 +74,9 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 
 - DeepSeek analysis with market data pipeline (technical indicators, regime classification)
 - Kelly criterion position sizing (quarter Kelly, 20% balance cap)
-- Funding rate arbitrage (short when funding > 15% APR, close when < 5%)
-- Max 5x leverage, 6 concurrent positions, $25 daily drawdown limit
+- Funding rate arbitrage (short when funding > 20% APR, close when < 5%)
+- Delta-neutral funding arb: equal spot long + perp short for pure yield capture
+- Max 5x leverage, 6 concurrent positions, $25 rolling 24h drawdown limit (resets 24h after last loss)
 - 14-day paper validation required before live trading
 
 ## Telegram
