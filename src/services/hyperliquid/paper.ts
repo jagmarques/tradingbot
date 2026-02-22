@@ -227,10 +227,21 @@ export async function paperClosePosition(
   const fees = position.size * 0.00045 * 2;
   // Include accumulated funding income in reported P&L (already applied to virtualBalance during accrual)
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
-  const pnl = rawPnl - fees + fundingPnl;
+
+  // Delta-neutral spot hedge P&L adjustment
+  let spotPnl = 0;
+  if (position.spotHedgePrice && position.spotHedgePrice > 0) {
+    // Virtual spot long: profit when price goes up, loss when price goes down
+    spotPnl = ((currentPrice - position.spotHedgePrice) / position.spotHedgePrice) * position.size;
+    console.log(
+      `[Quant Paper] Spot hedge P&L: entry ${position.spotHedgePrice} -> exit ${currentPrice} = $${spotPnl.toFixed(4)}`
+    );
+  }
+
+  const pnl = rawPnl - fees + fundingPnl + spotPnl;
 
   // Return size + trading pnl to virtual balance (funding already applied during accrual, not here)
-  virtualBalance += position.size + (rawPnl - fees);
+  virtualBalance += position.size + (rawPnl - fees) + spotPnl;
 
   const now = new Date().toISOString();
   const closedPosition: QuantPosition = {

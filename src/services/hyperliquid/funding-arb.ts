@@ -7,8 +7,10 @@ import {
   FUNDING_ARB_TAKE_PROFIT_PCT,
   FUNDING_ARB_CLOSE_APR,
   FUNDING_ARB_SCAN_INTERVAL_MS,
+  FUNDING_ARB_DELTA_NEUTRAL,
 } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
+import { saveQuantPosition } from "../database/quant.js";
 
 let scanInterval: ReturnType<typeof setInterval> | null = null;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
@@ -62,9 +64,17 @@ export async function runFundingArbCycle(): Promise<void> {
 
     if (position) {
       opened++;
-      console.log(
-        `[FundingArb] Opened ${direction} ${pair} to collect funding (${(annualizedRate * 100).toFixed(1)}% APR)`,
-      );
+      if (FUNDING_ARB_DELTA_NEUTRAL) {
+        position.spotHedgePrice = markPrice;
+        saveQuantPosition(position);
+        console.log(
+          `[FundingArb] Opened delta-neutral ${pair}: short perp + virtual spot long @ ${markPrice} (${(annualizedRate * 100).toFixed(1)}% APR)`,
+        );
+      } else {
+        console.log(
+          `[FundingArb] Opened ${direction} ${pair} to collect funding (${(annualizedRate * 100).toFixed(1)}% APR)`,
+        );
+      }
     }
   }
 

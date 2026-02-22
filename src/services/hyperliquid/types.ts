@@ -16,6 +16,7 @@ export interface QuantPosition {
   exitReason: string | undefined;
   status: "open" | "closed";
   tradeType?: TradeType;
+  spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
 }
 
 export interface QuantTrade {
