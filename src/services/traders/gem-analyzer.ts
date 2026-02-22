@@ -571,6 +571,51 @@ export async function exitCopyTrade(trade: CopyTrade, exitReason: CopyExitReason
   return closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail, sellTxHash);
 }
 
+export async function checkGoPlusForOpenTrades(): Promise<void> {
+  const openTrades = getOpenCopyTrades();
+  if (openTrades.length === 0) return;
+
+  const seen = new Set<string>();
+  for (const trade of openTrades) {
+    const key = `${trade.tokenAddress.toLowerCase()}_${trade.chain}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const data = await fetchGoPlusData(trade.tokenAddress, trade.chain);
+    if (!data) continue; // GoPlus unavailable - fail open
+
+    if (!isGoPlusKillSwitch(data)) continue;
+
+    const matchingTrades = openTrades.filter(
+      t => t.tokenAddress.toLowerCase() === trade.tokenAddress.toLowerCase() && t.chain === trade.chain
+    );
+
+    const reason = data.is_honeypot === "1" ? "honeypot" : "sell_restricted";
+    console.log(`[CopyTrade] GOPLUS FLAG: ${trade.tokenSymbol} (${trade.chain}) - ${reason} (${matchingTrades.length} trades)`);
+
+    for (const t of matchingTrades) {
+      const pnlPct = t.buyPriceUsd > 0 && t.currentPriceUsd > 0
+        ? ((t.currentPriceUsd / t.buyPriceUsd - 1) * 100 - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT)
+        : 0;
+      const closed = await exitCopyTrade(t, "honeypot", pnlPct, reason);
+      if (!closed) continue;
+      notifyCopyTrade({
+        walletAddress: t.walletAddress,
+        tokenSymbol: t.tokenSymbol,
+        chain: t.chain,
+        side: "sell",
+        priceUsd: t.currentPriceUsd,
+        liquidityOk: false,
+        liquidityUsd: 0,
+        skipReason: reason,
+        pnlPct,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    }
+
+    incrementRugCount(trade.tokenAddress, trade.chain);
+  }
+}
+
 export async function refreshCopyTradePrices(): Promise<void> {
   const now = Date.now();
   if (now - lastCopyTradeRefresh < 30_000) return;
