@@ -7,6 +7,9 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export async function runDirectionalCycle(): Promise<void> {
+  console.log("[QuantScheduler] Directional trading disabled, skipping cycle");
+  return;
+
   if (isQuantKilled()) {
     console.log("[QuantScheduler] Kill switch active, skipping cycle");
     return;
