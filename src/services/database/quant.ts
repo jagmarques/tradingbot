@@ -295,6 +295,20 @@ export function getQuantValidationMetrics(): {
   };
 }
 
+export function sumRecentQuantLosses(withinMs: number): { totalLoss: number; lastLossTs: number } {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - withinMs).toISOString();
+  const row = db.prepare(`
+    SELECT
+      COALESCE(SUM(ABS(pnl)), 0) as total_loss,
+      COALESCE(MAX(updated_at), '') as last_loss_at
+    FROM quant_trades
+    WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
+  `).get(cutoff) as { total_loss: number; last_loss_at: string };
+  const lastLossTs = row.last_loss_at ? new Date(row.last_loss_at).getTime() : 0;
+  return { totalLoss: row.total_loss, lastLossTs };
+}
+
 export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
   const db = getDb();
   const result = db

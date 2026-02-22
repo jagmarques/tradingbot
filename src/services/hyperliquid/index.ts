@@ -6,6 +6,7 @@ import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
+import { seedDailyLossFromDb } from "./risk-manager.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -33,6 +34,7 @@ export function initQuant(): number {
     setPaperStartDate(new Date().toISOString());
   }
 
+  seedDailyLossFromDb();
   startPositionMonitor();
   startFundingArbMonitor();
   startQuantScheduler();
@@ -80,6 +82,7 @@ export {
   recordDailyLoss,
   resetDailyDrawdown,
   getDailyLossTotal,
+  seedDailyLossFromDb,
 } from "./risk-manager.js";
 
 // Position Monitor

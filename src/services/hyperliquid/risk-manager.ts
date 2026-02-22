@@ -46,6 +46,20 @@ export function resetDailyDrawdown(): void {
   console.log(`[RiskManager] Rolling 24h drawdown manually reset`);
 }
 
+export function seedDailyLossFromDb(): void {
+  try {
+    const { sumRecentQuantLosses } = require("../database/quant.js");
+    const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000);
+    dailyLossAccumulator = totalLoss;
+    lastLossTimestamp = lastLossTs;
+    if (totalLoss > 0) {
+      console.log(`[RiskManager] Seeded rolling 24h loss from DB: $${totalLoss.toFixed(2)}`);
+    }
+  } catch {
+    console.log("[RiskManager] No quant_trades table yet, starting with 0 loss");
+  }
+}
+
 export function getDailyLossTotal(): number {
   // Auto-reset if 24h have passed since last loss
   if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {

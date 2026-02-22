@@ -1,14 +1,14 @@
 import type { EvmChain } from "./types.js";
 import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize, checkCircuitBreaker } from "./types.js";
 import type { Chain } from "./types.js";
-import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats, updateCopyTradeTokenCreatedAt } from "./storage.js";
+import { getInsiderWallets, insertCopyTrade, getCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats, updateCopyTradeTokenCreatedAt } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
-import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
+import { fetchGoPlusData, isGoPlusKillSwitch, exitCopyTrade } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
 import { isPaperMode } from "../../config/env.js";
-import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
+import { execute1inchSwap, getNativeBalance, isChainSupported } from "../evm/index.js";
 import { getApproxUsdValue } from "../copy/filter.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
@@ -104,19 +104,8 @@ export async function processInsiderSell(
 
     const pnlPct = rawPnlPct - feePct;
 
-    // Live sell
-    let sellTxHash: string | undefined;
-    if (trade.isLive) {
-      const result = await approveAndSell1inch(trade.chain as Chain, trade.tokenAddress, 3);
-      if (result.success) {
-        sellTxHash = result.txHash;
-        console.log(`[CopyTrade] LIVE SELL: ${trade.tokenSymbol} (${trade.chain}) tx=${result.txHash}`);
-      } else {
-        console.log(`[CopyTrade] LIVE SELL FAILED: ${trade.tokenSymbol} (${trade.chain}) - ${result.error}. Closing anyway.`);
-      }
-    }
-
-    const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold", tradePriceUsd, pnlPct, undefined, sellTxHash);
+    trade.currentPriceUsd = tradePriceUsd;
+    const closed = await exitCopyTrade(trade, "insider_sold", pnlPct, "insider_sold");
     if (!closed) continue; // already closed by another path
     console.log(`[CopyTrade] Insider sell: closing ${trade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
     notifyCopyTrade({
@@ -426,6 +415,34 @@ export async function processInsiderBuy(tokenInfo: {
     }
   } else {
     // Live buy
+    if (!liquidityOk) {
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: positionAmount,
+        pnlPct: 0,
+        status: "skipped",
+        liquidityOk: false,
+        liquidityUsd,
+        skipReason: `low liquidity $${liquidityUsd.toFixed(0)}`,
+        buyTimestamp: Date.now(),
+        tokenCreatedAt: pair?.pairCreatedAt ?? null,
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
+      });
+      console.log(`[CopyTrade] LIVE: Skip ${symbol} (${tokenInfo.chain}) - low liquidity $${liquidityUsd.toFixed(0)}`);
+      return;
+    }
     if (!isChainSupported(tokenInfo.chain as Chain)) {
       console.log(`[CopyTrade] LIVE: Skip ${symbol} - chain ${tokenInfo.chain} not supported`);
       return;
@@ -451,7 +468,7 @@ export async function processInsiderBuy(tokenInfo: {
         amountUsd: positionAmount,
         pnlPct: 0,
         status: "open",
-        liquidityOk: true,
+        liquidityOk,
         liquidityUsd,
         skipReason: null,
         buyTimestamp: Date.now(),
@@ -473,7 +490,7 @@ export async function processInsiderBuy(tokenInfo: {
         chain: tokenInfo.chain,
         side: "buy",
         priceUsd,
-        liquidityOk: true,
+        liquidityOk,
         liquidityUsd,
         skipReason: null,
       }).catch(err => console.error("[CopyTrade] Notification error:", err));
@@ -504,6 +521,14 @@ async function watchInsiderWallets(): Promise<void> {
   if (qualifiedWallets.length === 0) {
     console.log("[InsiderWatcher] No qualified wallets to watch");
     return;
+  }
+
+  // Clean stale entries from lastSeenTxTimestamp
+  const activeKeys = new Set(qualifiedWallets.map((w) => `${w.address}_${w.chain}`));
+  for (const key of lastSeenTxTimestamp.keys()) {
+    if (!activeKeys.has(key)) {
+      lastSeenTxTimestamp.delete(key);
+    }
   }
 
   let newBuysTotal = 0;
