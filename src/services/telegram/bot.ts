@@ -886,53 +886,41 @@ async function handlePnl(ctx: Context): Promise<void> {
     const totalUnrealized = aiBetUnrealized + copyUnrealized + insiderUnrealized + quantUnrealized;
 
     // Total (realized + unrealized)
+    let realizedTotal: number;
+    let breakdownStr: string;
+
     if (period === "today") {
       const breakdown = getDailyPnlBreakdown();
-      const trades = getTodayTrades();
-      const wins = trades.filter((t) => t.pnl > 0).length;
-      const losses = trades.filter((t) => t.pnl < 0).length;
-      const total = breakdown.total + totalUnrealized;
-      message += `<b>Total: ${pnl(total)}</b> | ${wins}W ${losses}L`;
-
-      // Realized
-      message += `\n-------------------\n`;
-      message += `<b>Realized</b> ${pnl(breakdown.total)}\n`;
-      message += formatBreakdown(
+      realizedTotal = breakdown.total;
+      breakdownStr = formatBreakdown(
         breakdown.cryptoCopy,
         breakdown.polyCopy,
         breakdown.aiBetting,
         breakdown.quantPnl,
         breakdown.insiderCopyPnl,
-        breakdown.rugLosses,
       );
-      const rugStats = getRugStats();
-      message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
     } else {
       const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
       const data = getPnlForPeriod(days);
-      const total = data.totalPnl + totalUnrealized;
-      message += `<b>Total: ${pnl(total)}</b>`;
-
-      // Realized
-      message += `\n-------------------\n`;
-      message += `<b>Realized</b> ${pnl(data.totalPnl)}\n`;
-      message += formatBreakdown(
+      realizedTotal = data.totalPnl;
+      breakdownStr = formatBreakdown(
         data.cryptoCopyPnl,
         data.polyCopyPnl,
         data.aiBettingPnl,
         data.quantPnl,
         data.insiderCopyPnl,
-        data.rugPnl,
       );
-      const rugStats = getRugStats();
-      message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
-
-      const history = getDailyPnlHistory(days);
-      if (history.length > 1) {
-        message += `\n<b>Cumulative P&L</b>\n`;
-        message += generatePnlChart(history);
-      }
     }
+
+    const total = realizedTotal + totalUnrealized;
+    message += `<b>Total: ${pnl(total)}</b>`;
+
+    // Realized
+    message += `\n-------------------\n`;
+    message += `<b>Realized</b> ${pnl(realizedTotal)}\n`;
+    message += breakdownStr;
+    const rugStats = getRugStats();
+    message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
 
     // Unrealized (open positions)
     message += `\n-------------------\n`;
@@ -979,7 +967,6 @@ function formatBreakdown(
   aiBetting: number,
   quantPnl: number,
   insiderCopyPnl: number,
-  rugPnl: number,
 ): string {
   const pnl = (n: number) => `${n >= 0 ? "+" : ""}$${n.toFixed(2)}`;
 
@@ -989,10 +976,9 @@ function formatBreakdown(
     { name: "AI Bets", value: aiBetting },
     { name: "Quant", value: quantPnl },
     { name: "Insider", value: insiderCopyPnl },
-    { name: "Rugs", value: rugPnl },
   ];
 
-  const rows = sources.map(s => `${s.name}: ${s.name === "Rugs" && s.value === 0 ? "$0.00" : pnl(s.value)}`);
+  const rows = sources.map(s => `${s.name}: ${pnl(s.value)}`);
   return rows.join("\n");
 }
 
