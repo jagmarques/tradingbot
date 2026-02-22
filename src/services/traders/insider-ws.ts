@@ -167,8 +167,9 @@ async function handleTransferLog(chain: string, log: {
         walletAddress: toAddress,
         walletScore,
         tokenAddress,
-        tokenSymbol: "UNKNOWN", // DexScreener will resolve
+        tokenSymbol: "UNKNOWN",
         chain,
+        hasTradeHistory: copyStats.totalTrades > 0,
       });
       if (txHash) markTransferProcessed(txHash);
     } catch (err) {

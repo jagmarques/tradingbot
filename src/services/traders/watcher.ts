@@ -131,6 +131,7 @@ export async function processInsiderBuy(tokenInfo: {
   tokenAddress: string;
   tokenSymbol: string;
   chain: string;
+  hasTradeHistory?: boolean;
 }): Promise<void> {
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
   if (tokenBuyLock.has(tokenLockKey)) {
@@ -155,9 +156,11 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Score-based position sizing
-  const positionAmount = getPositionSize(tokenInfo.walletScore);
-  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
+  // Score-based position sizing; halve for legacy wallets (no proven copy-trade P&L)
+  const baseAmount = getPositionSize(tokenInfo.walletScore);
+  const positionAmount = tokenInfo.hasTradeHistory ? baseAmount : Math.floor(baseAmount / 2);
+  const legacyNote = tokenInfo.hasTradeHistory ? "" : " (legacy, halved)";
+  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}${legacyNote}`);
 
   // Exposure check (accumulation bypasses)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
@@ -647,6 +650,7 @@ async function watchInsiderWallets(): Promise<void> {
             tokenAddress: tx.contractAddress.toLowerCase(),
             tokenSymbol: tx.tokenSymbol || "UNKNOWN",
             chain: wallet.chain,
+            hasTradeHistory: copyStats.totalTrades > 0,
           });
           if (tx.hash) markTransferProcessed(tx.hash);
           walletNewCount++;
