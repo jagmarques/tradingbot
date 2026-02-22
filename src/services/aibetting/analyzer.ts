@@ -296,7 +296,6 @@ export async function analyzeMarket(
         // Log warning but do NOT reject
       }
 
-      analysis.uncertainty = 0.5;
       saveAnalysis(analysis, market.title);
 
       const yesOutcome = market.outcomes.find((o) => o.name === "Yes");

@@ -100,7 +100,7 @@ async function checkPositionStops(): Promise<void> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[PositionMonitor] Error checking positions: ${msg}`);
+    console.error(`[PositionMonitor] Error checking positions: ${msg}`);
   }
 }
 

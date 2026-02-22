@@ -159,22 +159,14 @@ export function getQuantStats(tradeType?: "directional" | "funding"): {
   winRate: number;
 } {
   const db = getDb();
-  const whereClause = tradeType
-    ? `WHERE status = 'closed' AND trade_type = '${tradeType}'`
-    : `WHERE status = 'closed'`;
-  const stats = db.prepare(`
-    SELECT
-      COUNT(*) as total,
-      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-      SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
-      SUM(pnl) as total_pnl
-    FROM quant_trades
-    ${whereClause}
-  `).get() as {
+  const sql = tradeType
+    ? `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?`
+    : `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'`;
+  const stats = (tradeType ? db.prepare(sql).get(tradeType) : db.prepare(sql).get()) as {
     total: number;
     wins: number;
     losses: number;
-    total_pnl: number;
+    total_pnl: number | null;
   };
 
   const total = stats.total || 0;

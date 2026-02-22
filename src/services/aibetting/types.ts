@@ -42,7 +42,6 @@ export interface AIAnalysis {
   reasoning: string;
   keyFactors: string[];
   timestamp: number;
-  uncertainty?: number; // 0.0 to 1.0, represents range of uncertainty around probability
   evidenceCited?: string[]; // Specific facts from articles that support the probability
   consistencyNote?: string; // Why estimate differs from prior, or "consistent" if unchanged
   citationAccuracy?: number; // 0.0-1.0, fraction of cited evidence verified in article text

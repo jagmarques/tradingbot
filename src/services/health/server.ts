@@ -1,7 +1,8 @@
 import http from "http";
-import { getRiskStatus } from "../risk/manager.js";
+import { getRiskStatus, canTrade } from "../risk/manager.js";
 import { isDbInitialized } from "../database/db.js";
 import { isPaperMode } from "../../config/env.js";
+import { isQuantKilled } from "../hyperliquid/risk-manager.js";
 
 export interface HealthStatus {
   status: "healthy" | "degraded" | "unhealthy";
@@ -31,13 +32,8 @@ export function getHealthStatus(): HealthStatus {
     dbHealthy = false;
   }
 
-  try {
-    // Synchronous check - we can't await here
-    tradingEnabled = true; // Will be updated by async check
-    killSwitchActive = false;
-  } catch {
-    tradingEnabled = false;
-  }
+  tradingEnabled = canTrade();
+  killSwitchActive = isQuantKilled() || !canTrade();
 
   const allHealthy = dbHealthy && tradingEnabled && !killSwitchActive;
   const anyUnhealthy = !dbHealthy;
