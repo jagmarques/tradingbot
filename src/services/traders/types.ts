@@ -193,13 +193,20 @@ export const INSIDER_CONFIG = {
 };
 
 export const WATCHER_CONFIG = {
-  INTERVAL_MS: 2.5 * 60 * 1000,     // 2.5 minutes between watch cycles
-  MIN_WALLET_SCORE: 80,              // Only watch wallets with score >= 80
-  MAX_WALLETS_PER_CYCLE: 30,         // Rate limit: max wallets per cycle
-  MAX_NEW_TOKENS_PER_WALLET: 3,      // Max new tokens to process per wallet per cycle
+  INTERVAL_MS: 2.5 * 60 * 1000, // 2.5 minutes between watch cycles
+  MIN_WALLET_SCORE: 80, // Only watch wallets with score >= 80
+  MAX_WALLETS_PER_CYCLE: 30, // Rate limit: max wallets per cycle
+  MAX_NEW_TOKENS_PER_WALLET: 3, // Max new tokens to process per wallet per cycle
 };
 
-export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "stale_price" | "liquidity_rug" | "max_hold_time" | "stale_insider";
+export type CopyExitReason =
+  | "insider_sold"
+  | "trailing_stop"
+  | "stop_loss"
+  | "stale_price"
+  | "liquidity_rug"
+  | "max_hold_time"
+  | "stale_insider";
 
 export interface CopyTrade {
   id: string; // format: `${walletAddress}_${tokenAddress}_${chain}_${buyTimestamp}`
@@ -218,18 +225,23 @@ export interface CopyTrade {
   liquidityUsd: number;
   skipReason: string | null;
   buyTimestamp: number;
+  tokenCreatedAt: number | null;
   closeTimestamp: number | null;
   exitReason: CopyExitReason | null;
   insiderCount: number;
   peakPnlPct: number;
   walletScoreAtBuy: number;
   exitDetail: string | null;
+  txHash?: string | null;
+  tokensReceived?: string | null;
+  sellTxHash?: string | null;
+  isLive?: boolean;
 }
 
 export const INSIDER_WS_CONFIG = {
-  SYNC_INTERVAL_MS: 30_000,                    // 30s wallet list sync
-  DEDUP_TTL_MS: 10 * 60 * 1000,               // 10 min tx hash dedup
-  FALLBACK_POLL_INTERVAL_MS: 10 * 60 * 1000,  // 10 min polling when WS active
+  SYNC_INTERVAL_MS: 30_000, // 30s wallet list sync
+  DEDUP_TTL_MS: 10 * 60 * 1000, // 10 min tx hash dedup
+  FALLBACK_POLL_INTERVAL_MS: 10 * 60 * 1000, // 10 min polling when WS active
 };
 
 export const COPY_TRADE_CONFIG = {
@@ -241,12 +253,11 @@ export const COPY_TRADE_CONFIG = {
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 70,
   PRICE_REFRESH_INTERVAL_MS: 60 * 1000,
-  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000,   // 4 hours - tighten trailing stop for profitable positions
-  TIME_PROFIT_TIGHTEN_STOP_PCT: 0,               // tighten trailing stop to breakeven after 4h if profitable
-  STALE_INSIDER_MS: 24 * 60 * 60 * 1000,         // 24 hours - close profitable positions if insider hasn't sold
-  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,         // 48 hours - absolute max hold time
+  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000, // 4 hours - tighten trailing stop for profitable positions
+  TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
+  STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
+  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000, // 48 hours - absolute max hold time
 };
-
 
 /** Score-based position sizing: higher score = larger position */
 export function getPositionSize(score: number): number {
@@ -275,18 +286,27 @@ export function getAlchemyWssUrl(chain: string): string | null {
 }
 
 export function stripEmoji(s: string): string {
-  return s.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
+  return s
+    .replace(
+      /\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu,
+      "",
+    )
+    .trim();
 }
 
-export function checkCircuitBreaker(
-  stats: { totalTrades: number; wins: number; grossProfit: number; grossLoss: number; consecutiveLosses: number },
-): { blocked: boolean; reason: string } {
+export function checkCircuitBreaker(stats: {
+  totalTrades: number;
+  wins: number;
+  grossProfit: number;
+  grossLoss: number;
+  consecutiveLosses: number;
+}): { blocked: boolean; reason: string } {
   if (stats.totalTrades >= 10) {
     const winRate = stats.wins / stats.totalTrades;
     const losses = stats.totalTrades - stats.wins;
     const avgWinPct = stats.wins > 0 ? stats.grossProfit / stats.wins : 0;
     const avgLossPct = losses > 0 ? stats.grossLoss / losses : 0;
-    const expectancy = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+    const expectancy = winRate * avgWinPct - (1 - winRate) * avgLossPct;
     if (expectancy <= 0) {
       return { blocked: true, reason: `negative expectancy after ${stats.totalTrades} trades` };
     }

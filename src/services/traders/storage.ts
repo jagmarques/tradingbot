@@ -153,6 +153,11 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN pair_address TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN wallet_score_at_buy REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_detail TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN token_created_at INTEGER DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN tokens_received TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_rug_counts (
@@ -687,6 +692,7 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     liquidityUsd: row.liquidity_usd as number,
     skipReason: (row.skip_reason as string) || null,
     buyTimestamp: row.buy_timestamp as number,
+    tokenCreatedAt: (row.token_created_at as number | null) ?? null,
     closeTimestamp: (row.close_timestamp as number) || null,
     exitReason: (row.exit_reason as CopyTrade["exitReason"]) || null,
     insiderCount: (row.insider_count as number) || 1,
@@ -708,8 +714,9 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
       id, wallet_address, token_symbol, token_address, chain, side,
       buy_price_usd, current_price_usd, amount_usd, pnl_pct, status,
       liquidity_ok, liquidity_usd, skip_reason, buy_timestamp, close_timestamp,
-      exit_reason, insider_count, peak_pnl_pct, pair_address, wallet_score_at_buy
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exit_reason, insider_count, peak_pnl_pct, pair_address, wallet_score_at_buy,
+      token_created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     wa,
@@ -731,7 +738,8 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
     trade.insiderCount ?? 1,
     trade.peakPnlPct ?? 0,
     trade.pairAddress ?? null,
-    trade.walletScoreAtBuy ?? 0
+    trade.walletScoreAtBuy ?? 0,
+    trade.tokenCreatedAt ?? null
   );
 }
 
@@ -934,11 +942,23 @@ export function getOpenCopyTradeByToken(tokenAddress: string, chain: string): Co
   return mapRowToCopyTrade(row);
 }
 
-export function increaseCopyTradeAmount(id: string, additionalAmount: number): void {
+export function increaseCopyTradeAmount(id: string, additionalAmount: number, newBuyPriceUsd?: number): void {
   const db = getDb();
-  db.prepare(
-    "UPDATE insider_copy_trades SET amount_usd = amount_usd + ?, insider_count = insider_count + 1 WHERE id = ?"
-  ).run(additionalAmount, id);
+  if (newBuyPriceUsd !== undefined && newBuyPriceUsd > 0) {
+    // Weighted average: (oldAmount * oldPrice + newAmount * newPrice) / (oldAmount + newAmount)
+    db.prepare(`
+      UPDATE insider_copy_trades SET
+        buy_price_usd = (amount_usd * buy_price_usd + ? * ?) / (amount_usd + ?),
+        amount_usd = amount_usd + ?,
+        insider_count = insider_count + 1
+      WHERE id = ?
+    `).run(additionalAmount, newBuyPriceUsd, additionalAmount, additionalAmount, id);
+  } else {
+    // Fallback: no price available, just add amount (legacy behavior)
+    db.prepare(
+      "UPDATE insider_copy_trades SET amount_usd = amount_usd + ?, insider_count = insider_count + 1 WHERE id = ?"
+    ).run(additionalAmount, id);
+  }
 }
 
 export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {

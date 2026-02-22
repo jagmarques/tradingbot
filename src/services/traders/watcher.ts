@@ -219,6 +219,7 @@ export async function processInsiderBuy(tokenInfo: {
         liquidityUsd,
         skipReason: `accumulated skipped - low liquidity $${liquidityUsd.toFixed(0)}`,
         buyTimestamp: Date.now(),
+        tokenCreatedAt: pair?.pairCreatedAt ?? null,
         closeTimestamp: null,
         exitReason: null,
         insiderCount: 0,
@@ -256,6 +257,7 @@ export async function processInsiderBuy(tokenInfo: {
       liquidityUsd,
       skipReason: `accumulated into ${existingTokenTrade.id}`,
       buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
       closeTimestamp: null,
       exitReason: null,
       insiderCount: 0,
@@ -284,6 +286,7 @@ export async function processInsiderBuy(tokenInfo: {
       liquidityUsd: 0,
       skipReason: "no price",
       buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
       closeTimestamp: null,
       exitReason: null,
       insiderCount: 1,
@@ -314,6 +317,7 @@ export async function processInsiderBuy(tokenInfo: {
       liquidityUsd,
       skipReason: "GoPlus unavailable",
       buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
       closeTimestamp: null,
       exitReason: null,
       insiderCount: 1,
@@ -341,6 +345,7 @@ export async function processInsiderBuy(tokenInfo: {
       liquidityUsd,
       skipReason: "GoPlus kill-switch",
       buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
       closeTimestamp: null,
       exitReason: null,
       insiderCount: 1,
@@ -369,6 +374,7 @@ export async function processInsiderBuy(tokenInfo: {
     liquidityUsd,
     skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
     buyTimestamp: Date.now(),
+    tokenCreatedAt: pair?.pairCreatedAt ?? null,
     closeTimestamp: null,
     exitReason: null,
     insiderCount: 1,
@@ -376,7 +382,7 @@ export async function processInsiderBuy(tokenInfo: {
     walletScoreAtBuy: tokenInfo.walletScore,
     exitDetail: null,
   });
-  console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd.toFixed(6)}, liq $${liquidityUsd.toFixed(0)}`);
+  console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd >= 0.01 ? priceUsd.toFixed(4) : priceUsd >= 0.000001 ? priceUsd.toFixed(8) : priceUsd.toExponential(3)}, liq $${liquidityUsd.toFixed(0)}`);
   if (liquidityOk) {
     notifyCopyTrade({
       walletAddress: tokenInfo.walletAddress,

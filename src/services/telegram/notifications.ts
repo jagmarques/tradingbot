@@ -197,6 +197,13 @@ export async function notifyInsiderBuyDetected(params: {
   await sendMessage(message);
 }
 
+export function formatPrice(p: number): string {
+  if (p <= 0) return "N/A";
+  if (p >= 0.01) return `$${p.toFixed(4)}`;
+  if (p >= 0.000001) return `$${p.toFixed(8)}`;
+  return `$${p.toExponential(3)}`;
+}
+
 // Copy trade notification (buy or sell)
 export async function notifyCopyTrade(params: {
   walletAddress: string;
@@ -222,7 +229,7 @@ export async function notifyCopyTrade(params: {
       `Wallet: ${escapeHtml(params.walletAddress.slice(0, 8))}...\n` +
       `Chain: ${escapeHtml(params.chain)}\n` +
       `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
-      `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
+      `Price: ${formatPrice(params.priceUsd)}\n` +
       `Liquidity: $${params.liquidityUsd.toFixed(0)}\n` +
       `Status: ${statusStr}`;
   } else {
@@ -233,7 +240,7 @@ export async function notifyCopyTrade(params: {
       `<b>${header}</b>\n\n` +
       `Token: <b>${escapeHtml(params.tokenSymbol)}</b>\n` +
       `Chain: ${escapeHtml(params.chain)}\n` +
-      `Price: $${params.priceUsd > 0 ? params.priceUsd.toFixed(6) : "N/A"}\n` +
+      `Price: ${formatPrice(params.priceUsd)}\n` +
       `P&L: ${pnlStr}\n` +
       `Reason: ${escapeHtml(params.skipReason || "closed")}`;
   }
