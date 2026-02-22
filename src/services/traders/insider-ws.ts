@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
-import { getInsiderWallets, getWalletCopyTradeStats } from "./storage.js";
+import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS } from "./types.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
 
@@ -184,9 +184,10 @@ async function handleTransferLog(chain: string, log: {
         return;
       }
       console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} received token ${tokenAddress.slice(0, 10)} (${chain})`);
+      const walletScore = getInsiderWalletScore(toAddress, chain);
       await processInsiderBuy({
         walletAddress: toAddress,
-        walletScore: 0, // not needed for buy processing
+        walletScore,
         tokenAddress,
         tokenSymbol: "UNKNOWN", // DexScreener will resolve
         chain,

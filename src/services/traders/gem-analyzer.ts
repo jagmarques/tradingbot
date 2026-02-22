@@ -723,30 +723,39 @@ export async function refreshCopyTradePrices(): Promise<void> {
     } else if (peak >= 100) {
       stopLevel = 50; // lock in +50% if we hit +100%
     } else if (peak >= 50) {
-      stopLevel = 0; // breakeven if we hit +50%
+      stopLevel = 25; // lock in +25% if we hit +50%
     } else if (peak >= 25) {
-      stopLevel = -10; // limit loss to -10% if we hit +25%
+      stopLevel = 10; // lock in +10% if we hit +25%
+    } else if (peak >= 10) {
+      stopLevel = 0; // breakeven if we hit +10%
     }
 
-    // Check 3: Time-based trailing stop tightening (4h, profitable)
+    // Time-based stop tightening: 4h+ profitable -> breakeven minimum
+    let timeTightened = false;
     if (holdTimeMs >= COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_MS && trade.pnlPct > 0) {
+      const before = stopLevel;
       stopLevel = Math.max(stopLevel, COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_STOP_PCT);
+      if (stopLevel > before) timeTightened = true;
     }
 
     if (trade.pnlPct <= stopLevel) {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
       const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
       let exitDetail = "";
-      if (peak >= 500) {
+      if (timeTightened) {
+        exitDetail = `time_tighten_${stopLevel}`;
+      } else if (peak >= 500) {
         exitDetail = `dynamic_peak_${peak.toFixed(0)}_stop_${stopLevel.toFixed(0)}`;
       } else if (peak >= 200) {
         exitDetail = "peak_200_stop_100";
       } else if (peak >= 100) {
         exitDetail = "peak_100_stop_50";
       } else if (peak >= 50) {
-        exitDetail = "peak_50_stop_0";
+        exitDetail = "peak_50_stop_25";
       } else if (peak >= 25) {
-        exitDetail = "peak_25_stop_-10";
+        exitDetail = "peak_25_stop_10";
+      } else if (peak >= 10) {
+        exitDetail = "peak_10_stop_0";
       } else {
         exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
       }

@@ -264,6 +264,20 @@ export function getInsiderWallets(chain?: ScanChain, minHits?: number): InsiderW
   return rows.map(mapRowToInsiderWallet);
 }
 
+export function getInsiderWalletScore(address: string, chain?: string): number {
+  const db = getDb();
+  const wa = address.toLowerCase();
+  let query = "SELECT score FROM insider_wallets WHERE address = ?";
+  const params: unknown[] = [wa];
+  if (chain) {
+    query += " AND chain = ?";
+    params.push(chain);
+  }
+  query += " ORDER BY score DESC LIMIT 1";
+  const row = db.prepare(query).get(...params) as { score: number } | undefined;
+  return row?.score ?? 0;
+}
+
 export function getPromisingWalletsForHistoryScan(
   minHits: number = 3,
   limit: number = 20

@@ -145,7 +145,8 @@ export interface InsiderScanResult {
 
 export const INSIDER_CONFIG = {
   MIN_PUMP_MULTIPLE: 3, // 3x pump
-  MIN_GEM_HITS: 3, // 3+ gems to be considered insider
+  MIN_GEM_HITS: 5, // 5+ gems to be considered insider
+  MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
   MIN_GEM_SCORE: 70, // min score to paper-buy
   RESCORE_THRESHOLD: 50, // re-analyze gems near buy threshold
   MAX_BUY_PUMP: 20, // skip buying if already pumped this much
@@ -215,7 +216,7 @@ export const COPY_TRADE_CONFIG = {
   LIQUIDITY_RUG_DROP_PCT: 70,
   PRICE_REFRESH_INTERVAL_MS: 60 * 1000,
   TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000,   // 4 hours - tighten trailing stop for profitable positions
-  TIME_PROFIT_TIGHTEN_STOP_PCT: -10,              // tighten trailing stop to this level, or keep current if already tighter
+  TIME_PROFIT_TIGHTEN_STOP_PCT: 0,               // tighten trailing stop to breakeven after 4h if profitable
   STALE_INSIDER_MS: 24 * 60 * 60 * 1000,         // 24 hours - close profitable positions if insider hasn't sold
   MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,         // 48 hours - absolute max hold time
 };

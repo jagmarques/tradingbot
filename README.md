@@ -41,13 +41,16 @@ Copies EVM token buys from high-scoring insider wallets.
 - Polling fallback every 10 min when WebSocket active, 2.5 min standalone
 - Auto-sells when the insider sells (closes all trades for token, idempotent)
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
-- Trailing stop: +25%/-10%, +50%/0%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
-- Time exits: 4h profit tighten (-10% stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
+- Trailing stop: +10%/0%, +25%/+10%, +50%/+25%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
+- Time exits: 4h profit tighten (breakeven stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
 - GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 1 min price refresh
+- Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
+- Quality gates: 5+ gem hits across 3+ unique tokens required
 
 **Consistency scoring (MIN_WALLET_SCORE = 75):**
 - Wilson Score lower bound for effective win rate (smooth cold-start penalization)
 - Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
+- Legacy formula uses log2(20) scaling so realistic wallets can score 85+
 - Expectancy floor: negative expectancy after 10+ trades = rejected
 - Exponential recency decay (14-day half-life), score-based sizing ($8-$15)
 - Circuit breaker: 3 consecutive losses = 24h pause

@@ -329,17 +329,19 @@ export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
       }>;
     };
 
-    if (data.status !== "1" || !Array.isArray(data.result)) {
+    if (data.status !== "1" || !Array.isArray(data.result) || data.result.length === 0) {
       return [];
     }
 
-    // Take the first 100 transfers (earliest buyers)
-    const earlyTransfers = data.result.slice(0, 100);
+    // Block-based early buyer filtering
+    const firstBlock = parseInt(data.result[0].blockNumber);
+    const maxBlock = firstBlock + INSIDER_CONFIG.EARLY_BUYER_BLOCKS;
+    const earlyTransfers = data.result.filter(tx => parseInt(tx.blockNumber) <= maxBlock);
 
-    // Count how many transfers each address appears in (to filter routers/pools)
-    const totalTransfers = data.result.length;
+    // Count frequency within early window only (to filter routers/pools)
+    const totalTransfers = earlyTransfers.length;
     const addressCounts = new Map<string, number>();
-    for (const tx of data.result) {
+    for (const tx of earlyTransfers) {
       const to = tx.to.toLowerCase();
       addressCounts.set(to, (addressCounts.get(to) || 0) + 1);
     }
@@ -808,7 +810,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     last_seen: number;
   }, copyStats?: WalletCopyTradeStats, medianPump?: number): number {
     // Legacy formula: gems(30) + avg_pump(30) + hold_rate(20) + recency(20) = 100
-    const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
+    const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(20)));
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
     const holdRate = wallet.gem_count > 0 ? wallet.holding_count / wallet.gem_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
@@ -822,7 +824,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     if (totalTrades < 1) return legacyScore;
 
     // New formula: gems(15) + median_pump(10) + win_rate(15) + profit_factor(20) + expectancy(20) + recency(20) = 100
-    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(100)));
+    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(20)));
     const mp = medianPump ?? wallet.avg_pump;
     const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
     const cs = copyStats as WalletCopyTradeStats;
@@ -883,8 +885,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
       GROUP BY wallet_address, chain
-      HAVING gem_count >= ?
-    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS) as Array<{
+      HAVING gem_count >= ? AND unique_tokens >= ?
+    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS, INSIDER_CONFIG.MIN_UNIQUE_TOKENS) as Array<{
       wallet_address: string;
       chain: EvmChain;
       gem_count: number;
