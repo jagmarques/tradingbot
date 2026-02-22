@@ -72,7 +72,7 @@ export function initInsiderTables(): void {
       token_symbol TEXT NOT NULL,
       chain TEXT NOT NULL,
       score INTEGER NOT NULL,
-      summary TEXT NOT NULL,
+      summary TEXT,
       analyzed_at INTEGER NOT NULL
     )
   `);

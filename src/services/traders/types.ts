@@ -1,4 +1,4 @@
-// Shared types for copy trading and telegram consumers
+// Shared types and config for insider copy trading pipeline
 import { loadEnv } from "../../config/env.js";
 
 export type EvmChain = "ethereum" | "polygon" | "base" | "arbitrum" | "optimism" | "avalanche";
@@ -202,7 +202,7 @@ export const INSIDER_WS_CONFIG = {
 export const COPY_TRADE_CONFIG = {
   MIN_LIQUIDITY_USD: 5000,
   STOP_LOSS_PCT: -50,
-  ESTIMATED_FEE_PCT: 3, // 1% DEX fee/side + slippage on micro-caps (Uniswap 1% tier)
+  ESTIMATED_FEE_PCT: 3, // ~1.5% per side (DEX fee + slippage) on micro-caps
   ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
   LIQUIDITY_RUG_FLOOR_USD: 5000,
