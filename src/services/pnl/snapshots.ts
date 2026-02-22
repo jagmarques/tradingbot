@@ -1,10 +1,8 @@
 import cron from "node-cron";
 import { getDb } from "../database/db.js";
 import { getDailyPnlBreakdown } from "../risk/manager.js";
-import { cleanupOldClosedCopyTrades } from "../traders/storage.js";
 
 let cronJob: cron.ScheduledTask | null = null;
-let weeklyCleanupJob: cron.ScheduledTask | null = null;
 let lastSnapshotTime = 0;
 
 export interface DailySnapshot {
@@ -235,29 +233,13 @@ export function startPnlCron(): void {
     console.error("[PnL] Initial snapshot error:", err);
   }
 
-  // Weekly cleanup: delete closed copy trades older than 7 days (Sundays at 04:00)
-  weeklyCleanupJob = cron.schedule("0 4 * * 0", () => {
-    try {
-      const deleted = cleanupOldClosedCopyTrades();
-      if (deleted > 0) {
-        console.log(`[PnL] Weekly cleanup: deleted ${deleted} old closed copy trades`);
-      }
-    } catch (err) {
-      console.error("[PnL] Weekly cleanup error:", err);
-    }
-  });
-
-  console.log("[PnL] Cron started (daily at 23:59, weekly cleanup Sun 04:00)");
+  console.log("[PnL] Cron started (daily at 23:59)");
 }
 
 export function stopPnlCron(): void {
   if (cronJob) {
     cronJob.stop();
     cronJob = null;
-  }
-  if (weeklyCleanupJob) {
-    weeklyCleanupJob.stop();
-    weeklyCleanupJob = null;
   }
   console.log("[PnL] Cron stopped");
 }

@@ -141,7 +141,7 @@ interface GeckoPool {
 }
 
 // Find tokens that pumped 3x+ in 24h on a given chain
-export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]> {
+async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]> {
   const networkId = GECKO_NETWORK_IDS[chain];
   const seen = new Set<string>();
   const pumped: PumpedToken[] = [];
@@ -307,7 +307,7 @@ export async function findPumpedTokens(chain: ScanChain): Promise<PumpedToken[]>
 }
 
 // Find wallets that bought a token early (within first 50-100 transfers)
-export async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
+async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
   if (!EXPLORER_SUPPORTED_CHAINS.has(token.chain)) return [];
 
   const url = buildExplorerUrl(token.chain as EvmChain, `module=account&action=tokentx&contractaddress=${token.tokenAddress}&startblock=0&endblock=99999999&sort=asc`);
@@ -390,7 +390,7 @@ interface WalletTokenPnl {
   sellDate: number;
 }
 
-export async function getWalletTokenPnl(
+async function getWalletTokenPnl(
   walletAddress: string, tokenAddress: string, chain: ScanChain
 ): Promise<WalletTokenPnl> {
   if (!EXPLORER_SUPPORTED_CHAINS.has(chain)) {
@@ -471,7 +471,7 @@ export async function getWalletTokenPnl(
 let historyInProgress = false;
 
 // Scan historical wallet transactions for additional gem hits
-export async function scanWalletHistory(): Promise<void> {
+async function scanWalletHistory(): Promise<void> {
   if (historyInProgress) {
     console.log("[InsiderScanner] History: Skipping (previous scan still running)");
     return;
@@ -608,7 +608,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
 }
 
 // Enrich gem hits with P&L data (non-blocking, runs after scan)
-export async function enrichInsiderPnl(): Promise<void> {
+async function enrichInsiderPnl(): Promise<void> {
   const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
 
   for (const wallet of insiders) {
@@ -639,7 +639,7 @@ export async function enrichInsiderPnl(): Promise<void> {
   }
 }
 
-export async function updateHeldGemPrices(): Promise<void> {
+async function updateHeldGemPrices(): Promise<void> {
   const heldGems = getAllHeldGemHits();
 
   // Deduplicate by token+chain (many wallets may hold same token)
@@ -725,9 +725,6 @@ export async function updateHeldGemPrices(): Promise<void> {
   }
 }
 
-// Chain rotation state (rotates 2 chains per cycle)
-let lastChainIndex = 0;
-
 // Main scan orchestrator
 export async function runInsiderScan(): Promise<InsiderScanResult> {
   const result: InsiderScanResult = {
@@ -737,15 +734,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     errors: [],
   };
 
-  const allChains = INSIDER_CONFIG.SCAN_CHAINS;
-  const perCycle = INSIDER_CONFIG.CHAINS_PER_CYCLE;
-  const cycleChains: ScanChain[] = [];
-  for (let i = 0; i < perCycle; i++) {
-    cycleChains.push(allChains[(lastChainIndex + i) % allChains.length]);
-  }
-  lastChainIndex = (lastChainIndex + perCycle) % allChains.length;
+  const cycleChains = INSIDER_CONFIG.SCAN_CHAINS;
 
-  console.log(`[InsiderScanner] Scanning ${cycleChains.length}/${allChains.length} chains: ${cycleChains.join(", ")}`);
+  console.log(`[InsiderScanner] Scanning ${cycleChains.length} chains: ${cycleChains.join(", ")}`);
 
   for (const chain of cycleChains) {
     try {
@@ -924,6 +915,10 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const scores: number[] = [];
     let qualifiedCount = 0;
 
+    const existingQualified = new Set(getInsiderWallets(undefined, undefined)
+      .filter(w => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE)
+      .map(w => `${w.address}_${w.chain}`));
+
     for (const group of walletGroups) {
       const gems = group.token_symbols.split(",").filter(Boolean);
       const copyStats = copyStatsMap.get(group.wallet_address);
@@ -942,6 +937,10 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
           firstSeenAt: group.first_seen,
           lastSeenAt: group.last_seen,
         });
+        const walletKey = `${group.wallet_address}_${group.chain}`;
+        if (!existingQualified.has(walletKey)) {
+          console.log(`[InsiderScanner] New qualified wallet: ${group.wallet_address.slice(0, 8)} (${group.chain}) score=${score} gems=${group.gem_count}`);
+        }
         qualifiedCount++;
       }
     }

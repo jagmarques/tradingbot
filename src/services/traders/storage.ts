@@ -787,11 +787,6 @@ export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: 
   db.prepare("UPDATE insider_copy_trades SET pair_address = ? WHERE id = ? AND pair_address IS NULL").run(pairAddress, id);
 }
 
-// Disabled: preserving full copy trade history for scoring
-export function cleanupOldClosedCopyTrades(): number {
-  return 0;
-}
-
 export interface WalletCopyTradeStats {
   totalTrades: number;
   wins: number;

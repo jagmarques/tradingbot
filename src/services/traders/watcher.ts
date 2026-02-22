@@ -22,7 +22,7 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
 }
 
 // LP/wrapper token symbols to skip (not real tradeable tokens)
-export const LP_TOKEN_SYMBOLS = new Set([
+const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
   "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
   "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
@@ -46,7 +46,7 @@ export function isTransferProcessed(txHash: string): boolean {
   return true;
 }
 
-export function cleanupProcessedTxHashes(): void {
+function cleanupProcessedTxHashes(): void {
   const now = Date.now();
   for (const [hash, ts] of processedTxHashes) {
     if (now - ts > INSIDER_WS_CONFIG.DEDUP_TTL_MS) {
@@ -55,7 +55,7 @@ export function cleanupProcessedTxHashes(): void {
   }
 }
 
-export function isLpToken(symbol: string): boolean {
+function isLpToken(symbol: string): boolean {
   return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
 }
 
@@ -147,6 +147,7 @@ export async function processInsiderBuy(tokenInfo: {
 
   // Score-based position sizing
   const positionAmount = getPositionSize(tokenInfo.walletScore);
+  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
   // Check exposure budget before opening new positions (accumulation still allowed)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
@@ -539,10 +540,6 @@ export function stopInsiderWatcher(): void {
   if (!watcherRunning) return;
   watcherRunning = false;
   console.log("[InsiderWatcher] Stopped");
-}
-
-export function isInsiderWatcherRunning(): boolean {
-  return watcherRunning;
 }
 
 export function clearWatcherMemory(): void {

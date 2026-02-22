@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, incrementRugCount, getRugCount, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -111,7 +111,7 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
   return false;
 }
 
-export function scoreByInsiders(tokenAddress: string, chain: string): number {
+function scoreByInsiders(tokenAddress: string, chain: string): number {
   const stats = getInsiderStatsForToken(tokenAddress, chain);
 
   let score = 0;
@@ -258,7 +258,7 @@ function scoreGrowthPotential(pair: import("../shared/dexscreener.js").DexPair):
   return pts; // max 20
 }
 
-export function scoreGemQuality(
+function scoreGemQuality(
   goPlusData: Record<string, unknown> | null,
   pair: import("../shared/dexscreener.js").DexPair | null,
   tokenAddress: string,
@@ -283,7 +283,7 @@ export function scoreGemQuality(
 // Cache so analyzeGem and buyGems share the same DexPair fetch
 const gemDexCache = new Map<string, import("../shared/dexscreener.js").DexPair>();
 
-export async function analyzeGem(symbol: string, chain: string, tokenAddress: string): Promise<GemAnalysis> {
+async function analyzeGem(symbol: string, chain: string, tokenAddress: string): Promise<GemAnalysis> {
   const cached = getCachedGemAnalysis(symbol, chain);
   if (cached) return cached;
 
@@ -323,7 +323,7 @@ const priceFetchFailures = new Map<string, { count: number; lastFailAt: number }
 const buyingLock = new Set<string>();
 const sellingLock = new Set<string>();
 
-export async function buyGems(
+async function buyGems(
   tokens: Array<{ symbol: string; chain: string; currentPump: number; score: number; tokenAddress: string }>
 ): Promise<void> {
   for (const token of tokens) {
@@ -509,38 +509,6 @@ export function analyzeGemsBackground(
     await buyGems(results);
     gemDexCache.clear();
   })().catch((err) => console.error("[GemAnalyzer] Background batch error:", err));
-}
-
-export async function revalidateHeldGems(): Promise<void> {
-  const openTrades = getOpenGemPaperTrades();
-  if (openTrades.length === 0) return;
-
-  console.log(`[GemAnalyzer] Revalidating ${openTrades.length} held gems`);
-
-  const tokensToCheck: Array<{ chain: string; tokenAddress: string; symbol: string }> = [];
-  for (const trade of openTrades) {
-    const tokenAddress = getTokenAddressForGem(trade.tokenSymbol, trade.chain);
-    if (tokenAddress) {
-      tokensToCheck.push({ chain: trade.chain, tokenAddress, symbol: trade.tokenSymbol });
-    }
-  }
-
-  if (tokensToCheck.length === 0) return;
-
-  const priceMap = await dexScreenerFetchBatch(tokensToCheck);
-
-  for (const token of tokensToCheck) {
-    const addrKey = token.tokenAddress.toLowerCase();
-    const pair = priceMap.get(addrKey);
-    if (!pair) continue;
-
-    const liquidityUsd = pair.liquidity?.usd ?? 0;
-    if (liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-      await sellGemPosition(token.symbol, token.chain);
-      incrementRugCount(token.tokenAddress, token.chain);
-      console.log(`[GemAnalyzer] Auto-close ${token.symbol}: liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD} (rug)`);
-    }
-  }
 }
 
 export async function refreshGemPaperPrices(): Promise<void> {

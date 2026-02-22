@@ -152,7 +152,6 @@ export const INSIDER_CONFIG = {
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "avalanche"] as ScanChain[],
-  CHAINS_PER_CYCLE: 2, // 2 chains per cycle (2 chains = full rotation in 10 min)
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
