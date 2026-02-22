@@ -5,6 +5,7 @@ import {
 } from "../../config/constants.js";
 import type { MarketRegime } from "./types.js";
 import { getOpenQuantPositions } from "./executor.js";
+import { sumRecentQuantLosses } from "../database/quant.js";
 
 // ---- Module-level state ----
 
@@ -48,7 +49,6 @@ export function resetDailyDrawdown(): void {
 
 export function seedDailyLossFromDb(): void {
   try {
-    const { sumRecentQuantLosses } = require("../database/quant.js");
     const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000);
     dailyLossAccumulator = totalLoss;
     lastLossTimestamp = lastLossTs;

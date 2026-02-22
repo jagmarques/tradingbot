@@ -76,14 +76,14 @@ async function checkPositionStops(): Promise<void> {
       const stopLossBreached =
         hasValidStopLoss &&
         (position.direction === "long"
-          ? currentPrice <= position.stopLoss!
-          : currentPrice >= position.stopLoss!);
+          ? currentPrice <= (position.stopLoss ?? 0)
+          : currentPrice >= (position.stopLoss ?? 0));
 
       const takeProfitBreached =
         hasValidTakeProfit &&
         (position.direction === "long"
-          ? currentPrice >= position.takeProfit!
-          : currentPrice <= position.takeProfit!);
+          ? currentPrice >= (position.takeProfit ?? 0)
+          : currentPrice <= (position.takeProfit ?? 0));
 
       // Stop-loss takes priority over take-profit
       if (stopLossBreached) {

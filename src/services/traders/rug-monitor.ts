@@ -34,10 +34,12 @@ function nextRpcId(): number {
 }
 
 function getChainSubscriptions(chain: string): Map<string, string> {
-  if (!subscriptions.has(chain)) {
-    subscriptions.set(chain, new Map());
+  let subs = subscriptions.get(chain);
+  if (!subs) {
+    subs = new Map();
+    subscriptions.set(chain, subs);
   }
-  return subscriptions.get(chain)!;
+  return subs;
 }
 
 function subscribePair(chain: string, pairAddress: string, token: { tokenAddress: string; tokenSymbol: string }): void {
@@ -331,8 +333,12 @@ async function syncSubscriptions(): Promise<void> {
   for (const trade of openTrades) {
     if (!trade.pairAddress) continue;
     const chain = trade.chain;
-    if (!tradesByChain.has(chain)) tradesByChain.set(chain, []);
-    tradesByChain.get(chain)!.push(trade);
+    let chainList = tradesByChain.get(chain);
+    if (!chainList) {
+      chainList = [];
+      tradesByChain.set(chain, chainList);
+    }
+    chainList.push(trade);
   }
 
   for (const [chain, trades] of tradesByChain) {
@@ -342,14 +348,14 @@ async function syncSubscriptions(): Promise<void> {
       connectChain(chain);
     } else if (ws.readyState === WebSocket.OPEN) {
       const chainSubs = getChainSubscriptions(chain);
-      const newTrades = trades.filter(t => !chainSubs.has(t.pairAddress!.toLowerCase()));
+      const newTrades = trades.filter(t => t.pairAddress && !chainSubs.has(t.pairAddress.toLowerCase()));
       subscribeUniquePairs(chain, newTrades as TradeWithPair[]);
     }
   }
 
   for (const [chain, chainSubs] of subscriptions) {
     const chainsOpenPairs = new Set(
-      (tradesByChain.get(chain) ?? []).map(t => t.pairAddress!.toLowerCase())
+      (tradesByChain.get(chain) ?? []).map(t => t.pairAddress?.toLowerCase() ?? "")
     );
     for (const [pairAddress] of chainSubs) {
       if (!chainsOpenPairs.has(pairAddress)) {
