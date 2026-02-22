@@ -144,7 +144,7 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   let response: Response | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
       response = await fetch(url, {
         headers: {
