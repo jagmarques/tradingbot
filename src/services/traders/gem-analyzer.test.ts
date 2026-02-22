@@ -176,7 +176,7 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
     const trade = makeTrade({ liquidityUsd: 10000, tokenAddress: "0xghi", chain: "base" });
     mockGetOpenCopyTrades.mockReturnValue([trade]);
 
-    // 18% drop, within tolerance (threshold is 30%)
+    // 18% drop - should not trigger
     const pair = makeDexPair("0.0009", 8200);
     mockDexScreenerFetchBatch.mockResolvedValue(new Map([["0xghi", pair]]));
 

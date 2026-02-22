@@ -65,7 +65,8 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 - Monitors all open insider copy trade positions
 - Auto-sells on rug detection (WebSocket burn events + periodic liquidity check every 30s)
-- Liquidity rug triggers: absolute floor below $5k OR 40% drop from entry liquidity
+- Liquidity rug triggers: absolute floor below $5k OR 30% drop from entry liquidity
+- GoPlus re-check every 5 min: auto-sells if token becomes honeypot, sell-tax >50%, or transfers paused
 - Tracks rugged tokens in DB to skip future buys
 - Rug count and USD lost shown in Status view
 
