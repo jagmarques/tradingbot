@@ -58,9 +58,9 @@ async function checkPositionStops(): Promise<void> {
           console.log(
             `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} unrealized $${unrealizedPnl.toFixed(2)} exceeds maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
           );
+          await closePosition(position.id, `liquidation (loss $${Math.abs(unrealizedPnl).toFixed(2)} >= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
-          await closePosition(position.id, `liquidation (loss $${Math.abs(unrealizedPnl).toFixed(2)} >= margin $${maintenanceMargin.toFixed(2)})`);
           continue; // skip further checks for this position
         }
       }
