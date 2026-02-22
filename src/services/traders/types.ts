@@ -96,6 +96,33 @@ export const KNOWN_DEX_ROUTERS: Record<string, string[]> = {
   ],
 };
 
+// Non-tradeable token addresses to skip (stablecoins, wrapped natives) by chain
+export const SKIP_TOKEN_ADDRESSES: Record<string, Set<string>> = {
+  ethereum: new Set([
+    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", // WETH
+    "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // WBTC
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
+    "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
+    "0x6b175474e89094c44da98b954eedeac495271d0f", // DAI
+    "0xae7ab96520de3a18e5e111b5eaab095312d7fe84", // stETH
+  ]),
+  base: new Set([
+    "0x4200000000000000000000000000000000000006", // WETH
+    "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca", // USDbC
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", // USDC
+  ]),
+  arbitrum: new Set([
+    "0x82af49447d8a07e3bd95bd0d56f35241523fbab1", // WETH
+    "0xaf88d065e77c8cc2239327c5edb3a432268e5831", // USDC
+    "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9", // USDT
+  ]),
+  polygon: new Set([
+    "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270", // WMATIC
+    "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359", // USDC
+    "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", // USDT
+  ]),
+};
+
 export interface PumpedToken {
   tokenAddress: string;
   chain: EvmChain;

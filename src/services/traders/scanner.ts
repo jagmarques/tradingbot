@@ -52,7 +52,7 @@ export function buildExplorerUrl(chain: EvmChain, params: string): string {
 }
 
 // Burn and dead addresses to filter out
-const BURN_ADDRESSES = new Set([
+export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000000", // zero address
   "0x000000000000000000000000000000000000dead", // common burn (lowercase)
   "0x0000000000000000000000000000000000000001", // ecrecover precompile
@@ -869,6 +869,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
+        AND wallet_address NOT IN ('0x0000000000000000000000000000000000000000','0x000000000000000000000000000000000000dead','0x0000000000000000000000000000000000000001','0x0000000000000000000000000000000000000002','0x0000000000000000000000000000000000000003')
       GROUP BY wallet_address, chain
       HAVING gem_count >= ? AND unique_tokens >= ?
     `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS, INSIDER_CONFIG.MIN_UNIQUE_TOKENS) as Array<{

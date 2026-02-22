@@ -166,6 +166,20 @@ export function initInsiderTables(): void {
     )
   `);
 
+  // Cleanup: remove burn addresses from insider_wallets
+  const burnAddrs = [
+    "0x0000000000000000000000000000000000000000",
+    "0x000000000000000000000000000000000000dead",
+    "0x0000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000002",
+    "0x0000000000000000000000000000000000000003",
+  ];
+  const burnPlaceholders = burnAddrs.map(() => "?").join(",");
+  const burnDeleted = db.prepare(`DELETE FROM insider_wallets WHERE address IN (${burnPlaceholders})`).run(...burnAddrs);
+  if (burnDeleted.changes > 0) {
+    console.log(`[InsiderScanner] Cleaned ${burnDeleted.changes} burn addresses from insider_wallets`);
+  }
+
   console.log("[InsiderScanner] Database tables initialized");
 }
 

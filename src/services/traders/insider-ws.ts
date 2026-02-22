@@ -2,7 +2,8 @@ import WebSocket from "ws";
 import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
-import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker } from "./types.js";
+import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker, SKIP_TOKEN_ADDRESSES } from "./types.js";
+import { BURN_ADDRESSES } from "./scanner.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused } from "./watcher.js";
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
@@ -50,8 +51,10 @@ function getQualifiedWalletsByChain(): Map<string, string[]> {
   const byChain = new Map<string, string[]>();
   for (const w of qualified) {
     if (!ALCHEMY_CHAIN_MAP[w.chain]) continue;
+    const addr = w.address.toLowerCase();
+    if (BURN_ADDRESSES.has(addr)) continue;
     const list = byChain.get(w.chain) || [];
-    list.push(w.address.toLowerCase());
+    list.push(addr);
     byChain.set(w.chain, list);
   }
   return byChain;
@@ -127,6 +130,11 @@ async function handleTransferLog(chain: string, log: {
   if (log.topics[0] !== TRANSFER_TOPIC) return;
 
   const tokenAddress = log.address.toLowerCase();
+
+  // Skip non-tradeable tokens (stablecoins, wrapped natives)
+  const skipTokens = SKIP_TOKEN_ADDRESSES[chain];
+  if (skipTokens?.has(tokenAddress)) return;
+
   const fromAddress = unpadAddress(log.topics[1]);
   const toAddress = unpadAddress(log.topics[2]);
   const txHash = log.transactionHash;

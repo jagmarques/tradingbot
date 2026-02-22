@@ -27,6 +27,7 @@ const LP_TOKEN_SYMBOLS = new Set([
   "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
   "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
   "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
+  "USDC", "USDT", "DAI", "WBTC", "stETH", "USDbC", "BUSD", "TUSD", "FRAX",
 ]);
 
 // Dedup: tx hashes already processed by WebSocket (shared with insider-ws.ts)
