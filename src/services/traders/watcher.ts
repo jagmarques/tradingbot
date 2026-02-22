@@ -237,21 +237,23 @@ export async function processInsiderBuy(tokenInfo: {
     }
     // Live accumulation swap
     if (!isPaperMode()) {
-      if (isChainSupported(tokenInfo.chain as Chain)) {
-        const balance = await getNativeBalance(tokenInfo.chain as Chain);
-        if (balance !== null && balance >= 1000000000000000n) {
-          const nativePrice = getApproxUsdValue(1, tokenInfo.chain as Chain);
-          const amountNative = addAmount / nativePrice;
-          const result = await execute1inchSwap(tokenInfo.chain as Chain, tokenInfo.tokenAddress, amountNative, 3);
-          if (!result.success) {
-            console.log(`[CopyTrade] LIVE ACCUMULATE FAILED: ${symbol} (${tokenInfo.chain}) - ${result.error}`);
-          } else {
-            console.log(`[CopyTrade] LIVE ACCUMULATE: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
-          }
-        } else {
-          console.log(`[CopyTrade] LIVE ACCUMULATE: Skip ${symbol} - insufficient gas on ${tokenInfo.chain}`);
-        }
+      if (!isChainSupported(tokenInfo.chain as Chain)) {
+        console.log(`[CopyTrade] LIVE ACCUMULATE: Skip ${symbol} - chain not supported`);
+        return;
       }
+      const balance = await getNativeBalance(tokenInfo.chain as Chain);
+      if (balance === null || balance < 1000000000000000n) {
+        console.log(`[CopyTrade] LIVE ACCUMULATE: Skip ${symbol} - insufficient gas on ${tokenInfo.chain}`);
+        return;
+      }
+      const nativePrice = getApproxUsdValue(1, tokenInfo.chain as Chain);
+      const amountNative = addAmount / nativePrice;
+      const result = await execute1inchSwap(tokenInfo.chain as Chain, tokenInfo.tokenAddress, amountNative, 3);
+      if (!result.success) {
+        console.log(`[CopyTrade] LIVE ACCUMULATE FAILED: ${symbol} (${tokenInfo.chain}) - ${result.error}`);
+        return;
+      }
+      console.log(`[CopyTrade] LIVE ACCUMULATE: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
     }
     increaseCopyTradeAmount(existingTokenTrade.id, addAmount, priceUsd);
     console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);

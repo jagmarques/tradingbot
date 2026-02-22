@@ -3,11 +3,11 @@ import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import {
   getOpenCopyTrades,
-  closeCopyTrade,
   updateCopyTradePriceWithRugFee,
   incrementRugCount,
   updateCopyTradePairAddress,
 } from "./storage.js";
+import { exitCopyTrade } from "./gem-analyzer.js";
 import { COPY_TRADE_CONFIG, getAlchemyWssUrl } from "./types.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
@@ -162,8 +162,9 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
         const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
           ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
           : 0;
-        const closed = closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug", priceUsd, computedPnl, "liquidity_rug");
-        if (!closed) continue; // already closed by another path
+        trade.currentPriceUsd = priceUsd;
+        const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
+        if (!closed) continue;
         notifyCopyTrade({
           walletAddress: trade.walletAddress,
           tokenSymbol,
