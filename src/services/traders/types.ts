@@ -205,6 +205,7 @@ export type CopyExitReason =
   | "stop_loss"
   | "stale_price"
   | "liquidity_rug"
+  | "honeypot"
   | "max_hold_time"
   | "stale_insider";
 
@@ -251,8 +252,9 @@ export const COPY_TRADE_CONFIG = {
   ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage
   MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
   LIQUIDITY_RUG_FLOOR_USD: 5000,
-  LIQUIDITY_RUG_DROP_PCT: 40,
+  LIQUIDITY_RUG_DROP_PCT: 30,
   PRICE_REFRESH_INTERVAL_MS: 30 * 1000,
+  GOPLUS_CHECK_INTERVAL_MS: 5 * 60 * 1000,
   TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000, // 4 hours - tighten trailing stop for profitable positions
   TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
   STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
