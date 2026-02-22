@@ -135,7 +135,7 @@ export async function scanFundingOpportunities(): Promise<FundingOpportunity[]> 
       });
     }
 
-    console.log(`[FundingArb] Found ${opportunities.length} funding opportunities above 15% APR`);
+    console.log(`[FundingArb] Found ${opportunities.length} funding opportunities above ${(FUNDING_ARB_MIN_APR * 100).toFixed(0)}% APR`);
     return opportunities;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
