@@ -591,6 +591,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
   );
 
   let updated = 0;
+  const ruggedThisCycle = new Set<string>();
   for (const token of tokensToFetch) {
     const addrKey = token.tokenAddress.toLowerCase();
     let pair = priceMap.get(addrKey);
@@ -613,12 +614,13 @@ export async function refreshCopyTradePrices(): Promise<void> {
       }
 
       // Periodic liquidity rug check (safety net for missed WebSocket burn events)
+      const rugKey = `${addrKey}_${token.chain}`;
       const liquidityUsd = pair?.liquidity?.usd ?? 0;
       const tradesForToken = openTrades.filter(
         t => t.tokenAddress.toLowerCase() === addrKey && t.chain === token.chain
       );
 
-      if (tradesForToken.length > 0) {
+      if (tradesForToken.length > 0 && !ruggedThisCycle.has(rugKey)) {
         const maxEntryLiq = Math.max(...tradesForToken.map(t => t.liquidityUsd));
         const belowFloor = maxEntryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD
           && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;
@@ -626,6 +628,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
           && liquidityUsd < maxEntryLiq * (1 - COPY_TRADE_CONFIG.LIQUIDITY_RUG_DROP_PCT / 100);
 
         if (belowFloor || droppedFromEntry) {
+          ruggedThisCycle.add(rugKey);
           const reason = liquidityUsd === 0
             ? "liquidity is zero"
             : droppedFromEntry
