@@ -61,7 +61,10 @@ vi.mock("../copy/filter.js", () => ({
   getApproxUsdValue: vi.fn(() => 3000),
 }));
 
-import { refreshCopyTradePrices } from "./gem-analyzer.js";
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+import { refreshCopyTradePrices, checkGoPlusForOpenTrades } from "./gem-analyzer.js";
 
 function makeTrade(overrides: Partial<{
   walletAddress: string;
@@ -146,7 +149,7 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
     );
   });
 
-  it("exits trade when liquidity drops 40%+ from entry", async () => {
+  it("exits trade when liquidity drops 30%+ from entry", async () => {
     const trade = makeTrade({ liquidityUsd: 20000, tokenAddress: "0xdef", chain: "base", buyPriceUsd: 0.002 });
     mockGetOpenCopyTrades.mockReturnValue([trade]);
 
@@ -173,8 +176,8 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
     const trade = makeTrade({ liquidityUsd: 10000, tokenAddress: "0xghi", chain: "base" });
     mockGetOpenCopyTrades.mockReturnValue([trade]);
 
-    // 30% drop, within tolerance (threshold is 40%)
-    const pair = makeDexPair("0.0009", 7000);
+    // 18% drop, within tolerance (threshold is 30%)
+    const pair = makeDexPair("0.0009", 8200);
     mockDexScreenerFetchBatch.mockResolvedValue(new Map([["0xghi", pair]]));
 
     await refreshCopyTradePrices();
@@ -210,5 +213,73 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
 
   it("interval is 30 seconds", () => {
     expect(COPY_TRADE_CONFIG.PRICE_REFRESH_INTERVAL_MS).toBe(30_000);
+  });
+});
+
+describe("checkGoPlusForOpenTrades - GoPlus periodic re-check", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("exits trade flagged as honeypot by GoPlus", async () => {
+    const trade = makeTrade({ tokenAddress: "0xhoney", chain: "base", buyPriceUsd: 0.001, currentPriceUsd: 0.0005 });
+    mockGetOpenCopyTrades.mockReturnValue([trade]);
+    mockCloseCopyTrade.mockReturnValue(true);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        code: 1,
+        result: {
+          "0xhoney": { is_honeypot: "1", buy_tax: "0", sell_tax: "0", honeypot_with_same_creator: "0" }
+        }
+      }),
+    });
+
+    await checkGoPlusForOpenTrades();
+
+    expect(mockCloseCopyTrade).toHaveBeenCalledWith(
+      trade.walletAddress,
+      trade.tokenAddress,
+      trade.chain,
+      "honeypot",
+      expect.any(Number),
+      expect.any(Number),
+      "honeypot",
+      undefined
+    );
+    expect(mockIncrementRugCount).toHaveBeenCalledWith("0xhoney", "base");
+  });
+
+  it("does NOT exit when GoPlus returns safe data", async () => {
+    const trade = makeTrade({ tokenAddress: "0xsafe", chain: "base" });
+    mockGetOpenCopyTrades.mockReturnValue([trade]);
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        code: 1,
+        result: {
+          "0xsafe": { is_honeypot: "0", buy_tax: "0.01", sell_tax: "0.02", honeypot_with_same_creator: "0", cannot_sell_all: "0", transfer_pausable: "0", is_mintable: "0", owner_change_balance: "0", can_take_back_ownership: "0", hidden_owner: "0", selfdestruct: "0", is_blacklisted: "0", slippage_modifiable: "0", anti_whale_modifiable: "0", cannot_buy: "0", is_whitelisted: "0", is_airdrop_scam: "0" }
+        }
+      }),
+    });
+
+    await checkGoPlusForOpenTrades();
+
+    expect(mockCloseCopyTrade).not.toHaveBeenCalled();
+    expect(mockIncrementRugCount).not.toHaveBeenCalled();
+  });
+
+  it("does NOT exit when GoPlus is unavailable (fetch fails)", async () => {
+    const trade = makeTrade({ tokenAddress: "0xfail", chain: "base" });
+    mockGetOpenCopyTrades.mockReturnValue([trade]);
+
+    mockFetch.mockRejectedValueOnce(new Error("network error"));
+
+    await checkGoPlusForOpenTrades();
+
+    expect(mockCloseCopyTrade).not.toHaveBeenCalled();
+    expect(mockIncrementRugCount).not.toHaveBeenCalled();
   });
 });
