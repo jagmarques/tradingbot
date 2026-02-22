@@ -4,8 +4,6 @@ import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
 
-export { formatPrice };
-
 // Format date with user's timezone
 function formatDate(date: Date = new Date(), userId?: string): string {
   // Try user-specific timezone first, fall back to env default
