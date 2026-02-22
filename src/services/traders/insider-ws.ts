@@ -393,10 +393,10 @@ export function startInsiderWebSocket(): void {
 
   console.log("[InsiderWS] Started (Alchemy WebSocket, real-time Transfer detection)");
 
-  syncSubscriptions().catch(() => {});
+  syncSubscriptions().catch((err) => console.error("[InsiderWS] syncSubscriptions error:", err));
 
   syncInterval = setInterval(() => {
-    syncSubscriptions().catch(() => {});
+    syncSubscriptions().catch((err) => console.error("[InsiderWS] syncSubscriptions error:", err));
   }, INSIDER_WS_CONFIG.SYNC_INTERVAL_MS);
 }
 

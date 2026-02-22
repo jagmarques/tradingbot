@@ -786,7 +786,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const mp = medianPump ?? wallet.avg_pump;
     const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
     const cs = copyStats as WalletCopyTradeStats;
-    const winRate = cs.wins / cs.totalTrades;
 
     // Wilson lower bound as effective win rate: naturally penalises low-sample wallets
     const effectiveWR = wilsonLowerBound(cs.wins, cs.totalTrades);
@@ -808,7 +807,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     let score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
 
     // Expectancy floor: negative expectancy after 10+ trades caps score at 50
-    const rawExpectancyForFloor = (winRate * avgWinPct) - ((1 - winRate) * avgLossPct);
+    const rawExpectancyForFloor = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
     if (rawExpectancyForFloor <= 0 && cs.totalTrades >= 10) {
       score = Math.min(score, 50);
     }
