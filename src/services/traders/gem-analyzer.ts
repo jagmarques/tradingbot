@@ -608,7 +608,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       copyPriceFailures.delete(failKey);
       updated++;
     } else {
-      // Track price fetch failures - auto-close after repeated failures
+      // Price fetch failure tracking
       const prev = copyPriceFailures.get(failKey);
       if (prev && Date.now() - prev.lastFailAt > PRICE_FAILURE_EXPIRY_MS) {
         copyPriceFailures.delete(failKey);
@@ -638,7 +638,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
   }
 
-  // Adjusted P&L: liquidity-based fee + price impact
+  // Adjusted P&L (fees + slippage)
   function computeAdjustedPnl(trade: CopyTrade): number {
     let adj = trade.pnlPct;
     if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
@@ -659,7 +659,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
     const holdTimeMs = Date.now() - trade.buyTimestamp;
 
-    // Check 1: Max hold time (48h) - unconditional exit
+    // Max hold time (48h)
     if (holdTimeMs >= COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
       const hours = Math.round(holdTimeMs / 3_600_000);
       const adjustedPnlPct = computeAdjustedPnl(trade);
@@ -676,7 +676,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       continue;
     }
 
-    // Check 2: Stale insider exit (24h, profitable only)
+    // Stale insider (24h, profitable)
     if (holdTimeMs >= COPY_TRADE_CONFIG.STALE_INSIDER_MS && trade.pnlPct > 0) {
       const hours = Math.round(holdTimeMs / 3_600_000);
       const adjustedPnlPct = computeAdjustedPnl(trade);
@@ -693,10 +693,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
       continue;
     }
 
-    // Trailing stop ladder based on peak profit (aggressive for micro-caps)
+    // Trailing stop ladder
     let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
     if (peak >= 500) {
-      stopLevel = peak - 100; // dynamic trailing: 100pt gap above +500%
+      stopLevel = peak - 100; // 100pt gap above +500%
     } else if (peak >= 200) {
       stopLevel = 100; // lock in +100% if we hit +200%
     } else if (peak >= 100) {
@@ -709,7 +709,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       stopLevel = 0; // breakeven if we hit +10%
     }
 
-    // Time-based stop tightening: 4h+ profitable -> breakeven minimum
+    // 4h+ profitable -> breakeven floor
     let timeTightened = false;
     if (holdTimeMs >= COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_MS && trade.pnlPct > 0) {
       const before = stopLevel;
