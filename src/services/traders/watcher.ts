@@ -173,10 +173,10 @@ export async function processInsiderBuy(tokenInfo: {
     }
   }
 
-  let pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
-  let priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
-  let liquidityUsd = pair?.liquidity?.usd ?? 0;
-  let symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+  const pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
+  const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+  const liquidityUsd = pair?.liquidity?.usd ?? 0;
+  const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
   // Max pump guard
   const h24Change = pair?.priceChange?.h24 ?? 0;
