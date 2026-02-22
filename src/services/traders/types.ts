@@ -188,7 +188,7 @@ export const INSIDER_CONFIG = {
 
 export const WATCHER_CONFIG = {
   INTERVAL_MS: 2.5 * 60 * 1000,     // 2.5 minutes between watch cycles
-  MIN_WALLET_SCORE: 75,              // Only watch wallets with score >= 75
+  MIN_WALLET_SCORE: 80,              // Only watch wallets with score >= 80
   MAX_WALLETS_PER_CYCLE: 30,         // Rate limit: max wallets per cycle
   MAX_NEW_TOKENS_PER_WALLET: 3,      // Max new tokens to process per wallet per cycle
 };

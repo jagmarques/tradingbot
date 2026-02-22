@@ -49,7 +49,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 5+ gem hits across 3+ unique tokens required
 
-**Consistency scoring (MIN_WALLET_SCORE = 75):**
+**Consistency scoring (MIN_WALLET_SCORE = 80):**
 - Wilson Score lower bound for effective win rate (smooth cold-start penalization)
 - Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
 - Legacy formula uses log2(20) scaling so realistic wallets can score 85+
