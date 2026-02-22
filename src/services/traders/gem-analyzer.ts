@@ -556,6 +556,20 @@ export async function refreshGemPaperPrices(): Promise<void> {
   }
 }
 
+async function exitCopyTrade(trade: CopyTrade, exitReason: CopyExitReason, adjustedPnlPct: number, exitDetail: string): Promise<boolean> {
+  let sellTxHash: string | undefined;
+  if (trade.isLive) {
+    const result = await approveAndSell1inch(trade.chain as Chain, trade.tokenAddress, 3);
+    if (result.success) {
+      sellTxHash = result.txHash;
+      console.log(`[CopyTrade] LIVE SELL: ${trade.tokenSymbol} (${trade.chain}) tx=${result.txHash}`);
+    } else {
+      console.log(`[CopyTrade] LIVE SELL FAILED: ${trade.tokenSymbol} (${trade.chain}) - ${result.error}. Closing anyway.`);
+    }
+  }
+  return closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail, sellTxHash);
+}
+
 export async function refreshCopyTradePrices(): Promise<void> {
   const now = Date.now();
   if (now - lastCopyTradeRefresh < 30_000) return;
@@ -564,7 +578,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
   const openTrades = getOpenCopyTrades();
   if (openTrades.length === 0) return;
 
-  // Build list of tokens to fetch prices for
   const tokensToFetch: Array<{ chain: string; tokenAddress: string; walletAddress: string }> = [];
   for (const trade of openTrades) {
     tokensToFetch.push({ chain: trade.chain, tokenAddress: trade.tokenAddress, walletAddress: trade.walletAddress });
@@ -572,7 +585,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
   if (tokensToFetch.length === 0) return;
 
-  // Batch fetch prices
   const priceMap = await dexScreenerFetchBatch(
     tokensToFetch.map(t => ({ chain: t.chain, tokenAddress: t.tokenAddress }))
   );
@@ -625,7 +637,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
   }
 
-  // Helper: compute adjusted P&L with liquidity-based fee and price impact
+  // Adjusted P&L: liquidity-based fee + price impact
   function computeAdjustedPnl(trade: CopyTrade): number {
     let adj = trade.pnlPct;
     if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
@@ -640,7 +652,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
   // Trailing stop-loss check
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
-    // Track peak P&L for trailing stop
     if (trade.pnlPct > trade.peakPnlPct) {
       updateCopyTradePeakPnl(trade.id, trade.pnlPct);
     }
@@ -653,7 +664,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       const adjustedPnlPct = computeAdjustedPnl(trade);
       const exitDetail = `hold_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
       console.log(`[CopyTrade] MAX HOLD: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% after ${hours}h`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "max_hold_time", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
+      const closed = await exitCopyTrade(trade, "max_hold_time", adjustedPnlPct, exitDetail);
       if (closed) {
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
@@ -670,7 +681,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       const adjustedPnlPct = computeAdjustedPnl(trade);
       const exitDetail = `stale_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
       console.log(`[CopyTrade] STALE INSIDER: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% after ${hours}h`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_insider", trade.currentPriceUsd, adjustedPnlPct, exitDetail);
+      const closed = await exitCopyTrade(trade, "stale_insider", adjustedPnlPct, exitDetail);
       if (closed) {
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
@@ -728,7 +739,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
       }
       const adjustedPnlPct = computeAdjustedPnl(trade);
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, exitReason, trade.currentPriceUsd, adjustedPnlPct, exitDetail);
+      const closed = await exitCopyTrade(trade, exitReason, adjustedPnlPct, exitDetail);
       if (closed) {
         notifyCopyTrade({
           walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,

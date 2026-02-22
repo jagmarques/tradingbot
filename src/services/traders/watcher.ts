@@ -1,23 +1,21 @@
 import type { EvmChain } from "./types.js";
 import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize, checkCircuitBreaker } from "./types.js";
+import type { Chain } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
+import { isPaperMode } from "../../config/env.js";
+import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
+import { getApproxUsdValue } from "../copy/filter.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
 const pausedWallets = new Map<string, number>();
 
-/**
- * Estimate price impact as a percentage based on trade size vs pool liquidity.
- * For AMM-style DEXes, impact ~= amountUsd / (2 * liquidityUsd) * 100
- * Returns percentage points to add to fee estimate.
- */
+// AMM price impact: amountUsd / (2 * liquidityUsd) * 100, capped at 50%
 export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
   if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
-  // Simplified AMM constant-product impact: amount / (2 * liquidity) * 100
-  // Capped at 50% to avoid absurd values
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
@@ -60,7 +58,6 @@ function isLpToken(symbol: string): boolean {
   return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
 }
 
-// Shared sell processing: close ALL open copy trades for token when insider sells
 export async function processInsiderSell(
   walletAddress: string,
   tokenAddress: string,
@@ -76,7 +73,6 @@ export async function processInsiderSell(
   let priceUsd = matchingTrades[0].currentPriceUsd;
   let freshLiquidityUsd = 0;
 
-  // Fetch fresh price once for real-time exits (WebSocket path)
   if (fetchFreshPrice) {
     const pair = await dexScreenerFetch(chain, tokenAddress);
     const freshPrice = pair ? parseFloat(pair.priceUsd || "0") : 0;
@@ -95,22 +91,31 @@ export async function processInsiderSell(
       ? ((tradePriceUsd - trade.buyPriceUsd) / trade.buyPriceUsd) * 100
       : trade.pnlPct;
 
-    // Liquidity-aware fee: use rug fee when liquidity is very low
     const effectiveLiquidity = (fetchFreshPrice && freshLiquidityUsd > 0) ? freshLiquidityUsd : trade.liquidityUsd;
     let feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT; // default 3%
     if (effectiveLiquidity > 0 && effectiveLiquidity < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-      // Scale fee between ESTIMATED_FEE_PCT and ESTIMATED_RUG_FEE_PCT based on liquidity
       const t = Math.max(0, Math.min(1, effectiveLiquidity / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
       feePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
     }
 
-    // Add price impact estimate
     const priceImpactPct = estimatePriceImpactPct(trade.amountUsd, effectiveLiquidity);
     feePct += priceImpactPct;
 
     const pnlPct = rawPnlPct - feePct;
 
-    const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold", tradePriceUsd, pnlPct);
+    // Live mode: execute real sell before closing DB record
+    let sellTxHash: string | undefined;
+    if (trade.isLive) {
+      const result = await approveAndSell1inch(trade.chain as Chain, trade.tokenAddress, 3);
+      if (result.success) {
+        sellTxHash = result.txHash;
+        console.log(`[CopyTrade] LIVE SELL: ${trade.tokenSymbol} (${trade.chain}) tx=${result.txHash}`);
+      } else {
+        console.log(`[CopyTrade] LIVE SELL FAILED: ${trade.tokenSymbol} (${trade.chain}) - ${result.error}. Closing anyway.`);
+      }
+    }
+
+    const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "insider_sold", tradePriceUsd, pnlPct, undefined, sellTxHash);
     if (!closed) continue; // already closed by another path
     console.log(`[CopyTrade] Insider sell: closing ${trade.tokenSymbol} (${walletAddress.slice(0, 8)} sold, P&L ${pnlPct.toFixed(1)}%)`);
     notifyCopyTrade({
@@ -229,7 +234,25 @@ export async function processInsiderBuy(tokenInfo: {
       });
       return;
     }
-    increaseCopyTradeAmount(existingTokenTrade.id, addAmount);
+    // Live mode accumulation: execute real swap for the additional amount
+    if (!isPaperMode()) {
+      if (isChainSupported(tokenInfo.chain as Chain)) {
+        const balance = await getNativeBalance(tokenInfo.chain as Chain);
+        if (balance !== null && balance >= 1000000000000000n) {
+          const nativePrice = getApproxUsdValue(1, tokenInfo.chain as Chain);
+          const amountNative = addAmount / nativePrice;
+          const result = await execute1inchSwap(tokenInfo.chain as Chain, tokenInfo.tokenAddress, amountNative, 3);
+          if (!result.success) {
+            console.log(`[CopyTrade] LIVE ACCUMULATE FAILED: ${symbol} (${tokenInfo.chain}) - ${result.error}`);
+          } else {
+            console.log(`[CopyTrade] LIVE ACCUMULATE: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
+          }
+        } else {
+          console.log(`[CopyTrade] LIVE ACCUMULATE: Skip ${symbol} - insufficient gas on ${tokenInfo.chain}`);
+        }
+      }
+    }
+    increaseCopyTradeAmount(existingTokenTrade.id, addAmount, priceUsd);
     console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
     notifyCopyTrade({
       walletAddress: tokenInfo.walletAddress,
@@ -358,42 +381,102 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
-  insertCopyTrade({
-    walletAddress: tokenInfo.walletAddress,
-    tokenSymbol: symbol,
-    tokenAddress: tokenInfo.tokenAddress,
-    chain: tokenInfo.chain,
-    pairAddress: pair?.pairAddress ?? null,
-    side: "buy",
-    buyPriceUsd: priceUsd,
-    currentPriceUsd: priceUsd,
-    amountUsd: positionAmount,
-    pnlPct: 0,
-    status: liquidityOk ? "open" : "skipped",
-    liquidityOk,
-    liquidityUsd,
-    skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
-    buyTimestamp: Date.now(),
-    tokenCreatedAt: pair?.pairCreatedAt ?? null,
-    closeTimestamp: null,
-    exitReason: null,
-    insiderCount: 1,
-    peakPnlPct: 0,
-    walletScoreAtBuy: tokenInfo.walletScore,
-    exitDetail: null,
-  });
-  console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd >= 0.01 ? priceUsd.toFixed(4) : priceUsd >= 0.000001 ? priceUsd.toFixed(8) : priceUsd.toExponential(3)}, liq $${liquidityUsd.toFixed(0)}`);
-  if (liquidityOk) {
-    notifyCopyTrade({
+
+  if (isPaperMode()) {
+    // Paper mode: record DB entry as before
+    insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
       chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
       side: "buy",
-      priceUsd,
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: positionAmount,
+      pnlPct: 0,
+      status: liquidityOk ? "open" : "skipped",
       liquidityOk,
       liquidityUsd,
-      skipReason: null,
-    }).catch(err => console.error("[CopyTrade] Notification error:", err));
+      skipReason: liquidityOk ? null : `low liquidity $${liquidityUsd.toFixed(0)}`,
+      buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
+    });
+    console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd >= 0.01 ? priceUsd.toFixed(4) : priceUsd >= 0.000001 ? priceUsd.toFixed(8) : priceUsd.toExponential(3)}, liq $${liquidityUsd.toFixed(0)}`);
+    if (liquidityOk) {
+      notifyCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        chain: tokenInfo.chain,
+        side: "buy",
+        priceUsd,
+        liquidityOk,
+        liquidityUsd,
+        skipReason: null,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    }
+  } else {
+    // Live mode: execute real 1inch swap
+    if (!isChainSupported(tokenInfo.chain as Chain)) {
+      console.log(`[CopyTrade] LIVE: Skip ${symbol} - chain ${tokenInfo.chain} not supported`);
+      return;
+    }
+    const balance = await getNativeBalance(tokenInfo.chain as Chain);
+    if (balance === null || balance < 1000000000000000n) {
+      console.log(`[CopyTrade] LIVE: Skip ${symbol} - insufficient gas on ${tokenInfo.chain}`);
+      return;
+    }
+    const nativePrice = getApproxUsdValue(1, tokenInfo.chain as Chain);
+    const amountNative = positionAmount / nativePrice;
+    const result = await execute1inchSwap(tokenInfo.chain as Chain, tokenInfo.tokenAddress, amountNative, 3);
+    if (result.success) {
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: positionAmount,
+        pnlPct: 0,
+        status: "open",
+        liquidityOk: true,
+        liquidityUsd,
+        skipReason: null,
+        buyTimestamp: Date.now(),
+        tokenCreatedAt: pair?.pairCreatedAt ?? null,
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
+        txHash: result.txHash,
+        tokensReceived: result.tokensReceived,
+        isLive: true,
+      });
+      console.log(`[CopyTrade] LIVE BUY: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
+      notifyCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        chain: tokenInfo.chain,
+        side: "buy",
+        priceUsd,
+        liquidityOk: true,
+        liquidityUsd,
+        skipReason: null,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
+    } else {
+      console.log(`[CopyTrade] LIVE BUY FAILED: ${symbol} (${tokenInfo.chain}) - ${result.error}`);
+    }
   }
   } finally {
     tokenBuyLock.delete(tokenLockKey);
@@ -493,12 +576,10 @@ async function watchInsiderWallets(): Promise<void> {
       }
       lastSeenTxTimestamp.set(walletKey, maxTs);
 
-      // Detect sells (only outgoing transfers to known DEX routers are sells)
       const recentOutgoing = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
         if (ts <= lastSeenTs) return false;
         if (tx.from.toLowerCase() !== wallet.address.toLowerCase()) return false;
-        // Only treat as sell if destination is a known DEX router
         const toAddr = tx.to.toLowerCase();
         const routers = KNOWN_DEX_ROUTERS[wallet.chain];
         if (!routers || !routers.some(r => r.toLowerCase() === toAddr)) return false;
