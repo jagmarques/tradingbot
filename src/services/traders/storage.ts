@@ -434,7 +434,7 @@ export function saveGemAnalysis(analysis: GemAnalysis): void {
 
   db.prepare(`
     INSERT OR REPLACE INTO insider_gem_analyses (id, token_symbol, chain, score, summary, analyzed_at)
-    VALUES (?, ?, ?, ?, NULL, ?)
+    VALUES (?, ?, ?, ?, '', ?)
   `).run(id, analysis.tokenSymbol, analysis.chain, analysis.score, analysis.analyzedAt);
 }
 
