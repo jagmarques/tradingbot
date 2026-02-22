@@ -23,6 +23,20 @@ async function scanLoop(): Promise<void> {
   }
 }
 
+async function goplusCheckLoop(): Promise<void> {
+  while (running) {
+    try {
+      const { checkGoPlusForOpenTrades } = await import("./gem-analyzer.js");
+      await checkGoPlusForOpenTrades();
+    } catch (err) {
+      console.error("[GoPlusCheck] Error:", err);
+    }
+    if (running) {
+      await new Promise((r) => setTimeout(r, COPY_TRADE_CONFIG.GOPLUS_CHECK_INTERVAL_MS));
+    }
+  }
+}
+
 async function priceRefreshLoop(): Promise<void> {
   while (running) {
     try {
@@ -59,6 +73,14 @@ export function startInsiderScanner(): void {
       console.error("[PriceRefresh] Loop crashed:", err)
     );
   }, 30000);
+
+  // GoPlus periodic re-check every 5 min
+  setTimeout(() => {
+    console.log(`[GoPlusCheck] Started (every ${COPY_TRADE_CONFIG.GOPLUS_CHECK_INTERVAL_MS / 60000} min)`);
+    goplusCheckLoop().catch((err) =>
+      console.error("[GoPlusCheck] Loop crashed:", err)
+    );
+  }, 60000);
 
   startInsiderWatcher();
 
