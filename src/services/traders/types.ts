@@ -248,12 +248,9 @@ export const COPY_TRADE_CONFIG = {
 };
 
 
-/** Score-based position sizing: higher score = larger position */
-export function getPositionSize(score: number): number {
-  if (score >= 95) return 15;
-  if (score >= 90) return 13;
-  if (score >= 85) return 10;
-  return 8;
+/** Fixed $10 position size for all copy trades */
+export function getPositionSize(_score: number): number {
+  return 10;
 }
 
 export const ALCHEMY_CHAIN_MAP: Record<string, string> = {
