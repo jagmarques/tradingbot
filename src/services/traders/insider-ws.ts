@@ -27,6 +27,7 @@ const currentWalletsByChain = new Map<string, string[]>();
 let monitorRunning = false;
 let syncInterval: NodeJS.Timeout | null = null;
 let rpcId = 10000; // offset from rug-monitor's rpcId
+let syncingWs = false;
 // Track which wallets are watched per chain (for log decoding)
 const watchedWalletsByChain = new Map<string, Set<string>>();
 
@@ -346,58 +347,63 @@ function walletsChanged(chain: string, newWallets: string[]): boolean {
 
 async function syncSubscriptions(): Promise<void> {
   if (!monitorRunning) return;
+  if (syncingWs) return;
+  syncingWs = true;
+  try {
+    const walletsByChain = getQualifiedWalletsByChain();
 
-  const walletsByChain = getQualifiedWalletsByChain();
-
-  // Connect new chains, resubscribe if wallet list changed
-  for (const [chain, wallets] of walletsByChain) {
-    const ws = connections.get(chain);
-
-    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-      console.log(`[InsiderWS] Connecting to Alchemy (${chain}) for ${wallets.length} wallets`);
-      connectChain(chain, wallets);
-      currentWalletsByChain.set(chain, wallets);
-    } else if (ws.readyState === WebSocket.OPEN && walletsChanged(chain, wallets)) {
-      console.log(`[InsiderWS] Wallet list changed (${chain}), resubscribing ${wallets.length} wallets`);
-
-      // Unsubscribe old
-      const oldBuySub = buySubIds.get(chain);
-      if (oldBuySub) unsubscribe(chain, oldBuySub);
-      const oldSellSub = sellSubIds.get(chain);
-      if (oldSellSub) unsubscribe(chain, oldSellSub);
-
-      buySubIds.delete(chain);
-      sellSubIds.delete(chain);
-
-      // Update tracked wallets
-      watchedWalletsByChain.set(chain, new Set(wallets));
-      currentWalletsByChain.set(chain, wallets);
-
-      // Resubscribe
-      subscribeBuys(chain, wallets);
-      subscribeSells(chain, wallets);
-    }
-  }
-
-  // Disconnect chains with no wallets
-  for (const [chain] of connections) {
-    if (!walletsByChain.has(chain)) {
+    // Connect new chains, resubscribe if wallet list changed
+    for (const [chain, wallets] of walletsByChain) {
       const ws = connections.get(chain);
-      if (ws) {
-        ws.close();
-        connections.delete(chain);
+
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        console.log(`[InsiderWS] Connecting to Alchemy (${chain}) for ${wallets.length} wallets`);
+        connectChain(chain, wallets);
+        currentWalletsByChain.set(chain, wallets);
+      } else if (ws.readyState === WebSocket.OPEN && walletsChanged(chain, wallets)) {
+        console.log(`[InsiderWS] Wallet list changed (${chain}), resubscribing ${wallets.length} wallets`);
+
+        // Unsubscribe old
+        const oldBuySub = buySubIds.get(chain);
+        if (oldBuySub) unsubscribe(chain, oldBuySub);
+        const oldSellSub = sellSubIds.get(chain);
+        if (oldSellSub) unsubscribe(chain, oldSellSub);
+
         buySubIds.delete(chain);
         sellSubIds.delete(chain);
-        watchedWalletsByChain.delete(chain);
-        currentWalletsByChain.delete(chain);
-        console.log(`[InsiderWS] Closed connection (${chain}) - no qualified wallets`);
+
+        // Update tracked wallets
+        watchedWalletsByChain.set(chain, new Set(wallets));
+        currentWalletsByChain.set(chain, wallets);
+
+        // Resubscribe
+        subscribeBuys(chain, wallets);
+        subscribeSells(chain, wallets);
       }
     }
-  }
 
-  const totalChains = connections.size;
-  const totalWallets = Array.from(watchedWalletsByChain.values()).reduce((sum, s) => sum + s.size, 0);
-  console.log(`[InsiderWS] Sync: ${totalWallets} wallets across ${totalChains} chains`);
+    // Disconnect chains with no wallets
+    for (const [chain] of connections) {
+      if (!walletsByChain.has(chain)) {
+        const ws = connections.get(chain);
+        if (ws) {
+          ws.close();
+          connections.delete(chain);
+          buySubIds.delete(chain);
+          sellSubIds.delete(chain);
+          watchedWalletsByChain.delete(chain);
+          currentWalletsByChain.delete(chain);
+          console.log(`[InsiderWS] Closed connection (${chain}) - no qualified wallets`);
+        }
+      }
+    }
+
+    const totalChains = connections.size;
+    const totalWallets = Array.from(watchedWalletsByChain.values()).reduce((sum, s) => sum + s.size, 0);
+    console.log(`[InsiderWS] Sync: ${totalWallets} wallets across ${totalChains} chains`);
+  } finally {
+    syncingWs = false;
+  }
 }
 
 export function startInsiderWebSocket(): void {

@@ -94,7 +94,6 @@ export const KNOWN_DEX_ROUTERS: Record<string, string[]> = {
   ],
 };
 
-// Backward compat alias
 export type ScanChain = EvmChain;
 
 export interface PumpedToken {
@@ -115,7 +114,6 @@ export interface GemHit {
   tokenSymbol: string;
   buyTxHash: string;
   buyTimestamp: number;
-  buyBlockNumber: number;
   pumpMultiple: number;
   maxPumpMultiple?: number;
   buyTokens?: number;
@@ -144,7 +142,6 @@ export interface InsiderScanResult {
 }
 
 export const INSIDER_CONFIG = {
-  MIN_PUMP_MULTIPLE: 3, // 3x pump
   MIN_GEM_HITS: 5, // 5+ gems to be considered insider
   MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
   MIN_GEM_SCORE: 70, // min score to paper-buy
@@ -154,8 +151,8 @@ export const INSIDER_CONFIG = {
   MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
-  SCAN_CHAINS: ["ethereum", "base", "arbitrum", "polygon", "optimism", "avalanche"] as ScanChain[],
-  CHAINS_PER_CYCLE: 2, // 2 chains per cycle (6 chains = full rotation in 30 min)
+  SCAN_CHAINS: ["ethereum", "avalanche"] as ScanChain[],
+  CHAINS_PER_CYCLE: 2, // 2 chains per cycle (2 chains = full rotation in 10 min)
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
@@ -166,10 +163,8 @@ export const INSIDER_CONFIG = {
 export const WATCHER_CONFIG = {
   INTERVAL_MS: 2.5 * 60 * 1000,     // 2.5 minutes between watch cycles
   MIN_WALLET_SCORE: 75,              // Only watch wallets with score >= 75
-  LOOKBACK_SECONDS: 300,             // Check last 5 minutes of transactions
   MAX_WALLETS_PER_CYCLE: 30,         // Rate limit: max wallets per cycle
   MAX_NEW_TOKENS_PER_WALLET: 3,      // Max new tokens to process per wallet per cycle
-  MAX_BUY_PUMP: 10,                  // Skip buying if already pumped 10x (lower than scanner's 20x)
 };
 
 export type CopyExitReason = "insider_sold" | "trailing_stop" | "stop_loss" | "stale_price" | "liquidity_rug" | "max_hold_time" | "stale_insider";

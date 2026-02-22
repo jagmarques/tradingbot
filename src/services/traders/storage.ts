@@ -323,7 +323,6 @@ export function getGemHitsForWallet(address: string, chain: string): GemHit[] {
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
     buyTimestamp: row.buy_timestamp as number,
-    buyBlockNumber: 0,
     pumpMultiple: row.pump_multiple as number,
     maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
     buyTokens: (row.buy_tokens as number) || undefined,
@@ -355,7 +354,6 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
     tokenSymbol: row.token_symbol as string,
     buyTxHash: row.buy_tx_hash as string,
     buyTimestamp: row.buy_timestamp as number,
-    buyBlockNumber: 0,
     pumpMultiple: row.pump_multiple as number,
     maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
     buyTokens: (row.buy_tokens as number) || undefined,
@@ -367,52 +365,6 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
   }));
 }
 
-export function getRecentGemHits(limit: number = 10, chain?: string): GemHit[] {
-  const db = getDb();
-  let query = `SELECT h.* FROM insider_gem_hits h
-    INNER JOIN insider_gem_analyses a ON a.id = LOWER(h.token_symbol) || '_' || h.chain
-    INNER JOIN insider_wallets w ON LOWER(h.wallet_address) = LOWER(w.address) AND h.chain = w.chain
-    WHERE h.status IN ('holding', 'sold') AND h.pump_multiple >= 0.1 AND a.score >= 50`;
-  const params: unknown[] = [];
-  if (chain) {
-    query += " AND h.chain = ?";
-    params.push(chain);
-  }
-  query += " ORDER BY h.buy_timestamp DESC LIMIT ?";
-  params.push(limit);
-  const rows = db.prepare(query).all(...params) as Record<string, unknown>[];
-  return rows.map((row) => ({
-    walletAddress: row.wallet_address as string,
-    chain: row.chain as ScanChain,
-    tokenAddress: row.token_address as string,
-    tokenSymbol: row.token_symbol as string,
-    buyTxHash: row.buy_tx_hash as string,
-    buyTimestamp: row.buy_timestamp as number,
-    buyBlockNumber: 0,
-    pumpMultiple: row.pump_multiple as number,
-    maxPumpMultiple: (row.max_pump_multiple as number) || undefined,
-    buyTokens: (row.buy_tokens as number) || undefined,
-    sellTokens: (row.sell_tokens as number) || undefined,
-    status: (row.status as GemHit["status"]) || undefined,
-    buyDate: (row.buy_date as number) || undefined,
-    sellDate: (row.sell_date as number) || undefined,
-    launchPriceUsd: (row.launch_price_usd as number) || undefined,
-  }));
-}
-
-export function getInsiderCount(): number {
-  const db = getDb();
-  const row = db.prepare("SELECT COUNT(*) as count FROM insider_wallets").get() as { count: number };
-  return row.count;
-}
-
-export function getGemHolderCount(symbol: string, chain: string): number {
-  const db = getDb();
-  const row = db.prepare(
-    "SELECT COUNT(DISTINCT wallet_address) as count FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ? AND status = 'holding'"
-  ).get(symbol, chain) as { count: number };
-  return row.count;
-}
 
 export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
   const db = getDb();
@@ -623,14 +575,6 @@ export function getTokenAddressForGem(symbol: string, chain: string): string | n
     "SELECT token_address FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ? LIMIT 1"
   ).get(symbol, chain) as { token_address: string } | undefined;
   return row?.token_address ?? null;
-}
-
-export function getPeakPumpForToken(symbol: string, chain: string): number {
-  const db = getDb();
-  const row = db.prepare(
-    "SELECT MAX(COALESCE(max_pump_multiple, pump_multiple)) as peak FROM insider_gem_hits WHERE LOWER(token_symbol) = LOWER(?) AND chain = ?"
-  ).get(symbol, chain) as { peak: number } | undefined;
-  return row?.peak || 0;
 }
 
 export function getInsiderStatsForToken(tokenAddress: string, chain: string): { insiderCount: number; avgInsiderQuality: number; holdRate: number } {
@@ -953,25 +897,6 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
   return result;
 }
 
-export function getConsecutiveLosses(walletAddress: string): number {
-  const db = getDb();
-  const wa = normalizeAddr(walletAddress);
-
-  const rows = db.prepare(
-    "SELECT pnl_pct FROM insider_copy_trades WHERE wallet_address = ? AND status = 'closed' ORDER BY close_timestamp DESC"
-  ).all(wa) as Array<{ pnl_pct: number }>;
-
-  let count = 0;
-  for (const row of rows) {
-    if (row.pnl_pct <= 0) {
-      count++;
-    } else {
-      break;
-    }
-  }
-  return count;
-}
-
 export function getClosedCopyTrades(): CopyTrade[] {
   const db = getDb();
 
@@ -1000,13 +925,6 @@ export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
   db.prepare(
     "UPDATE insider_copy_trades SET peak_pnl_pct = ? WHERE id = ? AND ? > peak_pnl_pct"
   ).run(peakPnlPct, id, peakPnlPct);
-}
-
-export function getAllCopyTrades(): CopyTrade[] {
-  const db = getDb();
-
-  const rows = db.prepare("SELECT * FROM insider_copy_trades ORDER BY buy_timestamp DESC").all() as Record<string, unknown>[];
-  return rows.map(mapRowToCopyTrade);
 }
 
 export function getRugStats(): { count: number; lostUsd: number } {

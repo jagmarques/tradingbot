@@ -1,5 +1,5 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
@@ -163,6 +163,13 @@ export async function processInsiderBuy(tokenInfo: {
   const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+
+  // Skip tokens that already pumped too much
+  const h24Change = pair?.priceChange?.h24 ?? 0;
+  if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
+    return;
+  }
 
   if (isLpToken(symbol)) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);

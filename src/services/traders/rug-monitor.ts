@@ -178,7 +178,7 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
         const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
           ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
           : 0;
-        const closed = closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug", priceUsd, computedPnl);
+        const closed = closeCopyTrade(trade.walletAddress, tokenAddress, chain, "liquidity_rug", priceUsd, computedPnl, "liquidity_rug");
         if (!closed) continue; // already closed by another path
         notifyCopyTrade({
           walletAddress: trade.walletAddress,

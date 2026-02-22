@@ -584,7 +584,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
             tokenSymbol: stripEmoji(symbol),
             buyTxHash: "",
             buyTimestamp: tokenInfo.firstTx,
-            buyBlockNumber: 0,
             pumpMultiple,
             launchPriceUsd,
           };
@@ -726,7 +725,7 @@ export async function updateHeldGemPrices(): Promise<void> {
   }
 }
 
-// Chain rotation state (rotates 3 chains per cycle through all 6)
+// Chain rotation state (rotates 2 chains per cycle)
 let lastChainIndex = 0;
 
 // Main scan orchestrator
@@ -769,7 +768,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
               tokenSymbol: stripEmoji(token.symbol),
               buyTxHash: "", // Not tracked individually
               buyTimestamp: token.discoveredAt,
-              buyBlockNumber: 0,
               pumpMultiple: token.priceChangeH24 / 100 + 1, // Convert % to multiple
             };
             upsertGemHit(hit);
