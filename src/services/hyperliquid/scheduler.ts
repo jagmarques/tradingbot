@@ -29,7 +29,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const position = await openPosition(
       decision.pair,
-      decision.direction,
+      decision.direction as "long" | "short",
       decision.suggestedSizeUsd,
       1, // leverage: no leverage in paper mode
       decision.stopLoss,
