@@ -1,7 +1,7 @@
 import type { EvmChain } from "./types.js";
 import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize, checkCircuitBreaker } from "./types.js";
 import type { Chain } from "./types.js";
-import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats } from "./storage.js";
+import { getInsiderWallets, insertCopyTrade, getCopyTrade, closeCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats, updateCopyTradeTokenCreatedAt } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
@@ -104,7 +104,7 @@ export async function processInsiderSell(
 
     const pnlPct = rawPnlPct - feePct;
 
-    // Live mode: execute real sell before closing DB record
+    // Live sell
     let sellTxHash: string | undefined;
     if (trade.isLive) {
       const result = await approveAndSell1inch(trade.chain as Chain, trade.tokenAddress, 3);
@@ -155,11 +155,11 @@ export async function processInsiderBuy(tokenInfo: {
   tokenRetryDone.delete(tokenLockKey);
 
   try {
-  // Skip if this specific wallet already has a copy trade for this token
+  // Dedup: same wallet + token
   const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
   if (existingCopy) return;
 
-  // Skip tokens that have rugged us before
+  // Rug dedup
   const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
   if (rugCount > 0) {
     console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
@@ -170,7 +170,7 @@ export async function processInsiderBuy(tokenInfo: {
   const positionAmount = getPositionSize(tokenInfo.walletScore);
   console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
-  // Check exposure budget before opening new positions (accumulation still allowed)
+  // Exposure check (accumulation bypasses)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!existingTokenTrade) {
     const openTrades = getOpenCopyTrades();
@@ -186,7 +186,7 @@ export async function processInsiderBuy(tokenInfo: {
   let liquidityUsd = pair?.liquidity?.usd ?? 0;
   let symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
-  // Skip tokens that already pumped too much
+  // Max pump guard
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
@@ -198,7 +198,7 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Accumulate if another wallet already has an open position for this token
+  // Accumulation path
   if (existingTokenTrade) {
     const addAmount = existingTokenTrade.amountUsd * 0.50;
     const openTrades = getOpenCopyTrades();
@@ -235,7 +235,7 @@ export async function processInsiderBuy(tokenInfo: {
       });
       return;
     }
-    // Live mode accumulation: execute real swap for the additional amount
+    // Live accumulation swap
     if (!isPaperMode()) {
       if (isChainSupported(tokenInfo.chain as Chain)) {
         const balance = await getNativeBalance(tokenInfo.chain as Chain);
@@ -293,7 +293,7 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   if (priceUsd <= 0) {
-    // Skip immediately - blocking 30s would stall the pipeline; next cycle will retry
+    // No price yet, skip
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -322,7 +322,7 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // GoPlus safety check - null response (API failure) is treated as unsafe
+  // GoPlus safety check
   const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!goPlusData) {
     insertCopyTrade({
@@ -384,7 +384,7 @@ export async function processInsiderBuy(tokenInfo: {
   const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
 
   if (isPaperMode()) {
-    // Paper mode: record DB entry as before
+    // Paper buy
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -423,7 +423,7 @@ export async function processInsiderBuy(tokenInfo: {
       }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
   } else {
-    // Live mode: execute real 1inch swap
+    // Live buy
     if (!isChainSupported(tokenInfo.chain as Chain)) {
       console.log(`[CopyTrade] LIVE: Skip ${symbol} - chain ${tokenInfo.chain} not supported`);
       return;
@@ -510,7 +510,7 @@ async function watchInsiderWallets(): Promise<void> {
     const walletKey = `${wallet.address}_${wallet.chain}`;
 
     try {
-      // Circuit breaker: check if wallet is paused
+      // Circuit breaker
       const pausedUntil = pausedWallets.get(wallet.address);
       if (pausedUntil) {
         if (Date.now() < pausedUntil) {
@@ -597,7 +597,7 @@ async function watchInsiderWallets(): Promise<void> {
         }
       }
 
-      // Recent incoming transfers (skip LP tokens and wrappers)
+      // Recent incoming transfers
       const recentIncoming = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
         if (ts <= lastSeenTs) return false;
@@ -686,4 +686,24 @@ export function isWalletPaused(address: string): boolean {
   if (Date.now() < pausedUntil) return true;
   pausedWallets.delete(address);
   return false;
+}
+
+export async function backfillTokenCreatedAt(): Promise<void> {
+  const trades = getOpenCopyTrades().filter(t => !t.tokenCreatedAt);
+  if (trades.length === 0) return;
+
+  const unique = [...new Map(trades.map(t => [`${t.tokenAddress}:${t.chain}`, t])).values()];
+  console.log(`[CopyTrade] Backfilling launch dates for ${unique.length} tokens`);
+
+  for (const trade of unique) {
+    try {
+      const pair = await dexScreenerFetch(trade.chain, trade.tokenAddress);
+      if (pair?.pairCreatedAt) {
+        updateCopyTradeTokenCreatedAt(trade.tokenAddress, trade.chain, pair.pairCreatedAt);
+        console.log(`[CopyTrade] Backfilled launch date for ${trade.tokenSymbol}: ${new Date(pair.pairCreatedAt).toLocaleDateString()}`);
+      }
+    } catch {
+      // Non-fatal - will show "found" date as fallback
+    }
+  }
 }

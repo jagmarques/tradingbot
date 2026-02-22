@@ -825,6 +825,14 @@ export function updateCopyTradePairAddress(walletAddress: string, tokenAddress: 
   ).run(pairAddress, wa, ta, chain);
 }
 
+export function updateCopyTradeTokenCreatedAt(tokenAddress: string, chain: string, tokenCreatedAt: number): void {
+  const db = getDb();
+  const ta = normalizeAddr(tokenAddress);
+  db.prepare(
+    "UPDATE insider_copy_trades SET token_created_at = ? WHERE token_address = ? AND chain = ? AND token_created_at IS NULL"
+  ).run(tokenCreatedAt, ta, chain);
+}
+
 export interface WalletCopyTradeStats {
   totalTrades: number;
   wins: number;
@@ -950,7 +958,7 @@ export function getOpenCopyTradeByToken(tokenAddress: string, chain: string): Co
 export function increaseCopyTradeAmount(id: string, additionalAmount: number, newBuyPriceUsd?: number): void {
   const db = getDb();
   if (newBuyPriceUsd !== undefined && newBuyPriceUsd > 0) {
-    // Weighted average: (oldAmount * oldPrice + newAmount * newPrice) / (oldAmount + newAmount)
+    // Weighted average entry
     db.prepare(`
       UPDATE insider_copy_trades SET
         buy_price_usd = (amount_usd * buy_price_usd + ? * ?) / (amount_usd + ?),
@@ -959,7 +967,7 @@ export function increaseCopyTradeAmount(id: string, additionalAmount: number, ne
       WHERE id = ?
     `).run(additionalAmount, newBuyPriceUsd, additionalAmount, additionalAmount, id);
   } else {
-    // Fallback: no price available, just add amount (legacy behavior)
+    // No price, add amount only
     db.prepare(
       "UPDATE insider_copy_trades SET amount_usd = amount_usd + ?, insider_count = insider_count + 1 WHERE id = ?"
     ).run(additionalAmount, id);

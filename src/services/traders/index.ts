@@ -1,7 +1,7 @@
 import { initInsiderTables } from "./storage.js";
 import { runInsiderScan } from "./scanner.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
-import { startInsiderWatcher, stopInsiderWatcher } from "./watcher.js";
+import { startInsiderWatcher, stopInsiderWatcher, backfillTokenCreatedAt } from "./watcher.js";
 import { startRugMonitor, stopRugMonitor } from "./rug-monitor.js";
 import { startInsiderWebSocket, stopInsiderWebSocket } from "./insider-ws.js";
 
@@ -61,6 +61,8 @@ export function startInsiderScanner(): void {
   }, 30000);
 
   startInsiderWatcher();
+
+  setTimeout(() => backfillTokenCreatedAt().catch(err => console.error("[CopyTrade] Backfill error:", err)), 15000);
 
   setTimeout(() => startRugMonitor(), 5000);
 

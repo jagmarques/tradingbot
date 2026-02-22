@@ -6,6 +6,7 @@ import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.j
 import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
+import { formatPrice } from "../../utils/format.js";
 import type { Chain } from "./types.js";
 import { estimatePriceImpactPct } from "./watcher.js";
 
@@ -402,7 +403,7 @@ async function buyGems(
           buyPumpMultiple: token.currentPump,
           currentPumpMultiple: token.currentPump,
         });
-        console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at $${priceUsd.toFixed(6)}, score: ${token.score}`);
+        console.log(`[GemAnalyzer] Paper buy: ${token.symbol} (${token.chain}) at ${formatPrice(priceUsd)}, score: ${token.score}`);
       } else {
         if (!isChainSupported(token.chain as Chain)) {
           console.log(`[GemTrader] LIVE: Skip ${token.symbol} - chain ${token.chain} not supported`);

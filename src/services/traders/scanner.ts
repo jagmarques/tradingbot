@@ -8,6 +8,7 @@ import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
+import { formatPrice } from "../../utils/format.js";
 
 // GeckoTerminal API
 const GECKO_BASE = "https://api.geckoterminal.com/api/v2";
@@ -686,7 +687,7 @@ async function updateHeldGemPrices(): Promise<void> {
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
         updateGemHitPumpMultiple(token.tokenAddress, token.chain, newMultiple);
-        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x ($${priceUsd.toFixed(6)})`);
+        console.log(`[InsiderScanner] Price update: ${token.symbol} ${token.oldMultiple.toFixed(1)}x -> ${newMultiple.toFixed(1)}x (${formatPrice(priceUsd)})`);
         updated++;
       }
     }
