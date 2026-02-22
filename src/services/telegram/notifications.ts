@@ -2,6 +2,9 @@ import { sendMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
+import { formatPrice } from "../../utils/format.js";
+
+export { formatPrice };
 
 // Format date with user's timezone
 function formatDate(date: Date = new Date(), userId?: string): string {
@@ -197,12 +200,6 @@ export async function notifyInsiderBuyDetected(params: {
   await sendMessage(message);
 }
 
-export function formatPrice(p: number): string {
-  if (p <= 0) return "N/A";
-  if (p >= 0.01) return `$${p.toFixed(4)}`;
-  if (p >= 0.000001) return `$${p.toFixed(8)}`;
-  return `$${p.toExponential(3)}`;
-}
 
 // Copy trade notification (buy or sell)
 export async function notifyCopyTrade(params: {

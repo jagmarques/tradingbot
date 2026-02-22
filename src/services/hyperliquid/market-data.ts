@@ -10,14 +10,13 @@ export async function fetchFundingRate(pair: string): Promise<FundingInfo | null
     const sdk = getClient();
 
     const fundings = await sdk.info.perpetuals.getPredictedFundings(true);
-    // fundings is { [coin: string]: VenueFunding[] } where VenueFunding is { [venue: string]: PredictedFunding }
+    // SDK returns { [coin]: VenueFunding[] }
     const venueFundingList = fundings[pair];
     if (!venueFundingList || venueFundingList.length === 0) {
       console.warn(`[Hyperliquid] No funding data found for ${pair}`);
       return null;
     }
 
-    // Use the first venue entry available (typically HLP or similar)
     const firstVenue = venueFundingList[0];
     const venueName = Object.keys(firstVenue)[0];
     const fundingData = venueName ? firstVenue[venueName] : undefined;

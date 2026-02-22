@@ -25,13 +25,11 @@ export async function analyzePair(pair: string): Promise<PairAnalysis> {
 }
 
 async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
-  // Fetch candles for all intervals and market context in parallel
   const [candlesByInterval, marketCtx] = await Promise.all([
     fetchAllCandles(pair, QUANT_CANDLE_LOOKBACK_COUNT),
     fetchMarketContext(pair),
   ]);
 
-  // Compute indicators for each interval
   const indicatorsByInterval: Record<CandleInterval, ReturnType<typeof computeIndicators>> = {
     "15m": computeIndicators(candlesByInterval["15m"]),
     "1h": computeIndicators(candlesByInterval["1h"]),

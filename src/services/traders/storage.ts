@@ -53,7 +53,6 @@ export function initInsiderTables(): void {
     CREATE INDEX IF NOT EXISTS idx_insider_wallets_gem_count ON insider_wallets(gem_hit_count)
   `);
 
-  // Add P&L columns (safe if already exist)
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN buy_tokens REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_tokens REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN status TEXT DEFAULT NULL"); } catch { /* already exists */ }
@@ -61,7 +60,6 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN max_pump_multiple REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN launch_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
-  // Seed max_pump_multiple from existing pump_multiple for old records
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
 
   db.exec(`
@@ -90,20 +88,16 @@ export function initInsiderTables(): void {
     )
   `);
 
-  // Add price columns for accurate P&L (safe if already exist)
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN buy_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN current_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
 
-  // Delete paper trades with no buy price (failed price fetch)
   db.exec("DELETE FROM insider_gem_paper_trades WHERE buy_price_usd = 0 OR buy_price_usd IS NULL");
 
-  // Add live trade columns (safe if already exist)
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN tokens_received TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_paper_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
-  // Clean emojis from existing token symbols
   const dirtySymbols = db.prepare("SELECT DISTINCT token_symbol FROM insider_gem_hits").all() as Array<{ token_symbol: string }>;
   for (const row of dirtySymbols) {
     const clean = row.token_symbol.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}|\u200d|\ufe0f|\u{E0067}|\u{E0062}|\u{E007F}|\u{1F3F4}/gu, "").trim();
@@ -146,7 +140,6 @@ export function initInsiderTables(): void {
     CREATE INDEX IF NOT EXISTS idx_copy_trades_token ON insider_copy_trades(token_address, chain)
   `);
 
-  // Add insider_count and peak_pnl_pct columns (safe if already exist)
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN insider_count INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN peak_pnl_pct REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN exit_reason TEXT DEFAULT NULL"); } catch { /* already exists */ }
@@ -169,7 +162,6 @@ export function initInsiderTables(): void {
     )
   `);
 
-  // Cleanup: remove burn/bot addresses from insider_wallets
   const burnAddrs = [
     "0x0000000000000000000000000000000000000000",
     "0x000000000000000000000000000000000000dead",
@@ -598,7 +590,6 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
   const db = getDb();
   const ta = normalizeAddr(tokenAddress);
 
-  // Get insider count and avg quality
   const statsRow = db.prepare(`
     SELECT COUNT(DISTINCT h.wallet_address) as insider_count,
            COALESCE(AVG(w.gem_hit_count), 0) as avg_quality
@@ -611,7 +602,6 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
   const insiderCount = statsRow?.insider_count ?? 0;
   const avgInsiderQuality = statsRow?.avg_quality ?? 0;
 
-  // Get hold rate
   const holdRow = db.prepare(`
     SELECT
       SUM(CASE WHEN status = 'holding' OR status IS NULL OR status = 'unknown' THEN 1 ELSE 0 END) as holding_count,
@@ -710,7 +700,7 @@ export function insertCopyTrade(trade: Omit<CopyTrade, "id">): void {
   const db = getDb();
   const wa = normalizeAddr(trade.walletAddress);
   const ta = normalizeAddr(trade.tokenAddress);
-  // Timestamp in ID allows re-entry after a previous trade on the same token is closed/skipped
+  // Timestamp in ID allows re-entry
   const id = `${wa}_${ta}_${trade.chain}_${trade.buyTimestamp}`;
 
   db.prepare(`
@@ -883,7 +873,6 @@ export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeS
 export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> {
   const db = getDb();
 
-  // Batch query: all closed, valid trades grouped by wallet
   const groupRows = db.prepare(`
     SELECT wallet_address,
            COUNT(*) as total_trades,
@@ -901,7 +890,6 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
     gross_loss: number;
   }>;
 
-  // Compute consecutiveLosses per wallet from ordered trades
   const orderRows = db.prepare(`
     SELECT wallet_address, pnl_pct
     FROM insider_copy_trades
@@ -988,15 +976,12 @@ export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
 export function getRugStats(): { count: number; lostUsd: number } {
   const db = getDb();
 
-  // Copy trade rugs: exit_reason = 'liquidity_rug', full amount_usd is the loss
   const copyRow = db.prepare(`
     SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
     FROM insider_copy_trades
     WHERE exit_reason = 'liquidity_rug'
   `).get() as { count: number; lost: number };
 
-  // Gem paper trade rugs: closed gem trades whose token appears in token_rug_counts
-  // Match by id format: ${symbol.toLowerCase()}_${chain}
   const gemRow = db.prepare(`
     SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
     FROM insider_gem_paper_trades

@@ -69,11 +69,7 @@ async function fetchMidPrice(pair: string): Promise<number | null> {
   }
 }
 
-/**
- * Accrue funding rate income for open funding arb positions.
- * Called periodically from position monitor. Funding on Hyperliquid settles every 1h.
- * For paper trading, we accrue proportionally based on time elapsed since last accrual.
- */
+// Accrue funding income for open funding arb positions (settles every 1h on Hyperliquid)
 export async function accrueFundingIncome(): Promise<void> {
   const openPositions = getPaperPositions();
   const fundingPositions = openPositions.filter(p => p.tradeType === "funding");
@@ -94,8 +90,7 @@ export async function accrueFundingIncome(): Promise<void> {
       const fundingInfo = await fetchFundingRate(position.pair);
       if (!fundingInfo) continue;
 
-      // Funding payment per period = position.size * leverage * fundingRate
-      // Positive rate: shorts collect, longs pay. Negative rate: longs collect, shorts pay.
+      // Funding: shorts collect positive rate, longs collect negative rate
       const rate = fundingInfo.currentRate;
       let fundingPayment: number;
 
@@ -105,7 +100,6 @@ export async function accrueFundingIncome(): Promise<void> {
         fundingPayment = -rate * position.size * position.leverage; // negative rate = longs collect
       }
 
-      // Pro-rate based on elapsed time vs full 1h period
       const periodFraction = elapsed / FUNDING_PERIOD_MS;
       const accruedPayment = fundingPayment * periodFraction;
 
@@ -114,11 +108,9 @@ export async function accrueFundingIncome(): Promise<void> {
         continue;
       }
 
-      // Apply to virtual balance (funding income, not position P&L)
       virtualBalance += accruedPayment;
       lastFundingAccrual.set(position.id, now);
 
-      // Also accumulate per position for inclusion in close P&L record
       const prev = accumulatedFunding.get(position.id) ?? 0;
       accumulatedFunding.set(position.id, prev + accruedPayment);
 
@@ -225,10 +217,8 @@ export async function paperClosePosition(
 
   // Tier 0 taker 0.045% on entry + exit
   const fees = position.size * 0.00045 * 2;
-  // Include accumulated funding income in reported P&L (already applied to virtualBalance during accrual)
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
 
-  // Delta-neutral spot hedge P&L adjustment
   let spotPnl = 0;
   if (position.spotHedgePrice && position.spotHedgePrice > 0) {
     // Virtual spot long: profit when price goes up, loss when price goes down
@@ -240,7 +230,6 @@ export async function paperClosePosition(
 
   const pnl = rawPnl - fees + fundingPnl + spotPnl;
 
-  // Return size + trading pnl to virtual balance (funding already applied during accrual, not here)
   virtualBalance += position.size + (rawPnl - fees) + spotPnl;
 
   const now = new Date().toISOString();

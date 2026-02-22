@@ -21,7 +21,6 @@ async function checkPositionStops(): Promise<void> {
       return;
     }
 
-    // Accrue funding income for paper funding arb positions
     if (isPaperMode()) {
       await accrueFundingIncome();
     }
@@ -44,7 +43,6 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      // Liquidation check: if unrealized loss exceeds maintenance margin, force-close
       if (isPaperMode()) {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
@@ -61,7 +59,7 @@ async function checkPositionStops(): Promise<void> {
           await closePosition(position.id, `liquidation (loss $${Math.abs(unrealizedPnl).toFixed(2)} >= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
-          continue; // skip further checks for this position
+          continue;
         }
       }
 

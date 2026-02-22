@@ -6,6 +6,7 @@ import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS 
 import { fetchGoPlusData, isGoPlusKillSwitch } from "./gem-analyzer.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
+import { formatPrice } from "../../utils/format.js";
 import { isPaperMode } from "../../config/env.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
 import { getApproxUsdValue } from "../copy/filter.js";
@@ -408,7 +409,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
-    console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) $${priceUsd >= 0.01 ? priceUsd.toFixed(4) : priceUsd >= 0.000001 ? priceUsd.toFixed(8) : priceUsd.toExponential(3)}, liq $${liquidityUsd.toFixed(0)}`);
+    console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) ${formatPrice(priceUsd)}, liq $${liquidityUsd.toFixed(0)}`);
     if (liquidityOk) {
       notifyCopyTrade({
         walletAddress: tokenInfo.walletAddress,

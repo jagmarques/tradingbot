@@ -13,17 +13,14 @@ const buySubIds = new Map<string, string>();   // chain -> subscription id
 const sellSubIds = new Map<string, string>();  // chain -> subscription id
 const reconnectAttempts = new Map<string, number>();
 const pendingRequests = new Map<number, { chain: string; type: "buy" | "sell" }>();
-// Track current wallet set per chain for change detection
 const currentWalletsByChain = new Map<string, string[]>();
 
 let monitorRunning = false;
 let syncInterval: NodeJS.Timeout | null = null;
 let rpcId = 10000; // offset from rug-monitor's rpcId
 let syncingWs = false;
-// Track which wallets are watched per chain (for log decoding)
 const watchedWalletsByChain = new Map<string, Set<string>>();
 
-// Processing lock to prevent concurrent buy/sell processing
 const processingLock = new Set<string>();
 
 function nextRpcId(): number {
@@ -31,13 +28,11 @@ function nextRpcId(): number {
 }
 
 function padAddress(address: string): string {
-  // Pad 20-byte address to 32-byte topic: 0x000000000000000000000000{address}
   const clean = address.toLowerCase().replace("0x", "");
   return "0x" + "0".repeat(24) + clean;
 }
 
 function unpadAddress(topic: string): string {
-  // Extract 20-byte address from 32-byte topic
   return "0x" + topic.slice(26).toLowerCase();
 }
 
@@ -131,7 +126,6 @@ async function handleTransferLog(chain: string, log: {
 
   const tokenAddress = log.address.toLowerCase();
 
-  // Skip non-tradeable tokens (stablecoins, wrapped natives)
   const skipTokens = SKIP_TOKEN_ADDRESSES[chain];
   if (skipTokens?.has(tokenAddress)) return;
 
@@ -156,7 +150,6 @@ async function handleTransferLog(chain: string, log: {
     if (processingLock.has(lockKey)) return;
     processingLock.add(lockKey);
     try {
-      // Circuit breaker
       const copyStats = getWalletCopyTradeStats(toAddress);
       const cb = checkCircuitBreaker(copyStats);
       if (cb.blocked) {
@@ -270,14 +263,11 @@ function connectChain(chain: string, wallets: string[]): WebSocket | null {
     console.log(`[InsiderWS] Connected to Alchemy (${chain}), ${wallets.length} wallets`);
     reconnectAttempts.set(chain, 0);
 
-    // Store watched wallets for this chain
     watchedWalletsByChain.set(chain, new Set(wallets));
 
-    // Clear old subscriptions
     buySubIds.delete(chain);
     sellSubIds.delete(chain);
 
-    // Subscribe to buy and sell events
     subscribeBuys(chain, wallets);
     subscribeSells(chain, wallets);
   });
@@ -336,7 +326,6 @@ async function syncSubscriptions(): Promise<void> {
   try {
     const walletsByChain = getQualifiedWalletsByChain();
 
-    // Connect new chains, resubscribe if wallet list changed
     for (const [chain, wallets] of walletsByChain) {
       const ws = connections.get(chain);
 
@@ -347,7 +336,6 @@ async function syncSubscriptions(): Promise<void> {
       } else if (ws.readyState === WebSocket.OPEN && walletsChanged(chain, wallets)) {
         console.log(`[InsiderWS] Wallet list changed (${chain}), resubscribing ${wallets.length} wallets`);
 
-        // Unsubscribe old
         const oldBuySub = buySubIds.get(chain);
         if (oldBuySub) unsubscribe(chain, oldBuySub);
         const oldSellSub = sellSubIds.get(chain);
@@ -356,17 +344,14 @@ async function syncSubscriptions(): Promise<void> {
         buySubIds.delete(chain);
         sellSubIds.delete(chain);
 
-        // Update tracked wallets
         watchedWalletsByChain.set(chain, new Set(wallets));
         currentWalletsByChain.set(chain, wallets);
 
-        // Resubscribe
         subscribeBuys(chain, wallets);
         subscribeSells(chain, wallets);
       }
     }
 
-    // Disconnect chains with no wallets
     for (const [chain] of connections) {
       if (!walletsByChain.has(chain)) {
         const ws = connections.get(chain);
@@ -386,7 +371,7 @@ async function syncSubscriptions(): Promise<void> {
     const totalWallets = Array.from(watchedWalletsByChain.values()).reduce((sum, s) => sum + s.size, 0);
     console.log(`[InsiderWS] Sync: ${totalWallets} wallets across ${totalChains} chains`);
 
-    // Periodic cleanup of dedup map to prevent unbounded memory growth
+    // Cleanup dedup map
     cleanupProcessedTxHashes();
   } finally {
     syncingWs = false;

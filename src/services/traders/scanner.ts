@@ -26,7 +26,6 @@ const ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api";
 // Routescan API for Avalanche (Snowtrace)
 const ROUTESCAN_AVAX_URL = "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/api";
 
-// Chain IDs for Etherscan V2
 const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   ethereum: 1,
   base: 8453,
@@ -36,10 +35,9 @@ const ETHERSCAN_CHAIN_IDS: Record<EvmChain, number> = {
   avalanche: 43114,
 };
 
-// Chains with free explorer APIs (Etherscan V2 free: eth/arb/polygon, Routescan: avax)
+// Free explorer APIs: eth/arb/polygon (Etherscan V2), avax (Routescan)
 export const EXPLORER_SUPPORTED_CHAINS = new Set<string>(["ethereum", "arbitrum", "polygon", "avalanche"]);
 
-// Build explorer URL based on chain (Routescan for Avalanche, Etherscan V2 for others)
 export function buildExplorerUrl(chain: EvmChain, params: string): string {
   const env = loadEnv();
   if (chain === "avalanche") {
@@ -51,7 +49,6 @@ export function buildExplorerUrl(chain: EvmChain, params: string): string {
   return `${ETHERSCAN_V2_URL}?chainid=${chainId}&${params}${apiKey ? `&apikey=${apiKey}` : ""}`;
 }
 
-// Burn and dead addresses to filter out
 export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000000", // zero address
   "0x000000000000000000000000000000000000dead", // common burn (lowercase)
@@ -60,7 +57,6 @@ export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000003", // RIPEMD precompile
 ]);
 
-// Detect burn addresses + vanity/bot addresses (8+ leading zeros)
 export function isBotOrBurnAddress(addr: string): boolean {
   const a = addr.toLowerCase();
   if (BURN_ADDRESSES.has(a)) return true;
@@ -91,7 +87,6 @@ async function geckoRateLimitedFetch(url: string): Promise<Response> {
   return response;
 }
 
-// Fetch launch price from GeckoTerminal OHLCV (earliest daily candle open)
 async function fetchLaunchPrice(chain: EvmChain, pairAddress: string): Promise<number> {
   if (!pairAddress) return 0;
   const network = GECKO_NETWORK_IDS[chain];
@@ -112,7 +107,6 @@ async function fetchLaunchPrice(chain: EvmChain, pairAddress: string): Promise<n
   }
 }
 
-// Rate limiting for Etherscan (220ms between requests, per chain)
 const ETHERSCAN_INTERVAL_MS = 220;
 const etherscanQueueByChain = new Map<string, Promise<void>>();
 
@@ -144,7 +138,6 @@ interface GeckoPool {
   };
 }
 
-// Find tokens that pumped 3x+ in 24h on a given chain
 async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   const networkId = GECKO_NETWORK_IDS[chain];
   const seen = new Set<string>();
@@ -172,7 +165,6 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
       // Filter by thresholds
       if (h24Change < 100 || volumeH24 < 5000 || liquidity < 2000) continue;
 
-      // Extract token address from relationships.base_token.data.id (format: "network_address")
       const baseTokenId = pool.relationships.base_token.data.id;
       const parts = baseTokenId.split("_");
       if (parts.length < 2) continue;
@@ -182,7 +174,6 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
       if (seen.has(tokenAddress)) continue;
       seen.add(tokenAddress);
 
-      // Extract symbol from pool name (format: "SYMBOL / QUOTE")
       const nameParts = pool.attributes.name.split(" / ");
       const symbol = nameParts[0] || "UNKNOWN";
 
@@ -310,7 +301,6 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   return pumped;
 }
 
-// Find wallets that bought a token early (within first 50-100 transfers)
 async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
   if (!EXPLORER_SUPPORTED_CHAINS.has(token.chain)) return [];
 
@@ -342,7 +332,6 @@ async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
     const maxBlock = firstBlock + INSIDER_CONFIG.EARLY_BUYER_BLOCKS;
     const earlyTransfers = data.result.filter(tx => parseInt(tx.blockNumber) <= maxBlock);
 
-    // Count frequency within early window only (to filter routers/pools)
     const totalTransfers = earlyTransfers.length;
     const addressCounts = new Map<string, number>();
     for (const tx of earlyTransfers) {
@@ -350,24 +339,19 @@ async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
       addressCounts.set(to, (addressCounts.get(to) || 0) + 1);
     }
 
-    // Get known exchange addresses for this chain
     const chainKey = token.chain as keyof typeof KNOWN_EXCHANGES;
     const exchanges = new Set(
       (KNOWN_EXCHANGES[chainKey] || []).map((a) => a.toLowerCase())
     );
 
-    // Extract unique buyer addresses from early transfers
     const buyers = new Set<string>();
     for (const tx of earlyTransfers) {
       const to = tx.to.toLowerCase();
 
-      // Skip burn/dead/bot addresses
       if (isBotOrBurnAddress(to)) continue;
 
-      // Skip the token contract itself
       if (to === token.tokenAddress) continue;
 
-      // Skip known exchanges
       if (exchanges.has(to)) continue;
 
       // Skip addresses appearing in >50% of all transfers (likely router/pool)
@@ -385,7 +369,6 @@ async function findEarlyBuyers(token: PumpedToken): Promise<string[]> {
   }
 }
 
-// Query Etherscan for wallet+token transfer history to determine buy/sell status
 interface WalletTokenPnl {
   buyTokens: number;
   sellTokens: number;
@@ -419,7 +402,6 @@ async function getWalletTokenPnl(
     }>;
   };
 
-  // Build set of known sell destinations (DEX routers + exchanges)
   const sellDestinations = new Set<string>();
   const routers = KNOWN_DEX_ROUTERS[chain] || [];
   for (const addr of routers) sellDestinations.add(addr.toLowerCase());
@@ -471,10 +453,8 @@ async function getWalletTokenPnl(
   return { buyTokens, sellTokens, status, buyDate, sellDate };
 }
 
-// Busy guard to prevent overlapping history scans
 let historyInProgress = false;
 
-// Scan historical wallet transactions for additional gem hits
 async function scanWalletHistory(): Promise<void> {
   if (historyInProgress) {
     console.log("[InsiderScanner] History: Skipping (previous scan still running)");
@@ -498,7 +478,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
     if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
     try {
-      // Query all token transfers for this wallet (no contractaddress filter)
       const url = buildExplorerUrl(wallet.chain as EvmChain, `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc`);
       const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
       if (!response.ok) {
@@ -522,7 +501,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
         continue;
       }
 
-      // Build map of unique token addresses
       const tokenMap = new Map<string, { symbol: string; firstTx: number }>();
       for (const tx of data.result) {
         const tokenAddr = tx.contractAddress.toLowerCase();
@@ -534,16 +512,14 @@ async function _scanWalletHistoryInner(): Promise<void> {
         }
       }
 
-      // Get existing gems for this wallet to avoid duplicates
       const existingGems = getGemHitsForWallet(wallet.address, wallet.chain);
       const existingTokens = new Set(existingGems.map(g => g.tokenAddress.toLowerCase()));
 
-      // Filter to new tokens only, cap at MAX_HISTORY_TOKENS
       const newTokens = Array.from(tokenMap.entries())
         .filter(([addr]) => !existingTokens.has(addr))
         .slice(0, INSIDER_CONFIG.MAX_HISTORY_TOKENS);
 
-      // Batch fetch all tokens at once (~7 API calls instead of ~200)
+      // Batch fetch (~7 API calls vs ~200 individual)
       const batchTokens = newTokens.map(([addr]) => ({ chain: wallet.chain, tokenAddress: addr }));
       const batchResults = await dexScreenerFetchBatch(batchTokens);
       console.log(`[InsiderScanner] History: Batch fetched ${batchResults.size}/${newTokens.length} tokens for ${wallet.address.slice(0, 8)}`);
@@ -570,7 +546,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
           }
           if (fdvUsd > 10_000_000) continue;
 
-          // Fetch launch price from OHLCV for accurate pump
           let launchPriceUsd = 0;
           const priceUsd = parseFloat(pair.priceUsd || "0");
           if (pair.pairAddress) {
@@ -602,7 +577,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
         `[InsiderScanner] History: ${wallet.address.slice(0, 8)} - checked ${checkedCount} tokens, found ${newGemsCount} new gems`
       );
 
-      // Delay between wallets
       await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
       console.error(`[InsiderScanner] History scan error for ${wallet.address}:`, err);
@@ -611,7 +585,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
   }
 }
 
-// Enrich gem hits with P&L data (non-blocking, runs after scan)
 async function enrichInsiderPnl(): Promise<void> {
   const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
 
@@ -646,7 +619,6 @@ async function enrichInsiderPnl(): Promise<void> {
 async function updateHeldGemPrices(): Promise<void> {
   const heldGems = getAllHeldGemHits();
 
-  // Deduplicate by token+chain (many wallets may hold same token)
   const uniqueTokens = new Map<string, { tokenAddress: string; chain: EvmChain; symbol: string; oldMultiple: number; launchPrice: number }>();
   for (const gem of heldGems) {
     const key = `${gem.tokenAddress}_${gem.chain}`;
@@ -725,7 +697,6 @@ async function updateHeldGemPrices(): Promise<void> {
   }
 }
 
-// Main scan orchestrator
 export async function runInsiderScan(): Promise<InsiderScanResult> {
   const result: InsiderScanResult = {
     pumpedTokensFound: 0,
@@ -740,11 +711,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
 
   for (const chain of cycleChains) {
     try {
-      // Find pumped tokens
       const pumpedTokens = await findPumpedTokens(chain);
       result.pumpedTokensFound += pumpedTokens.length;
 
-      // For each pumped token, find early buyers
       for (const token of pumpedTokens) {
         try {
           const earlyBuyers = await findEarlyBuyers(token);
@@ -778,7 +747,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.error(`[InsiderScanner] ${msg}`);
       result.errors.push(msg);
     }
-    // Delay between chains to spread GeckoTerminal load
     await new Promise((r) => setTimeout(r, INSIDER_CONFIG.INTER_CHAIN_DELAY_MS));
   }
 
@@ -847,7 +815,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     return score;
   }
 
-  // Recalculate insider wallets from gem_hits
   try {
     const db = getDb();
 
@@ -889,7 +856,6 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       unique_tokens: number;
     }>;
 
-    // Pre-compute median pump multiples for all wallets
     const allPumps = db.prepare(`
       SELECT wallet_address, chain, pump_multiple
       FROM insider_gem_hits
@@ -966,27 +932,27 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     result.errors.push(msg);
   }
 
-  // Enrich P&L data (non-blocking)
+  // Enrich P&L
   enrichInsiderPnl().catch(err => {
     console.error("[InsiderScanner] P&L enrichment error:", err);
   });
 
-  // Scan historical wallet transactions (non-blocking)
+  // Scan wallet history
   scanWalletHistory().catch(err => {
     console.error("[InsiderScanner] History scan error:", err);
   });
 
-  // Update held gem prices (non-blocking)
+  // Update held gem prices
   updateHeldGemPrices().catch(err => {
     console.error("[InsiderScanner] Held gem price update error:", err);
   });
 
-  // Refresh paper trade prices (non-blocking)
+  // Refresh paper prices
   refreshGemPaperPrices().catch(err => {
     console.error("[InsiderScanner] Paper price refresh error:", err);
   });
 
-  // Auto-score and paper-buy unscored or unbought held gems (non-blocking)
+  // Auto-score held gems
   try {
     const heldGems = getAllHeldGemHits();
     const tokensToProcess = new Map<string, { symbol: string; chain: string; currentPump: number; tokenAddress: string }>();

@@ -44,13 +44,11 @@ function parseAIResponse(
   regime: MarketRegime,
   markPrice: number,
 ): QuantAIDecision | null {
-  // Strip markdown fences
   let cleaned = raw.trim();
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
   }
 
-  // Extract JSON
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     console.error(`[QuantAI] Validation failed for ${pair}: no JSON object found in response`);
@@ -66,7 +64,6 @@ function parseAIResponse(
     return null;
   }
 
-  // Direction
   const direction = parsed["direction"];
   if (direction !== "long" && direction !== "short" && direction !== "flat") {
     console.error(`[QuantAI] Validation failed for ${pair}: invalid direction "${String(direction)}"`);
@@ -80,7 +77,6 @@ function parseAIResponse(
     finalDirection = "flat";
   }
 
-  // Flat: skip SL/TP validation
   if (finalDirection === "flat") {
     const rawConf = Number(parsed["confidence"]);
     const flatConfidence = isFinite(rawConf) ? Math.max(0, Math.min(100, rawConf)) : 0;
@@ -102,7 +98,6 @@ function parseAIResponse(
     };
   }
 
-  // Long/short: validate entry/SL/TP
   const entryPrice = Number(parsed["entryPrice"]);
   if (!isFinite(entryPrice) || entryPrice <= 0) {
     console.error(`[QuantAI] Validation failed for ${pair}: invalid entryPrice ${String(parsed["entryPrice"])}`);
@@ -133,7 +128,6 @@ function parseAIResponse(
     return null;
   }
 
-  // SL direction
   if (finalDirection === "long" && stopLoss >= entryPrice) {
     console.error(`[QuantAI] Validation failed for ${pair}: long stop-loss ${stopLoss} must be below entry ${entryPrice}`);
     return null;
@@ -143,7 +137,6 @@ function parseAIResponse(
     return null;
   }
 
-  // TP direction
   if (finalDirection === "long" && takeProfit <= entryPrice) {
     console.error(`[QuantAI] Validation failed for ${pair}: long take-profit ${takeProfit} must be above entry ${entryPrice}`);
     return null;
@@ -153,7 +146,6 @@ function parseAIResponse(
     return null;
   }
 
-  // Clamp 0-100
   const confidence = Math.max(0, Math.min(100, rawConfidence));
 
   return {
@@ -165,7 +157,7 @@ function parseAIResponse(
     confidence,
     reasoning: reasoning.trim(),
     regime,
-    suggestedSizeUsd: 0, // Filled by Kelly sizer in runAIDecisionEngine
+    suggestedSizeUsd: 0, // Filled by Kelly sizer
     analyzedAt: new Date().toISOString(),
   };
 }
@@ -175,17 +167,14 @@ function parseAIResponse(
 export async function analyzeWithAI(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair } = analysis;
 
-  // Check cache first
   const cached = getCached(pair);
   if (cached) {
     console.log(`[QuantAI] Cache hit for ${pair}`);
     return cached;
   }
 
-  // Build prompt from analysis
   const prompt = buildQuantPrompt(analysis);
 
-  // Call DeepSeek
   let raw: string;
   try {
     raw = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.3, "quant");
@@ -195,13 +184,11 @@ export async function analyzeWithAI(analysis: PairAnalysis): Promise<QuantAIDeci
     return null;
   }
 
-  // Parse and validate response
   const decision = parseAIResponse(raw, pair, analysis.regime, analysis.markPrice);
   if (!decision) {
     return null;
   }
 
-  // Cache the validated decision
   setCache(pair, decision);
 
   console.log(
@@ -227,12 +214,11 @@ export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
     const decision = await analyzeWithAI(analysis);
     if (!decision || decision.direction === "flat") continue;
 
-    // Fill suggestedSizeUsd via Kelly sizer
     const sizeUsd = calculateQuantPositionSize(
       decision.confidence,
       decision.entryPrice,
       decision.stopLoss,
-      1, // Leverage passed to executor/risk layer (Phase 28), not used for sizing here
+      1, // Leverage handled by executor/risk layer, not used for sizing
     );
 
     if (sizeUsd <= 0) continue;
