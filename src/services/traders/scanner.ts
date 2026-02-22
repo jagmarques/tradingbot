@@ -807,8 +807,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     let score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
 
     // Expectancy floor: negative expectancy after 10+ trades caps score at 50
-    const rawExpectancyForFloor = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
-    if (rawExpectancyForFloor <= 0 && cs.totalTrades >= 10) {
+    if (rawExpectancy <= 0 && cs.totalTrades >= 10) {
       score = Math.min(score, 50);
     }
 
