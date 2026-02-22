@@ -128,6 +128,7 @@ export async function processInsiderSell(
 }
 
 const tokenBuyLock = new Set<string>();
+const tokenRetryDone = new Set<string>();
 
 export async function processInsiderBuy(tokenInfo: {
   walletAddress: string;
@@ -138,10 +139,14 @@ export async function processInsiderBuy(tokenInfo: {
 }): Promise<void> {
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
   if (tokenBuyLock.has(tokenLockKey)) {
-    setTimeout(() => processInsiderBuy(tokenInfo), 5_000);
+    if (!tokenRetryDone.has(tokenLockKey)) {
+      tokenRetryDone.add(tokenLockKey);
+      setTimeout(() => processInsiderBuy(tokenInfo), 5_000);
+    }
     return;
   }
   tokenBuyLock.add(tokenLockKey);
+  tokenRetryDone.delete(tokenLockKey);
 
   try {
   // Skip if this specific wallet already has a copy trade for this token
