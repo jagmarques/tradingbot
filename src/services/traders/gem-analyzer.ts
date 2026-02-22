@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason, CopyTrade } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -557,7 +557,7 @@ export async function refreshGemPaperPrices(): Promise<void> {
   }
 }
 
-async function exitCopyTrade(trade: CopyTrade, exitReason: CopyExitReason, adjustedPnlPct: number, exitDetail: string): Promise<boolean> {
+export async function exitCopyTrade(trade: CopyTrade, exitReason: CopyExitReason, adjustedPnlPct: number, exitDetail: string): Promise<boolean> {
   let sellTxHash: string | undefined;
   if (trade.isLive) {
     const result = await approveAndSell1inch(trade.chain as Chain, trade.tokenAddress, 3);
@@ -607,6 +607,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
       updateCopyTradePrice(token.walletAddress, token.tokenAddress, token.chain, priceUsd);
       copyPriceFailures.delete(failKey);
       updated++;
+      if (pair?.pairCreatedAt) {
+        const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey && !t.tokenCreatedAt);
+        if (trade) updateCopyTradeTokenCreatedAt(trade.tokenAddress, trade.chain, pair.pairCreatedAt);
+      }
     } else {
       // Price fetch failure tracking
       const prev = copyPriceFailures.get(failKey);
@@ -620,7 +624,8 @@ export async function refreshCopyTradePrices(): Promise<void> {
         const trade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey);
         if (trade) {
           console.log(`[CopyTrade] AUTO CLOSE: ${trade.tokenSymbol} (${trade.chain}) - no price after ${MAX_PRICE_FAILURES} attempts`);
-          const closed = closeCopyTrade(trade.walletAddress, trade.tokenAddress, trade.chain, "stale_price", 0, trade.pnlPct);
+          trade.currentPriceUsd = 0;
+          const closed = await exitCopyTrade(trade, "stale_price", trade.pnlPct, `no_price_${MAX_PRICE_FAILURES}_attempts`);
           if (closed) {
             notifyCopyTrade({
               walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
