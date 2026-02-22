@@ -26,6 +26,7 @@ let syncInterval: NodeJS.Timeout | null = null;
 let rpcId = 1;
 let syncing = false;
 const pendingRechecks = new Set<string>();
+const intentionalClose = new Set<string>();
 
 function nextRpcId(): number {
   return rpcId++;
@@ -259,6 +260,8 @@ function connectChain(chain: string): WebSocket | null {
 
     if (!monitorRunning) return;
 
+    if (intentionalClose.delete(chain)) return; // planned disconnect, don't reconnect
+
     const attempts = (reconnectAttempts.get(chain) ?? 0);
     const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
     reconnectAttempts.set(chain, attempts + 1);
@@ -355,6 +358,7 @@ async function syncSubscriptions(): Promise<void> {
     if (chainSubs.size === 0 && !tradesByChain.has(chain)) {
       const ws = connections.get(chain);
       if (ws) {
+        intentionalClose.add(chain);
         ws.close();
         connections.delete(chain);
         console.log(`[RugMonitor] Closed Alchemy connection (${chain}) - no open trades`);
@@ -411,6 +415,7 @@ export function stopRugMonitor(): void {
   pendingRequests.clear();
   pendingRechecks.clear();
   reconnectAttempts.clear();
+  intentionalClose.clear();
 
   for (const [chain, ws] of connections) {
     ws.close();

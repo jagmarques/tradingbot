@@ -160,10 +160,10 @@ export async function processInsiderBuy(tokenInfo: {
     }
   }
 
-  const pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
-  const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
-  const liquidityUsd = pair?.liquidity?.usd ?? 0;
-  const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+  let pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
+  let priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+  let liquidityUsd = pair?.liquidity?.usd ?? 0;
+  let symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
   // Skip tokens that already pumped too much
   const h24Change = pair?.priceChange?.h24 ?? 0;
@@ -252,6 +252,16 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   if (priceUsd <= 0) {
+    // Retry after rate limit cooldown
+    console.log(`[CopyTrade] No price for ${symbol} (${tokenInfo.chain}), retrying in 30s...`);
+    await new Promise(r => setTimeout(r, 30_000));
+    pair = (await dexScreenerFetch(tokenInfo.chain, tokenInfo.tokenAddress)) ?? null;
+    priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    liquidityUsd = pair?.liquidity?.usd ?? 0;
+    symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+  }
+
+  if (priceUsd <= 0) {
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -275,7 +285,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
-    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price after retry`);
     return;
   }
 
