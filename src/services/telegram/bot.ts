@@ -766,7 +766,7 @@ async function handleBalance(ctx: Context): Promise<void> {
     return;
   }
 
-  const fmt = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+  const fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   if (isPaperMode()) {
     const lines = [
@@ -817,8 +817,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     const period = currentPnlPeriod;
     const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
 
-    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $fmt = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     const status = await getRiskStatus();
     const modeTag = status.isPaperMode ? "Paper" : "Live";
@@ -968,7 +968,7 @@ function formatBreakdown(
   quantPnl: number,
   insiderCopyPnl: number,
 ): string {
-  const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
     { name: "Crypto Copy", value: cryptoCopy },
@@ -991,8 +991,8 @@ async function handleTrades(ctx: Context): Promise<void> {
   try {
     const trades = getTodayTrades();
     const cryptoCopyPositions = getCryptoCopyPositions();
-    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     let message = `<b>Trades</b>\n\n`;
 
@@ -1067,7 +1067,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   try {
     const trackedBettors = getTrackedTraders();
     const copyStats = getCopyStats();
-    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
     // Only show bettors we copy (10%+ ROI)
     const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
@@ -1149,8 +1149,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
       const invested = trades.reduce((s, t) => s + t.amountUsd, 0);
       const unrealPnl = trades.reduce((s, t) => s + (t.pnlPct / 100) * t.amountUsd, 0);
-      const fmtPnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-      const fmtUsd = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+      const fmtPnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+      const fmtUsd = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
       let message = `<b>Insiders - Holding</b> ${trades.length} open | ${fmtUsd(invested)} inv | ${fmtPnl(unrealPnl)} unr\n\n`;
       for (const t of trades) {
@@ -1229,11 +1229,11 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
   }
 
   try {
-    const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
-    const trunc = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "." : s;
-    const c = (n: number) => `${(n * 100).toFixed(0)}c`;
-    const shortDate = (ts: number) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
+    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+    const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+    const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + "." : s;
+    const c = (n: number): string => `${(n * 100).toFixed(0)}c`;
+    const shortDate = (ts: number): string => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
     let message = `<b>Bets</b>\n\n`;
 
@@ -2323,8 +2323,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   const funding = getFundingIncome();
   const directionalStats = getQuantStats("directional");
 
-  const pnl = (n: number) => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-  const $ = (n: number) => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+  const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${$(balance)} bal | ${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
