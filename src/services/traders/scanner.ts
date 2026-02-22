@@ -1,6 +1,6 @@
 import type { EvmChain, PumpedToken, GemHit, InsiderScanResult } from "./types.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
-import { INSIDER_CONFIG, WATCHER_CONFIG, stripEmoji, PUMP_FUN_LAUNCH_PRICE_USD } from "./types.js";
+import { INSIDER_CONFIG, WATCHER_CONFIG, stripEmoji } from "./types.js";
 import { loadEnv } from "../../config/env.js";
 import { upsertGemHit, upsertInsiderWallet, getInsiderWallets, getGemHitsForWallet, updateGemHitPnl, getAllHeldGemHits, updateGemHitPumpMultiple, setLaunchPrice, getCachedGemAnalysis, getGemPaperTrade, getPromisingWalletsForHistoryScan, getAllWalletCopyTradeStats, deleteInsiderWalletsBelow } from "./storage.js";
 import type { WalletCopyTradeStats } from "./storage.js";
@@ -704,14 +704,10 @@ async function updateHeldGemPrices(): Promise<void> {
     const fdvUsd = pair.fdv || 0;
 
     if (priceUsd > 0 || fdvUsd > 0) {
-      const isPumpFun = token.tokenAddress.endsWith("pump");
-      if (fdvUsd > 10_000_000 && !isPumpFun) continue;
-      // Use launch price when available, fall back to Pump.fun formula or FDV ratio
+      if (fdvUsd > 10_000_000) continue;
       let newMultiple: number;
       if (token.launchPrice > 0 && priceUsd > 0) {
         newMultiple = priceUsd / token.launchPrice;
-      } else if (isPumpFun && priceUsd > 0) {
-        newMultiple = priceUsd / PUMP_FUN_LAUNCH_PRICE_USD;
       } else {
         newMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
       }

@@ -247,8 +247,6 @@ export const COPY_TRADE_CONFIG = {
   MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,         // 48 hours - absolute max hold time
 };
 
-/** Pump.fun initial launch price in USD */
-export const PUMP_FUN_LAUNCH_PRICE_USD = 0.000069;
 
 /** Score-based position sizing: higher score = larger position */
 export function getPositionSize(score: number): number {

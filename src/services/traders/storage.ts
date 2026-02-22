@@ -1,6 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, EvmChain } from "./types.js";
-import { INSIDER_CONFIG, COPY_TRADE_CONFIG, PUMP_FUN_LAUNCH_PRICE_USD } from "./types.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -63,8 +63,6 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN launch_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
   // Seed max_pump_multiple from existing pump_multiple for old records
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
-  // Seed launch price for Pump.fun tokens
-  db.prepare("UPDATE insider_gem_hits SET launch_price_usd = ? WHERE launch_price_usd = 0 AND token_address LIKE '%pump'").run(PUMP_FUN_LAUNCH_PRICE_USD);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_gem_analyses (
