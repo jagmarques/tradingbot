@@ -45,7 +45,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Trailing stop: +10%/-15%, +20%/0%, +25%/+10%, +50%/+25%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - Time exits: 4h profit tighten (breakeven stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
 - Stablecoin filter: symbol blocklist (60+ tokens) + price-based ($0.90-$1.10 skip)
-- GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 30s price refresh
+- GoPlus security checks, $10k min liquidity, $200 max exposure, score-based sizing ($8-$15), 30s price refresh
 - Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
 - Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
