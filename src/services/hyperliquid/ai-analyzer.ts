@@ -222,7 +222,6 @@ export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
       decision.confidence,
       decision.entryPrice,
       decision.stopLoss,
-      1, // Leverage handled by executor/risk layer, not used for sizing
     );
 
     if (sizeUsd <= 0) continue;

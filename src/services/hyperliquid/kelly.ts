@@ -3,16 +3,14 @@ import {
   QUANT_AI_KELLY_FRACTION,
   QUANT_AI_STOP_LOSS_MAX_PCT,
   QUANT_MAX_POSITIONS,
-  HYPERLIQUID_MAX_LEVERAGE,
 } from "../../config/constants.js";
 
 const MIN_POSITION_USD = 1; // $1 minimum position size
 
 export function calculateQuantPositionSize(
-  confidence: number, // 0-100
+  confidence: number,
   entryPrice: number,
   stopLoss: number,
-  leverage: number,
 ): number {
   const balance = getVirtualBalance();
   if (balance <= 0) return 0;
@@ -33,9 +31,6 @@ export function calculateQuantPositionSize(
   // Kelly fraction: edge / odds (simplified to edge * 2 for even odds baseline)
   const kellyFull = edge * 2;
   const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
-
-  const cappedLeverage = Math.min(leverage, HYPERLIQUID_MAX_LEVERAGE);
-  void cappedLeverage; // Leverage validation handled in executor/risk layer (Phase 28)
 
   const rawSize = balance * kellyFractional;
 
