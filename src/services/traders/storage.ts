@@ -622,10 +622,11 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
   return { insiderCount, avgInsiderQuality, holdRate };
 }
 
-export function deleteInsiderWalletsBelow(minScore: number): number {
+export function deleteInsiderWalletsBelow(minScore: number, minGemHits: number): number {
   const db = getDb();
-  const result = db.prepare("DELETE FROM insider_wallets WHERE score <= ?").run(minScore);
-  return result.changes;
+  const byScore = db.prepare("DELETE FROM insider_wallets WHERE score <= ?").run(minScore);
+  const byGems = db.prepare("DELETE FROM insider_wallets WHERE gem_hit_count < ?").run(minGemHits);
+  return byScore.changes + byGems.changes;
 }
 
 export interface InsiderWalletStats {

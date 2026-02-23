@@ -917,9 +917,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       }
     }
 
-    const deleted = deleteInsiderWalletsBelow(WATCHER_CONFIG.MIN_WALLET_SCORE);
+    const deleted = deleteInsiderWalletsBelow(WATCHER_CONFIG.MIN_WALLET_SCORE, INSIDER_CONFIG.MIN_GEM_HITS);
     if (deleted > 0) {
-      console.log(`[InsiderScanner] Removed ${deleted} wallets below score ${WATCHER_CONFIG.MIN_WALLET_SCORE}`);
+      console.log(`[InsiderScanner] Removed ${deleted} wallets below score ${WATCHER_CONFIG.MIN_WALLET_SCORE} or gems < ${INSIDER_CONFIG.MIN_GEM_HITS}`);
     }
 
     if (scores.length > 0) {
