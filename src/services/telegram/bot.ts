@@ -864,21 +864,25 @@ async function handlePnl(ctx: Context): Promise<void> {
     message += `\n-------------------\n`;
     const unrealizedLines: string[] = [];
 
+    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
     const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
     const schedulerStatus = getAIBettingStatus();
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
-    unrealizedLines.push(`AI Bets: ${openBets.length}${aiPnlStr}${logOnly}`);
+    unrealizedLines.push(`AI Bets: ${openBets.length} | in:${$fmt(aiInvested)}${aiPnlStr}${logOnly}`);
 
+    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
     const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    unrealizedLines.push(`Poly Copy: ${copyPositions.length}${copyPnlStr}`);
+    unrealizedLines.push(`Poly Copy: ${copyPositions.length} | in:${$fmt(copyInvested)}${copyPnlStr}`);
 
-    let insiderLine = `Insider: ${openInsider.length}`;
+    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
+    let insiderLine = `Insider: ${openInsider.length} | in:${$fmt(insiderInvested)}`;
     if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
     unrealizedLines.push(insiderLine);
 
+    const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
     const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
     const quantKillStr = isQuantKilled() ? " HALTED" : "";
-    unrealizedLines.push(`Quant: ${quantPositions.length}${quantPnlStr}${quantKillStr}`);
+    unrealizedLines.push(`Quant: ${quantPositions.length} | in:${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
 
     message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
 
