@@ -205,8 +205,7 @@ export type CopyExitReason =
   | "stale_price"
   | "liquidity_rug"
   | "honeypot"
-  | "max_hold_time"
-  | "stale_insider";
+  | "max_hold_time";
 
 export interface CopyTrade {
   id: string; // format: `${walletAddress}_${tokenAddress}_${chain}_${buyTimestamp}`
@@ -255,10 +254,7 @@ export const COPY_TRADE_CONFIG = {
   LIQUIDITY_RUG_DROP_PCT: 30,
   PRICE_REFRESH_INTERVAL_MS: 30 * 1000,
   GOPLUS_CHECK_INTERVAL_MS: 5 * 60 * 1000,
-  TIME_PROFIT_TIGHTEN_MS: 24 * 60 * 60 * 1000, // 24h before tightening
-  TIME_PROFIT_TIGHTEN_STOP_PCT: 10, // tighten to +10% after 24h if profitable
-  STALE_INSIDER_MS: 7 * 24 * 60 * 60 * 1000, // 7 days - matches max hold
-  MAX_HOLD_TIME_MS: 7 * 24 * 60 * 60 * 1000, // 7 days max hold
+  MAX_HOLD_TIME_MS: 4 * 24 * 60 * 60 * 1000, // 4 days max hold
   MIN_PAIR_AGE_MS: 2 * 60 * 60 * 1000, // 2 hours - brand-new tokens are highest rug risk
 };
 

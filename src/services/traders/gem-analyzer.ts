@@ -842,22 +842,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
       continue;
     }
 
-    if (holdTimeMs >= COPY_TRADE_CONFIG.STALE_INSIDER_MS && trade.pnlPct > 0) {
-      const hours = Math.round(holdTimeMs / 3_600_000);
-      const adjustedPnlPct = computeAdjustedPnl(trade);
-      const exitDetail = `stale_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
-      console.log(`[CopyTrade] STALE INSIDER: ${trade.tokenSymbol} (${trade.chain}) at +${trade.pnlPct.toFixed(0)}% after ${hours}h`);
-      const closed = await exitCopyTrade(trade, "stale_insider", adjustedPnlPct, exitDetail);
-      if (closed) {
-        notifyCopyTrade({
-          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-          skipReason: `stale insider ${hours}h`, pnlPct: adjustedPnlPct,
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-      }
-      continue;
-    }
-
     // Trailing stop ladder - wide stops to let meme tokens run
     let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
     if (peak >= 500) {
@@ -870,21 +854,14 @@ export async function refreshCopyTradePrices(): Promise<void> {
       stopLevel = peak * 0.3;
     } else if (peak >= 25) {
       stopLevel = 0;
-    }
-
-    let timeTightened = false;
-    if (holdTimeMs >= COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_MS && trade.pnlPct > 0) {
-      const before = stopLevel;
-      stopLevel = Math.max(stopLevel, COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_STOP_PCT);
-      if (stopLevel > before) timeTightened = true;
+    } else if (peak >= 15) {
+      stopLevel = -10;
     }
 
     if (trade.pnlPct <= stopLevel) {
       const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
       const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
-      const exitDetail = timeTightened
-        ? `time_tighten_${stopLevel.toFixed(0)}`
-        : `peak_${peak.toFixed(0)}_stop_${stopLevel.toFixed(0)}`;
+      const exitDetail = `peak_${peak.toFixed(0)}_stop_${stopLevel.toFixed(0)}`;
       const adjustedPnlPct = computeAdjustedPnl(trade);
       console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
       const closed = await exitCopyTrade(trade, exitReason, adjustedPnlPct, exitDetail);
