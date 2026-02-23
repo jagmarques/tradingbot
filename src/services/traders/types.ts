@@ -174,7 +174,7 @@ export interface InsiderScanResult {
 }
 
 export const INSIDER_CONFIG = {
-  MIN_GEM_HITS: 5,
+  MIN_GEM_HITS: 8,
   MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
   MIN_GEM_SCORE: 60, // min score to paper-buy
   RESCORE_THRESHOLD: 45, // re-analyze gems near buy threshold

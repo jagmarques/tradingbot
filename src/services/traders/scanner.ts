@@ -799,7 +799,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const avgWinPct = cs.wins > 0 ? cs.grossProfit / cs.wins : 0;
     const avgLossPct = losses > 0 ? cs.grossLoss / losses : 0;
     const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
-    const expectancyScore = Math.round(20 * Math.max(0, Math.min(rawExpectancy / 100, 1)));
+    const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 100));
 
     // Recency: exponential decay with 14-day half-life
     const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 14));
@@ -834,7 +834,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
              MIN(buy_timestamp) as first_seen,
              MAX(buy_timestamp) as last_seen,
              AVG(pump_multiple) as avg_pump,
-             SUM(CASE WHEN (status = 'holding' OR status IS NULL OR status = 'unknown') THEN 1 ELSE 0 END) as holding_count,
+             SUM(CASE WHEN status = 'holding' THEN 1 ELSE 0 END) as holding_count,
              COUNT(DISTINCT token_address) as unique_tokens
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
