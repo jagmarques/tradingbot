@@ -838,7 +838,7 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     // Total (realized + unrealized)
     const data = getPnlForPeriod(null);
-    const realizedTotal = data.totalPnl;
+    const realizedNonRug = data.totalPnl - data.rugPnl;
     const breakdownStr = formatBreakdown(
       data.cryptoCopyPnl,
       data.polyCopyPnl,
@@ -848,12 +848,12 @@ async function handlePnl(ctx: Context): Promise<void> {
     );
 
     const rugStats = getRugStats();
-    const total = realizedTotal + totalUnrealized;
+    const total = data.totalPnl + totalUnrealized;
     message += `<b>Total: ${pnl(total)}</b>`;
 
     // Realized
     message += `\n-------------------\n`;
-    message += `<b>Realized</b> ${pnl(realizedTotal)}\n`;
+    message += `<b>Realized</b> ${pnl(realizedNonRug)}\n`;
     message += breakdownStr;
     const rugPnlStr = rugStats.pnlUsd !== 0
       ? ` | ${rugStats.pnlUsd >= 0 ? "+" : ""}${$fmt(rugStats.pnlUsd)}`
