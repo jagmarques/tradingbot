@@ -5,7 +5,6 @@ import {
   getRiskStatus,
   getDailyPnl,
   getDailyPnlPercentage,
-  getDailyPnlBreakdown,
   getTodayTrades,
 } from "../risk/manager.js";
 import { getMaticBalanceFormatted, getUsdcBalanceFormatted } from "../polygon/wallet.js";
@@ -37,7 +36,6 @@ let lastMenuMessageId: number | null = null;
 const dataMessageIds: number[] = [];
 let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
-let currentPnlPeriod: "today" | "7d" | "30d" | "all" = "today";
 const alertMessageIds: number[] = [];
 const insiderExtraMessageIds: number[] = [];
 
@@ -116,7 +114,6 @@ export async function startBot(): Promise<void> {
   });
   bot.callbackQuery("pnl", async (ctx) => {
     try {
-      currentPnlPeriod = "today";
       await handlePnl(ctx);
       await ctx.answerCallbackQuery();
     } catch (err) {
@@ -125,47 +122,12 @@ export async function startBot(): Promise<void> {
       await ctx.answerCallbackQuery().catch(() => {});
     }
   });
-  bot.callbackQuery("pnl_today", async (ctx) => {
-    try {
-      currentPnlPeriod = "today";
-      await handlePnl(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (pnl_today):", err);
-      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
-  bot.callbackQuery("pnl_7d", async (ctx) => {
-    try {
-      currentPnlPeriod = "7d";
-      await handlePnl(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (pnl_7d):", err);
-      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
-  bot.callbackQuery("pnl_30d", async (ctx) => {
-    try {
-      currentPnlPeriod = "30d";
-      await handlePnl(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (pnl_30d):", err);
-      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    }
-  });
   bot.callbackQuery("pnl_all", async (ctx) => {
     try {
-      currentPnlPeriod = "all";
       await handlePnl(ctx);
       await ctx.answerCallbackQuery();
     } catch (err) {
       console.error("[Telegram] Callback error (pnl_all):", err);
-      await ctx.reply("Failed to load P&L. Try again.").catch(() => {});
       await ctx.answerCallbackQuery().catch(() => {});
     }
   });
@@ -814,9 +776,6 @@ async function handlePnl(ctx: Context): Promise<void> {
   }
 
   try {
-    const period = currentPnlPeriod;
-    const periodLabels = { today: "Today", "7d": "7 Day", "30d": "30 Day", all: "All-Time" };
-
     const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
     const $fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
@@ -824,15 +783,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const modeTag = status.isPaperMode ? "Paper" : "Live";
     const killTag = status.killSwitchActive ? " | Kill" : "";
 
-    let message = `<b>Status</b> | ${modeTag}${killTag} | ${periodLabels[period]}\n`;
-
-    // Period tab buttons
-    const tabButtons = [[
-      { text: period === "today" ? "* Today" : "Today", callback_data: "pnl_today" },
-      { text: period === "7d" ? "* 7D" : "7D", callback_data: "pnl_7d" },
-      { text: period === "30d" ? "* 30D" : "30D", callback_data: "pnl_30d" },
-      { text: period === "all" ? "* All" : "All", callback_data: "pnl_all" },
-    ]];
+    let message = `<b>Status</b> | ${modeTag}${killTag} | All-Time\n`;
 
     // Compute unrealized P&L first (needed for total)
     const openBets = loadOpenPositions();
@@ -886,34 +837,18 @@ async function handlePnl(ctx: Context): Promise<void> {
     const totalUnrealized = aiBetUnrealized + copyUnrealized + insiderUnrealized + quantUnrealized;
 
     // Total (realized + unrealized)
-    let realizedTotal: number;
-    let breakdownStr: string;
-
-    if (period === "today") {
-      const breakdown = getDailyPnlBreakdown();
-      realizedTotal = breakdown.total;
-      breakdownStr = formatBreakdown(
-        breakdown.cryptoCopy,
-        breakdown.polyCopy,
-        breakdown.aiBetting,
-        breakdown.quantPnl,
-        breakdown.insiderCopyPnl,
-      );
-    } else {
-      const days = period === "7d" ? 7 : period === "30d" ? 30 : null;
-      const data = getPnlForPeriod(days);
-      realizedTotal = data.totalPnl;
-      breakdownStr = formatBreakdown(
-        data.cryptoCopyPnl,
-        data.polyCopyPnl,
-        data.aiBettingPnl,
-        data.quantPnl,
-        data.insiderCopyPnl,
-      );
-    }
+    const data = getPnlForPeriod(null);
+    const realizedTotal = data.totalPnl;
+    const breakdownStr = formatBreakdown(
+      data.cryptoCopyPnl,
+      data.polyCopyPnl,
+      data.aiBettingPnl,
+      data.quantPnl,
+      data.insiderCopyPnl,
+    );
 
     const rugStats = getRugStats();
-    const total = realizedTotal + totalUnrealized + (period === "today" ? rugStats.pnlUsd : 0);
+    const total = realizedTotal + totalUnrealized;
     message += `<b>Total: ${pnl(total)}</b>`;
 
     // Realized
@@ -955,7 +890,7 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `\n\n${status.pauseReason}`;
     }
 
-    const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    const allButtons = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage(message, allButtons);
   } catch (err) {
     console.error("[Telegram] P&L error:", err);

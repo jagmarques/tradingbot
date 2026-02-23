@@ -114,11 +114,15 @@ export function getDailyPnlBreakdown(): {
   const quantPnl = quantResult.total || 0;
 
   const insiderResult = db.prepare(`
-    SELECT SUM(amount_usd * pnl_pct / 100) as total
+    SELECT COALESCE(SUM(
+      CASE WHEN exit_reason IN ('liquidity_rug', 'honeypot')
+        THEN -amount_usd
+        ELSE amount_usd * pnl_pct / 100
+      END
+    ), 0) as total
     FROM insider_copy_trades
     WHERE status = 'closed'
       AND close_timestamp >= ?
-      AND exit_reason NOT IN ('liquidity_rug', 'honeypot')
   `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const insiderCopyPnl = insiderResult.total || 0;
 

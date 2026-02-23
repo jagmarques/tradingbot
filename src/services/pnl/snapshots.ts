@@ -51,12 +51,9 @@ export function takeDailySnapshot(): void {
   console.log(`[PnL] Snapshot saved for ${today}: $${breakdown.total.toFixed(2)}`);
 }
 
-// Get aggregated P&L for a period (null = all-time)
+// Get aggregated P&L for a period (null = all-time, queries source tables directly)
 export function getPnlForPeriod(days: number | null): DailySnapshot {
   const db = getDb();
-
-  // Refresh today's snapshot first
-  takeDailySnapshot();
 
   let row: {
     totalPnl: number;
@@ -69,18 +66,60 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
   };
 
   if (days === null) {
-    row = db.prepare(`
-      SELECT
-        COALESCE(SUM(total_pnl), 0) as totalPnl,
-        COALESCE(SUM(crypto_copy_pnl), 0) as cryptoCopyPnl,
-        COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
-        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
-        COALESCE(SUM(quant_pnl), 0) as quantPnl,
-        COALESCE(SUM(insider_copy_pnl), 0) + COALESCE(SUM(rug_pnl), 0) as insiderCopyPnl,
-        0 as rugPnl
-      FROM daily_stats
-    `).get() as typeof row;
+    const cryptoCopyResult = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total
+      FROM trades
+      WHERE strategy IN ('base', 'arbitrum', 'avalanche')
+    `).get() as { total: number };
+
+    const polyCopyResult = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total
+      FROM polytrader_copies
+      WHERE status = 'closed'
+    `).get() as { total: number };
+
+    const aiBettingResult = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total
+      FROM aibetting_positions
+      WHERE status = 'closed'
+    `).get() as { total: number };
+
+    const quantResult = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total
+      FROM quant_trades
+      WHERE status = 'closed'
+    `).get() as { total: number };
+
+    const insiderResult = db.prepare(`
+      SELECT COALESCE(SUM(
+        CASE WHEN exit_reason IN ('liquidity_rug', 'honeypot')
+          THEN -amount_usd
+          ELSE amount_usd * pnl_pct / 100
+        END
+      ), 0) as total
+      FROM insider_copy_trades
+      WHERE status = 'closed'
+    `).get() as { total: number };
+
+    const cryptoCopy = cryptoCopyResult.total;
+    const polyCopy = polyCopyResult.total;
+    const aiBetting = aiBettingResult.total;
+    const quantPnl = quantResult.total;
+    const insiderCopyPnl = insiderResult.total;
+
+    row = {
+      totalPnl: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl,
+      cryptoCopyPnl: cryptoCopy,
+      polyCopyPnl: polyCopy,
+      aiBettingPnl: aiBetting,
+      quantPnl,
+      insiderCopyPnl,
+      rugPnl: 0,
+    };
   } else {
+    // Refresh snapshot for range queries that rely on daily_stats
+    takeDailySnapshot();
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     const dateStr = startDate.toISOString().split("T")[0];

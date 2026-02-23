@@ -980,7 +980,7 @@ export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
   ).run(peakPnlPct, id, peakPnlPct);
 }
 
-export function getRugStats(): { count: number; pnlUsd: number; gemPnlUsd: number } {
+export function getRugStats(): { count: number; pnlUsd: number } {
   const db = getDb();
 
   const copyRow = db.prepare(`
@@ -989,20 +989,8 @@ export function getRugStats(): { count: number; pnlUsd: number; gemPnlUsd: numbe
     WHERE exit_reason IN ('liquidity_rug', 'honeypot')
   `).get() as { count: number; pnl: number };
 
-  const gemRow = db.prepare(`
-    SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
-    FROM insider_gem_paper_trades
-    WHERE status = 'closed'
-      AND id IN (
-        SELECT LOWER(h.token_symbol) || '_' || h.chain
-        FROM insider_gem_hits h
-        JOIN token_rug_counts r ON LOWER(h.token_address) = LOWER(r.token_address) AND h.chain = r.chain
-      )
-  `).get() as { count: number; lost: number };
-
   return {
-    count: (copyRow.count ?? 0) + (gemRow.count ?? 0),
-    pnlUsd: (copyRow.pnl ?? 0) - (gemRow.lost ?? 0),
-    gemPnlUsd: -(gemRow.lost ?? 0),
+    count: copyRow.count ?? 0,
+    pnlUsd: copyRow.pnl ?? 0,
   };
 }
