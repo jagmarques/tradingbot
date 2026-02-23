@@ -1056,7 +1056,8 @@ export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number 
   const actualRow = db.prepare(`
     SELECT COALESCE(SUM((pnl_pct / 100.0) * amount_usd), 0) as total
     FROM insider_copy_trades
-    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL AND exit_reason != 'stale_price'
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+      AND exit_reason NOT IN ('stale_price', 'liquidity_rug', 'honeypot')
   `).get() as { total: number };
 
   const holdRow = db.prepare(`
@@ -1072,7 +1073,8 @@ export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number 
       END
     ), 0) as total
     FROM insider_copy_trades
-    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL AND exit_reason != 'stale_price'
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+      AND exit_reason NOT IN ('stale_price', 'liquidity_rug', 'honeypot')
   `).get() as { total: number };
 
   return {
