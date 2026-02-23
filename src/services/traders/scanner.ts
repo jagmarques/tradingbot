@@ -799,7 +799,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const avgWinPct = cs.wins > 0 ? cs.grossProfit / cs.wins : 0;
     const avgLossPct = losses > 0 ? cs.grossLoss / losses : 0;
     const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
-    const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 100));
+    const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 50));
 
     // Recency: exponential decay with 14-day half-life
     const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 14));
