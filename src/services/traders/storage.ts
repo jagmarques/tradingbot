@@ -819,6 +819,11 @@ export function closeCopyTrade(
   const result = db.prepare(
     "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ?, sell_tx_hash = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'",
   ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, sellTxHash ?? null, wa, ta, chain);
+  if (exitReason === 'liquidity_rug' || exitReason === 'honeypot') {
+    db.prepare(
+      "UPDATE insider_copy_trades SET hold_price_usd = 0 WHERE token_address = ? AND chain = ? AND exit_reason IN ('liquidity_rug', 'honeypot')"
+    ).run(ta, chain);
+  }
   return result.changes > 0;
 }
 
@@ -1017,7 +1022,7 @@ export function getHoldableClosedTrades(): CopyTrade[] {
   const rows = db.prepare(`
     SELECT * FROM insider_copy_trades
     WHERE status = 'closed'
-      AND exit_reason NOT IN ('liquidity_rug', 'honeypot')
+      AND exit_reason NOT IN ('liquidity_rug', 'honeypot', 'stale_price')
     ORDER BY close_timestamp DESC
   `).all() as Record<string, unknown>[];
   return rows.map(mapRowToCopyTrade);
@@ -1029,7 +1034,7 @@ export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number 
   const actualRow = db.prepare(`
     SELECT COALESCE(SUM((pnl_pct / 100.0) * amount_usd), 0) as total
     FROM insider_copy_trades
-    WHERE status IN ('open', 'closed') AND liquidity_ok = 1 AND skip_reason IS NULL
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
   `).get() as { total: number };
 
   const holdRow = db.prepare(`
@@ -1045,7 +1050,7 @@ export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number 
       END
     ), 0) as total
     FROM insider_copy_trades
-    WHERE status IN ('open', 'closed') AND liquidity_ok = 1 AND skip_reason IS NULL
+    WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
   `).get() as { total: number };
 
   return {
