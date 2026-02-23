@@ -29,6 +29,9 @@ const LP_TOKEN_SYMBOLS = new Set([
   "mUSD", "USDS", "USDP", "GUSD", "LUSD", "sUSD", "PYUSD", "crvUSD", "GHO",
   "DOLA", "alUSD", "MIM", "USDD", "FDUSD", "USDe", "USD+", "UST", "RAI", "FEI",
   "EURS", "EURT", "agEUR", "EURe", "jEUR", "XSGD", "XIDR", "BRZ", "TRYB",
+  "USD1", "RLUSD", "USDG", "EURC", "USD0", "FRXUSD", "DUSD", "AUSD", "CUSD",
+  "OUSD", "VAI", "USDA", "USR", "MKUSD", "lisUSD", "EURA", "CADC", "USDX",
+  "USDs", "USDB", "USDM", "YUSD", "USDL", "USDV", "USDJ", "USDN",
 ]);
 
 // Dedup: tx hashes already processed by WebSocket (shared with insider-ws.ts)
