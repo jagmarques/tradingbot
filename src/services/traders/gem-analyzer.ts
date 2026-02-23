@@ -403,7 +403,7 @@ async function buyGems(
         continue;
       }
 
-      // Min pair age guard (brand-new tokens are highest rug risk)
+      // min pair age guard
       if (pair?.pairCreatedAt) {
         const pairAgeMs = Date.now() - pair.pairCreatedAt;
         if (pairAgeMs < COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS) {
