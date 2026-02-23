@@ -84,18 +84,23 @@ export async function enterPosition(
   if (isPaperMode()) {
     // Paper mode: use public orderbook best ask first, fall back to midpoint, then scanner price
     const book = await fetchPublicOrderbook(decision.tokenId);
-    if (book && book.asks.length > 0) {
-      price = parseFloat(book.asks[0][0]);
+    const bookPrice = book && book.asks.length > 0 ? parseFloat(book.asks[0][0]) : NaN;
+    if (isFinite(bookPrice) && bookPrice > 0) {
+      price = bookPrice;
       console.log(`[Executor] PAPER: using public book ask ${price.toFixed(3)}`);
     } else {
       const midpoint = await fetchMidpointPrice(decision.tokenId);
       if (midpoint !== null) {
         price = midpoint;
-        console.log(`[Executor] PAPER: book empty, using midpoint ${price.toFixed(3)}`);
+        console.log(`[Executor] PAPER: book invalid, using midpoint ${price.toFixed(3)}`);
       } else {
         price = decision.side === "YES" ? decision.marketPrice : 1 - decision.marketPrice;
         console.log(`[Executor] PAPER: midpoint also unavailable, using scanner price ${price.toFixed(3)}`);
       }
+    }
+    if (!isFinite(price) || price <= 0) {
+      console.error(`[Executor] No valid price for ${market.title}, skipping`);
+      return null;
     }
     orderId = `paper_${Date.now()}`;
     const shares = decision.recommendedSize / price;
@@ -190,14 +195,15 @@ export async function exitPosition(
     // Use public orderbook best bid first for exit, fall back to midpoint, then currentPrice
     const exitBook = await fetchPublicOrderbook(position.tokenId);
     let exitPrice = currentPrice;
-    if (exitBook && exitBook.bids.length > 0) {
-      exitPrice = parseFloat(exitBook.bids[0][0]);
+    const bidPrice = exitBook && exitBook.bids.length > 0 ? parseFloat(exitBook.bids[0][0]) : NaN;
+    if (isFinite(bidPrice) && bidPrice > 0) {
+      exitPrice = bidPrice;
       console.log(`[Executor] PAPER: using public book bid ${exitPrice.toFixed(3)}`);
     } else {
       const midpoint = await fetchMidpointPrice(position.tokenId);
       if (midpoint !== null) {
         exitPrice = midpoint;
-        console.log(`[Executor] PAPER: book empty, using midpoint ${exitPrice.toFixed(3)}`);
+        console.log(`[Executor] PAPER: book invalid, using midpoint ${exitPrice.toFixed(3)}`);
       }
     }
     pnl = shares * (exitPrice - position.entryPrice);
@@ -359,6 +365,7 @@ export async function getCurrentPrice(tokenId: string): Promise<number | null> {
 
   const bestBid = parseFloat(book.bids[0][0]);
   const bestAsk = parseFloat(book.asks[0][0]);
+  if (!isFinite(bestBid) || !isFinite(bestAsk)) return null;
   return (bestBid + bestAsk) / 2;
 }
 
