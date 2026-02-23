@@ -1,6 +1,6 @@
 import { getClient } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
@@ -59,6 +59,39 @@ async function checkPositionStops(): Promise<void> {
           await closePosition(position.id, `liquidation (loss $${Math.abs(unrealizedPnl).toFixed(2)} >= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
+          continue;
+        }
+      }
+
+      // Trailing stop
+      const unrealizedPnlPct =
+        position.direction === "long"
+          ? ((currentPrice - position.entryPrice) / position.entryPrice) * 100
+          : ((position.entryPrice - currentPrice) / position.entryPrice) * 100;
+
+      if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
+        position.maxUnrealizedPnlPct = unrealizedPnlPct;
+      }
+
+      if ((position.maxUnrealizedPnlPct ?? 0) > 1) {
+        const trailTrigger = (position.maxUnrealizedPnlPct ?? 0) * 0.5;
+        if (unrealizedPnlPct <= trailTrigger) {
+          console.log(
+            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${(position.maxUnrealizedPnlPct ?? 0).toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (trail trigger: ${trailTrigger.toFixed(2)}%)`,
+          );
+          await closePosition(position.id, "trailing-stop");
+          continue;
+        }
+      }
+
+      // Stagnation exit for directional positions (funding positions hold indefinitely)
+      if (position.tradeType !== "funding") {
+        const holdMs = Date.now() - new Date(position.openedAt).getTime();
+        if (holdMs >= STAGNATION_TIMEOUT_MS) {
+          console.log(
+            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h, P&L ${unrealizedPnlPct.toFixed(2)}%`,
+          );
+          await closePosition(position.id, "stagnation");
           continue;
         }
       }

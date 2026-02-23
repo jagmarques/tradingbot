@@ -105,13 +105,15 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 === INSTRUCTIONS ===
+Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be tightened automatically, degrading your risk/reward. Place stops at key levels within this 2% range.
+
 If no clear setup exists or risk/reward is unfavorable, return direction: flat with confidence below 50 and reasoning explaining why.
 
 OUTPUT JSON ONLY (no markdown, no extra text):
 {
   "direction": "long" | "short" | "flat",
   "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - stop-loss price>,
+  "stopLoss": <number - within 2% of entry>,
   "takeProfit": <number - take-profit price>,
   "confidence": <number 0-100 - how confident in this trade>,
   "reasoning": "<2-3 sentences explaining the trade thesis based on the data>"

@@ -2,6 +2,7 @@ import { getVirtualBalance } from "./executor.js";
 import {
   QUANT_AI_KELLY_FRACTION,
   QUANT_AI_STOP_LOSS_MAX_PCT,
+  QUANT_MAX_POSITIONS,
   HYPERLIQUID_MAX_LEVERAGE,
 } from "../../config/constants.js";
 
@@ -38,7 +39,7 @@ export function calculateQuantPositionSize(
 
   const rawSize = balance * kellyFractional;
 
-  const maxSize = balance * 0.2;
+  const maxSize = (balance * 0.95) / QUANT_MAX_POSITIONS;
   const size = Math.min(rawSize, maxSize);
 
   if (size < MIN_POSITION_USD) {

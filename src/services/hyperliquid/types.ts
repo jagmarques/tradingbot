@@ -17,6 +17,8 @@ export interface QuantPosition {
   status: "open" | "closed";
   tradeType?: TradeType;
   spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
+  trailingStopPct?: number; // Trail at N% of max profit
+  maxUnrealizedPnlPct?: number; // High-water mark for trailing stop
 }
 
 export interface QuantTrade {

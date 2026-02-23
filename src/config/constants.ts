@@ -37,17 +37,17 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 6; // Max concurrent positions (3 pairs x 2 trade types)
+export const QUANT_MAX_POSITIONS = 16; // Max concurrent positions (8 pairs x 2 trade types)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant AI Decision Engine
 export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-export const QUANT_AI_STOP_LOSS_MAX_PCT = 3; // Max stop-loss distance %
+export const QUANT_AI_STOP_LOSS_MAX_PCT = 2; // Max stop-loss distance % (tight cut)
 export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
 
 // Quant Risk Management
@@ -55,7 +55,7 @@ export const QUANT_DAILY_DRAWDOWN_LIMIT = 25; // $25 max daily loss before tradi
 export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000; // 30 seconds between stop-loss checks
 
 // Funding Rate Arbitrage
-export const FUNDING_ARB_MIN_APR = 0.20; // 20% annualized minimum to open (delta-neutral threshold)
+export const FUNDING_ARB_MIN_APR = 0.12; // 12% annualized minimum to open (delta-neutral threshold)
 export const FUNDING_ARB_CLOSE_APR = 0.05; // 5% annualized - close when rate normalizes below this
 export const FUNDING_ARB_DELTA_NEUTRAL = true; // Record virtual spot long hedge for delta-neutral mode
 export const FUNDING_ARB_EXIT_APR = 0.05; // 5% APR exit threshold (clearer name for delta-neutral context)
@@ -66,7 +66,7 @@ export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss (wider than directio
 export const FUNDING_ARB_TAKE_PROFIT_PCT = 10; // 10% take-profit
 
 // Directional Trading Scheduler
-export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+export const QUANT_SCHEDULER_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading period
@@ -76,7 +76,12 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as li
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
-  BTC: 0.02,    // 2% of notional (40x max leverage)
-  ETH: 0.0125,  // 1.25% of notional (25x max leverage)
-  SOL: 0.01,    // 1% of notional (20x max leverage)
+  BTC: 0.02,   // 40x max
+  ETH: 0.0125, // 25x max
+  SOL: 0.01,   // 20x max
+  DOGE: 0.01,
+  AVAX: 0.01,
+  LINK: 0.01,
+  ARB: 0.01,
+  OP: 0.01,
 };
