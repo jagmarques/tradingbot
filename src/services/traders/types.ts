@@ -236,6 +236,7 @@ export interface CopyTrade {
   tokensReceived?: string | null;
   sellTxHash?: string | null;
   isLive?: boolean;
+  holdPriceUsd?: number | null;
 }
 
 export const INSIDER_WS_CONFIG = {

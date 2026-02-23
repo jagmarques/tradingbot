@@ -151,6 +151,11 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN tokens_received TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN sell_tx_hash TEXT DEFAULT NULL"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN is_live INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_copy_trades ADD COLUMN hold_price_usd REAL DEFAULT NULL"); } catch { /* already exists */ }
+
+  // Backfill hold_price_usd for existing rows
+  db.prepare("UPDATE insider_copy_trades SET hold_price_usd = current_price_usd WHERE hold_price_usd IS NULL AND exit_reason NOT IN ('liquidity_rug', 'honeypot')").run();
+  db.prepare("UPDATE insider_copy_trades SET hold_price_usd = 0 WHERE hold_price_usd IS NULL AND exit_reason IN ('liquidity_rug', 'honeypot')").run();
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_rug_counts (
@@ -693,6 +698,7 @@ function mapRowToCopyTrade(row: Record<string, unknown>): CopyTrade {
     tokensReceived: (row.tokens_received as string) || null,
     sellTxHash: (row.sell_tx_hash as string) || null,
     isLive: (row.is_live as number) === 1,
+    holdPriceUsd: (row.hold_price_usd as number) ?? null,
   };
 }
 
@@ -992,5 +998,58 @@ export function getRugStats(): { count: number; pnlUsd: number } {
   return {
     count: copyRow.count ?? 0,
     pnlUsd: copyRow.pnl ?? 0,
+  };
+}
+
+export function updateCopyTradeHoldPrice(tokenAddress: string, chain: string, holdPriceUsd: number): void {
+  const db = getDb();
+  const ta = normalizeAddr(tokenAddress);
+  db.prepare(`
+    UPDATE insider_copy_trades
+    SET hold_price_usd = ?
+    WHERE token_address = ? AND chain = ?
+      AND (exit_reason IS NULL OR exit_reason NOT IN ('liquidity_rug', 'honeypot'))
+  `).run(holdPriceUsd, ta, chain);
+}
+
+export function getHoldableClosedTrades(): CopyTrade[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM insider_copy_trades
+    WHERE status = 'closed'
+      AND exit_reason NOT IN ('liquidity_rug', 'honeypot')
+    ORDER BY close_timestamp DESC
+  `).all() as Record<string, unknown>[];
+  return rows.map(mapRowToCopyTrade);
+}
+
+export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number } {
+  const db = getDb();
+
+  const actualRow = db.prepare(`
+    SELECT COALESCE(SUM((pnl_pct / 100.0) * amount_usd), 0) as total
+    FROM insider_copy_trades
+    WHERE status IN ('open', 'closed') AND liquidity_ok = 1 AND skip_reason IS NULL
+  `).get() as { total: number };
+
+  const holdRow = db.prepare(`
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN hold_price_usd IS NOT NULL AND hold_price_usd > 0 AND buy_price_usd > 0
+          THEN ((hold_price_usd / buy_price_usd - 1) * 100 - 3) / 100.0 * amount_usd
+        WHEN hold_price_usd IS NOT NULL AND hold_price_usd = 0
+          THEN -1.0 * amount_usd
+        WHEN buy_price_usd > 0 AND current_price_usd > 0
+          THEN ((current_price_usd / buy_price_usd - 1) * 100 - 3) / 100.0 * amount_usd
+        ELSE 0
+      END
+    ), 0) as total
+    FROM insider_copy_trades
+    WHERE status IN ('open', 'closed') AND liquidity_ok = 1 AND skip_reason IS NULL
+  `).get() as { total: number };
+
+  return {
+    holdPnlUsd: holdRow.total,
+    actualPnlUsd: actualRow.total,
   };
 }
