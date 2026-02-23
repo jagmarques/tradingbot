@@ -839,7 +839,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.log(`[InsiderScanner] Filtered ${quickFlips}/${totalGems} gem hits as sniper bot flips (<24h hold)`);
     }
 
-    const recentCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    const recentCutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
 
     const walletGroups = db.prepare(`
       SELECT wallet_address, chain, COUNT(*) as gem_count,

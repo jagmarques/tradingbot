@@ -54,8 +54,8 @@ Copies EVM token buys from high-scoring insider wallets.
 
 **Consistency scoring (score > 75 required, MIN_GEM_HITS = 8):**
 - Two formulas: legacy (no copy trade data) and new (with copy trade history)
-- Legacy: gems(30, log2 scale) + avg pump(30, sqrt scale) + hold rate(20) + recency(20, 90-day linear)
-- New: gems(15) + median pump(10) + win rate(15, Wilson lower bound) + profit factor(20) + expectancy(20, /50 scale) + recency(20, 14-day half-life)
+- Legacy: gems(30, log2 scale, 60-day window) + avg pump(30, sqrt scale, 60-day window) + hold rate(20) + recency(20, 30-day linear)
+- New: gems(15, 60-day window) + median pump(10, 60-day window) + win rate(15, Wilson lower bound, 60-day window) + profit factor(20, 60-day window) + expectancy(20, /50 scale, 60-day window) + recency(20, 7-day half-life)
 - Hold rate uses enriched_count denominator (only gems with known status count, unenriched gems are neutral)
 - Profit factor has confidence scaling: 1 trade = 10% credit, 10+ trades = full credit
 - Expectancy floor: negative expectancy after 10+ trades caps score at 50

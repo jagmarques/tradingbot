@@ -910,7 +910,7 @@ export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeS
 
 export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> {
   const db = getDb();
-  const recentCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  const recentCutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
 
   const groupRows = db.prepare(`
     SELECT wallet_address,
