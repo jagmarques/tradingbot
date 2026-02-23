@@ -834,8 +834,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
       stopLevel = 25;
     } else if (peak >= 25) {
       stopLevel = 10;
-    } else if (peak >= 10) {
+    } else if (peak >= 20) {
       stopLevel = 0;
+    } else if (peak >= 10) {
+      stopLevel = -15;
     }
 
     let timeTightened = false;
@@ -861,8 +863,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
         exitDetail = "peak_50_stop_25";
       } else if (peak >= 25) {
         exitDetail = "peak_25_stop_10";
+      } else if (peak >= 20) {
+        exitDetail = "peak_20_stop_0";
       } else if (peak >= 10) {
-        exitDetail = "peak_10_stop_0";
+        exitDetail = "peak_10_stop_-15";
       } else {
         exitDetail = `floor_${COPY_TRADE_CONFIG.STOP_LOSS_PCT}`;
       }
