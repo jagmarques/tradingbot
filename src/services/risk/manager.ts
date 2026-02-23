@@ -113,9 +113,8 @@ export function getDailyPnlBreakdown(): {
   `).get(startOfDay) as { total: number | null };
   const quantPnl = quantResult.total || 0;
 
-  // Insider copy (all closed insider trades including rugs - rug P&L uses actual pnl_pct, not 100% loss)
   const insiderResult = db.prepare(`
-    SELECT SUM(amount_usd * pnl_pct / 100) as total
+    SELECT SUM(CASE WHEN exit_reason IN ('liquidity_rug', 'honeypot') THEN -amount_usd ELSE amount_usd * pnl_pct / 100 END) as total
     FROM insider_copy_trades
     WHERE status = 'closed'
       AND close_timestamp >= ?
