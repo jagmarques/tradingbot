@@ -677,14 +677,10 @@ export async function refreshCopyTradePrices(): Promise<void> {
       if (tradesForToken.length > 0 && !ruggedThisCycle.has(rugKey)) {
         const maxEntryLiq = Math.max(...tradesForToken.map(t => t.liquidityUsd));
 
-        // Guard: only rug-check if the returned pair matches our stored pairAddress
-        // DexScreener batch/token fetch can return a different pool for the same token
+        // Skip rug check if DexScreener returned a different pool (avoids false positives)
         const tradePairAddr = tradesForToken[0].pairAddress?.toLowerCase();
         const fetchedPairAddr = pair?.pairAddress?.toLowerCase();
-        if (tradePairAddr && fetchedPairAddr && tradePairAddr !== fetchedPairAddr) {
-          // Different pool returned - skip rug check to avoid false positives (e.g. cbBTC)
-          continue;
-        }
+        if (tradePairAddr && fetchedPairAddr && tradePairAddr !== fetchedPairAddr) continue;
 
         const belowFloor = maxEntryLiq >= COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD
           && liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD;

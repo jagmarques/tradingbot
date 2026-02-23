@@ -175,38 +175,6 @@ export async function processInsiderBuy(tokenInfo: {
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
-  // Skip tokens younger than 24 hours (rug-by-design protection)
-  const pairCreatedAt = pair?.pairCreatedAt ?? 0;
-  if (pairCreatedAt > 0 && Date.now() - pairCreatedAt < COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS) {
-    const ageHours = ((Date.now() - pairCreatedAt) / 3_600_000).toFixed(1);
-    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair age ${ageHours}h < 24h minimum`);
-    insertCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      tokenAddress: tokenInfo.tokenAddress,
-      chain: tokenInfo.chain,
-      pairAddress: pair?.pairAddress ?? null,
-      side: "buy",
-      buyPriceUsd: priceUsd,
-      currentPriceUsd: priceUsd,
-      amountUsd: positionAmount,
-      pnlPct: 0,
-      status: "skipped",
-      liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
-      liquidityUsd,
-      skipReason: `pair age ${ageHours}h < 24h`,
-      buyTimestamp: Date.now(),
-      tokenCreatedAt: pairCreatedAt,
-      closeTimestamp: null,
-      exitReason: null,
-      insiderCount: 1,
-      peakPnlPct: 0,
-      walletScoreAtBuy: tokenInfo.walletScore,
-      exitDetail: null,
-    });
-    return;
-  }
-
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
