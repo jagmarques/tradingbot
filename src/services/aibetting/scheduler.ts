@@ -91,6 +91,7 @@ function detectSiblingMarkets(markets: PolymarketEvent[]): string[][] {
 }
 
 let isRunning = false;
+let cycleRunning = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
@@ -98,6 +99,7 @@ let logOnlyMode = false; // Shadow mode: analyze but don't place bets
 let lastCalibrationLogAt = 0;
 
 const CACHE_DURATION_MS = 8 * 60 * 60 * 1000;
+const CYCLE_TIMEOUT_MS = 25 * 60 * 1000;
 
 const analysisCache = new Map<string, { analysis: AIAnalysis; cachedAt: number }>();
 
@@ -117,6 +119,34 @@ function cacheAnalysis(marketId: string, analysis: AIAnalysis): void {
 
 
 async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
+  if (cycleRunning) {
+    console.log("[AIBetting] Cycle already running, skipping");
+    return { marketsAnalyzed: 0, opportunitiesFound: 0, betsPlaced: 0, errors: ["Cycle already running"] };
+  }
+
+  cycleRunning = true;
+
+  try {
+    return await Promise.race([
+      _runAnalysisCycleInner(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Cycle timeout (25min)")), CYCLE_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "Cycle timeout (25min)") {
+      console.log("[AIBetting] Cycle timed out after 25min, will retry next interval");
+    } else {
+      console.error("[AIBetting] Cycle error:", msg);
+    }
+    return { marketsAnalyzed: 0, opportunitiesFound: 0, betsPlaced: 0, errors: [msg] };
+  } finally {
+    cycleRunning = false;
+  }
+}
+
+async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
   const result: AnalysisCycleResult = {
     marketsAnalyzed: 0,
     opportunitiesFound: 0,
@@ -508,7 +538,11 @@ export function startAIBetting(cfg: AIBettingConfig): void {
   runAnalysisCycle().catch((err) => console.error("[AIBetting] First cycle error:", err));
 
   intervalHandle = setInterval(() => {
-    if (isRunning) runAnalysisCycle().catch(err => console.error("[AIBetting] Cycle error:", err));
+    if (isRunning && !cycleRunning) {
+      runAnalysisCycle().catch(err => console.error("[AIBetting] Cycle error:", err));
+    } else if (cycleRunning) {
+      console.log("[AIBetting] Previous cycle still running, skipping interval");
+    }
   }, cfg.scanIntervalMs);
 
   console.log(`[AIBetting] Running every ${cfg.scanIntervalMs / 60000} min`);
@@ -560,6 +594,9 @@ export function getAIBettingStatus(): {
 export async function runManualCycle(): Promise<AnalysisCycleResult> {
   if (!config) {
     return { marketsAnalyzed: 0, opportunitiesFound: 0, betsPlaced: 0, errors: ["Not started"] };
+  }
+  if (cycleRunning) {
+    return { marketsAnalyzed: 0, opportunitiesFound: 0, betsPlaced: 0, errors: ["Cycle already running"] };
   }
   return runAnalysisCycle();
 }
