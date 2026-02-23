@@ -70,33 +70,27 @@ export async function fetchOpenInterest(pair: string): Promise<number> {
 export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
   try {
     await ensureConnected();
-    const sdk = getClient();
 
-    const fundings = await sdk.info.perpetuals.getPredictedFundings(true);
+    // API returns array of tuples: [[pairName, [[venueName, venueData], ...]], ...]
+    type VenueData = { fundingRate: string; nextFundingTime: number; fundingIntervalHours: number };
+    const fundings = await getClient().info.perpetuals.getPredictedFundings(true);
+    const rawFundings = fundings as unknown as [string, [string, VenueData][]][];
     const results: FundingInfo[] = [];
-    const allKeys = Object.keys(fundings);
-    if (allKeys.length > 0) {
-      const sample = allKeys[0];
-      console.log(`[FundingArb] Debug: ${allKeys.length} pairs, sample[${sample}]=`, JSON.stringify((fundings as Record<string, unknown>)[sample]));
-    } else {
-      console.log(`[FundingArb] Debug: fundings is empty, type=${typeof fundings}, isArray=${Array.isArray(fundings)}, raw=`, JSON.stringify(fundings).slice(0, 200));
-    }
 
-    for (const pair of Object.keys(fundings)) {
-      const venueFundingList = fundings[pair];
-      if (!venueFundingList || venueFundingList.length === 0) continue;
+    for (const [pair, venueList] of rawFundings) {
+      if (!Array.isArray(venueList)) continue;
 
-      const firstVenue = venueFundingList[0];
-      const venueName = Object.keys(firstVenue)[0];
-      const fundingData = venueName ? firstVenue[venueName] : undefined;
+      const hlEntry = venueList.find(([name]) => name === "HlPerp");
+      if (!hlEntry) continue;
+      const [, fundingData] = hlEntry;
 
-      const currentRate = fundingData ? parseFloat(String(fundingData.fundingRate ?? 0)) : 0;
+      const currentRate = parseFloat(String(fundingData.fundingRate ?? 0));
       if (currentRate === 0) continue;
 
-      const annualizedRate = currentRate * FUNDING_PERIODS_PER_YEAR;
-      const nextFundingTime = fundingData?.nextFundingTime
-        ? Number(fundingData.nextFundingTime)
-        : Date.now() + 8 * 60 * 60 * 1000;
+      const intervalHours = fundingData.fundingIntervalHours ?? 8;
+      const periodsPerYear = 8760 / intervalHours;
+      const annualizedRate = currentRate * periodsPerYear;
+      const nextFundingTime = Number(fundingData.nextFundingTime);
 
       results.push({ pair, currentRate, annualizedRate, nextFundingTime });
     }
