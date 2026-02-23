@@ -71,7 +71,7 @@ export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
   try {
     await ensureConnected();
 
-    // API returns array of tuples: [[pairName, [[venueName, venueData], ...]], ...]
+    // response: [[pair, [[venue, data], ...]], ...]
     type VenueData = { fundingRate: string; nextFundingTime: number; fundingIntervalHours: number };
     const fundings = await getClient().info.perpetuals.getPredictedFundings(true);
     const rawFundings = fundings as unknown as [string, [string, VenueData][]][];
