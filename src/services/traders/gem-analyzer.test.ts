@@ -36,6 +36,8 @@ vi.mock("./storage.js", () => ({
   updateCopyTradeTokenCreatedAt: (...args: unknown[]): unknown => mockUpdateCopyTradeTokenCreatedAt(...args),
   incrementRugCount: (...args: unknown[]): unknown => mockIncrementRugCount(...args),
   getRugCount: vi.fn(() => 0),
+  updateCopyTradeHoldPrice: vi.fn(),
+  getHoldableClosedTrades: vi.fn(() => []),
 }));
 
 const mockNotifyCopyTrade = vi.fn(() => Promise.resolve());
@@ -62,7 +64,7 @@ vi.mock("../copy/filter.js", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { refreshCopyTradePrices, checkGoPlusForOpenTrades } from "./gem-analyzer.js";
+import { refreshCopyTradePrices, checkGoPlusForOpenTrades, isGoPlusKillSwitch } from "./gem-analyzer.js";
 
 function makeTrade(overrides: Partial<{
   walletAddress: string;
@@ -279,5 +281,92 @@ describe("checkGoPlusForOpenTrades - GoPlus periodic re-check", () => {
 
     expect(mockCloseCopyTrade).not.toHaveBeenCalled();
     expect(mockIncrementRugCount).not.toHaveBeenCalled();
+  });
+});
+
+describe("isGoPlusKillSwitch - LP concentration", () => {
+  const baseData = {
+    is_honeypot: "0",
+    buy_tax: "0",
+    sell_tax: "0",
+    honeypot_with_same_creator: "0",
+    is_mintable: "0",
+    owner_change_balance: "0",
+    can_take_back_ownership: "0",
+    hidden_owner: "0",
+    selfdestruct: "0",
+    is_blacklisted: "0",
+    slippage_modifiable: "0",
+    transfer_pausable: "0",
+    anti_whale_modifiable: "0",
+    cannot_sell_all: "0",
+    cannot_buy: "0",
+    is_whitelisted: "0",
+    is_airdrop_scam: "0",
+  };
+
+  it("triggers when single unlocked LP holder holds 85%", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.8523", is_locked: "0", address: "0xdev", tag: "" },
+        { percent: "0.1477", is_locked: "1", address: "0xdead", tag: "dead wallet" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(true);
+  });
+
+  it("does NOT trigger when largest holder is locked (90%)", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.90", is_locked: "1", address: "0xlocked", tag: "" },
+        { percent: "0.10", is_locked: "0", address: "0xsmall", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(false);
+  });
+
+  it("does NOT trigger when unlocked holder is only 40%", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.40", is_locked: "0", address: "0xdev1", tag: "" },
+        { percent: "0.35", is_locked: "0", address: "0xdev2", tag: "" },
+        { percent: "0.25", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(false);
+  });
+
+  it("does NOT trigger when lp_holders is an empty array", () => {
+    const data = { ...baseData, lp_holders: [] };
+    expect(isGoPlusKillSwitch(data)).toBe(false);
+  });
+
+  it("does NOT trigger when lp_holders field is missing", () => {
+    expect(isGoPlusKillSwitch(baseData)).toBe(false);
+  });
+
+  it("triggers at exactly 51% (above threshold)", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.51", is_locked: "0", address: "0xdev", tag: "" },
+        { percent: "0.49", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(true);
+  });
+
+  it("does NOT trigger at exactly 50% (not strictly greater)", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.50", is_locked: "0", address: "0xdev", tag: "" },
+        { percent: "0.50", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(false);
   });
 });

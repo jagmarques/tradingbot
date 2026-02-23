@@ -108,6 +108,21 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
     if (!isNaN(sellTaxPct) && sellTaxPct > 10) return true;
   }
 
+  const lpHolders = Array.isArray(data.lp_holders)
+    ? (data.lp_holders as Array<{ percent?: string; is_locked?: number | string }>)
+    : [];
+  if (lpHolders.length > 0) {
+    const largest = lpHolders.reduce((max, lp) => {
+      const pct = parseFloat(lp.percent ?? "0");
+      const maxPct = parseFloat(max.percent ?? "0");
+      return pct > maxPct ? lp : max;
+    });
+    const largestPct = parseFloat(largest.percent ?? "0");
+    if (String(largest.is_locked) !== "1" && !isNaN(largestPct) && largestPct > 0.5) {
+      return true;
+    }
+  }
+
   return false;
 }
 
