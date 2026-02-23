@@ -44,6 +44,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
 - Trailing stop: +10%/0%, +25%/+10%, +50%/+25%, +100%/+50%, +200%/+100%, +500%+ dynamic (peak-100pts), -50% floor
 - Time exits: 4h profit tighten (breakeven stop), 24h stale insider (close if profitable), 48h max hold (unconditional)
+- Stablecoin filter: symbol blocklist (60+ tokens) + price-based ($0.90-$1.10 skip)
 - GoPlus security checks, $5k min liquidity, $200 max exposure, score-based sizing ($8-$15), 30s price refresh
 - Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
@@ -72,13 +73,18 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 ### Hyperliquid Quant Trading
 
-AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
+AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliquid perpetual futures.
 
-- DeepSeek analysis with market data pipeline (technical indicators, regime classification)
-- Kelly criterion position sizing (quarter Kelly, 20% balance cap)
-- Funding rate arbitrage (short when funding > 20% APR, close when < 5%)
+- DeepSeek analysis with multi-timeframe data (15m/1h/4h candles, indicators, regime classification)
+- Kelly criterion position sizing (quarter Kelly, stop-distance-adjusted, per-position cap)
+- Trailing stop: 50% retracement from peak when profit > 1%
+- Stagnation exit: 24h max hold for directional positions
+- Stop-loss enforced at 2% max (AI prompt + parser cap)
+- AI cache invalidated on position close to prevent stale re-entry
+- Funding rate arbitrage (short when funding > 12% APR, close when < 5%)
 - Delta-neutral funding arb: equal spot long + perp short for pure yield capture
-- Max 5x leverage, 6 concurrent positions, $25 rolling 24h drawdown limit (resets 24h after last loss)
+- Max 5x leverage, 16 concurrent positions, $25 rolling 24h drawdown limit
+- 10-minute directional cycle, duplicate pair+direction guard, overlap protection
 - 14-day paper validation required before live trading
 
 ## Telegram
@@ -112,7 +118,7 @@ AI-driven directional trades on BTC/ETH/SOL via Hyperliquid perpetual futures.
 |---|-------|------|
 | AI Betting bankroll | Virtual $100 (persists P&L across restarts) | Real USDC |
 | Quant bankroll | Virtual $100 (tracks balance, fees, funding) | Real Hyperliquid balance |
-| Position limits | Same as live (5 AI bets, 6 quant, $200 copy exposure) | Same |
+| Position limits | Same as live (5 AI bets, 16 quant, $200 copy exposure) | Same |
 | AI Betting pricing | Public orderbook bid/ask, midpoint fallback | Real orderbook (CLOB FOK) |
 | AI Betting fees | 0.15%/side CLOB + 0.5% slippage + gas | Real CLOB fees |
 | Copy trading fees | 3-15% dynamic (liquidity-based) + AMM price impact | Real DEX swap (1inch) |
