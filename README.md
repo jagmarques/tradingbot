@@ -49,6 +49,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
 - Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
+- Pair age guard: skip tokens with pair older than 30 days (MAX_GEM_AGE_DAYS) — only copy fresh launches
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 8+ gem hits across 3+ unique tokens required
 
