@@ -259,6 +259,7 @@ export const COPY_TRADE_CONFIG = {
   TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
   STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
   MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,
+  MIN_PAIR_AGE_MS: 2 * 60 * 60 * 1000, // 2 hours - brand-new tokens are highest rug risk
 };
 
 export function getPositionSize(score: number): number {

@@ -217,6 +217,40 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
+  // Min pair age guard (brand-new tokens are highest rug risk)
+  if (pair?.pairCreatedAt) {
+    const pairAgeMs = Date.now() - pair.pairCreatedAt;
+    if (pairAgeMs < COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS) {
+      const ageMinutes = Math.round(pairAgeMs / 60_000);
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: 0,
+        pnlPct: 0,
+        status: "skipped",
+        liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
+        liquidityUsd,
+        skipReason: "too_young",
+        buyTimestamp: Date.now(),
+        tokenCreatedAt: pair.pairCreatedAt,
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
+      });
+      console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too young (${ageMinutes}m < 2h)`);
+      return;
+    }
+  }
+
   if (isLpToken(symbol)) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
     return;

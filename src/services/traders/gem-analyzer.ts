@@ -112,13 +112,14 @@ export function isGoPlusKillSwitch(data: Record<string, unknown>): boolean {
     ? (data.lp_holders as Array<{ percent?: string; is_locked?: number | string }>)
     : [];
   if (lpHolders.length > 0) {
-    const largest = lpHolders.reduce((max, lp) => {
-      const pct = parseFloat(lp.percent ?? "0");
-      const maxPct = parseFloat(max.percent ?? "0");
-      return pct > maxPct ? lp : max;
-    });
-    const largestPct = parseFloat(largest.percent ?? "0");
-    if (String(largest.is_locked) !== "1" && !isNaN(largestPct) && largestPct > 0.5) {
+    let totalUnlockedPct = 0;
+    for (const lp of lpHolders) {
+      if (String(lp.is_locked) !== "1") {
+        const pct = parseFloat(lp.percent ?? "0");
+        if (!isNaN(pct)) totalUnlockedPct += pct;
+      }
+    }
+    if (totalUnlockedPct > 0.7) {
       return true;
     }
   }
@@ -400,6 +401,16 @@ async function buyGems(
       if (ageDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
         console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - token age ${Math.round(ageDays)}d > ${INSIDER_CONFIG.MAX_GEM_AGE_DAYS}d`);
         continue;
+      }
+
+      // Min pair age guard (brand-new tokens are highest rug risk)
+      if (pair?.pairCreatedAt) {
+        const pairAgeMs = Date.now() - pair.pairCreatedAt;
+        if (pairAgeMs < COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS) {
+          const ageMinutes = Math.round(pairAgeMs / 60_000);
+          console.log(`[GemAnalyzer] Skip ${token.symbol} (${token.chain}) - pair too young (${ageMinutes}m < 2h)`);
+          continue;
+        }
       }
 
       priceFetchFailures.delete(failKey);

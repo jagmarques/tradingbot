@@ -327,13 +327,62 @@ describe("isGoPlusKillSwitch - LP concentration", () => {
     expect(isGoPlusKillSwitch(data)).toBe(false);
   });
 
-  it("does NOT trigger when unlocked holder is only 40%", () => {
+  it("triggers when total unlocked LP is 75% (3 wallets: 40% + 35% unlocked)", () => {
     const data = {
       ...baseData,
       lp_holders: [
         { percent: "0.40", is_locked: "0", address: "0xdev1", tag: "" },
         { percent: "0.35", is_locked: "0", address: "0xdev2", tag: "" },
         { percent: "0.25", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(true);
+  });
+
+  it("triggers when 3 wallets each hold 30% unlocked (90% total)", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.30", is_locked: "0", address: "0xdev1", tag: "" },
+        { percent: "0.30", is_locked: "0", address: "0xdev2", tag: "" },
+        { percent: "0.30", is_locked: "0", address: "0xdev3", tag: "" },
+        { percent: "0.10", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(true);
+  });
+
+  it("does NOT trigger when total unlocked LP is 60%", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.30", is_locked: "0", address: "0xdev1", tag: "" },
+        { percent: "0.30", is_locked: "0", address: "0xdev2", tag: "" },
+        { percent: "0.40", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(false);
+  });
+
+  it("triggers at exactly 71% total unlocked", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.36", is_locked: "0", address: "0xdev1", tag: "" },
+        { percent: "0.35", is_locked: "0", address: "0xdev2", tag: "" },
+        { percent: "0.29", is_locked: "1", address: "0xlocked", tag: "" },
+      ],
+    };
+    expect(isGoPlusKillSwitch(data)).toBe(true);
+  });
+
+  it("does NOT trigger at exactly 70% total unlocked (not strictly greater)", () => {
+    const data = {
+      ...baseData,
+      lp_holders: [
+        { percent: "0.35", is_locked: "0", address: "0xdev1", tag: "" },
+        { percent: "0.35", is_locked: "0", address: "0xdev2", tag: "" },
+        { percent: "0.30", is_locked: "1", address: "0xlocked", tag: "" },
       ],
     };
     expect(isGoPlusKillSwitch(data)).toBe(false);
@@ -347,26 +396,10 @@ describe("isGoPlusKillSwitch - LP concentration", () => {
   it("does NOT trigger when lp_holders field is missing", () => {
     expect(isGoPlusKillSwitch(baseData)).toBe(false);
   });
+});
 
-  it("triggers at exactly 51% (above threshold)", () => {
-    const data = {
-      ...baseData,
-      lp_holders: [
-        { percent: "0.51", is_locked: "0", address: "0xdev", tag: "" },
-        { percent: "0.49", is_locked: "1", address: "0xlocked", tag: "" },
-      ],
-    };
-    expect(isGoPlusKillSwitch(data)).toBe(true);
-  });
-
-  it("does NOT trigger at exactly 50% (not strictly greater)", () => {
-    const data = {
-      ...baseData,
-      lp_holders: [
-        { percent: "0.50", is_locked: "0", address: "0xdev", tag: "" },
-        { percent: "0.50", is_locked: "1", address: "0xlocked", tag: "" },
-      ],
-    };
-    expect(isGoPlusKillSwitch(data)).toBe(false);
+describe("COPY_TRADE_CONFIG - MIN_PAIR_AGE_MS", () => {
+  it("min pair age is 2 hours", () => {
+    expect(COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS).toBe(2 * 60 * 60 * 1000);
   });
 });
