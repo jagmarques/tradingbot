@@ -47,7 +47,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant AI Decision Engine
 export const QUANT_AI_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-export const QUANT_AI_STOP_LOSS_MAX_PCT = 1; // Max stop-loss distance % (tight cut)
+export const QUANT_AI_STOP_LOSS_MAX_PCT = 2; // 10% account risk at 5x
 export const QUANT_AI_KELLY_FRACTION = 0.5; // Half Kelly
 
 // Quant Risk Management

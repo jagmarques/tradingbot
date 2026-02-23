@@ -105,7 +105,7 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 === INSTRUCTIONS ===
-Stop-loss MUST be within 1% of entry price. Stops beyond 1% will be tightened automatically. Place stops at key technical levels within this tight 1% range. Be decisive - if the setup is there, take it with conviction. Prefer action over caution.
+Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be capped automatically. Place stops at key technical levels. Be decisive - prefer action over caution.
 
 If no clear setup exists or risk/reward is unfavorable, return direction: flat with confidence below 50 and reasoning explaining why.
 
@@ -113,7 +113,7 @@ OUTPUT JSON ONLY (no markdown, no extra text):
 {
   "direction": "long" | "short" | "flat",
   "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - within 1% of entry>,
+  "stopLoss": <number - within 2% of entry>,
   "takeProfit": <number - take-profit price>,
   "confidence": <number 0-100 - how confident in this trade>,
   "reasoning": "<2-3 sentences explaining the trade thesis based on the data>"
