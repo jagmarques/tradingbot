@@ -26,6 +26,9 @@ const LP_TOKEN_SYMBOLS = new Set([
   "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
   "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
   "USDC", "USDT", "DAI", "WBTC", "stETH", "USDbC", "BUSD", "TUSD", "FRAX",
+  "mUSD", "USDS", "USDP", "GUSD", "LUSD", "sUSD", "PYUSD", "crvUSD", "GHO",
+  "DOLA", "alUSD", "MIM", "USDD", "FDUSD", "USDe", "USD+", "UST", "RAI", "FEI",
+  "EURS", "EURT", "agEUR", "EURe", "jEUR", "XSGD", "XIDR", "BRZ", "TRYB",
 ]);
 
 // Dedup: tx hashes already processed by WebSocket (shared with insider-ws.ts)
@@ -183,6 +186,12 @@ export async function processInsiderBuy(tokenInfo: {
 
   if (isLpToken(symbol)) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
+    return;
+  }
+
+  // Price-based stablecoin filter: tokens priced $0.90-$1.10 are almost certainly stablecoins
+  if (priceUsd >= 0.90 && priceUsd <= 1.10) {
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - likely stablecoin (price $${priceUsd.toFixed(4)})`);
     return;
   }
 
