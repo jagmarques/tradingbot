@@ -763,6 +763,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     gem_count: number;
     avg_pump: number;
     holding_count: number;
+    enriched_count: number;
     unique_tokens: number;
     first_seen: number;
     last_seen: number;
@@ -770,7 +771,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     // Legacy formula: gems(30) + avg_pump(30) + hold_rate(20) + recency(20) = 100
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(20)));
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
-    const holdRate = wallet.gem_count > 0 ? wallet.holding_count / wallet.gem_count : 0;
+    // Only gems with known status count in the denominator; unenriched gems are neutral
+    const holdRate = wallet.enriched_count > 0 ? wallet.holding_count / wallet.enriched_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
     const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
     const recencyScoreLegacy = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 90)));
@@ -792,7 +794,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const winRateScore = Math.round(15 * effectiveWR);
 
     const pf = cs.grossProfit / Math.max(cs.grossLoss, 1);
-    const profitFactorScore = Math.min(20, Math.round(20 * Math.min(pf, 3) / 3));
+    const pfConfidence = Math.min(1, cs.totalTrades / 10);
+    const profitFactorScore = Math.min(20, Math.round(20 * Math.min(pf, 3) / 3 * pfConfidence));
 
     // Expectancy: (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct)
     const losses = cs.totalTrades - cs.wins;
@@ -835,6 +838,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
              MAX(buy_timestamp) as last_seen,
              AVG(pump_multiple) as avg_pump,
              SUM(CASE WHEN status = 'holding' THEN 1 ELSE 0 END) as holding_count,
+             SUM(CASE WHEN status IS NOT NULL AND status != 'unknown' THEN 1 ELSE 0 END) as enriched_count,
              COUNT(DISTINCT token_address) as unique_tokens
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
@@ -852,6 +856,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       last_seen: number;
       avg_pump: number;
       holding_count: number;
+      enriched_count: number;
       unique_tokens: number;
     }>;
 
