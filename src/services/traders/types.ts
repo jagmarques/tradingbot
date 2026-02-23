@@ -246,7 +246,7 @@ export const INSIDER_WS_CONFIG = {
 };
 
 export const COPY_TRADE_CONFIG = {
-  MIN_LIQUIDITY_USD: 5000,
+  MIN_LIQUIDITY_USD: 10_000,
   STOP_LOSS_PCT: -50,
   ESTIMATED_FEE_PCT: 3, // ~1.5% per side (DEX fee + slippage) on micro-caps
   ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage

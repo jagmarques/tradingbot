@@ -25,7 +25,7 @@ let monitorRunning = false;
 let syncInterval: NodeJS.Timeout | null = null;
 let rpcId = 1;
 let syncing = false;
-const pendingRechecks = new Set<string>();
+const recheckCounts = new Map<string, number>();
 const intentionalClose = new Set<string>();
 
 function nextRpcId(): number {
@@ -111,6 +111,7 @@ function unsubscribePair(chain: string, pairAddress: string): void {
 
   const tradeKey = `${normalizedPair}_${chain}`;
   pairToToken.delete(tradeKey);
+  recheckCounts.delete(tradeKey);
   console.log(`[RugMonitor] Unsubscribed from ${pairAddress.slice(0, 10)}... (${chain})`);
 }
 
@@ -131,9 +132,14 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
     const pair = await dexScreenerFetchByPair(chain, pairAddress);
     if (!pair) {
       // API unavailable - schedule recheck instead of treating as rug
-      if (!pendingRechecks.has(tradeKey)) {
-        pendingRechecks.add(tradeKey);
-        setTimeout(() => handleBurnEvent(chain, pairAddress).catch(() => {}), 15_000);
+      const count = (recheckCounts.get(tradeKey) ?? 0) + 1;
+      if (count <= 4) {
+        recheckCounts.set(tradeKey, count);
+        console.log(`[RugMonitor] API unavailable for ${tokenSymbol}, scheduling recheck ${count}/4 in 10s`);
+        setTimeout(() => handleBurnEvent(chain, pairAddress).catch(() => {}), 10_000);
+      } else {
+        recheckCounts.delete(tradeKey);
+        console.log(`[RugMonitor] API unavailable for ${tokenSymbol}, giving up after 4 rechecks`);
       }
       return;
     }
@@ -183,18 +189,19 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
         }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
       incrementRugCount(tokenAddress, chain);
+      recheckCounts.delete(tradeKey);
       unsubscribePair(chain, pairAddress);
     } else {
-      if (pendingRechecks.has(tradeKey)) {
-        // Already a recheck, don't schedule another
-        pendingRechecks.delete(tradeKey);
-        console.log(`[RugMonitor] Recheck: ${tokenSymbol} liquidity still ok ($${liquidityUsd.toFixed(0)}), no rug`);
-      } else {
-        console.log(`[RugMonitor] Burn event for ${tokenSymbol} but liquidity ok ($${liquidityUsd.toFixed(0)}), scheduling recheck in 15s`);
-        pendingRechecks.add(tradeKey);
+      const count = (recheckCounts.get(tradeKey) ?? 0) + 1;
+      if (count <= 4) {
+        recheckCounts.set(tradeKey, count);
+        console.log(`[RugMonitor] Burn event for ${tokenSymbol} but liquidity ok ($${liquidityUsd.toFixed(0)}), recheck ${count}/4 in 10s`);
         setTimeout(() => {
           handleBurnEvent(chain, pairAddress).catch(() => {});
-        }, 15_000);
+        }, 10_000);
+      } else {
+        recheckCounts.delete(tradeKey);
+        console.log(`[RugMonitor] ${tokenSymbol} liquidity ok after 4 rechecks ($${liquidityUsd.toFixed(0)}), no rug`);
       }
     }
   } catch (err) {
@@ -424,7 +431,7 @@ export function stopRugMonitor(): void {
   subscriptions.clear();
   pairToToken.clear();
   pendingRequests.clear();
-  pendingRechecks.clear();
+  recheckCounts.clear();
   reconnectAttempts.clear();
   intentionalClose.clear();
 
