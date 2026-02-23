@@ -891,8 +891,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       const holdComp = getHoldComparison();
       if (holdComp.actualPnlUsd !== 0 || holdComp.holdPnlUsd !== 0) {
         message += `\n-------\n`;
-        message += `Gems if held: ${pnl(holdComp.holdPnlUsd)}\n`;
-        message += `Gems actual exits: ${pnl(holdComp.actualPnlUsd)}`;
+        message += `Insider if held: ${pnl(holdComp.holdPnlUsd)}\n`;
+        message += `Insider exits: ${pnl(holdComp.actualPnlUsd)}`;
       }
     } catch { /* non-fatal */ }
 
