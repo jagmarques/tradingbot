@@ -301,6 +301,15 @@ export function sumRecentQuantLosses(withinMs: number): { totalLoss: number; las
   return { totalLoss: row.total_loss, lastLossTs };
 }
 
+export function getTotalRealizedPnl(): number {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(pnl), 0) as total_pnl
+    FROM quant_trades WHERE status = 'closed'
+  `).get() as { total_pnl: number };
+  return row.total_pnl;
+}
+
 export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
   const db = getDb();
   const result = db

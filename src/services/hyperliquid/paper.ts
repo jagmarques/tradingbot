@@ -5,6 +5,7 @@ import {
   saveQuantPosition,
   saveQuantTrade,
   loadOpenQuantPositions,
+  getTotalRealizedPnl,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
@@ -27,7 +28,6 @@ const lastFundingAccrual = new Map<string, number>();
 const accumulatedFunding = new Map<string, number>();
 
 export function initPaperEngine(startingBalance: number): void {
-  virtualBalance = startingBalance;
   paperPositions.clear();
 
   const openPositions = loadOpenQuantPositions();
@@ -35,12 +35,12 @@ export function initPaperEngine(startingBalance: number): void {
     paperPositions.set(pos.id, pos);
   }
 
-  // Restore virtual balance by subtracting capital locked in open positions
   const lockedCapital = openPositions.reduce((sum, p) => sum + p.size, 0);
-  virtualBalance = startingBalance - lockedCapital;
+  const realizedPnl = getTotalRealizedPnl();
+  virtualBalance = startingBalance + realizedPnl - lockedCapital;
 
   console.log(
-    `[Quant Paper] Initialized with $${virtualBalance.toFixed(2)} balance, ${openPositions.length} open positions`,
+    `[Quant Paper] Init: $${virtualBalance.toFixed(2)} balance (start=$${startingBalance}, pnl=$${realizedPnl.toFixed(2)}, locked=$${lockedCapital.toFixed(2)}), ${openPositions.length} open`,
   );
 }
 

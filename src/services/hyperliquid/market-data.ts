@@ -13,7 +13,6 @@ export async function fetchFundingRate(pair: string): Promise<FundingInfo | null
     // SDK returns { [coin]: VenueFunding[] }
     const venueFundingList = fundings[pair];
     if (!venueFundingList || venueFundingList.length === 0) {
-      console.warn(`[Hyperliquid] No funding data found for ${pair}`);
       return null;
     }
 
