@@ -910,6 +910,7 @@ export function getWalletCopyTradeStats(walletAddress: string): WalletCopyTradeS
 
 export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> {
   const db = getDb();
+  const recentCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
 
   const groupRows = db.prepare(`
     SELECT wallet_address,
@@ -919,8 +920,9 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
            SUM(CASE WHEN pnl_pct < 0 THEN ABS(pnl_pct) ELSE 0 END) as gross_loss
     FROM insider_copy_trades
     WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+      AND close_timestamp > ?
     GROUP BY wallet_address
-  `).all() as Array<{
+  `).all(recentCutoff) as Array<{
     wallet_address: string;
     total_trades: number;
     wins: number;
@@ -932,8 +934,9 @@ export function getAllWalletCopyTradeStats(): Map<string, WalletCopyTradeStats> 
     SELECT wallet_address, pnl_pct
     FROM insider_copy_trades
     WHERE status = 'closed' AND liquidity_ok = 1 AND skip_reason IS NULL
+      AND close_timestamp > ?
     ORDER BY wallet_address, close_timestamp DESC
-  `).all() as Array<{ wallet_address: string; pnl_pct: number }>;
+  `).all(recentCutoff) as Array<{ wallet_address: string; pnl_pct: number }>;
 
   const consecutiveMap = new Map<string, number>();
   let currentWallet = "";

@@ -768,6 +768,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
   // Multi-factor wallet scoring (0-100)
   function computeWalletScore(wallet: {
     gem_count: number;
+    gems_recent: number;
     avg_pump: number;
     holding_count: number;
     enriched_count: number;
@@ -776,13 +777,13 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     last_seen: number;
   }, copyStats?: WalletCopyTradeStats, medianPump?: number): number {
     // Legacy formula: gems(30) + avg_pump(30) + hold_rate(20) + recency(20) = 100
-    const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(20)));
+    const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
     // Only gems with known status count in the denominator; unenriched gems are neutral
     const holdRate = wallet.enriched_count > 0 ? wallet.holding_count / wallet.enriched_count : 0;
     const holdRateScore = Math.round(20 * holdRate);
     const daysSinceLastSeen = (Date.now() - wallet.last_seen) / (24 * 60 * 60 * 1000);
-    const recencyScoreLegacy = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 90)));
+    const recencyScoreLegacy = Math.max(0, Math.round(20 * Math.max(0, 1 - daysSinceLastSeen / 30)));
     const legacyScore = Math.min(100, gemCountScore + avgPumpScore + holdRateScore + recencyScoreLegacy);
 
     const totalTrades = copyStats?.totalTrades ?? 0;
@@ -791,7 +792,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     if (totalTrades < 1) return legacyScore;
 
     // New formula: gems(15) + median_pump(10) + win_rate(15) + profit_factor(20) + expectancy(20) + recency(20) = 100
-    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gem_count)) / Math.log2(20)));
+    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
     const mp = medianPump ?? wallet.avg_pump;
     const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
     const cs = copyStats as WalletCopyTradeStats;
@@ -811,8 +812,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
     const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 50));
 
-    // Recency: exponential decay with 14-day half-life
-    const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 14));
+    // Recency: exponential decay with 7-day half-life
+    const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 7));
 
     let score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
 
@@ -838,6 +839,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       console.log(`[InsiderScanner] Filtered ${quickFlips}/${totalGems} gem hits as sniper bot flips (<24h hold)`);
     }
 
+    const recentCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+
     const walletGroups = db.prepare(`
       SELECT wallet_address, chain, COUNT(*) as gem_count,
              GROUP_CONCAT(DISTINCT token_symbol) as token_symbols,
@@ -846,7 +849,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
              AVG(pump_multiple) as avg_pump,
              SUM(CASE WHEN status = 'holding' THEN 1 ELSE 0 END) as holding_count,
              SUM(CASE WHEN status IS NOT NULL AND status != 'unknown' THEN 1 ELSE 0 END) as enriched_count,
-             COUNT(DISTINCT token_address) as unique_tokens
+             COUNT(DISTINCT token_address) as unique_tokens,
+             SUM(CASE WHEN buy_timestamp > ? THEN 1 ELSE 0 END) as gems_recent
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
@@ -854,7 +858,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
         AND wallet_address NOT LIKE '0x00000000%'
       GROUP BY wallet_address, chain
       HAVING gem_count >= ? AND unique_tokens >= ?
-    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS, INSIDER_CONFIG.MIN_UNIQUE_TOKENS) as Array<{
+    `).all(recentCutoff, INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, INSIDER_CONFIG.MIN_GEM_HITS, INSIDER_CONFIG.MIN_UNIQUE_TOKENS) as Array<{
       wallet_address: string;
       chain: EvmChain;
       gem_count: number;
@@ -865,6 +869,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       holding_count: number;
       enriched_count: number;
       unique_tokens: number;
+      gems_recent: number;
     }>;
 
     const allPumps = db.prepare(`
@@ -872,8 +877,9 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
+        AND buy_timestamp > ?
       ORDER BY wallet_address, chain, pump_multiple ASC
-    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS) as Array<{
+    `).all(INSIDER_CONFIG.SNIPER_MAX_HOLD_MS, recentCutoff) as Array<{
       wallet_address: string; chain: string; pump_multiple: number;
     }>;
 
