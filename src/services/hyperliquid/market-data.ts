@@ -74,6 +74,13 @@ export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
 
     const fundings = await sdk.info.perpetuals.getPredictedFundings(true);
     const results: FundingInfo[] = [];
+    const allKeys = Object.keys(fundings);
+    if (allKeys.length > 0) {
+      const sample = allKeys[0];
+      console.log(`[FundingArb] Debug: ${allKeys.length} pairs, sample[${sample}]=`, JSON.stringify((fundings as Record<string, unknown>)[sample]));
+    } else {
+      console.log(`[FundingArb] Debug: fundings is empty, type=${typeof fundings}, isArray=${Array.isArray(fundings)}, raw=`, JSON.stringify(fundings).slice(0, 200));
+    }
 
     for (const pair of Object.keys(fundings)) {
       const venueFundingList = fundings[pair];
