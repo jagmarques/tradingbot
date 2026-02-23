@@ -160,8 +160,8 @@ export async function enterPosition(
     entryTimestamp: Date.now(),
   };
 
+  savePosition(position);
   positions.set(position.id, position);
-  savePosition(position); // Persist to DB
   console.log(`[Executor] Position created: ${position.id}`);
 
   // Send Telegram notification
