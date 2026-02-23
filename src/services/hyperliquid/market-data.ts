@@ -71,26 +71,46 @@ export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
   try {
     await ensureConnected();
 
-    // response: [[pair, [[venue, data], ...]], ...]
     type VenueData = { fundingRate: string; nextFundingTime: number; fundingIntervalHours: number };
     const fundings = await getClient().info.perpetuals.getPredictedFundings(true);
-    const rawFundings = fundings as unknown as [string, [string, VenueData][]][];
     const results: FundingInfo[] = [];
 
-    for (const [pair, venueList] of rawFundings) {
+    // SDK returns either array of tuples or object - handle both
+    let entries: [string, unknown][];
+    if (Array.isArray(fundings)) {
+      entries = fundings as [string, unknown][];
+    } else if (fundings && typeof fundings === "object") {
+      entries = Object.entries(fundings);
+    } else {
+      console.warn("[FundingArb] Unexpected fundings format:", typeof fundings);
+      return [];
+    }
+
+    for (const entry of entries) {
+      const pair = String(entry[0]);
+      const venueList = entry[1];
       if (!Array.isArray(venueList)) continue;
 
-      const hlEntry = venueList.find(([name]) => name === "HlPerp");
-      if (!hlEntry) continue;
-      const [, fundingData] = hlEntry;
+      // Each venue is either [name, data] tuple or {name: data} object
+      let hlData: VenueData | undefined;
+      for (const venue of venueList) {
+        if (Array.isArray(venue) && venue[0] === "HlPerp") {
+          hlData = venue[1] as VenueData;
+          break;
+        } else if (venue && typeof venue === "object" && "HlPerp" in venue) {
+          hlData = (venue as Record<string, VenueData>)["HlPerp"];
+          break;
+        }
+      }
+      if (!hlData) continue;
 
-      const currentRate = parseFloat(String(fundingData.fundingRate ?? 0));
+      const currentRate = parseFloat(String(hlData.fundingRate ?? 0));
       if (currentRate === 0) continue;
 
-      const intervalHours = fundingData.fundingIntervalHours ?? 8;
+      const intervalHours = hlData.fundingIntervalHours ?? 8;
       const periodsPerYear = 8760 / intervalHours;
       const annualizedRate = currentRate * periodsPerYear;
-      const nextFundingTime = Number(fundingData.nextFundingTime);
+      const nextFundingTime = Number(hlData.nextFundingTime);
 
       results.push({ pair, currentRate, annualizedRate, nextFundingTime });
     }

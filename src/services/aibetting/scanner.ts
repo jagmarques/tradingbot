@@ -115,6 +115,19 @@ export async function fetchActiveMarkets(maxMarkets: number = 500): Promise<Poly
   }
 }
 
+// Meme/joke keywords that indicate unresearchable or novelty markets
+const MEME_KEYWORDS = [
+  "jesus christ", "god ", "alien", "ufo", "bigfoot", "loch ness",
+  "zombie", "vampire", "gta vi", "gta 6", "before gta",
+  "flat earth", "simulation", "rapture", "apocalypse",
+  "time travel", "teleport",
+];
+
+function isMemeMarket(title: string): boolean {
+  const lower = title.toLowerCase();
+  return MEME_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 function filterCandidateMarkets(
   markets: PolymarketEvent[],
   config: AIBettingConfig,
@@ -135,6 +148,7 @@ function filterCandidateMarkets(
     endDate: 0,
     category: 0,
     extremePrice: 0,
+    meme: 0,
   };
 
   const passed: PolymarketEvent[] = [];
@@ -175,6 +189,12 @@ function filterCandidateMarkets(
     // Check category is enabled
     if (!config.categoriesEnabled.includes(market.category)) {
       rejectReasons.category++;
+      continue;
+    }
+
+    // Skip meme/joke/unresearchable markets
+    if (isMemeMarket(market.title)) {
+      rejectReasons.meme++;
       continue;
     }
 

@@ -130,6 +130,25 @@ export async function processInsiderSell(
 const tokenBuyLock = new Set<string>();
 const tokenRetryDone = new Set<string>();
 
+// Cache of recently skipped tokens to avoid re-fetching DexScreener/GoPlus for old/bad tokens
+const recentlySkippedTokens = new Map<string, number>();
+const SKIP_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function isRecentlySkipped(tokenAddress: string, chain: string): boolean {
+  const key = `${tokenAddress.toLowerCase()}_${chain}`;
+  const ts = recentlySkippedTokens.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts > SKIP_CACHE_TTL_MS) {
+    recentlySkippedTokens.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function markSkipped(tokenAddress: string, chain: string): void {
+  recentlySkippedTokens.set(`${tokenAddress.toLowerCase()}_${chain}`, Date.now());
+}
+
 export async function processInsiderBuy(tokenInfo: {
   walletAddress: string;
   walletScore: number;
@@ -138,6 +157,9 @@ export async function processInsiderBuy(tokenInfo: {
   chain: string;
   hasTradeHistory?: boolean;
 }): Promise<void> {
+  // Skip tokens that were recently rejected (old pair, honeypot, no price, etc.)
+  if (isRecentlySkipped(tokenInfo.tokenAddress, tokenInfo.chain)) return;
+
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
   if (tokenBuyLock.has(tokenLockKey)) {
     if (!tokenRetryDone.has(tokenLockKey)) {
@@ -155,6 +177,7 @@ export async function processInsiderBuy(tokenInfo: {
 
   const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
   if (rugCount > 0) {
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
     console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
     return;
   }
@@ -183,6 +206,7 @@ export async function processInsiderBuy(tokenInfo: {
 
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
     return;
   }
@@ -213,6 +237,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d > ${INSIDER_CONFIG.MAX_GEM_AGE_DAYS}d)`);
     return;
   }
@@ -265,6 +290,7 @@ export async function processInsiderBuy(tokenInfo: {
   // Accumulation path
   if (existingTokenTrade) {
     if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+      markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
       console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d)`);
       return;
     }
@@ -387,6 +413,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - no price`);
     return;
   }
@@ -445,6 +472,7 @@ export async function processInsiderBuy(tokenInfo: {
       walletScoreAtBuy: tokenInfo.walletScore,
       exitDetail: null,
     });
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
     console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
     return;
   }
