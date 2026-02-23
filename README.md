@@ -19,7 +19,7 @@ Scans markets, fetches news via GDELT, runs blind probability estimation with De
 
 **Edge modifiers:** extremization 1.3x, category bonuses, NO-side +1.5% bias
 
-**Exit rules:** stop-loss -15%, take-profit +40%, conviction flip, settlement risk <6h
+**Exit rules:** stop-loss -15%, take-profit +40%, -10% price drop triggers re-analysis (exits if conviction flips or EV negative), settlement risk <6h
 
 ### Copy Betting (Polymarket)
 
@@ -52,7 +52,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 8+ gem hits across 3+ unique tokens required
 
-**Consistency scoring (MIN_WALLET_SCORE = 80, MIN_GEM_HITS = 8):**
+**Consistency scoring (score > 80 required, MIN_GEM_HITS = 8):**
 - Two formulas: legacy (no copy trade data) and new (with copy trade history)
 - Legacy: gems(30, log2 scale) + avg pump(30, sqrt scale) + hold rate(20) + recency(20, 90-day linear)
 - New: gems(15) + median pump(10) + win rate(15, Wilson lower bound) + profit factor(20) + expectancy(20, /50 scale) + recency(20, 14-day half-life)
