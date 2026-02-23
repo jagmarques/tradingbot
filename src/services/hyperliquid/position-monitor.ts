@@ -73,7 +73,7 @@ async function checkPositionStops(): Promise<void> {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
       }
 
-      if ((position.maxUnrealizedPnlPct ?? 0) > 1) {
+      if ((position.maxUnrealizedPnlPct ?? 0) > 0.5) {
         const trailTrigger = (position.maxUnrealizedPnlPct ?? 0) * 0.5;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(
