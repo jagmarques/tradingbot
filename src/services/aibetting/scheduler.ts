@@ -92,6 +92,7 @@ function detectSiblingMarkets(markets: PolymarketEvent[]): string[][] {
 
 let isRunning = false;
 let cycleRunning = false;
+let cycleAborted = false;
 let intervalHandle: NodeJS.Timeout | null = null;
 let config: AIBettingConfig | null = null;
 let calibrationCronJob: cron.ScheduledTask | null = null;
@@ -125,13 +126,19 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
   }
 
   cycleRunning = true;
+  cycleAborted = false;
+
+  let timeoutHandle: NodeJS.Timeout | undefined;
 
   try {
     return await Promise.race([
       _runAnalysisCycleInner(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Cycle timeout (25min)")), CYCLE_TIMEOUT_MS)
-      ),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          cycleAborted = true;
+          reject(new Error("Cycle timeout (25min)"));
+        }, CYCLE_TIMEOUT_MS);
+      }),
     ]);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -142,6 +149,7 @@ async function runAnalysisCycle(): Promise<AnalysisCycleResult> {
     }
     return { marketsAnalyzed: 0, opportunitiesFound: 0, betsPlaced: 0, errors: [msg] };
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     cycleRunning = false;
   }
 }
@@ -187,6 +195,11 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
     const siblingClusters = detectSiblingMarkets(markets);
 
     for (const market of markets) {
+      if (cycleAborted) {
+        console.log("[AIBetting] Cycle aborted, stopping analysis");
+        break;
+      }
+
       const cachedAnalysis = getCachedAnalysis(market.conditionId);
       if (cachedAnalysis) {
         analyses.set(market.conditionId, cachedAnalysis);
