@@ -220,11 +220,7 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
         await new Promise((r) => setTimeout(r, 6000)); // GDELT rate limit spacing
       }
       if (news.length < 1) {
-        if (!isGdeltCircuitOpen()) {
-          console.log(`[AIBetting] SKIP (0 news articles): ${market.title}`);
-          continue;
-        }
-        console.log(`[AIBetting] PROCEEDING (GDELT down, R1 uses training data): ${market.title}`);
+        console.log(`[AIBetting] No news for: ${market.title} (R1 uses training data)`);
       }
 
       const siblingTitles = siblingClusters
