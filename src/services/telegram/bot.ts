@@ -24,7 +24,7 @@ import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode }
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
-import { getOpenCopyTrades, getClosedCopyTrades, getRugStats } from "../traders/storage.js";
+import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
@@ -885,6 +885,16 @@ async function handlePnl(ctx: Context): Promise<void> {
     unrealizedLines.push(`Quant: ${quantPositions.length} | in:${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
 
     message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
+
+    // Hold comparison
+    try {
+      const holdComp = getHoldComparison();
+      if (holdComp.actualPnlUsd !== 0 || holdComp.holdPnlUsd !== 0) {
+        message += `\n-------\n`;
+        message += `If held: ${pnl(holdComp.holdPnlUsd)}\n`;
+        message += `Actual exits: ${pnl(holdComp.actualPnlUsd)}`;
+      }
+    } catch { /* non-fatal */ }
 
     if (status.pauseReason) {
       message += `\n\n${status.pauseReason}`;

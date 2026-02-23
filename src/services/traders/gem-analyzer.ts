@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, updateCopyTradeHoldPrice, getHoldableClosedTrades, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason, CopyTrade } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -660,6 +660,7 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
     if (priceUsd > 0) {
       updateCopyTradePrice(token.walletAddress, token.tokenAddress, token.chain, priceUsd);
+      updateCopyTradeHoldPrice(token.tokenAddress, token.chain, priceUsd);
       copyPriceFailures.delete(failKey);
       updated++;
       if (pair?.pairCreatedAt) {
@@ -746,6 +747,39 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
+  }
+
+  // Refresh hold prices for closed trades (for hold comparison)
+  const holdableClosed = getHoldableClosedTrades();
+  if (holdableClosed.length > 0) {
+    const holdTokens = new Map<string, { chain: string; tokenAddress: string }>();
+    for (const trade of holdableClosed) {
+      const key = `${trade.tokenAddress.toLowerCase()}_${trade.chain}`;
+      if (!holdTokens.has(key)) {
+        holdTokens.set(key, { chain: trade.chain, tokenAddress: trade.tokenAddress });
+      }
+    }
+
+    const holdTokensArr = Array.from(holdTokens.values());
+    const holdPriceMap = await dexScreenerFetchBatch(holdTokensArr);
+
+    let holdUpdated = 0;
+    for (const token of holdTokensArr) {
+      const addrKey = token.tokenAddress.toLowerCase();
+      let pair = holdPriceMap.get(addrKey);
+      if (!pair || parseFloat(pair.priceUsd || "0") <= 0) {
+        pair = (await dexScreenerFetch(token.chain, token.tokenAddress)) ?? undefined;
+      }
+      const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+      if (priceUsd > 0) {
+        updateCopyTradeHoldPrice(token.tokenAddress, token.chain, priceUsd);
+        holdUpdated++;
+      }
+    }
+
+    if (holdUpdated > 0) {
+      console.log(`[CopyTrade] Refreshed hold prices for ${holdUpdated} closed tokens`);
+    }
   }
 
   const refreshedTrades = getOpenCopyTrades();
