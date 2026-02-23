@@ -2,6 +2,7 @@ import { scanFundingOpportunities, fetchFundingRate } from "./market-data.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import {
   FUNDING_ARB_MAX_SIZE_USD,
+  FUNDING_ARB_MAX_POSITIONS,
   FUNDING_ARB_LEVERAGE,
   FUNDING_ARB_STOP_LOSS_PCT,
   FUNDING_ARB_TAKE_PROFIT_PCT,
@@ -31,7 +32,13 @@ export async function runFundingArbCycle(): Promise<void> {
   const existingCount = fundingPositions.length;
   let opened = 0;
 
+  if (existingCount >= FUNDING_ARB_MAX_POSITIONS) {
+    console.log(`[FundingArb] At max positions (${existingCount}/${FUNDING_ARB_MAX_POSITIONS}), skipping new entries`);
+  }
+
   for (const opportunity of opportunities) {
+    if (existingCount + opened >= FUNDING_ARB_MAX_POSITIONS) break;
+
     if (openFundingPairs.has(opportunity.pair)) {
       continue;
     }
