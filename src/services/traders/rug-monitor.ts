@@ -129,8 +129,16 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
 
   try {
     const pair = await dexScreenerFetchByPair(chain, pairAddress);
-    const liquidityUsd = pair?.liquidity?.usd ?? 0;
-    const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
+    if (!pair) {
+      // API unavailable - schedule recheck instead of treating as rug
+      if (!pendingRechecks.has(tradeKey)) {
+        pendingRechecks.add(tradeKey);
+        setTimeout(() => handleBurnEvent(chain, pairAddress).catch(() => {}), 15_000);
+      }
+      return;
+    }
+    const liquidityUsd = pair.liquidity?.usd ?? 0;
+    const priceUsd = parseFloat(pair.priceUsd || "0");
 
     // Close ALL trades for this token, not just one
     const openTrades = getOpenCopyTrades();
