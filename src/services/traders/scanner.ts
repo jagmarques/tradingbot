@@ -58,6 +58,10 @@ export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000003", // RIPEMD precompile
 ]);
 
+// Module-level sets built once at startup - static data that never changes at runtime
+export const ALL_KNOWN_ROUTERS = new Set(Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase()));
+export const ALL_KNOWN_EXCHANGES = new Set(Object.values(KNOWN_EXCHANGES).flat().map(a => a.toLowerCase()));
+
 export function isBotOrBurnAddress(addr: string): boolean {
   const a = addr.toLowerCase();
   if (BURN_ADDRESSES.has(a)) return true;
@@ -478,6 +482,11 @@ async function _scanWalletHistoryInner(): Promise<void> {
     // Skip chains without working explorer APIs
     if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
+    // Skip addresses that would be filtered at scoring time anyway
+    if (isBotOrBurnAddress(wallet.address)) continue;
+    if (ALL_KNOWN_ROUTERS.has(wallet.address.toLowerCase())) continue;
+    if (ALL_KNOWN_EXCHANGES.has(wallet.address.toLowerCase())) continue;
+
     try {
       const url = buildExplorerUrl(wallet.chain as EvmChain, `module=account&action=tokentx&address=${wallet.address}&startblock=0&endblock=99999999&sort=asc`);
       const response = await etherscanRateLimitedFetch(url, wallet.chain as EvmChain);
@@ -887,15 +896,14 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const scores: number[] = [];
     let qualifiedCount = 0;
 
-    const allKnownRouters = new Set(Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase()));
-
     const existingQualified = new Set(getInsiderWallets(undefined, undefined)
       .filter(w => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE)
       .map(w => `${w.address}_${w.chain}`));
 
     for (const group of walletGroups) {
       if (isBotOrBurnAddress(group.wallet_address)) continue;
-      if (allKnownRouters.has(group.wallet_address.toLowerCase())) continue;
+      if (ALL_KNOWN_ROUTERS.has(group.wallet_address.toLowerCase())) continue;
+      if (ALL_KNOWN_EXCHANGES.has(group.wallet_address.toLowerCase())) continue;
       const gems = group.token_symbols.split(",").filter(Boolean);
       const copyStats = copyStatsMap.get(group.wallet_address);
       const mpKey = `${group.wallet_address}_${group.chain}`;

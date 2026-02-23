@@ -1,6 +1,6 @@
 import { getDb } from "../database/db.js";
 import type { CopyTrade, CopyExitReason, GemHit, InsiderWallet, EvmChain } from "./types.js";
-import { INSIDER_CONFIG, COPY_TRADE_CONFIG, getPositionSize } from "./types.js";
+import { INSIDER_CONFIG, COPY_TRADE_CONFIG, getPositionSize, KNOWN_DEX_ROUTERS, KNOWN_EXCHANGES } from "./types.js";
 
 export function initInsiderTables(): void {
   const db = getDb();
@@ -178,6 +178,40 @@ export function initInsiderTables(): void {
   const burnDeleted = db.prepare(`DELETE FROM insider_wallets WHERE address IN (${burnPlaceholders}) OR address LIKE '0x00000000%'`).run(...burnAddrs);
   if (burnDeleted.changes > 0) {
     console.log(`[InsiderScanner] Cleaned ${burnDeleted.changes} burn/bot addresses from insider_wallets`);
+  }
+
+  // Cleanup gem_hits for burn addresses
+  const gemBurnDeleted = db.prepare(
+    `DELETE FROM insider_gem_hits WHERE wallet_address IN (${burnPlaceholders}) OR wallet_address LIKE '0x00000000%'`
+  ).run(...burnAddrs);
+  if (gemBurnDeleted.changes > 0) {
+    console.log(`[InsiderScanner] Cleaned ${gemBurnDeleted.changes} burn/bot gem hits from insider_gem_hits`);
+  }
+
+  // Cleanup insider_wallets and insider_gem_hits for known DEX routers
+  const allRouters = Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase());
+  if (allRouters.length > 0) {
+    const routerPlaceholders = allRouters.map(() => "?").join(",");
+    db.prepare(`DELETE FROM insider_wallets WHERE address IN (${routerPlaceholders})`).run(...allRouters);
+    const gemRouterDeleted = db.prepare(
+      `DELETE FROM insider_gem_hits WHERE wallet_address IN (${routerPlaceholders})`
+    ).run(...allRouters);
+    if (gemRouterDeleted.changes > 0) {
+      console.log(`[InsiderScanner] Cleaned ${gemRouterDeleted.changes} router gem hits from insider_gem_hits`);
+    }
+  }
+
+  // Cleanup insider_wallets and insider_gem_hits for known exchanges
+  const allExchanges = Object.values(KNOWN_EXCHANGES).flat().map(a => a.toLowerCase());
+  if (allExchanges.length > 0) {
+    const exchangePlaceholders = allExchanges.map(() => "?").join(",");
+    db.prepare(`DELETE FROM insider_wallets WHERE address IN (${exchangePlaceholders})`).run(...allExchanges);
+    const gemExchangeDeleted = db.prepare(
+      `DELETE FROM insider_gem_hits WHERE wallet_address IN (${exchangePlaceholders})`
+    ).run(...allExchanges);
+    if (gemExchangeDeleted.changes > 0) {
+      console.log(`[InsiderScanner] Cleaned ${gemExchangeDeleted.changes} exchange gem hits from insider_gem_hits`);
+    }
   }
 
   console.log("[InsiderScanner] Database tables initialized");
