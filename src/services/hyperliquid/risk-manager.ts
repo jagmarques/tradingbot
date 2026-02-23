@@ -62,7 +62,7 @@ export function getDailyLossTotal(): number {
   return dailyLossAccumulator;
 }
 
-export function checkLeverageCap(leverage: number): {
+function checkLeverageCap(leverage: number): {
   allowed: boolean;
   reason: string;
 } {
@@ -75,7 +75,7 @@ export function checkLeverageCap(leverage: number): {
   return { allowed: true, reason: "" };
 }
 
-export function checkStopLossPresent(stopLoss: number): {
+function checkStopLossPresent(stopLoss: number): {
   allowed: boolean;
   reason: string;
 } {
@@ -88,7 +88,7 @@ export function checkStopLossPresent(stopLoss: number): {
   return { allowed: true, reason: "" };
 }
 
-export function checkDailyDrawdown(): { allowed: boolean; reason: string } {
+function checkDailyDrawdown(): { allowed: boolean; reason: string } {
   resetIfStale();
   if (dailyLossAccumulator >= QUANT_DAILY_DRAWDOWN_LIMIT) {
     return {
@@ -99,7 +99,7 @@ export function checkDailyDrawdown(): { allowed: boolean; reason: string } {
   return { allowed: true, reason: "" };
 }
 
-export function checkMaxPositions(): { allowed: boolean; reason: string } {
+function checkMaxPositions(): { allowed: boolean; reason: string } {
   const positions = getOpenQuantPositions();
   const count = positions.length;
   if (count >= QUANT_MAX_POSITIONS) {
@@ -111,7 +111,7 @@ export function checkMaxPositions(): { allowed: boolean; reason: string } {
   return { allowed: true, reason: "" };
 }
 
-export function checkRegimeAllowed(regime: MarketRegime): {
+function checkRegimeAllowed(regime: MarketRegime): {
   allowed: boolean;
   reason: string;
 } {

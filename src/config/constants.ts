@@ -58,7 +58,6 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000; // 30 seconds between 
 export const FUNDING_ARB_MIN_APR = 0.12; // 12% annualized minimum to open (delta-neutral threshold)
 export const FUNDING_ARB_CLOSE_APR = 0.05; // 5% annualized - close when rate normalizes below this
 export const FUNDING_ARB_DELTA_NEUTRAL = true; // Record virtual spot long hedge for delta-neutral mode
-export const FUNDING_ARB_EXIT_APR = 0.05; // 5% APR exit threshold (clearer name for delta-neutral context)
 export const FUNDING_ARB_LEVERAGE = 1; // 1x leverage only (minimal directional risk)
 export const FUNDING_ARB_MAX_SIZE_USD = 10; // $10 max per funding position (10% of $100 balance)
 export const FUNDING_ARB_SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour between scans

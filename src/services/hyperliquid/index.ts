@@ -72,11 +72,6 @@ export { calculateQuantPositionSize } from "./kelly.js";
 // Risk Management
 export {
   validateRiskGates,
-  checkLeverageCap,
-  checkStopLossPresent,
-  checkDailyDrawdown,
-  checkMaxPositions,
-  checkRegimeAllowed,
   isQuantKilled,
   setQuantKilled,
   recordDailyLoss,
