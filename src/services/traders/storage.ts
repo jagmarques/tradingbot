@@ -180,7 +180,7 @@ export function initInsiderTables(): void {
     console.log(`[InsiderScanner] Cleaned ${burnDeleted.changes} burn/bot addresses from insider_wallets`);
   }
 
-  // Cleanup gem_hits for burn addresses
+  // Remove burn/router/exchange addresses from gem_hits
   const gemBurnDeleted = db.prepare(
     `DELETE FROM insider_gem_hits WHERE wallet_address IN (${burnPlaceholders}) OR wallet_address LIKE '0x00000000%'`
   ).run(...burnAddrs);
@@ -188,7 +188,7 @@ export function initInsiderTables(): void {
     console.log(`[InsiderScanner] Cleaned ${gemBurnDeleted.changes} burn/bot gem hits from insider_gem_hits`);
   }
 
-  // Cleanup insider_wallets and insider_gem_hits for known DEX routers
+  // Remove DEX routers
   const allRouters = Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase());
   if (allRouters.length > 0) {
     const routerPlaceholders = allRouters.map(() => "?").join(",");
@@ -201,7 +201,7 @@ export function initInsiderTables(): void {
     }
   }
 
-  // Cleanup insider_wallets and insider_gem_hits for known exchanges
+  // Remove known exchanges
   const allExchanges = Object.values(KNOWN_EXCHANGES).flat().map(a => a.toLowerCase());
   if (allExchanges.length > 0) {
     const exchangePlaceholders = allExchanges.map(() => "?").join(",");

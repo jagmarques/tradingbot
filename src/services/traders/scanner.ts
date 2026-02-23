@@ -58,7 +58,6 @@ export const BURN_ADDRESSES = new Set([
   "0x0000000000000000000000000000000000000003", // RIPEMD precompile
 ]);
 
-// Module-level sets built once at startup - static data that never changes at runtime
 export const ALL_KNOWN_ROUTERS = new Set(Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase()));
 export const ALL_KNOWN_EXCHANGES = new Set(Object.values(KNOWN_EXCHANGES).flat().map(a => a.toLowerCase()));
 
@@ -482,7 +481,6 @@ async function _scanWalletHistoryInner(): Promise<void> {
     // Skip chains without working explorer APIs
     if (!EXPLORER_SUPPORTED_CHAINS.has(wallet.chain)) continue;
 
-    // Skip addresses that would be filtered at scoring time anyway
     if (isBotOrBurnAddress(wallet.address)) continue;
     if (ALL_KNOWN_ROUTERS.has(wallet.address.toLowerCase())) continue;
     if (ALL_KNOWN_EXCHANGES.has(wallet.address.toLowerCase())) continue;
