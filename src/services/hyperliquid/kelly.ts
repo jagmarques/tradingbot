@@ -27,7 +27,7 @@ export function calculateQuantPositionSize(
   const edge = winProb - 0.5;
   if (edge <= 0) return 0;
 
-  const kellyFull = edge / effectiveStop;
+  const kellyFull = (edge * 2) / effectiveStop;
   const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
 
   const rawSize = balance * kellyFractional;

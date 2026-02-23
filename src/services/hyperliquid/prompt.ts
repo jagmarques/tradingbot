@@ -94,7 +94,7 @@ Pair: ${analysis.pair}-PERP
 Mark Price: ${formatNum(analysis.markPrice, 2)}
 Oracle Price: ${formatNum(analysis.oraclePrice, 2)}
 24h Volume: ${formatNum(analysis.dayVolume, 0)}
-Funding Rate: ${fundingPct}% (per 8h)
+Funding Rate: ${fundingPct}% (per 1h)
 Open Interest: ${formatNum(analysis.openInterest, 0)}
 
 === MULTI-TIMEFRAME ANALYSIS ===

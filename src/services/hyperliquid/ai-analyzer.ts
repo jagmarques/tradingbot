@@ -4,7 +4,7 @@ import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { isQuantKilled } from "./risk-manager.js";
 import type { PairAnalysis, QuantAIDecision, MarketRegime } from "./types.js";
-import { QUANT_AI_CACHE_TTL_MS } from "../../config/constants.js";
+import { QUANT_AI_CACHE_TTL_MS, QUANT_AI_STOP_LOSS_MAX_PCT } from "../../config/constants.js";
 
 // --- In-memory cache ---
 
@@ -152,11 +152,21 @@ function parseAIResponse(
 
   const confidence = Math.max(0, Math.min(100, rawConfidence));
 
+  // Cap stop-loss to QUANT_AI_STOP_LOSS_MAX_PCT so position risk matches Kelly sizing
+  const maxStopFrac = QUANT_AI_STOP_LOSS_MAX_PCT / 100;
+  const cappedStopLoss = finalDirection === "long"
+    ? Math.max(stopLoss, entryPrice * (1 - maxStopFrac))
+    : Math.min(stopLoss, entryPrice * (1 + maxStopFrac));
+
+  if (cappedStopLoss !== stopLoss) {
+    console.log(`[QuantAI] Capped ${pair} stop-loss from ${stopLoss} to ${cappedStopLoss} (${QUANT_AI_STOP_LOSS_MAX_PCT}% max)`);
+  }
+
   return {
     pair,
     direction: finalDirection,
     entryPrice,
-    stopLoss,
+    stopLoss: cappedStopLoss,
     takeProfit,
     confidence,
     reasoning: reasoning.trim(),
