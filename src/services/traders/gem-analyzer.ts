@@ -692,12 +692,9 @@ export async function refreshCopyTradePrices(): Promise<void> {
               : `liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD}`;
           console.log(`[CopyTrade] PERIODIC RUG: ${tradesForToken[0].tokenSymbol} (${token.chain}) - ${reason} (${tradesForToken.length} trades)`);
 
-          const rugFeePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
           for (const trade of tradesForToken) {
-            updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, priceUsd);
-            const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
-              ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
-              : 0;
+            updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, 0);
+            const computedPnl = -100;
             trade.currentPriceUsd = priceUsd;
             const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
             if (!closed) continue;

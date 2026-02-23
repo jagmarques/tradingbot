@@ -158,12 +158,9 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
 
       console.log(`[RugMonitor] REALTIME RUG: ${tokenSymbol} (${chain}) - ${reason} (${matchingTrades.length} trades)`);
 
-      const rugFeePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
       for (const trade of matchingTrades) {
-        updateCopyTradePriceWithRugFee(trade.walletAddress, tokenAddress, chain, priceUsd);
-        const computedPnl = trade.buyPriceUsd > 0 && priceUsd > 0
-          ? ((priceUsd / trade.buyPriceUsd - 1) * 100 - rugFeePct)
-          : 0;
+        updateCopyTradePriceWithRugFee(trade.walletAddress, tokenAddress, chain, 0);
+        const computedPnl = -100;
         trade.currentPriceUsd = priceUsd;
         const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
         if (!closed) continue;
