@@ -776,7 +776,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     first_seen: number;
     last_seen: number;
   }, copyStats?: WalletCopyTradeStats, medianPump?: number): number {
-    // Legacy formula: gems(30) + avg_pump(30) + hold_rate(20) + recency(20) = 100
+    // Legacy formula: gems(30, 60d window) + avg_pump(30, 60d window) + hold_rate(20) + recency(20, 30d linear) = 100
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
     // Only gems with known status count in the denominator; unenriched gems are neutral
@@ -791,7 +791,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     // No copy trade history: use legacy formula
     if (totalTrades < 1) return legacyScore;
 
-    // New formula: gems(15) + median_pump(10) + win_rate(15) + profit_factor(20) + expectancy(20) + recency(20) = 100
+    // New formula: gems(15, 60d) + median_pump(10, 60d) + win_rate(15, 60d) + profit_factor(20, 60d) + expectancy(20, 60d) + recency(20, 7d half-life) = 100
     const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
     const mp = medianPump ?? wallet.avg_pump;
     const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
