@@ -1,4 +1,4 @@
-import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, updateCopyTradePriceWithRugFee, type GemAnalysis } from "./storage.js";
+import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason, CopyTrade } from "./types.js";
 import { isPaperMode } from "../../config/env.js";
@@ -594,10 +594,8 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
     console.log(`[CopyTrade] GOPLUS FLAG: ${trade.tokenSymbol} (${trade.chain}) - ${reason} (${matchingTrades.length} trades)`);
 
     for (const t of matchingTrades) {
-      const pnlPct = t.buyPriceUsd > 0 && t.currentPriceUsd > 0
-        ? ((t.currentPriceUsd / t.buyPriceUsd - 1) * 100 - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT)
-        : 0;
-      const closed = await exitCopyTrade(t, "honeypot", pnlPct, reason);
+      t.currentPriceUsd = 0;
+      const closed = await exitCopyTrade(t, "honeypot", -100, reason);
       if (!closed) continue;
       notifyCopyTrade({
         walletAddress: t.walletAddress,
@@ -608,7 +606,7 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
         liquidityOk: false,
         liquidityUsd: 0,
         skipReason: reason,
-        pnlPct,
+        pnlPct: -100,
       }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
 
@@ -693,9 +691,8 @@ export async function refreshCopyTradePrices(): Promise<void> {
           console.log(`[CopyTrade] PERIODIC RUG: ${tradesForToken[0].tokenSymbol} (${token.chain}) - ${reason} (${tradesForToken.length} trades)`);
 
           for (const trade of tradesForToken) {
-            updateCopyTradePriceWithRugFee(trade.walletAddress, trade.tokenAddress, trade.chain, 0);
             const computedPnl = -100;
-            trade.currentPriceUsd = priceUsd;
+            trade.currentPriceUsd = 0;
             const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
             if (!closed) continue;
             notifyCopyTrade({

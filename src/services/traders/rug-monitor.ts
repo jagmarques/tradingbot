@@ -3,7 +3,6 @@ import { id as keccak256 } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import {
   getOpenCopyTrades,
-  updateCopyTradePriceWithRugFee,
   incrementRugCount,
   updateCopyTradePairAddress,
 } from "./storage.js";
@@ -159,9 +158,8 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
       console.log(`[RugMonitor] REALTIME RUG: ${tokenSymbol} (${chain}) - ${reason} (${matchingTrades.length} trades)`);
 
       for (const trade of matchingTrades) {
-        updateCopyTradePriceWithRugFee(trade.walletAddress, tokenAddress, chain, 0);
         const computedPnl = -100;
-        trade.currentPriceUsd = priceUsd;
+        trade.currentPriceUsd = 0;
         const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
         if (!closed) continue;
         notifyCopyTrade({
