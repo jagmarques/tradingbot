@@ -344,6 +344,11 @@ OUTPUT JSON ONLY:
 
     console.log(`[AIBetting] ${result.marketsAnalyzed} AI calls, ${cached} cached`);
 
+    if (cycleAborted) {
+      console.log("[AIBetting] Cycle aborted after analysis loop, returning partial results");
+      return result;
+    }
+
     // Normalize sibling probabilities so they sum to ~100%
     for (const cluster of siblingClusters) {
       const clusterAnalyses = cluster
@@ -564,6 +569,7 @@ export function startAIBetting(cfg: AIBettingConfig): void {
 export function stopAIBetting(): void {
   if (!isRunning) return;
   isRunning = false;
+  cycleAborted = true;
   if (intervalHandle) {
     clearInterval(intervalHandle);
     intervalHandle = null;
