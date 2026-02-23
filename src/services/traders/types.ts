@@ -255,10 +255,10 @@ export const COPY_TRADE_CONFIG = {
   LIQUIDITY_RUG_DROP_PCT: 30,
   PRICE_REFRESH_INTERVAL_MS: 30 * 1000,
   GOPLUS_CHECK_INTERVAL_MS: 5 * 60 * 1000,
-  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000,
-  TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
-  STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
-  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,
+  TIME_PROFIT_TIGHTEN_MS: 24 * 60 * 60 * 1000, // 24h before tightening
+  TIME_PROFIT_TIGHTEN_STOP_PCT: 10, // tighten to +10% after 24h if profitable
+  STALE_INSIDER_MS: 7 * 24 * 60 * 60 * 1000, // 7 days - matches max hold
+  MAX_HOLD_TIME_MS: 7 * 24 * 60 * 60 * 1000, // 7 days max hold
   MIN_PAIR_AGE_MS: 2 * 60 * 60 * 1000, // 2 hours - brand-new tokens are highest rug risk
 };
 
