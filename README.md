@@ -52,13 +52,14 @@ Copies EVM token buys from high-scoring insider wallets.
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 5+ gem hits across 3+ unique tokens required
 
-**Consistency scoring (MIN_WALLET_SCORE = 80):**
-- Wilson Score lower bound for effective win rate (smooth cold-start penalization)
-- Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
-- Legacy formula uses log2(20) scaling so realistic wallets can score 85+
-- Expectancy floor: negative expectancy after 10+ trades = rejected
-- Exponential recency decay (14-day half-life), score-based sizing ($8-$15)
-- Circuit breaker: 3 consecutive losses = 24h pause
+**Consistency scoring (MIN_WALLET_SCORE = 80, MIN_GEM_HITS = 8):**
+- Two formulas: legacy (no copy trade data) and new (with copy trade history)
+- Legacy: gems(30, log2 scale) + avg pump(30, sqrt scale) + hold rate(20) + recency(20, 90-day linear)
+- New: gems(15) + median pump(10) + win rate(15, Wilson lower bound) + profit factor(20) + expectancy(20, /50 scale) + recency(20, 14-day half-life)
+- Hold rate uses enriched_count denominator (only gems with known status count, unenriched gems are neutral)
+- Profit factor has confidence scaling: 1 trade = 10% credit, 10+ trades = full credit
+- Expectancy floor: negative expectancy after 10+ trades caps score at 50
+- Score-based sizing ($8-$15), circuit breaker: 3 consecutive losses = 24h pause
 
 ### Rug Monitor
 
