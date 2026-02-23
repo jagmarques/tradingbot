@@ -5,7 +5,7 @@ import {
   QUANT_MAX_POSITIONS,
 } from "../../config/constants.js";
 
-const MIN_POSITION_USD = 1; // $1 minimum position size
+const MIN_POSITION_USD = 1;
 
 export function calculateQuantPositionSize(
   confidence: number,
@@ -24,11 +24,9 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
-  // Edge over coin-flip
   const edge = winProb - 0.5;
   if (edge <= 0) return 0;
 
-  // Kelly: edge / stop distance (tighter stops -> larger size, wider stops -> smaller)
   const kellyFull = edge / effectiveStop;
   const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
 
