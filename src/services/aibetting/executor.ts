@@ -124,6 +124,10 @@ export async function enterPosition(
     }
 
     price = parseFloat(priceStr);
+    if (!isFinite(price) || price <= 0) {
+      console.error(`[Executor] Invalid orderbook price: ${priceStr}`);
+      return null;
+    }
     const shares = decision.recommendedSize / price;
     const sharesStr = shares.toFixed(2);
 
