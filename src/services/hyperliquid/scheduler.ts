@@ -45,7 +45,7 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.pair,
         decision.direction,
         decision.suggestedSizeUsd,
-        3,
+        5,
         decision.stopLoss,
         decision.takeProfit,
         decision.regime,
@@ -75,7 +75,7 @@ export function startQuantScheduler(): void {
     return;
   }
 
-  console.log("[QuantScheduler] Started (3m interval, 3x leverage)");
+  console.log("[QuantScheduler] Started (3m interval, 5x leverage)");
 
   initialRunTimeout = setTimeout(() => {
     void runDirectionalCycle();
