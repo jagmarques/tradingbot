@@ -28,8 +28,8 @@ export function calculateQuantPositionSize(
   const edge = winProb - 0.5;
   if (edge <= 0) return 0;
 
-  // Kelly fraction: edge / odds (simplified to edge * 2 for even odds baseline)
-  const kellyFull = edge * 2;
+  // Kelly: edge / stop distance (tighter stops -> larger size, wider stops -> smaller)
+  const kellyFull = edge / effectiveStop;
   const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
 
   const rawSize = balance * kellyFractional;
