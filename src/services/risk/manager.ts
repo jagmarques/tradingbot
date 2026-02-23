@@ -114,26 +114,31 @@ export function getDailyPnlBreakdown(): {
   const quantPnl = quantResult.total || 0;
 
   const insiderResult = db.prepare(`
-    SELECT COALESCE(SUM(
-      CASE WHEN exit_reason IN ('liquidity_rug', 'honeypot')
-        THEN -amount_usd
-        ELSE amount_usd * pnl_pct / 100
-      END
-    ), 0) as total
+    SELECT COALESCE(SUM(amount_usd * pnl_pct / 100), 0) as total
     FROM insider_copy_trades
     WHERE status = 'closed'
       AND close_timestamp >= ?
+      AND exit_reason NOT IN ('liquidity_rug', 'honeypot')
   `).get(new Date(startOfDay).getTime()) as { total: number | null };
   const insiderCopyPnl = insiderResult.total || 0;
 
+  const rugResult = db.prepare(`
+    SELECT -COALESCE(SUM(amount_usd), 0) as total
+    FROM insider_copy_trades
+    WHERE status = 'closed'
+      AND close_timestamp >= ?
+      AND exit_reason IN ('liquidity_rug', 'honeypot')
+  `).get(new Date(startOfDay).getTime()) as { total: number | null };
+  const rugLosses = rugResult.total || 0;
+
   return {
-    total: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl,
+    total: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl + rugLosses,
     cryptoCopy,
     polyCopy,
     aiBetting,
     quantPnl,
     insiderCopyPnl,
-    rugLosses: 0,
+    rugLosses,
   };
 }
 

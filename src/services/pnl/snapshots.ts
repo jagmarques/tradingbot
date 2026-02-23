@@ -91,14 +91,17 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
     `).get() as { total: number };
 
     const insiderResult = db.prepare(`
-      SELECT COALESCE(SUM(
-        CASE WHEN exit_reason IN ('liquidity_rug', 'honeypot')
-          THEN -amount_usd
-          ELSE amount_usd * pnl_pct / 100
-        END
-      ), 0) as total
+      SELECT COALESCE(SUM(amount_usd * pnl_pct / 100), 0) as total
       FROM insider_copy_trades
       WHERE status = 'closed'
+        AND exit_reason NOT IN ('liquidity_rug', 'honeypot')
+    `).get() as { total: number };
+
+    const rugResult = db.prepare(`
+      SELECT -COALESCE(SUM(amount_usd), 0) as total
+      FROM insider_copy_trades
+      WHERE status = 'closed'
+        AND exit_reason IN ('liquidity_rug', 'honeypot')
     `).get() as { total: number };
 
     const cryptoCopy = cryptoCopyResult.total;
@@ -106,15 +109,16 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
     const aiBetting = aiBettingResult.total;
     const quantPnl = quantResult.total;
     const insiderCopyPnl = insiderResult.total;
+    const rugPnl = rugResult.total;
 
     row = {
-      totalPnl: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl,
+      totalPnl: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl + rugPnl,
       cryptoCopyPnl: cryptoCopy,
       polyCopyPnl: polyCopy,
       aiBettingPnl: aiBetting,
       quantPnl,
       insiderCopyPnl,
-      rugPnl: 0,
+      rugPnl,
     };
   } else {
     // Refresh snapshot for range queries that rely on daily_stats
