@@ -616,7 +616,17 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
       t => t.tokenAddress.toLowerCase() === trade.tokenAddress.toLowerCase() && t.chain === trade.chain
     );
 
-    const reason = data.is_honeypot === "1" ? "honeypot" : "sell_restricted";
+    const reason = data.is_honeypot === "1"
+      ? "honeypot"
+      : (typeof data.sell_tax === "string" && parseFloat(data.sell_tax) * 100 > 10)
+        ? "high_sell_tax"
+        : (typeof data.buy_tax === "string" && parseFloat(data.buy_tax) * 100 > 10)
+          ? "high_buy_tax"
+          : (() => {
+              const lps = Array.isArray(data.lp_holders) ? (data.lp_holders as Array<{ percent?: string; is_locked?: number | string }>) : [];
+              const totalUnlocked = lps.reduce((s, lp) => String(lp.is_locked) !== "1" ? s + parseFloat(lp.percent ?? "0") : s, 0);
+              return totalUnlocked > 0.7 ? "lp_unlocked" : "goplus_flag";
+            })();
     console.log(`[CopyTrade] GOPLUS FLAG: ${trade.tokenSymbol} (${trade.chain}) - ${reason} (${matchingTrades.length} trades)`);
 
     for (const t of matchingTrades) {
