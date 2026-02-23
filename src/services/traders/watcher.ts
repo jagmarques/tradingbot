@@ -520,7 +520,7 @@ export function setWebSocketActive(active: boolean): void {
 async function watchInsiderWallets(): Promise<void> {
   const allWallets = getInsiderWallets();
   const qualifiedWallets = allWallets
-    .filter((w) => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE && EXPLORER_SUPPORTED_CHAINS.has(w.chain))
+    .filter((w) => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE && EXPLORER_SUPPORTED_CHAINS.has(w.chain))
     .sort((a, b) => b.score - a.score)
     .slice(0, WATCHER_CONFIG.MAX_WALLETS_PER_CYCLE);
 

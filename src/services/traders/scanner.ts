@@ -601,7 +601,7 @@ async function enrichInsiderPnl(): Promise<void> {
         console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
 
         // Auto-close paper trade when high-score insider sells
-        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
+        if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score > WATCHER_CONFIG.MIN_WALLET_SCORE) {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
             await sellGemPosition(hit.tokenSymbol, hit.chain);
@@ -883,7 +883,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     let qualifiedCount = 0;
 
     const existingQualified = new Set(getInsiderWallets(undefined, undefined)
-      .filter(w => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE)
+      .filter(w => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE)
       .map(w => `${w.address}_${w.chain}`));
 
     for (const group of walletGroups) {
@@ -894,7 +894,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const score = computeWalletScore(group, copyStats && copyStats.totalTrades > 0 ? copyStats : undefined, medianPump);
       scores.push(score);
 
-      if (score >= WATCHER_CONFIG.MIN_WALLET_SCORE) {
+      if (score > WATCHER_CONFIG.MIN_WALLET_SCORE) {
         upsertInsiderWallet({
           address: group.wallet_address,
           chain: group.chain,

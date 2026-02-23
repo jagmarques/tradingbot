@@ -624,7 +624,7 @@ export function getInsiderStatsForToken(tokenAddress: string, chain: string): { 
 
 export function deleteInsiderWalletsBelow(minScore: number): number {
   const db = getDb();
-  const result = db.prepare("DELETE FROM insider_wallets WHERE score < ?").run(minScore);
+  const result = db.prepare("DELETE FROM insider_wallets WHERE score <= ?").run(minScore);
   return result.changes;
 }
 

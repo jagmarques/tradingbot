@@ -39,7 +39,7 @@ function unpadAddress(topic: string): string {
 function getQualifiedWalletsByChain(): Map<string, string[]> {
   const allWallets = getInsiderWallets();
   const qualified = allWallets
-    .filter(w => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE)
+    .filter(w => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE)
     .sort((a, b) => b.score - a.score)
     .slice(0, WATCHER_CONFIG.MAX_WALLETS_PER_CYCLE);
 
