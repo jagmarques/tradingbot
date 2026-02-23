@@ -1,5 +1,5 @@
 // Stagnation timeout - exit at break-even if stuck too long
-export const STAGNATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const STAGNATION_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
@@ -46,13 +46,13 @@ export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant AI Decision Engine
-export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-export const QUANT_AI_STOP_LOSS_MAX_PCT = 2; // Max stop-loss distance % (tight cut)
-export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly
+export const QUANT_AI_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const QUANT_AI_STOP_LOSS_MAX_PCT = 1; // Max stop-loss distance % (tight cut)
+export const QUANT_AI_KELLY_FRACTION = 0.5; // Half Kelly
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25; // $25 max daily loss before trading halt
-export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000; // 30 seconds between stop-loss checks
+export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000; // 10 seconds between stop-loss checks
 
 // Funding Rate Arbitrage
 export const FUNDING_ARB_MIN_APR = 0.12; // 12% annualized minimum to open (delta-neutral threshold)
@@ -65,7 +65,7 @@ export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss (wider than directio
 export const FUNDING_ARB_TAKE_PROFIT_PCT = 10; // 10% take-profit
 
 // Directional Trading Scheduler
-export const QUANT_SCHEDULER_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+export const QUANT_SCHEDULER_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading period
