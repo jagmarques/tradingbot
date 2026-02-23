@@ -55,7 +55,7 @@ function getRegimeInstruction(regime: MarketRegime): string {
         "If price is near the upper Bollinger Band or RSI > 65, go short targeting the middle/lower band. " +
         "If price is near the lower Bollinger Band or RSI < 35, go long targeting the middle/upper band. " +
         "Set stop-loss just beyond the band extreme (above upper for short, below lower for long). " +
-        "Confidence should be 60-85%. Only return flat if price is exactly at the middle band AND RSI is 45-55."
+        "Be aggressive - confidence should be 65-90% when the setup is clear. Only return flat if price is exactly at the middle band AND RSI is 45-55."
       );
     case "volatile":
       return (
@@ -105,7 +105,7 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 === INSTRUCTIONS ===
-Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be tightened automatically, degrading your risk/reward. Place stops at key levels within this 2% range.
+Stop-loss MUST be within 1% of entry price. Stops beyond 1% will be tightened automatically. Place stops at key technical levels within this tight 1% range. Be decisive - if the setup is there, take it with conviction. Prefer action over caution.
 
 If no clear setup exists or risk/reward is unfavorable, return direction: flat with confidence below 50 and reasoning explaining why.
 
@@ -113,7 +113,7 @@ OUTPUT JSON ONLY (no markdown, no extra text):
 {
   "direction": "long" | "short" | "flat",
   "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - within 2% of entry>,
+  "stopLoss": <number - within 1% of entry>,
   "takeProfit": <number - take-profit price>,
   "confidence": <number 0-100 - how confident in this trade>,
   "reasoning": "<2-3 sentences explaining the trade thesis based on the data>"
