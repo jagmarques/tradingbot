@@ -785,22 +785,6 @@ export function updateCopyTradePrice(walletAddress: string, tokenAddress: string
   `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, wa, ta, chain);
 }
 
-export function updateCopyTradePriceWithRugFee(walletAddress: string, tokenAddress: string, chain: string, currentPriceUsd: number): void {
-  const db = getDb();
-  const wa = normalizeAddr(walletAddress);
-  const ta = normalizeAddr(tokenAddress);
-  const feePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT;
-
-  db.prepare(`
-    UPDATE insider_copy_trades
-    SET current_price_usd = ?,
-        pnl_pct = CASE
-          WHEN buy_price_usd > 0 AND ? > 0 THEN MAX(((? / buy_price_usd - 1) * 100 - ?), -100)
-          ELSE 0
-        END
-    WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'
-  `).run(currentPriceUsd, currentPriceUsd, currentPriceUsd, feePct, wa, ta, chain);
-}
 
 export function closeCopyTrade(
   walletAddress: string,

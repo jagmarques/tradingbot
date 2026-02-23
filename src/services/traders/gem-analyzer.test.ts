@@ -15,7 +15,6 @@ vi.mock("../shared/dexscreener.js", () => ({
 
 const mockGetOpenCopyTrades = vi.fn();
 const mockUpdateCopyTradePrice = vi.fn();
-const mockUpdateCopyTradePriceWithRugFee = vi.fn();
 const mockCloseCopyTrade = vi.fn();
 const mockUpdateCopyTradePeakPnl = vi.fn();
 const mockUpdateCopyTradeTokenCreatedAt = vi.fn();
@@ -32,7 +31,6 @@ vi.mock("./storage.js", () => ({
   getInsiderStatsForToken: vi.fn(() => ({ insiderCount: 0, holdRate: 0, avgInsiderQuality: 0 })),
   getOpenCopyTrades: (...args: unknown[]): unknown => mockGetOpenCopyTrades(...args),
   updateCopyTradePrice: (...args: unknown[]): unknown => mockUpdateCopyTradePrice(...args),
-  updateCopyTradePriceWithRugFee: (...args: unknown[]): unknown => mockUpdateCopyTradePriceWithRugFee(...args),
   closeCopyTrade: (...args: unknown[]): unknown => mockCloseCopyTrade(...args),
   updateCopyTradePeakPnl: (...args: unknown[]): unknown => mockUpdateCopyTradePeakPnl(...args),
   updateCopyTradeTokenCreatedAt: (...args: unknown[]): unknown => mockUpdateCopyTradeTokenCreatedAt(...args),
