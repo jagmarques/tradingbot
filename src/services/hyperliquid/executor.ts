@@ -6,6 +6,7 @@ import {
   getPaperPositions,
 } from "./paper.js";
 import { validateRiskGates, recordDailyLoss } from "./risk-manager.js";
+import { clearAICacheForPair } from "./ai-analyzer.js";
 import { getPaperStartDate } from "../database/quant.js";
 import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
 import type { QuantPosition, MarketRegime } from "./types.js";
@@ -55,6 +56,10 @@ export async function closePosition(
   positionId: string,
   reason: string,
 ): Promise<{ success: boolean; pnl: number }> {
+  // Invalidate AI cache so next cycle gets fresh analysis
+  const pos = getPaperPositions().find(p => p.id === positionId);
+  if (pos) clearAICacheForPair(pos.pair);
+
   if (isPaperMode()) {
     const result = await paperClosePosition(positionId, reason);
     if (result.success && result.pnl < 0) {

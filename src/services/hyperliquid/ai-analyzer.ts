@@ -36,6 +36,10 @@ export function clearAICache(): void {
   analysisCache.clear();
 }
 
+export function clearAICacheForPair(pair: string): void {
+  analysisCache.delete(pair);
+}
+
 // --- Response parser and validator ---
 
 function parseAIResponse(
