@@ -269,7 +269,7 @@ function scoreGemQuality(
   const growth = pair ? scoreGrowthPotential(pair) : 0;
   const holders = goPlusData ? scoreHolderDistribution(goPlusData) : 5; // baseline when GoPlus unavailable
   const insiderRaw = scoreByInsiders(tokenAddress, chain);
-  const insider = Math.round(insiderRaw / 4); // max 25 (was /10 = max 10)
+  const insider = Math.round(insiderRaw / 4); // max 25
 
   const total = safety + liquidity + holders + growth + insider;
 
@@ -616,6 +616,17 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
   }
 }
 
+function computeAdjustedPnl(trade: CopyTrade): number {
+  let adj = trade.pnlPct;
+  if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+    const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+    const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+    adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+  }
+  adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
+  return adj;
+}
+
 export async function refreshCopyTradePrices(): Promise<void> {
   const now = Date.now();
   if (now - lastCopyTradeRefresh < 30_000) return;
@@ -735,18 +746,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
   if (updated > 0) {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
-  }
-
-  // Adjusted P&L (fees + slippage)
-  function computeAdjustedPnl(trade: CopyTrade): number {
-    let adj = trade.pnlPct;
-    if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-      const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
-      const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
-      adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
-    }
-    adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
-    return adj;
   }
 
   // Trailing stop-loss check

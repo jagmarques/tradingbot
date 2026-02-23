@@ -31,7 +31,7 @@ Tracks top Polymarket bettors by ROI, copies their trades with configurable sizi
 - Fast-ban: <25% win rate after 10 trades = multiplier 0 (no copies)
 - Profit factor gate: PF < 1.2 after 15 trades = multiplier 0
 - Mid-cycle removal: zero-multiplier traders dropped from tracked pool immediately
-- Learning threshold: 15 trades (was 30) before applying per-trader multipliers
+- Learning threshold: 15 trades before applying per-trader multipliers
 
 ### Insider Copy Trading
 
@@ -51,7 +51,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
 - Quality gates: 5+ gem hits across 3+ unique tokens required
 
-**Consistency scoring (MIN_WALLET_SCORE = 75):**
+**Consistency scoring (MIN_WALLET_SCORE = 80):**
 - Wilson Score lower bound for effective win rate (smooth cold-start penalization)
 - Weights: gems(15) + median pump(10) + win rate(15) + profit factor(20) + expectancy(20) + recency(20)
 - Legacy formula uses log2(20) scaling so realistic wallets can score 85+

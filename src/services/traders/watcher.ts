@@ -93,7 +93,7 @@ export async function processInsiderSell(
       : trade.pnlPct;
 
     const effectiveLiquidity = (fetchFreshPrice && freshLiquidityUsd > 0) ? freshLiquidityUsd : trade.liquidityUsd;
-    let feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT; // default 3%
+    let feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
     if (effectiveLiquidity > 0 && effectiveLiquidity < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
       const t = Math.max(0, Math.min(1, effectiveLiquidity / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
       feePct = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);

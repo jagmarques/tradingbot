@@ -13,6 +13,13 @@ let quantKilled = false;
 let dailyLossAccumulator = 0;
 let lastLossTimestamp = 0;
 
+function resetIfStale(): void {
+  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
+    dailyLossAccumulator = 0;
+    lastLossTimestamp = 0;
+  }
+}
+
 // ---- Kill switch ----
 
 export function isQuantKilled(): boolean {
@@ -29,13 +36,9 @@ export function setQuantKilled(killed: boolean): void {
 // ---- Daily drawdown ----
 
 export function recordDailyLoss(loss: number): void {
-  const now = Date.now();
-  // Reset accumulator if 24h have passed since last loss
-  if (lastLossTimestamp > 0 && now - lastLossTimestamp > 86_400_000) {
-    dailyLossAccumulator = 0;
-  }
+  resetIfStale();
   dailyLossAccumulator += loss;
-  lastLossTimestamp = now;
+  lastLossTimestamp = Date.now();
   console.log(
     `[RiskManager] Rolling 24h loss: $${dailyLossAccumulator.toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
   );
@@ -61,11 +64,7 @@ export function seedDailyLossFromDb(): void {
 }
 
 export function getDailyLossTotal(): number {
-  // Auto-reset if 24h have passed since last loss
-  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
-    dailyLossAccumulator = 0;
-    lastLossTimestamp = 0;
-  }
+  resetIfStale();
   return dailyLossAccumulator;
 }
 
@@ -98,10 +97,7 @@ export function checkStopLossPresent(stopLoss: number): {
 }
 
 export function checkDailyDrawdown(): { allowed: boolean; reason: string } {
-  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
-    dailyLossAccumulator = 0;
-    lastLossTimestamp = 0;
-  }
+  resetIfStale();
   if (dailyLossAccumulator >= QUANT_DAILY_DRAWDOWN_LIMIT) {
     return {
       allowed: false,
