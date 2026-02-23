@@ -913,7 +913,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     }
 
     const rugStats = getRugStats();
-    const total = realizedTotal + totalUnrealized + rugStats.gemPnlUsd;
+    const total = realizedTotal + totalUnrealized + (period === "today" ? rugStats.pnlUsd : 0);
     message += `<b>Total: ${pnl(total)}</b>`;
 
     // Realized
