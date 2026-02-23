@@ -151,6 +151,34 @@ export async function dexScreenerFetch(chain: string, tokenAddress: string): Pro
   return null;
 }
 
+export async function dexScreenerFetchByPair(chain: string, pairAddress: string): Promise<DexPair | null> {
+  if (!pairAddress) return null;
+  const dexChain = CHAINS[chain];
+  if (!dexChain) return null;
+
+  if (Date.now() < dexCooldownUntil) return null;
+
+  await enqueue();
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.dexscreener.com/latest/dex/pairs/${dexChain}/${pairAddress}`
+    );
+    if (resp.status === 429) {
+      dexCooldownUntil = Date.now() + DEX_COOLDOWN_MS;
+      console.log("[DexScreener] Pairs endpoint 429 - cooling down 5min");
+      return null;
+    }
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { pairs?: DexPair[] };
+    if (Array.isArray(data.pairs) && data.pairs.length > 0) {
+      return data.pairs[0];
+    }
+  } catch (err) {
+    console.log(`[DexScreener] Pair fetch error for ${pairAddress.slice(0, 10)}:`, err instanceof Error ? err.message : err);
+  }
+  return null;
+}
+
 const BATCH_SIZE = 30;
 
 export async function dexScreenerFetchBatch(

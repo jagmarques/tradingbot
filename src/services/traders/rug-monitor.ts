@@ -8,7 +8,7 @@ import {
 } from "./storage.js";
 import { exitCopyTrade } from "./gem-analyzer.js";
 import { COPY_TRADE_CONFIG, getAlchemyWssUrl } from "./types.js";
-import { dexScreenerFetch } from "../shared/dexscreener.js";
+import { dexScreenerFetch, dexScreenerFetchByPair } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 
 const V2_BURN_TOPIC = keccak256("Burn(address,uint256,uint256,address)"); // Uniswap V2
@@ -128,7 +128,7 @@ async function handleBurnEvent(chain: string, pairAddress: string): Promise<void
   console.log(`[RugMonitor] Burn event: ${tokenSymbol} (${chain})`);
 
   try {
-    const pair = await dexScreenerFetch(chain, tokenAddress);
+    const pair = await dexScreenerFetchByPair(chain, pairAddress);
     const liquidityUsd = pair?.liquidity?.usd ?? 0;
     const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
 
