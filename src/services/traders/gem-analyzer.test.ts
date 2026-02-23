@@ -9,8 +9,8 @@ vi.mock("../../config/env.js", () => ({
 const mockDexScreenerFetch = vi.fn();
 const mockDexScreenerFetchBatch = vi.fn();
 vi.mock("../shared/dexscreener.js", () => ({
-  dexScreenerFetch: (...args: unknown[]) => mockDexScreenerFetch(...args),
-  dexScreenerFetchBatch: (...args: unknown[]) => mockDexScreenerFetchBatch(...args),
+  dexScreenerFetch: (...args: unknown[]): unknown => mockDexScreenerFetch(...args),
+  dexScreenerFetchBatch: (...args: unknown[]): unknown => mockDexScreenerFetchBatch(...args),
 }));
 
 const mockGetOpenCopyTrades = vi.fn();
@@ -30,24 +30,24 @@ vi.mock("./storage.js", () => ({
   getTokenAddressForGem: vi.fn(),
   updateGemPaperTradePrice: vi.fn(),
   getInsiderStatsForToken: vi.fn(() => ({ insiderCount: 0, holdRate: 0, avgInsiderQuality: 0 })),
-  getOpenCopyTrades: (...args: unknown[]) => mockGetOpenCopyTrades(...args),
-  updateCopyTradePrice: (...args: unknown[]) => mockUpdateCopyTradePrice(...args),
-  updateCopyTradePriceWithRugFee: (...args: unknown[]) => mockUpdateCopyTradePriceWithRugFee(...args),
-  closeCopyTrade: (...args: unknown[]) => mockCloseCopyTrade(...args),
-  updateCopyTradePeakPnl: (...args: unknown[]) => mockUpdateCopyTradePeakPnl(...args),
-  updateCopyTradeTokenCreatedAt: (...args: unknown[]) => mockUpdateCopyTradeTokenCreatedAt(...args),
-  incrementRugCount: (...args: unknown[]) => mockIncrementRugCount(...args),
+  getOpenCopyTrades: (...args: unknown[]): unknown => mockGetOpenCopyTrades(...args),
+  updateCopyTradePrice: (...args: unknown[]): unknown => mockUpdateCopyTradePrice(...args),
+  updateCopyTradePriceWithRugFee: (...args: unknown[]): unknown => mockUpdateCopyTradePriceWithRugFee(...args),
+  closeCopyTrade: (...args: unknown[]): unknown => mockCloseCopyTrade(...args),
+  updateCopyTradePeakPnl: (...args: unknown[]): unknown => mockUpdateCopyTradePeakPnl(...args),
+  updateCopyTradeTokenCreatedAt: (...args: unknown[]): unknown => mockUpdateCopyTradeTokenCreatedAt(...args),
+  incrementRugCount: (...args: unknown[]): unknown => mockIncrementRugCount(...args),
   getRugCount: vi.fn(() => 0),
 }));
 
 const mockNotifyCopyTrade = vi.fn(() => Promise.resolve());
 vi.mock("../telegram/notifications.js", () => ({
-  notifyCopyTrade: (...args: unknown[]) => mockNotifyCopyTrade(...args),
+  notifyCopyTrade: (...args: unknown[]): unknown => mockNotifyCopyTrade(...args),
 }));
 
 const mockApproveAndSell1inch = vi.fn(() => ({ success: false }));
 vi.mock("../evm/index.js", () => ({
-  approveAndSell1inch: (...args: unknown[]) => mockApproveAndSell1inch(...args),
+  approveAndSell1inch: (...args: unknown[]): unknown => mockApproveAndSell1inch(...args),
   execute1inchSwap: vi.fn(),
   getNativeBalance: vi.fn(),
   isChainSupported: vi.fn(() => false),
