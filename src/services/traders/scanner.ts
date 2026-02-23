@@ -887,11 +887,15 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     const scores: number[] = [];
     let qualifiedCount = 0;
 
+    const allKnownRouters = new Set(Object.values(KNOWN_DEX_ROUTERS).flat().map(a => a.toLowerCase()));
+
     const existingQualified = new Set(getInsiderWallets(undefined, undefined)
       .filter(w => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE)
       .map(w => `${w.address}_${w.chain}`));
 
     for (const group of walletGroups) {
+      if (isBotOrBurnAddress(group.wallet_address)) continue;
+      if (allKnownRouters.has(group.wallet_address.toLowerCase())) continue;
       const gems = group.token_symbols.split(",").filter(Boolean);
       const copyStats = copyStatsMap.get(group.wallet_address);
       const mpKey = `${group.wallet_address}_${group.chain}`;
