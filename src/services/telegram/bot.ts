@@ -1096,7 +1096,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
         const walletShort = `${t.walletAddress.slice(0, 6)}..${t.walletAddress.slice(-4)}`;
         const dateTs = t.tokenCreatedAt ?? t.buyTimestamp;
         const dateLabel = t.tokenCreatedAt ? "launched" : "found";
-        const dateStr = new Date(dateTs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const dateStr = new Date(dateTs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         message += `${t.tokenSymbol} | ${fmtUsd(t.amountUsd)} | ${fmtPnl(pnlUsd)} ${t.pnlPct > 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         message += `  ${walletShort} | ${dateLabel} ${dateStr}\n`;
       }
