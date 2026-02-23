@@ -4,7 +4,6 @@ import { isPaperMode, loadEnv } from "../../config/env.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
 
-// Format date with user's timezone
 function formatDate(date: Date = new Date(), userId?: string): string {
   // Try user-specific timezone first, fall back to env default
   let timezone = loadEnv().TIMEZONE;
@@ -31,7 +30,6 @@ function formatDate(date: Date = new Date(), userId?: string): string {
   }
 }
 
-// Critical error alert
 export async function notifyCriticalError(error: string, context?: string): Promise<void> {
   const message =
     `🚨 <b>CRITICAL ERROR</b>\n\n` +
@@ -42,7 +40,6 @@ export async function notifyCriticalError(error: string, context?: string): Prom
   await sendMessage(message);
 }
 
-// Bot started notification
 export async function notifyBotStarted(): Promise<void> {
   const mode = isPaperMode() ? "Paper" : "Live";
   const timezone = loadEnv().TIMEZONE;
@@ -50,7 +47,6 @@ export async function notifyBotStarted(): Promise<void> {
   await sendMessage(message);
 }
 
-// Bot stopped notification
 export async function notifyBotStopped(reason?: string): Promise<void> {
   const message =
     `🛑 <b>Bot Stopped</b>\n\n` +
@@ -59,7 +55,6 @@ export async function notifyBotStopped(reason?: string): Promise<void> {
   await sendMessage(message);
 }
 
-// Kill switch notification
 export async function notifyKillSwitch(activated: boolean, reason?: string): Promise<void> {
   if (activated) {
     const message =
@@ -73,7 +68,6 @@ export async function notifyKillSwitch(activated: boolean, reason?: string): Pro
   }
 }
 
-// Daily P&L summary
 export async function notifyDailySummary(): Promise<void> {
   const pnl = getDailyPnl();
   const pnlPct = getDailyPnlPercentage();
@@ -98,7 +92,6 @@ export async function notifyDailySummary(): Promise<void> {
   await sendMessage(message);
 }
 
-// AI Betting: Bet placed notification
 export async function notifyAIBetPlaced(params: {
   marketTitle: string;
   side: "YES" | "NO";
@@ -121,7 +114,6 @@ export async function notifyAIBetPlaced(params: {
   await sendMessage(message);
 }
 
-// AI Betting: Bet closed notification
 export async function notifyAIBetClosed(params: {
   marketTitle: string;
   side: "YES" | "NO";
@@ -140,7 +132,6 @@ export async function notifyAIBetClosed(params: {
   await sendMessage(message);
 }
 
-// Polymarket Copy Trade Notification
 export async function notifyTopTraderCopy(params: {
   traderName: string;
   marketTitle: string;
@@ -160,7 +151,6 @@ export async function notifyTopTraderCopy(params: {
   await sendMessage(message);
 }
 
-// Polymarket Copy Trade Close Notification
 export async function notifyTopTraderCopyClose(params: {
   traderName: string;
   marketTitle: string;
@@ -178,7 +168,6 @@ export async function notifyTopTraderCopyClose(params: {
   await sendMessage(message);
 }
 
-// Insider Buy Detected notification
 export async function notifyInsiderBuyDetected(params: {
   walletAddress: string;
   walletScore: number;
@@ -199,7 +188,6 @@ export async function notifyInsiderBuyDetected(params: {
 }
 
 
-// Copy trade notification (buy or sell)
 export async function notifyCopyTrade(params: {
   walletAddress: string;
   tokenSymbol: string;
@@ -243,7 +231,6 @@ export async function notifyCopyTrade(params: {
   await sendMessage(message);
 }
 
-// Quant Trade Entry Notification
 export async function notifyQuantTradeEntry(params: {
   pair: string;
   direction: "long" | "short";
@@ -270,7 +257,6 @@ export async function notifyQuantTradeEntry(params: {
   await sendMessage(message);
 }
 
-// Quant Trade Exit Notification
 export async function notifyQuantTradeExit(params: {
   pair: string;
   direction: "long" | "short";
@@ -297,7 +283,6 @@ export async function notifyQuantTradeExit(params: {
   await sendMessage(message);
 }
 
-// Helper to escape HTML
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")

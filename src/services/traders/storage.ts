@@ -967,7 +967,6 @@ export function increaseCopyTradeAmount(id: string, additionalAmount: number, ne
       WHERE id = ?
     `).run(additionalAmount, newBuyPriceUsd, additionalAmount, additionalAmount, id);
   } else {
-    // No price, add amount only
     db.prepare(
       "UPDATE insider_copy_trades SET amount_usd = amount_usd + ?, insider_count = insider_count + 1 WHERE id = ?"
     ).run(additionalAmount, id);

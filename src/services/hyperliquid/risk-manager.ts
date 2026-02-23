@@ -7,8 +7,6 @@ import type { MarketRegime } from "./types.js";
 import { getOpenQuantPositions } from "./executor.js";
 import { sumRecentQuantLosses } from "../database/quant.js";
 
-// ---- Module-level state ----
-
 let quantKilled = false;
 let dailyLossAccumulator = 0;
 let lastLossTimestamp = 0;
@@ -20,8 +18,6 @@ function resetIfStale(): void {
   }
 }
 
-// ---- Kill switch ----
-
 export function isQuantKilled(): boolean {
   return quantKilled;
 }
@@ -32,8 +28,6 @@ export function setQuantKilled(killed: boolean): void {
     `[RiskManager] Quant kill switch: ${killed ? "ACTIVATED" : "DEACTIVATED"}`,
   );
 }
-
-// ---- Daily drawdown ----
 
 export function recordDailyLoss(loss: number): void {
   resetIfStale();
@@ -67,8 +61,6 @@ export function getDailyLossTotal(): number {
   resetIfStale();
   return dailyLossAccumulator;
 }
-
-// ---- Individual gate checks ----
 
 export function checkLeverageCap(leverage: number): {
   allowed: boolean;

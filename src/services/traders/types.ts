@@ -1,4 +1,3 @@
-// Shared types and config for insider copy trading pipeline
 import { loadEnv } from "../../config/env.js";
 
 export type EvmChain = "ethereum" | "polygon" | "base" | "arbitrum" | "optimism" | "avalanche";
@@ -175,13 +174,13 @@ export interface InsiderScanResult {
 }
 
 export const INSIDER_CONFIG = {
-  MIN_GEM_HITS: 5, // 5+ gems to be considered insider
+  MIN_GEM_HITS: 5,
   MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
   MIN_GEM_SCORE: 60, // min score to paper-buy
   RESCORE_THRESHOLD: 45, // re-analyze gems near buy threshold
-  MAX_BUY_PUMP: 20, // skip buying if already pumped this much
-  QUALITY_GEM_HITS: 5, // gem hits required for insider quality scoring
-  MAX_GEM_AGE_DAYS: 30, // skip tokens older than 30 days
+  MAX_BUY_PUMP: 20,
+  QUALITY_GEM_HITS: 5,
+  MAX_GEM_AGE_DAYS: 30,
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
   SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as EvmChain[],
@@ -193,10 +192,10 @@ export const INSIDER_CONFIG = {
 };
 
 export const WATCHER_CONFIG = {
-  INTERVAL_MS: 2.5 * 60 * 1000, // 2.5 minutes between watch cycles
+  INTERVAL_MS: 2.5 * 60 * 1000,
   MIN_WALLET_SCORE: 80, // Only watch wallets with score >= 80
   MAX_WALLETS_PER_CYCLE: 30, // Rate limit: max wallets per cycle
-  MAX_NEW_TOKENS_PER_WALLET: 3, // Max new tokens to process per wallet per cycle
+  MAX_NEW_TOKENS_PER_WALLET: 3,
 };
 
 export type CopyExitReason =
@@ -240,8 +239,8 @@ export interface CopyTrade {
 }
 
 export const INSIDER_WS_CONFIG = {
-  SYNC_INTERVAL_MS: 30_000, // 30s wallet list sync
-  DEDUP_TTL_MS: 10 * 60 * 1000, // 10 min tx hash dedup
+  SYNC_INTERVAL_MS: 30_000,
+  DEDUP_TTL_MS: 10 * 60 * 1000,
   FALLBACK_POLL_INTERVAL_MS: 10 * 60 * 1000, // 10 min polling when WS active
 };
 
@@ -250,18 +249,17 @@ export const COPY_TRADE_CONFIG = {
   STOP_LOSS_PCT: -50,
   ESTIMATED_FEE_PCT: 3, // ~1.5% per side (DEX fee + slippage) on micro-caps
   ESTIMATED_RUG_FEE_PCT: 15, // selling into drained pool = massive slippage
-  MAX_EXPOSURE_USD: 200, // max total open exposure, skip new buys if exceeded
+  MAX_EXPOSURE_USD: 200,
   LIQUIDITY_RUG_FLOOR_USD: 5000,
   LIQUIDITY_RUG_DROP_PCT: 30,
   PRICE_REFRESH_INTERVAL_MS: 30 * 1000,
   GOPLUS_CHECK_INTERVAL_MS: 5 * 60 * 1000,
-  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000, // 4 hours - tighten trailing stop for profitable positions
+  TIME_PROFIT_TIGHTEN_MS: 4 * 60 * 60 * 1000,
   TIME_PROFIT_TIGHTEN_STOP_PCT: 0, // tighten trailing stop to breakeven after 4h if profitable
   STALE_INSIDER_MS: 24 * 60 * 60 * 1000, // 24 hours - close profitable positions if insider hasn't sold
-  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000, // 48 hours - absolute max hold time
+  MAX_HOLD_TIME_MS: 48 * 60 * 60 * 1000,
 };
 
-/** Score-based position sizing: higher score = larger position */
 export function getPositionSize(score: number): number {
   if (score >= 95) return 15;
   if (score >= 90) return 13;

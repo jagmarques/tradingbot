@@ -73,7 +73,6 @@ export function startInsiderScanner(): void {
     );
   }, 30000);
 
-  // GoPlus periodic re-check every 5 min
   setTimeout(() => {
     console.log(`[GoPlusCheck] Started (every ${COPY_TRADE_CONFIG.GOPLUS_CHECK_INTERVAL_MS / 60000} min)`);
     goplusCheckLoop().catch((err) =>
@@ -87,7 +86,6 @@ export function startInsiderScanner(): void {
 
   setTimeout(() => startRugMonitor(), 5000);
 
-  // Real-time insider buy/sell detection via Alchemy WebSocket
   setTimeout(() => startInsiderWebSocket(), 8000);
 }
 

@@ -20,7 +20,6 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
-// LP/wrapper token symbols to skip (not real tradeable tokens)
 const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
   "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
@@ -145,11 +144,9 @@ export async function processInsiderBuy(tokenInfo: {
   tokenRetryDone.delete(tokenLockKey);
 
   try {
-  // Dedup: same wallet + token
   const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
   if (existingCopy) return;
 
-  // Rug dedup
   const rugCount = getRugCount(tokenInfo.tokenAddress, tokenInfo.chain);
   if (rugCount > 0) {
     console.log(`[CopyTrade] Skip ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) - rugged ${rugCount}x before`);
@@ -178,7 +175,6 @@ export async function processInsiderBuy(tokenInfo: {
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
 
-  // Max pump guard
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
@@ -287,7 +283,6 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   if (priceUsd <= 0) {
-    // No price yet, skip
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -316,7 +311,6 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // GoPlus safety check
   const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!goPlusData) {
     insertCopyTrade({
@@ -378,7 +372,6 @@ export async function processInsiderBuy(tokenInfo: {
   const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
 
   if (isPaperMode()) {
-    // Paper buy
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -417,7 +410,6 @@ export async function processInsiderBuy(tokenInfo: {
       }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
   } else {
-    // Live buy
     if (!liquidityOk) {
       insertCopyTrade({
         walletAddress: tokenInfo.walletAddress,
@@ -514,7 +506,6 @@ export function setWebSocketActive(active: boolean): void {
 }
 
 async function watchInsiderWallets(): Promise<void> {
-  // Get qualified wallets
   const allWallets = getInsiderWallets();
   const qualifiedWallets = allWallets
     .filter((w) => w.score >= WATCHER_CONFIG.MIN_WALLET_SCORE && EXPLORER_SUPPORTED_CHAINS.has(w.chain))
@@ -526,7 +517,6 @@ async function watchInsiderWallets(): Promise<void> {
     return;
   }
 
-  // Clean stale entries from lastSeenTxTimestamp
   const activeKeys = new Set(qualifiedWallets.map((w) => `${w.address}_${w.chain}`));
   for (const key of lastSeenTxTimestamp.keys()) {
     if (!activeKeys.has(key)) {
@@ -549,7 +539,6 @@ async function watchInsiderWallets(): Promise<void> {
         pausedWallets.delete(wallet.address); // pause expired
       }
 
-      // Circuit breaker
       const copyStats = getWalletCopyTradeStats(wallet.address);
       const cb = checkCircuitBreaker(copyStats);
       if (cb.blocked) {
@@ -627,7 +616,6 @@ async function watchInsiderWallets(): Promise<void> {
         }
       }
 
-      // Recent incoming transfers
       const recentIncoming = data.result.filter((tx) => {
         const ts = parseInt(tx.timeStamp);
         if (ts <= lastSeenTs) return false;
@@ -666,7 +654,6 @@ async function watchInsiderWallets(): Promise<void> {
 
   console.log(`[InsiderWatcher] Cycle: watched ${qualifiedWallets.length} wallets, found ${newBuysTotal} new buys`);
 
-  // Periodic dedup cleanup
   cleanupProcessedTxHashes();
 }
 

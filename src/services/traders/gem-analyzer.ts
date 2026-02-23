@@ -748,7 +748,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
     console.log(`[CopyTrade] Refreshed prices for ${updated} open copy trades`);
   }
 
-  // Trailing stop-loss check
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
     if (trade.pnlPct > trade.peakPnlPct) {
@@ -757,7 +756,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
     const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
     const holdTimeMs = Date.now() - trade.buyTimestamp;
 
-    // Max hold time (48h)
     if (holdTimeMs >= COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
       const hours = Math.round(holdTimeMs / 3_600_000);
       const adjustedPnlPct = computeAdjustedPnl(trade);
@@ -774,7 +772,6 @@ export async function refreshCopyTradePrices(): Promise<void> {
       continue;
     }
 
-    // Stale insider (24h, profitable)
     if (holdTimeMs >= COPY_TRADE_CONFIG.STALE_INSIDER_MS && trade.pnlPct > 0) {
       const hours = Math.round(holdTimeMs / 3_600_000);
       const adjustedPnlPct = computeAdjustedPnl(trade);
@@ -794,20 +791,19 @@ export async function refreshCopyTradePrices(): Promise<void> {
     // Trailing stop ladder
     let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
     if (peak >= 500) {
-      stopLevel = peak - 100; // 100pt gap above +500%
+      stopLevel = peak - 100;
     } else if (peak >= 200) {
-      stopLevel = 100; // lock in +100% if we hit +200%
+      stopLevel = 100;
     } else if (peak >= 100) {
-      stopLevel = 50; // lock in +50% if we hit +100%
+      stopLevel = 50;
     } else if (peak >= 50) {
-      stopLevel = 25; // lock in +25% if we hit +50%
+      stopLevel = 25;
     } else if (peak >= 25) {
-      stopLevel = 10; // lock in +10% if we hit +25%
+      stopLevel = 10;
     } else if (peak >= 10) {
-      stopLevel = 0; // breakeven if we hit +10%
+      stopLevel = 0;
     }
 
-    // 4h+ profitable -> breakeven floor
     let timeTightened = false;
     if (holdTimeMs >= COPY_TRADE_CONFIG.TIME_PROFIT_TIGHTEN_MS && trade.pnlPct > 0) {
       const before = stopLevel;
