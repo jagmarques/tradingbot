@@ -981,14 +981,15 @@ export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
   ).run(peakPnlPct, id, peakPnlPct);
 }
 
-export function getRugStats(): { count: number; lostUsd: number } {
+export function getRugStats(): { count: number; pnlUsd: number } {
   const db = getDb();
 
+  // Use actual pnl_pct * amount_usd / 100 — rug monitor may exit profitably if it fires early
   const copyRow = db.prepare(`
-    SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
+    SELECT COUNT(*) as count, COALESCE(SUM(amount_usd * pnl_pct / 100.0), 0) as pnl
     FROM insider_copy_trades
     WHERE exit_reason = 'liquidity_rug'
-  `).get() as { count: number; lost: number };
+  `).get() as { count: number; pnl: number };
 
   const gemRow = db.prepare(`
     SELECT COUNT(*) as count, COALESCE(SUM(amount_usd), 0) as lost
@@ -1003,6 +1004,6 @@ export function getRugStats(): { count: number; lostUsd: number } {
 
   return {
     count: (copyRow.count ?? 0) + (gemRow.count ?? 0),
-    lostUsd: (copyRow.lost ?? 0) + (gemRow.lost ?? 0),
+    pnlUsd: (copyRow.pnl ?? 0) - (gemRow.lost ?? 0),
   };
 }

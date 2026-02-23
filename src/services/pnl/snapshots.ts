@@ -76,8 +76,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
         COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
         COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
         COALESCE(SUM(quant_pnl), 0) as quantPnl,
-        COALESCE(SUM(insider_copy_pnl), 0) as insiderCopyPnl,
-        COALESCE(SUM(rug_pnl), 0) as rugPnl
+        COALESCE(SUM(insider_copy_pnl), 0) + COALESCE(SUM(rug_pnl), 0) as insiderCopyPnl,
+        0 as rugPnl
       FROM daily_stats
     `).get() as typeof row;
   } else {
@@ -92,8 +92,8 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
         COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
         COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
         COALESCE(SUM(quant_pnl), 0) as quantPnl,
-        COALESCE(SUM(insider_copy_pnl), 0) as insiderCopyPnl,
-        COALESCE(SUM(rug_pnl), 0) as rugPnl
+        COALESCE(SUM(insider_copy_pnl), 0) + COALESCE(SUM(rug_pnl), 0) as insiderCopyPnl,
+        0 as rugPnl
       FROM daily_stats
       WHERE date >= ?
     `).get(dateStr) as typeof row;

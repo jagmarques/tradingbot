@@ -920,7 +920,10 @@ async function handlePnl(ctx: Context): Promise<void> {
     message += `<b>Realized</b> ${pnl(realizedTotal)}\n`;
     message += breakdownStr;
     const rugStats = getRugStats();
-    message += `\nRugs: ${rugStats.count}${rugStats.lostUsd > 0 ? ` | -${$fmt(rugStats.lostUsd)}` : ""}`;
+    const rugPnlStr = rugStats.pnlUsd !== 0
+      ? ` | ${rugStats.pnlUsd >= 0 ? "+" : ""}${$fmt(rugStats.pnlUsd)}`
+      : "";
+    message += `\nRugs: ${rugStats.count}${rugPnlStr}`;
 
     // Unrealized (open positions)
     message += `\n-------------------\n`;
