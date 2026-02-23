@@ -912,14 +912,14 @@ async function handlePnl(ctx: Context): Promise<void> {
       );
     }
 
-    const total = realizedTotal + totalUnrealized;
+    const rugStats = getRugStats();
+    const total = realizedTotal + totalUnrealized + rugStats.gemPnlUsd;
     message += `<b>Total: ${pnl(total)}</b>`;
 
     // Realized
     message += `\n-------------------\n`;
     message += `<b>Realized</b> ${pnl(realizedTotal)}\n`;
     message += breakdownStr;
-    const rugStats = getRugStats();
     const rugPnlStr = rugStats.pnlUsd !== 0
       ? ` | ${rugStats.pnlUsd >= 0 ? "+" : ""}${$fmt(rugStats.pnlUsd)}`
       : "";

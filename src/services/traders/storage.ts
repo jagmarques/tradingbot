@@ -980,7 +980,7 @@ export function updateCopyTradePeakPnl(id: string, peakPnlPct: number): void {
   ).run(peakPnlPct, id, peakPnlPct);
 }
 
-export function getRugStats(): { count: number; pnlUsd: number } {
+export function getRugStats(): { count: number; pnlUsd: number; gemPnlUsd: number } {
   const db = getDb();
 
   const copyRow = db.prepare(`
@@ -1003,5 +1003,6 @@ export function getRugStats(): { count: number; pnlUsd: number } {
   return {
     count: (copyRow.count ?? 0) + (gemRow.count ?? 0),
     pnlUsd: (copyRow.pnl ?? 0) - (gemRow.lost ?? 0),
+    gemPnlUsd: -(gemRow.lost ?? 0),
   };
 }
