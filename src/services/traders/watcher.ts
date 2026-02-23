@@ -187,6 +187,36 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
+  const pairAgeDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
+  if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: 0,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
+      liquidityUsd,
+      skipReason: "old_pair",
+      buyTimestamp: Date.now(),
+      tokenCreatedAt: pair.pairCreatedAt,
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
+    });
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d > ${INSIDER_CONFIG.MAX_GEM_AGE_DAYS}d)`);
+    return;
+  }
+
   if (isLpToken(symbol)) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
     return;
@@ -200,6 +230,10 @@ export async function processInsiderBuy(tokenInfo: {
 
   // Accumulation path
   if (existingTokenTrade) {
+    if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+      console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d)`);
+      return;
+    }
     const addAmount = existingTokenTrade.amountUsd * 0.50;
     const openTrades = getOpenCopyTrades();
     const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
