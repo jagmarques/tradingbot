@@ -265,7 +265,7 @@ export async function notifyQuantTradeExit(params: {
   size: number;
   pnl: number;
   exitReason: string;
-  tradeType: "directional" | "funding";
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding";
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";

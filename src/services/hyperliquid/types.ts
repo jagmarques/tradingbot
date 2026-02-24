@@ -89,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding";
+export type TradeType = "directional" | "ai-directional" | "rule-directional" | "funding";
 
 export interface FundingOpportunity {
   pair: string;
