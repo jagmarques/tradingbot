@@ -111,6 +111,26 @@ export interface TechnicalIndicators {
   adx: number | null;
 }
 
+export interface OrderbookImbalance {
+  bidDepthUsd: number; // Total bid size in USD within 2% of mid
+  askDepthUsd: number; // Total ask size in USD within 2% of mid
+  imbalanceRatio: number; // bidDepth / (bidDepth + askDepth), 0.5 = balanced, >0.5 = bid heavy
+  spreadBps: number; // Spread in basis points
+}
+
+export interface LongShortRatio {
+  global: number; // Global accounts L/S ratio (>1 = more longs)
+  topTraders: number; // Top trader L/S ratio
+  globalTrend: "rising" | "falling" | "stable"; // Direction over last 5 periods
+}
+
+export interface MicrostructureData {
+  longShortRatio: LongShortRatio | null;
+  orderbookImbalance: OrderbookImbalance | null;
+  oiDelta: number | null; // OI change since last cycle (positive = new positions opening)
+  oiDeltaPct: number | null; // OI change as percentage
+}
+
 export interface PairAnalysis {
   pair: string;
   indicators: Record<CandleInterval, TechnicalIndicators>;
@@ -122,6 +142,7 @@ export interface PairAnalysis {
   oraclePrice: number;
   dayVolume: number;
   analyzedAt: string;
+  microstructure?: MicrostructureData;
 }
 
 export interface QuantAIDecision {
