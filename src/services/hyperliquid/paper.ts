@@ -136,6 +136,7 @@ export async function paperOpenPosition(
   aiConfidence?: number,
   aiReasoning?: string,
   indicatorsAtEntry?: string,
+  aiEntryPrice?: number,
 ): Promise<QuantPosition | null> {
   if (virtualBalance < sizeUsd) {
     console.log(
@@ -150,6 +151,21 @@ export async function paperOpenPosition(
     return null;
   }
 
+  // Rebase stop/TP from AI's entry price to actual fill price
+  let adjStop = stopLoss;
+  let adjTP = takeProfit;
+  if (aiEntryPrice && aiEntryPrice > 0) {
+    const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
+    const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
+    adjStop = price * (1 + stopPct);
+    adjTP = price * (1 + tpPct);
+    if (Math.abs(price - aiEntryPrice) / aiEntryPrice > 0.001) {
+      console.log(
+        `[Quant Paper] Rebased stops for ${pair}: entry ${aiEntryPrice}->${price}, stop ${stopLoss.toPrecision(5)}->${adjStop.toPrecision(5)}`,
+      );
+    }
+  }
+
   const position: QuantPosition = {
     id: generateQuantId(),
     pair,
@@ -157,8 +173,8 @@ export async function paperOpenPosition(
     entryPrice: price,
     size: sizeUsd,
     leverage,
-    stopLoss,
-    takeProfit,
+    stopLoss: adjStop,
+    takeProfit: adjTP,
     unrealizedPnl: 0,
     mode: "paper",
     status: "open",
@@ -181,8 +197,8 @@ export async function paperOpenPosition(
     entryPrice: price,
     leverage,
     tradeType,
-    stopLoss,
-    takeProfit,
+    stopLoss: adjStop,
+    takeProfit: adjTP,
   });
 
   console.log(

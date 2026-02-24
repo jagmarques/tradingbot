@@ -53,6 +53,7 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.reasoning,
         "directional",
         undefined,
+        decision.entryPrice,
       );
 
       if (position) {
