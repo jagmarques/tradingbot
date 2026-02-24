@@ -41,7 +41,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Polling fallback every 10 min when WebSocket active, 2.5 min standalone
 - Exit on insider sell only (plus safety exits: rug, honeypot, stale price)
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
-- Pre-pump token discovery: catches tokens with 20-99% change and high volume/liquidity ratio
+- Pre-pump token discovery: catches tokens with 10-99% change and high tx count
 - GoPlus security checks, $10k min liquidity, $200 max exposure, 30s price refresh
 - Dynamic position sizing: $3-$20 based on score + copy trade performance (profit factor, win rate)
 - Live mode: buys/sells via 1inch routing
@@ -49,7 +49,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Pump guard: skip tokens already pumped 20x+
 - Pair age guard: skip tokens older than 30 days
 - Scans Ethereum, Arbitrum, Polygon, Avalanche
-- Quality gates: 8+ gem hits across 3+ unique tokens, up to 50 wallets watched
+- Quality gates: 5+ gem hits across 3+ unique tokens, no wallet cap
 
 **Wallet scoring (score > 60 required):**
 - Legacy (no copy trades): gems + avg pump + hold rate + recency = 100pts

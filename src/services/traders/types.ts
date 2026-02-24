@@ -174,7 +174,7 @@ export interface InsiderScanResult {
 }
 
 export const INSIDER_CONFIG = {
-  MIN_GEM_HITS: 8,
+  MIN_GEM_HITS: 5,
   MIN_UNIQUE_TOKENS: 3, // 3+ unique tokens across gem hits
   MIN_GEM_SCORE: 60, // min score to paper-buy
   RESCORE_THRESHOLD: 45, // re-analyze gems near buy threshold
@@ -186,15 +186,14 @@ export const INSIDER_CONFIG = {
   SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as EvmChain[],
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
-  MAX_HISTORY_TOKENS: 10, // max unique tokens to check per wallet history scan
-  HISTORY_MIN_FDV_USD: 10000, // min FDV to qualify
+  MAX_HISTORY_TOKENS: 25, // max unique tokens to check per wallet history scan
+  HISTORY_MIN_FDV_USD: 5000, // min FDV to qualify
   SNIPER_MAX_HOLD_MS: 24 * 60 * 60 * 1000, // max hold time to be considered a sniper flip
 };
 
 export const WATCHER_CONFIG = {
   INTERVAL_MS: 2.5 * 60 * 1000,
   MIN_WALLET_SCORE: 60, // Only watch wallets with score > 60
-  MAX_WALLETS_PER_CYCLE: 50, // Rate limit: max wallets per cycle
   MAX_NEW_TOKENS_PER_WALLET: 3,
 };
 

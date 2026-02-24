@@ -182,12 +182,11 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Score-based position sizing with performance history; halve for legacy wallets
+  // Score-based position sizing with performance history
   const stats = getWalletCopyTradeStats(tokenInfo.walletAddress);
   const baseAmount = getPositionSize(tokenInfo.walletScore, stats && stats.totalTrades > 0 ? { wins: stats.wins, totalTrades: stats.totalTrades, grossProfit: stats.grossProfit, grossLoss: stats.grossLoss } : undefined);
-  const positionAmount = tokenInfo.hasTradeHistory ? baseAmount : Math.floor(baseAmount / 2);
-  const legacyNote = tokenInfo.hasTradeHistory ? "" : " (legacy, halved)";
-  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}${legacyNote}`);
+  const positionAmount = baseAmount;
+  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
   // Exposure check (accumulation bypasses)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
@@ -618,8 +617,7 @@ async function watchInsiderWallets(): Promise<void> {
   const allWallets = getInsiderWallets();
   const qualifiedWallets = allWallets
     .filter((w) => w.score > WATCHER_CONFIG.MIN_WALLET_SCORE && EXPLORER_SUPPORTED_CHAINS.has(w.chain))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, WATCHER_CONFIG.MAX_WALLETS_PER_CYCLE);
+    .sort((a, b) => b.score - a.score);
 
   if (qualifiedWallets.length === 0) {
     console.log("[InsiderWatcher] No qualified wallets to watch");

@@ -622,7 +622,7 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
         ? "high_sell_tax"
         : (typeof data.buy_tax === "string" && parseFloat(data.buy_tax) * 100 > 10)
           ? "high_buy_tax"
-          : (() => {
+          : ((): string => {
               const lps = Array.isArray(data.lp_holders) ? (data.lp_holders as Array<{ percent?: string; is_locked?: number | string }>) : [];
               const totalUnlocked = lps.reduce((s, lp) => String(lp.is_locked) !== "1" ? s + parseFloat(lp.percent ?? "0") : s, 0);
               return totalUnlocked > 0.7 ? "lp_unlocked" : "goplus_flag";

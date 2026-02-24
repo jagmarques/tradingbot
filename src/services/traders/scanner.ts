@@ -302,11 +302,11 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
     console.error(`[InsiderScanner] top_pools error for ${chain}:`, err);
   }
 
-  // Pre-pump discovery: rising volume tokens not yet at 100%+ pump
+  // Pre-pump discovery: rising tx-count tokens not yet at 100%+ pump
   try {
     if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
-      // Page 2 of volume-sorted pools (page 1 already checked by top_pools block above)
-      const risingUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_volume_usd_desc&page=2`;
+      // Tx-count sort surfaces micro-caps with unusual activity (many small trades = insider accumulation)
+      const risingUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_tx_count_desc&page=1`;
       const risingResponse = await geckoRateLimitedFetch(risingUrl);
 
       if (risingResponse.ok) {
@@ -321,13 +321,13 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
           const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
           const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
-          // 20-99% range: building momentum before the big pump
-          if (h24Change < 20 || h24Change >= 100) continue;
-          if (volumeH24 < 10000 || liquidity < 5000) continue;
+          // 10-99% range: building momentum before the big pump
+          if (h24Change < 10 || h24Change >= 100) continue;
+          if (volumeH24 < 5000 || liquidity < 2000) continue;
 
-          // Volume/liquidity ratio > 2x means heavy trading activity relative to pool size
+          // Volume/liquidity ratio > 1.5x means heavy trading activity relative to pool size
           const volumeToLiquidity = volumeH24 / liquidity;
-          if (volumeToLiquidity < 2) continue;
+          if (volumeToLiquidity < 1.5) continue;
 
           const baseTokenId = pool.relationships.base_token.data.id;
           const parts = baseTokenId.split("_");
@@ -354,7 +354,7 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
         }
 
         if (risingCount > 0) {
-          console.log(`[InsiderScanner] ${chain}: ${risingCount} pre-pump tokens from rising volume (20-99% change, vol/liq>2x)`);
+          console.log(`[InsiderScanner] ${chain}: ${risingCount} pre-pump tokens from tx-count sort (10-99% change, vol/liq>1.5x)`);
         }
       }
     }
@@ -533,7 +533,7 @@ async function scanWalletHistory(): Promise<void> {
 }
 
 async function _scanWalletHistoryInner(): Promise<void> {
-  const candidates = getPromisingWalletsForHistoryScan(INSIDER_CONFIG.MIN_GEM_HITS, 20); // Query gem_hits directly, bypass insider_wallets table
+  const candidates = getPromisingWalletsForHistoryScan(INSIDER_CONFIG.MIN_GEM_HITS, 50); // Query gem_hits directly, bypass insider_wallets table
 
   console.log(`[InsiderScanner] History: Scanning ${candidates.length} wallets`);
 
