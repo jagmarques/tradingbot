@@ -23,11 +23,11 @@ export async function runDirectionalCycle(): Promise<void> {
     const decisions = await runAIDecisionEngine();
     let executed = 0;
 
-    // Build set of pairs already open to avoid duplicates
+    // Block pair if ANY directional position is open (prevents contradictory long+short)
     const openPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || !p.tradeType)
-        .map(p => `${p.pair}_${p.direction}`),
+        .map(p => p.pair),
     );
 
     for (const decision of decisions) {
@@ -35,9 +35,8 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
-      const key = `${decision.pair}_${decision.direction}`;
-      if (openPairs.has(key)) {
-        console.log(`[QuantScheduler] Skipping ${key}: already open`);
+      if (openPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -45,7 +44,7 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.pair,
         decision.direction,
         decision.suggestedSizeUsd,
-        5,
+        3,
         decision.stopLoss,
         decision.takeProfit,
         decision.regime,
@@ -58,7 +57,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
       if (position) {
         executed++;
-        openPairs.add(key);
+        openPairs.add(decision.pair);
         console.log(
           `[QuantScheduler] Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -76,7 +75,7 @@ export function startQuantScheduler(): void {
     return;
   }
 
-  console.log("[QuantScheduler] Started (3m interval, 5x leverage)");
+  console.log("[QuantScheduler] Started (3m interval, 3x leverage)");
 
   initialRunTimeout = setTimeout(() => {
     void runDirectionalCycle();
