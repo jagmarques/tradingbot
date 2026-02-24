@@ -1,8 +1,8 @@
 import { fetchAllCandles } from "./candles.js";
-import { fetchMarketContext } from "./market-data.js";
+import { fetchMarketContext, fetchBinanceLongShortRatio, fetchOrderbookDepth, computeOIDelta } from "./market-data.js";
 import { computeIndicators } from "./indicators.js";
 import { classifyRegime } from "./regime.js";
-import type { CandleInterval, PairAnalysis } from "./types.js";
+import type { CandleInterval, PairAnalysis, MicrostructureData } from "./types.js";
 import {
   QUANT_TRADING_PAIRS,
   QUANT_CANDLE_LOOKBACK_COUNT,
@@ -40,8 +40,27 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
   const regimeIndicators = indicatorsByInterval[REGIME_INTERVAL];
   const regime = classifyRegime(regimeIndicators, `${pair} ${REGIME_INTERVAL}`);
 
+  // Fetch microstructure data (non-critical, failures return null)
+  const [longShortRatio, orderbookImbalance] = await Promise.all([
+    fetchBinanceLongShortRatio(pair),
+    fetchOrderbookDepth(pair, marketCtx.markPrice),
+  ]);
+
+  const oiResult = computeOIDelta(pair, marketCtx.openInterest);
+
+  const microstructure: MicrostructureData = {
+    longShortRatio,
+    orderbookImbalance,
+    oiDelta: oiResult?.oiDelta ?? null,
+    oiDeltaPct: oiResult?.oiDeltaPct ?? null,
+  };
+
   console.log(
-    `[Pipeline] ${pair}: regime=${regime}, mark=$${marketCtx.markPrice.toFixed(2)}, oi=${marketCtx.openInterest.toFixed(0)}, funding=${(marketCtx.fundingRate * 100).toFixed(4)}%`,
+    `[Pipeline] ${pair}: regime=${regime}, mark=$${marketCtx.markPrice.toFixed(2)}, ` +
+    `oi=${marketCtx.openInterest.toFixed(0)}, funding=${(marketCtx.fundingRate * 100).toFixed(4)}%, ` +
+    `ls_ratio=${longShortRatio?.global?.toFixed(2) ?? 'n/a'}, ` +
+    `ob_imbal=${orderbookImbalance?.imbalanceRatio?.toFixed(3) ?? 'n/a'}, ` +
+    `oi_delta=${oiResult?.oiDeltaPct?.toFixed(2) ?? 'first_cycle'}%`,
   );
 
   return {
@@ -55,6 +74,7 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
     oraclePrice: marketCtx.oraclePrice,
     dayVolume: marketCtx.dayVolume,
     analyzedAt: new Date().toISOString(),
+    microstructure,
   };
 }
 

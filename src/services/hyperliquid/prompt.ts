@@ -4,6 +4,7 @@ import type {
   TechnicalIndicators,
   MarketRegime,
   CandleInterval,
+  MicrostructureData,
 } from "./types.js";
 
 function formatNum(value: number | null | undefined, decimals = 4): string {
@@ -38,6 +39,54 @@ function formatIndicators(ind: TechnicalIndicators): string {
     `  ATR: ${formatNum(ind.atr, 4)}`,
     `  VWAP: ${formatNum(ind.vwap, 2)}`,
     `  ADX: ${formatNum(ind.adx, 2)}`,
+  ].join("\n");
+}
+
+function formatMicrostructure(ms: MicrostructureData | undefined): string {
+  if (!ms) {
+    return "Microstructure data unavailable this cycle.";
+  }
+
+  const ls = ms.longShortRatio;
+  const ob = ms.orderbookImbalance;
+
+  const lsSection = ls
+    ? [
+        `  Global accounts: ${ls.global.toFixed(3)} (${ls.globalTrend} trend)`,
+        `  Top traders: ${ls.topTraders.toFixed(3)}`,
+        `  [Interpretation: >1 = more longs in market, <1 = more shorts. Extreme readings (>2 or <0.5) suggest crowded positioning - potential contrarian signal.]`,
+      ].join("\n")
+    : "  n/a (data unavailable)";
+
+  const obSection = ob
+    ? [
+        `  Bid depth: $${ob.bidDepthUsd.toFixed(0)}`,
+        `  Ask depth: $${ob.askDepthUsd.toFixed(0)}`,
+        `  Imbalance: ${ob.imbalanceRatio.toFixed(3)} (0.5=balanced, >0.6=bid heavy/bullish, <0.4=ask heavy/bearish)`,
+        `  Spread: ${ob.spreadBps.toFixed(1)} bps`,
+      ].join("\n")
+    : "  n/a (data unavailable)";
+
+  let oiSection: string;
+  if (ms.oiDelta !== null && ms.oiDeltaPct !== null) {
+    const sign = ms.oiDelta > 0 ? "+" : "";
+    oiSection = [
+      `  Change: ${sign}${ms.oiDelta.toFixed(0)} (${sign}${ms.oiDeltaPct.toFixed(2)}%)`,
+      `  [Interpretation: Rising OI + rising price = new longs (bullish). Rising OI + falling price = new shorts (bearish). Falling OI = position unwinding.]`,
+    ].join("\n");
+  } else {
+    oiSection = "  n/a (first cycle - no baseline yet)";
+  }
+
+  return [
+    `Long/Short Ratio (Binance, 1h):`,
+    lsSection,
+    ``,
+    `Orderbook Depth (Hyperliquid, within 2% of mid):`,
+    obSection,
+    ``,
+    `Open Interest Delta (vs previous cycle):`,
+    oiSection,
   ].join("\n");
 }
 
@@ -100,6 +149,9 @@ Open Interest: ${formatNum(analysis.openInterest, 0)}
 === MULTI-TIMEFRAME ANALYSIS ===
 ${timeframeSections}
 
+=== MARKET MICROSTRUCTURE ===
+${formatMicrostructure(analysis.microstructure)}
+
 === REGIME ===
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
@@ -112,6 +164,8 @@ IMPORTANT: Only trade when you see a CLEAR setup with multiple confirming signal
 - Price is in the middle of the range with no clear direction
 - Volume is declining
 - No strong trend or extreme mean-reversion setup
+
+Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
 
 Most of the time you should return flat. Only trade the best setups.
 
