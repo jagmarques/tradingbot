@@ -11,6 +11,7 @@ export function calculateQuantPositionSize(
   confidence: number,
   entryPrice: number,
   stopLoss: number,
+  isRuleBased = false,
 ): number {
   const balance = getVirtualBalance();
   if (balance <= 0) return 0;
@@ -24,8 +25,9 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
-  // Require 75%+ confidence - below that the AI has no real edge
-  if (confidence < 75) return 0;
+  // AI requires 75%+ (LLM confidence is unreliable). Rule engine uses 60%+ (math-derived).
+  const minConfidence = isRuleBased ? 60 : 75;
+  if (confidence < minConfidence) return 0;
 
   const edge = winProb - 0.5;
   if (edge <= 0) return 0;

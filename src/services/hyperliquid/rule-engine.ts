@@ -125,8 +125,8 @@ function evaluatePair(analysis: PairAnalysis): QuantAIDecision | null {
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  // Kelly sizing
-  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss);
+  // Kelly sizing (rule-based = lower confidence gate)
+  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true);
 
   if (suggestedSizeUsd <= 0) {
     return null;
