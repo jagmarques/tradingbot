@@ -1,6 +1,6 @@
-import { analyzeWithAI } from "./ai-analyzer.js";
+// import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
-import { calculateQuantPositionSize } from "./kelly.js";
+// import { calculateQuantPositionSize } from "./kelly.js";
 import { runRuleDecisionEngine } from "./rule-engine.js";
 import { runMicroDecisionEngine } from "./micro-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
@@ -28,15 +28,15 @@ export async function runDirectionalCycle(): Promise<void> {
     // Run pipeline once - shared data for both AI and rule engines
     const analyses = await runMarketDataPipeline();
 
-    // AI engine: analyze each pair with DeepSeek
+    // AI engine: disabled (kept for comparison later)
     const aiDecisions: QuantAIDecision[] = [];
-    for (const analysis of analyses) {
-      const decision = await analyzeWithAI(analysis);
-      if (!decision || decision.direction === "flat") continue;
-      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss);
-      if (sizeUsd <= 0) continue;
-      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
-    }
+    // for (const analysis of analyses) {
+    //   const decision = await analyzeWithAI(analysis);
+    //   if (!decision || decision.direction === "flat") continue;
+    //   const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss);
+    //   if (sizeUsd <= 0) continue;
+    //   aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
+    // }
 
     // Rule engine: pure math decisions on same data
     const ruleDecisions = runRuleDecisionEngine(analyses);
