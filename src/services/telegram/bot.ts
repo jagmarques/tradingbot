@@ -2271,6 +2271,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const funding = getFundingIncome();
   const aiStats = getQuantStats("ai-directional");
   const ruleStats = getQuantStats("rule-directional");
+  const microStats = getQuantStats("micro-directional");
 
   const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2294,7 +2295,8 @@ async function handleQuant(ctx: Context): Promise<void> {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
         pos.tradeType === "funding" ? "[F]" :
-        pos.tradeType === "rule-directional" ? "[R]" : "[AI]";
+        pos.tradeType === "rule-directional" ? "[R]" :
+        pos.tradeType === "micro-directional" ? "[M]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2313,11 +2315,12 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   const fundingPnl = funding.totalIncome;
-  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + fundingPnl;
-  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + funding.tradeCount;
+  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + microStats.totalPnl + fundingPnl;
+  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + microStats.totalTrades + funding.tradeCount;
 
   text += `\nAI: ${pnl(aiStats.totalPnl)} | ${aiStats.totalTrades} trades | ${aiStats.totalTrades > 0 ? aiStats.winRate.toFixed(0) : 0}% win\n`;
   text += `Rule: ${pnl(ruleStats.totalPnl)} | ${ruleStats.totalTrades} trades | ${ruleStats.totalTrades > 0 ? ruleStats.winRate.toFixed(0) : 0}% win\n`;
+  text += `Micro: ${pnl(microStats.totalPnl)} | ${microStats.totalTrades} trades | ${microStats.totalTrades > 0 ? microStats.winRate.toFixed(0) : 0}% win\n`;
   text += `Funding: ${pnl(fundingPnl)} | ${funding.tradeCount} trades\n`;
   text += `Total: ${pnl(totalPnl)} | ${totalTrades} trades\n`;
 

@@ -21,7 +21,7 @@ export async function openPosition(
   regime: MarketRegime,
   aiConfidence?: number,
   aiReasoning?: string,
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" = "ai-directional",
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional" = "ai-directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
 ): Promise<QuantPosition | null> {

@@ -237,7 +237,7 @@ export async function notifyQuantTradeEntry(params: {
   size: number;
   entryPrice: number;
   leverage: number;
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding";
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional";
   stopLoss: number;
   takeProfit: number;
 }): Promise<void> {
@@ -265,7 +265,7 @@ export async function notifyQuantTradeExit(params: {
   size: number;
   pnl: number;
   exitReason: string;
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding";
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional";
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";

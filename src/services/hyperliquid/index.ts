@@ -89,5 +89,8 @@ export { runFundingArbCycle, startFundingArbMonitor, stopFundingArbMonitor } fro
 // Rule-Based Decision Engine
 export { runRuleDecisionEngine } from "./rule-engine.js";
 
+// Microstructure Decision Engine
+export { runMicroDecisionEngine } from "./micro-engine.js";
+
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";

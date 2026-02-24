@@ -2,6 +2,7 @@ import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runRuleDecisionEngine } from "./rule-engine.js";
+import { runMicroDecisionEngine } from "./micro-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -40,7 +41,10 @@ export async function runDirectionalCycle(): Promise<void> {
     // Rule engine: pure math decisions on same data
     const ruleDecisions = runRuleDecisionEngine(analyses);
 
-    // Separate open-pair tracking: AI and rule can each hold a position on the same pair
+    // Micro engine: orderbook imbalance + L/S ratio decisions on same data
+    const microDecisions = runMicroDecisionEngine(analyses);
+
+    // Separate open-pair tracking: each engine can hold a position on the same pair
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)
@@ -49,6 +53,11 @@ export async function runDirectionalCycle(): Promise<void> {
     const ruleOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "rule-directional")
+        .map(p => p.pair),
+    );
+    const microOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "micro-directional")
         .map(p => p.pair),
     );
 
@@ -118,8 +127,41 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let microExecuted = 0;
+    for (const decision of microDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      if (microOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Micro: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        3,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "micro-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        microExecuted++;
+        microOpenPairs.add(decision.pair);
+        console.log(
+          `[QuantScheduler] Micro: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Rule ${ruleExecuted}/${ruleDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Rule ${ruleExecuted}/${ruleDecisions.length}, Micro ${microExecuted}/${microDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

@@ -37,7 +37,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 9; // Max concurrent positions (3 pairs x 3 trade types)
+export const QUANT_MAX_POSITIONS = 12; // Max concurrent positions (3 pairs x 4 trade types)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
@@ -83,6 +83,14 @@ export const RULE_STOP_ATR_MULTIPLIER = 1.5;
 export const RULE_REWARD_RISK_RATIO = 2.0;
 export const RULE_BB_PROXIMITY_PCT = 0.5; // Within 0.5% of BB band = "near"
 export const RULE_MIN_CONFIDENCE = 60; // Minimum confidence to generate a signal
+
+// Microstructure Decision Engine
+export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.65;
+export const MICRO_IMBALANCE_SHORT_THRESHOLD = 0.35;
+export const MICRO_BASE_CONFIDENCE = 65;
+export const MICRO_OI_SURGE_PCT = 2;
+export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
+export const MICRO_REWARD_RISK_RATIO = 2.0;
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
