@@ -302,6 +302,66 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
     console.error(`[InsiderScanner] top_pools error for ${chain}:`, err);
   }
 
+  // Pre-pump discovery: rising volume tokens not yet at 100%+ pump
+  try {
+    if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
+      // Page 2 of volume-sorted pools (page 1 already checked by top_pools block above)
+      const risingUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_volume_usd_desc&page=2`;
+      const risingResponse = await geckoRateLimitedFetch(risingUrl);
+
+      if (risingResponse.ok) {
+        const risingData = (await risingResponse.json()) as { data: GeckoPool[] };
+        const risingPools = risingData.data || [];
+        let risingCount = 0;
+
+        for (const pool of risingPools) {
+          if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
+
+          const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
+          const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
+          const liquidity = parseFloat(pool.attributes.reserve_in_usd);
+
+          // 20-99% range: building momentum before the big pump
+          if (h24Change < 20 || h24Change >= 100) continue;
+          if (volumeH24 < 10000 || liquidity < 5000) continue;
+
+          // Volume/liquidity ratio > 2x means heavy trading activity relative to pool size
+          const volumeToLiquidity = volumeH24 / liquidity;
+          if (volumeToLiquidity < 2) continue;
+
+          const baseTokenId = pool.relationships.base_token.data.id;
+          const parts = baseTokenId.split("_");
+          if (parts.length < 2) continue;
+          const tokenAddress = parts.slice(1).join("_").toLowerCase();
+
+          if (seen.has(tokenAddress)) continue;
+          seen.add(tokenAddress);
+
+          const nameParts = pool.attributes.name.split(" / ");
+          const symbol = nameParts[0] || "UNKNOWN";
+
+          pumped.push({
+            tokenAddress,
+            chain,
+            symbol,
+            pairAddress: pool.attributes.address,
+            priceChangeH24: h24Change,
+            volumeH24,
+            liquidity,
+            discoveredAt: Date.now(),
+          });
+          risingCount++;
+        }
+
+        if (risingCount > 0) {
+          console.log(`[InsiderScanner] ${chain}: ${risingCount} pre-pump tokens from rising volume (20-99% change, vol/liq>2x)`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[InsiderScanner] rising volume error for ${chain}:`, err);
+  }
+
   return pumped;
 }
 

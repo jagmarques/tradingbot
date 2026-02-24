@@ -182,8 +182,9 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Score-based position sizing; halve for legacy wallets (no proven copy-trade P&L)
-  const baseAmount = getPositionSize(tokenInfo.walletScore);
+  // Score-based position sizing with performance history; halve for legacy wallets
+  const stats = getWalletCopyTradeStats(tokenInfo.walletAddress);
+  const baseAmount = getPositionSize(tokenInfo.walletScore, stats && stats.totalTrades > 0 ? { wins: stats.wins, totalTrades: stats.totalTrades, grossProfit: stats.grossProfit, grossLoss: stats.grossLoss } : undefined);
   const positionAmount = tokenInfo.hasTradeHistory ? baseAmount : Math.floor(baseAmount / 2);
   const legacyNote = tokenInfo.hasTradeHistory ? "" : " (legacy, halved)";
   console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}${legacyNote}`);

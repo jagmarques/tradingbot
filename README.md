@@ -38,29 +38,24 @@ Tracks top Polymarket bettors by ROI, copies their trades with configurable sizi
 Copies EVM token buys from high-scoring insider wallets.
 
 - Real-time buy/sell detection via Alchemy WebSocket (ERC20 Transfer events, ~2-5s latency)
-- DEX router validation: only treats outgoing transfers to known DEX routers as sells
 - Polling fallback every 10 min when WebSocket active, 2.5 min standalone
-- Auto-sells when the insider sells (closes all trades for token, idempotent)
+- Exit on insider sell only (plus safety exits: rug, honeypot, stale price)
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
-- Trailing stop: +15%/-10%, +25%/0%, +50%/+15%, +100%/+40%, +200%/+100%, +500%+ dynamic (peak-150pts), -50% floor
-- Time exits: 4-day max hold (unconditional)
-- Stablecoin filter: symbol blocklist (60+ tokens) + price-based ($0.90-$1.10 skip)
-- GoPlus security checks, $10k min liquidity, $200 max exposure, score-based sizing ($8-$15), 30s price refresh
+- Pre-pump token discovery: catches tokens with 20-99% change and high volume/liquidity ratio
+- GoPlus security checks, $10k min liquidity, $200 max exposure, 30s price refresh
+- Dynamic position sizing: $3-$20 based on score + copy trade performance (profit factor, win rate)
 - Live mode: buys/sells via 1inch routing
-- Block-based early buyer detection (first 50 blocks of pair creation, not first 100 transfers)
-- Pump guard: skip tokens already pumped 20x+ (DexScreener h24 price change)
-- Pair age guard: skip tokens with pair older than 30 days (MAX_GEM_AGE_DAYS) — only copy fresh launches
-- Scans Ethereum, Arbitrum, Polygon, Avalanche (chains with free explorer APIs)
-- Quality gates: 8+ gem hits across 3+ unique tokens required
+- Block-based early buyer detection (first 50 blocks of pair creation)
+- Pump guard: skip tokens already pumped 20x+
+- Pair age guard: skip tokens older than 30 days
+- Scans Ethereum, Arbitrum, Polygon, Avalanche
+- Quality gates: 8+ gem hits across 3+ unique tokens, up to 50 wallets watched
 
-**Consistency scoring (score > 75 required, MIN_GEM_HITS = 8):**
-- Two formulas: legacy (no copy trade data) and new (with copy trade history)
-- Legacy: gems(30, log2 scale, 60-day window) + avg pump(30, sqrt scale, 60-day window) + hold rate(20) + recency(20, 30-day linear)
-- New: gems(15, 60-day window) + median pump(10, 60-day window) + win rate(15, Wilson lower bound, 60-day window) + profit factor(20, 60-day window) + expectancy(20, /50 scale, 60-day window) + recency(20, 7-day half-life)
-- Hold rate uses enriched_count denominator (only gems with known status count, unenriched gems are neutral)
-- Profit factor has confidence scaling: 1 trade = 10% credit, 10+ trades = full credit
-- Expectancy floor: negative expectancy after 10+ trades caps score at 50
-- Score-based sizing ($8-$15), circuit breaker: 3 consecutive losses = 24h pause
+**Wallet scoring (score > 60 required):**
+- Legacy (no copy trades): gems + avg pump + hold rate + recency = 100pts
+- Advanced (with copy trades): gems + median pump + Wilson WR + profit factor + expectancy + recency = 100pts
+- Dynamic sizing: proven profitable wallets (PF>2, WR>50%) get 1.5x, losing wallets get 0.5x
+- Circuit breaker: 3 consecutive losses = 24h pause
 
 ### Rug Monitor
 
@@ -77,17 +72,13 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliquid perpetual futures.
 
-- DeepSeek analysis with multi-timeframe data (15m/1h/4h candles, indicators, regime classification)
-- Kelly criterion position sizing (half Kelly, stop-distance-adjusted, per-position cap)
-- Trailing stop: 1% absolute trail when profit > 2% (price movement)
-- Stagnation exit: 4h max hold for directional positions
-- Stop-loss enforced at 2% max (AI prompt + parser cap)
-- AI cache: 15min TTL, invalidated on position close
-- Funding rate arbitrage (short when funding > 12% APR, close when < 5%)
-- Delta-neutral funding arb: equal spot long + perp short for pure yield capture
-- 5x leverage, 16 concurrent positions, $25 rolling 24h drawdown limit
-- 3-minute directional cycle, 10s stop-loss monitor, overlap protection
-- 14-day paper validation required before live trading
+- Three decision engines: AI (DeepSeek), Rule (RSI+MACD+BB), Micro (orderbook imbalance + L/S ratio + OI delta)
+- Multi-timeframe data (15m/1h/4h candles, indicators, regime classification)
+- Kelly criterion position sizing (half Kelly, stop-distance-adjusted)
+- Trailing stop + stagnation exit (4h) + stop-loss (1% max)
+- Funding rate arbitrage (delta-neutral, short when funding > 12% APR)
+- 3x leverage, 12 concurrent positions, $25 rolling 24h drawdown limit
+- 3-minute cycle, 10s monitor, 14-day paper validation before live
 
 ## Telegram
 

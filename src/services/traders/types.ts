@@ -193,8 +193,8 @@ export const INSIDER_CONFIG = {
 
 export const WATCHER_CONFIG = {
   INTERVAL_MS: 2.5 * 60 * 1000,
-  MIN_WALLET_SCORE: 75, // Only watch wallets with score > 75
-  MAX_WALLETS_PER_CYCLE: 30, // Rate limit: max wallets per cycle
+  MIN_WALLET_SCORE: 60, // Only watch wallets with score > 60
+  MAX_WALLETS_PER_CYCLE: 50, // Rate limit: max wallets per cycle
   MAX_NEW_TOKENS_PER_WALLET: 3,
 };
 
@@ -258,11 +258,31 @@ export const COPY_TRADE_CONFIG = {
   MIN_PAIR_AGE_MS: 2 * 60 * 60 * 1000, // 2 hours - brand-new tokens are highest rug risk
 };
 
-export function getPositionSize(score: number): number {
-  if (score >= 95) return 15;
-  if (score >= 90) return 13;
-  if (score >= 85) return 10;
-  return 8;
+export function getPositionSize(score: number, copyStats?: { wins: number; totalTrades: number; grossProfit: number; grossLoss: number }): number {
+  // Base amount from score tiers
+  let base: number;
+  if (score >= 95) base = 15;
+  else if (score >= 90) base = 13;
+  else if (score >= 85) base = 10;
+  else if (score >= 75) base = 8;
+  else base = 5; // 60-74 tier for newly qualified wallets
+
+  // Performance multiplier from copy trade history (5+ trades required)
+  if (copyStats && copyStats.totalTrades >= 5) {
+    const profitFactor = copyStats.grossProfit / Math.max(copyStats.grossLoss, 1);
+    const winRate = copyStats.wins / copyStats.totalTrades;
+
+    if (profitFactor >= 2.0 && winRate >= 0.5) {
+      base = base * 1.5; // Proven profitable
+    } else if (profitFactor >= 1.5 && winRate >= 0.4) {
+      base = base * 1.25; // Promising
+    } else if (profitFactor < 0.8 || winRate < 0.25) {
+      base = base * 0.5; // Reduce losing wallets
+    }
+  }
+
+  // Cap at $20 max, floor at $3 min
+  return Math.min(20, Math.max(3, Math.round(base)));
 }
 
 export const ALCHEMY_CHAIN_MAP: Record<string, string> = {
