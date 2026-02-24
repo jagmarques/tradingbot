@@ -275,7 +275,7 @@ export async function fetchOrderbookDepth(pair: string, markPrice: number): Prom
     await ensureConnected();
     const sdk = getClient();
 
-    const l2Book = await (sdk.info as unknown as { getL2Book: (pair: string) => Promise<{ levels: Array<Array<{ px: string; sz: string; n: number }>> }> }).getL2Book(pair);
+    const l2Book = await sdk.info.getL2Book(pair, true);
     const bids = l2Book.levels[0] ?? [];
     const asks = l2Book.levels[1] ?? [];
 
