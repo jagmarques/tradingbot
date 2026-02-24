@@ -24,6 +24,9 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
+  // Require 75%+ confidence - below that the AI has no real edge
+  if (confidence < 75) return 0;
+
   const edge = winProb - 0.5;
   if (edge <= 0) return 0;
 

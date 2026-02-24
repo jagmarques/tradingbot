@@ -51,11 +51,11 @@ function getRegimeInstruction(regime: MarketRegime): string {
       );
     case "ranging":
       return (
-        "Market is RANGING. You MUST pick long or short based on mean-reversion logic. " +
-        "If price is near the upper Bollinger Band or RSI > 65, go short targeting the middle/lower band. " +
-        "If price is near the lower Bollinger Band or RSI < 35, go long targeting the middle/upper band. " +
-        "Set stop-loss just beyond the band extreme (above upper for short, below lower for long). " +
-        "Be aggressive - confidence should be 65-90% when the setup is clear. Only return flat if price is exactly at the middle band AND RSI is 45-55."
+        "Market is RANGING. Look for mean-reversion setups at extremes only. " +
+        "If price is near the upper Bollinger Band AND RSI > 70, go short. " +
+        "If price is near the lower Bollinger Band AND RSI < 30, go long. " +
+        "Return flat if price is NOT at an extreme. " +
+        "Only trade with 75%+ confidence when multiple indicators align."
       );
     case "volatile":
       return (
@@ -105,9 +105,15 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 === INSTRUCTIONS ===
-Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be capped automatically. Place stops at key technical levels. Be decisive - prefer action over caution.
+Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be capped automatically.
 
-If no clear setup exists or risk/reward is unfavorable, return direction: flat with confidence below 50 and reasoning explaining why.
+IMPORTANT: Only trade when you see a CLEAR setup with multiple confirming signals. Return flat (confidence < 50) when:
+- Indicators conflict (RSI says one thing, MACD says another)
+- Price is in the middle of the range with no clear direction
+- Volume is declining
+- No strong trend or extreme mean-reversion setup
+
+Most of the time you should return flat. Only trade the best setups.
 
 OUTPUT JSON ONLY (no markdown, no extra text):
 {

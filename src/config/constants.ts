@@ -37,18 +37,18 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 16; // Max concurrent positions (8 pairs x 2 trade types)
+export const QUANT_MAX_POSITIONS = 6; // Max concurrent positions (3 pairs x 2 trade types)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant AI Decision Engine
-export const QUANT_AI_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const QUANT_AI_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - reduces flip-flopping
 export const QUANT_AI_STOP_LOSS_MAX_PCT = 2; // 10% account risk at 5x
-export const QUANT_AI_KELLY_FRACTION = 0.5; // Half Kelly
+export const QUANT_AI_KELLY_FRACTION = 0.25; // Quarter Kelly - conservative
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25; // $25 max daily loss before trading halt
@@ -66,7 +66,7 @@ export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss (wider than directio
 export const FUNDING_ARB_TAKE_PROFIT_PCT = 10; // 10% take-profit
 
 // Directional Trading Scheduler
-export const QUANT_SCHEDULER_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading period

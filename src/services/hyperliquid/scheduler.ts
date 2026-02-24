@@ -75,7 +75,7 @@ export function startQuantScheduler(): void {
     return;
   }
 
-  console.log("[QuantScheduler] Started (3m interval, 3x leverage)");
+  console.log("[QuantScheduler] Started (15m interval, 3x leverage)");
 
   initialRunTimeout = setTimeout(() => {
     void runDirectionalCycle();
