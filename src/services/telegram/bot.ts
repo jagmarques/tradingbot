@@ -2269,7 +2269,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
   const funding = getFundingIncome();
-  const directionalStats = getQuantStats("directional");
+  const aiStats = getQuantStats("ai-directional");
+  const ruleStats = getQuantStats("rule-directional");
 
   const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2291,6 +2292,9 @@ async function handleQuant(ctx: Context): Promise<void> {
     const posLines: string[] = [];
     for (const pos of openPositions) {
       const dir = pos.direction === "long" ? "L" : "S";
+      const typeTag =
+        pos.tradeType === "funding" ? "[F]" :
+        pos.tradeType === "rule-directional" ? "[R]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2303,18 +2307,19 @@ async function handleQuant(ctx: Context): Promise<void> {
           upnlStr = ` ${pnl(unrealizedPnl)}`;
         }
       }
-      posLines.push(`${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`);
+      posLines.push(`${typeTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`);
     }
     text += `\n${posLines.join("\n")}\n`;
   }
 
-  const directionalPnl = directionalStats.totalPnl;
   const fundingPnl = funding.totalIncome;
-  const totalPnl = directionalPnl + fundingPnl;
-  const totalTrades = directionalStats.totalTrades + funding.tradeCount;
-  const winRate = directionalStats.totalTrades > 0 ? directionalStats.winRate.toFixed(0) : 0;
+  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + fundingPnl;
+  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + funding.tradeCount;
 
-  text += `\n${pnl(totalPnl)} total | ${totalTrades} trades | ${winRate}% win\n`;
+  text += `\nAI: ${pnl(aiStats.totalPnl)} | ${aiStats.totalTrades} trades | ${aiStats.totalTrades > 0 ? aiStats.winRate.toFixed(0) : 0}% win\n`;
+  text += `Rule: ${pnl(ruleStats.totalPnl)} | ${ruleStats.totalTrades} trades | ${ruleStats.totalTrades > 0 ? ruleStats.winRate.toFixed(0) : 0}% win\n`;
+  text += `Funding: ${pnl(fundingPnl)} | ${funding.tradeCount} trades\n`;
+  text += `Total: ${pnl(totalPnl)} | ${totalTrades} trades\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);

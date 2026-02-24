@@ -151,7 +151,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
   }));
 }
 
-export function getQuantStats(tradeType?: "directional" | "funding"): {
+export function getQuantStats(tradeType?: TradeType): {
   totalTrades: number;
   wins: number;
   losses: number;
@@ -159,15 +159,23 @@ export function getQuantStats(tradeType?: "directional" | "funding"): {
   winRate: number;
 } {
   const db = getDb();
-  const sql = tradeType
-    ? `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?`
-    : `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'`;
-  const stats = (tradeType ? db.prepare(sql).get(tradeType) : db.prepare(sql).get()) as {
-    total: number;
-    wins: number;
-    losses: number;
-    total_pnl: number | null;
-  };
+
+  let stats: { total: number; wins: number; losses: number; total_pnl: number | null };
+
+  if (!tradeType) {
+    stats = db.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'`,
+    ).get() as typeof stats;
+  } else if (tradeType === "ai-directional") {
+    // Backward compat: old records have trade_type="directional" which were AI trades
+    stats = db.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type IN ('ai-directional', 'directional')`,
+    ).get() as typeof stats;
+  } else {
+    stats = db.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?`,
+    ).get(tradeType) as typeof stats;
+  }
 
   const total = stats.total || 0;
   const wins = stats.wins || 0;
@@ -207,11 +215,11 @@ export function getQuantValidationMetrics(): {
 } {
   const db = getDb();
 
-  // Load all closed directional trades ordered chronologically
+  // Load all closed AI directional trades (includes legacy 'directional') ordered chronologically
   const rows = db.prepare(`
     SELECT pnl, size, created_at, updated_at
     FROM quant_trades
-    WHERE status = 'closed' AND trade_type = 'directional'
+    WHERE status = 'closed' AND trade_type IN ('directional', 'ai-directional')
     ORDER BY updated_at ASC
   `).all() as Array<{
     pnl: number;
@@ -273,8 +281,8 @@ export function getQuantValidationMetrics(): {
     paperDaysElapsed = (nowMs - startMs) / (1000 * 60 * 60 * 24);
   }
 
-  // Win rate and total P&L from stats helper
-  const stats = getQuantStats("directional");
+  // Win rate and total P&L from stats helper (includes legacy 'directional' records)
+  const stats = getQuantStats("ai-directional");
 
   return {
     sharpeRatio,
