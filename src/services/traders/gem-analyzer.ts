@@ -8,7 +8,7 @@ import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1in
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
 import type { Chain } from "./types.js";
-import { estimatePriceImpactPct } from "./watcher.js";
+// import { estimatePriceImpactPct } from "./watcher.js";
 
 // Price failure tracking (shared across copy trades and gem buys)
 const MAX_PRICE_FAILURES = 3;
@@ -650,16 +650,16 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
   }
 }
 
-function computeAdjustedPnl(trade: CopyTrade): number {
-  let adj = trade.pnlPct;
-  if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-    const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
-    const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
-    adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
-  }
-  adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
-  return adj;
-}
+// function computeAdjustedPnl(trade: CopyTrade): number {
+//   let adj = trade.pnlPct;
+//   if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
+//     const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
+//     const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
+//     adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+//   }
+//   adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
+//   return adj;
+// }
 
 export async function refreshCopyTradePrices(): Promise<void> {
   const now = Date.now();
@@ -818,60 +818,11 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
   }
 
+  // Track peak P&L for stats (no trailing stops - only exit on insider sell or safety exits)
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
     if (trade.pnlPct > trade.peakPnlPct) {
       updateCopyTradePeakPnl(trade.id, trade.pnlPct);
-    }
-    const peak = Math.max(trade.peakPnlPct, trade.pnlPct);
-    const holdTimeMs = Date.now() - trade.buyTimestamp;
-
-    if (holdTimeMs >= COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
-      const hours = Math.round(holdTimeMs / 3_600_000);
-      const adjustedPnlPct = computeAdjustedPnl(trade);
-      const exitDetail = `hold_${hours}h_pnl_${trade.pnlPct.toFixed(0)}`;
-      console.log(`[CopyTrade] MAX HOLD: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% after ${hours}h`);
-      const closed = await exitCopyTrade(trade, "max_hold_time", adjustedPnlPct, exitDetail);
-      if (closed) {
-        notifyCopyTrade({
-          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-          skipReason: `max hold ${hours}h`, pnlPct: adjustedPnlPct,
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-      }
-      continue;
-    }
-
-    // Trailing stop ladder - wide stops to let meme tokens run
-    let stopLevel = COPY_TRADE_CONFIG.STOP_LOSS_PCT; // -50% floor
-    if (peak >= 500) {
-      stopLevel = peak - 150;
-    } else if (peak >= 200) {
-      stopLevel = peak * 0.5;
-    } else if (peak >= 100) {
-      stopLevel = peak * 0.4;
-    } else if (peak >= 50) {
-      stopLevel = peak * 0.3;
-    } else if (peak >= 25) {
-      stopLevel = 0;
-    } else if (peak >= 15) {
-      stopLevel = -10;
-    }
-
-    if (trade.pnlPct <= stopLevel) {
-      const reason = stopLevel >= 0 ? `trailing stop at +${stopLevel}% (peak +${peak.toFixed(0)}%)` : `stop loss at ${stopLevel}%`;
-      const exitReason: CopyExitReason = stopLevel >= 0 ? "trailing_stop" : "stop_loss";
-      const exitDetail = `peak_${peak.toFixed(0)}_stop_${stopLevel.toFixed(0)}`;
-      const adjustedPnlPct = computeAdjustedPnl(trade);
-      console.log(`[CopyTrade] STOP: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% - ${reason}`);
-      const closed = await exitCopyTrade(trade, exitReason, adjustedPnlPct, exitDetail);
-      if (closed) {
-        notifyCopyTrade({
-          walletAddress: trade.walletAddress, tokenSymbol: trade.tokenSymbol, chain: trade.chain,
-          side: "sell", priceUsd: trade.currentPriceUsd, liquidityOk: true, liquidityUsd: 0,
-          skipReason: reason, pnlPct: adjustedPnlPct,
-        }).catch(err => console.error("[CopyTrade] Notification error:", err));
-      }
     }
   }
 }
