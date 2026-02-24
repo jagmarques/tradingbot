@@ -1,7 +1,11 @@
-import { runAIDecisionEngine } from "./ai-analyzer.js";
+import { analyzeWithAI } from "./ai-analyzer.js";
+import { runMarketDataPipeline } from "./pipeline.js";
+import { calculateQuantPositionSize } from "./kelly.js";
+import { runRuleDecisionEngine } from "./rule-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
+import type { QuantAIDecision } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -20,23 +24,40 @@ export async function runDirectionalCycle(): Promise<void> {
       return;
     }
 
-    const decisions = await runAIDecisionEngine();
-    let executed = 0;
+    // Run pipeline once - shared data for both AI and rule engines
+    const analyses = await runMarketDataPipeline();
 
-    // Block pair if ANY directional position is open (prevents contradictory long+short)
-    const openPairs = new Set(
+    // AI engine: analyze each pair with DeepSeek
+    const aiDecisions: QuantAIDecision[] = [];
+    for (const analysis of analyses) {
+      const decision = await analyzeWithAI(analysis);
+      if (!decision || decision.direction === "flat") continue;
+      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss);
+      if (sizeUsd <= 0) continue;
+      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
+    }
+
+    // Rule engine: pure math decisions on same data
+    const ruleDecisions = runRuleDecisionEngine(analyses);
+
+    // Separate open-pair tracking: AI and rule can each hold a position on the same pair
+    const aiOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "directional" || !p.tradeType)
+        .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)
+        .map(p => p.pair),
+    );
+    const ruleOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "rule-directional")
         .map(p => p.pair),
     );
 
-    for (const decision of decisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") {
-        continue;
-      }
+    let aiExecuted = 0;
+    for (const decision of aiDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
-      if (openPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (aiOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -50,21 +71,56 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "directional",
+        "ai-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        executed++;
-        openPairs.add(decision.pair);
+        aiExecuted++;
+        aiOpenPairs.add(decision.pair);
         console.log(
-          `[QuantScheduler] Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
-    console.log(`[QuantScheduler] Cycle complete: ${executed}/${decisions.length} positions opened`);
+    let ruleExecuted = 0;
+    for (const decision of ruleDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      if (ruleOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Rule: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        3,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "rule-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        ruleExecuted++;
+        ruleOpenPairs.add(decision.pair);
+        console.log(
+          `[QuantScheduler] Rule: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    console.log(
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Rule ${ruleExecuted}/${ruleDecisions.length}`,
+    );
   } finally {
     cycleRunning = false;
   }

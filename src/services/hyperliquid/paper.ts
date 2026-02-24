@@ -132,7 +132,7 @@ export async function paperOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
-  tradeType: "directional" | "funding" = "directional",
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" = "ai-directional",
   aiConfidence?: number,
   aiReasoning?: string,
   indicatorsAtEntry?: string,

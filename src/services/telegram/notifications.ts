@@ -237,13 +237,13 @@ export async function notifyQuantTradeEntry(params: {
   size: number;
   entryPrice: number;
   leverage: number;
-  tradeType: "directional" | "funding";
+  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding";
   stopLoss: number;
   takeProfit: number;
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : "Directional";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "rule-directional" ? "Rule" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
