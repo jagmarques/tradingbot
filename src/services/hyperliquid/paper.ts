@@ -1,5 +1,5 @@
 import { getClient } from "./client.js";
-import type { QuantPosition } from "./types.js";
+import type { QuantPosition, TradeType } from "./types.js";
 import {
   generateQuantId,
   saveQuantPosition,
@@ -132,7 +132,7 @@ export async function paperOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional" = "ai-directional",
+  tradeType: TradeType = "ai-directional",
   aiConfidence?: number,
   aiReasoning?: string,
   indicatorsAtEntry?: string,

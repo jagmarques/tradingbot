@@ -9,7 +9,7 @@ import { validateRiskGates, recordDailyLoss } from "./risk-manager.js";
 import { clearAICacheForPair } from "./ai-analyzer.js";
 import { getPaperStartDate } from "../database/quant.js";
 import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
-import type { QuantPosition, MarketRegime } from "./types.js";
+import type { QuantPosition, MarketRegime, TradeType } from "./types.js";
 
 export async function openPosition(
   pair: string,
@@ -21,7 +21,7 @@ export async function openPosition(
   regime: MarketRegime,
   aiConfidence?: number,
   aiReasoning?: string,
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional" = "ai-directional",
+  tradeType: TradeType = "ai-directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
 ): Promise<QuantPosition | null> {

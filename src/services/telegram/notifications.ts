@@ -1,6 +1,7 @@
 import { sendMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
 import { isPaperMode, loadEnv } from "../../config/env.js";
+import type { TradeType } from "../hyperliquid/types.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
 
@@ -237,7 +238,7 @@ export async function notifyQuantTradeEntry(params: {
   size: number;
   entryPrice: number;
   leverage: number;
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional";
+  tradeType: TradeType;
   stopLoss: number;
   takeProfit: number;
 }): Promise<void> {
@@ -265,7 +266,7 @@ export async function notifyQuantTradeExit(params: {
   size: number;
   pnl: number;
   exitReason: string;
-  tradeType: "directional" | "ai-directional" | "rule-directional" | "funding" | "micro-directional";
+  tradeType: TradeType;
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
