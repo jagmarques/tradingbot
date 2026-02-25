@@ -607,6 +607,8 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
     if (seen.has(key)) continue;
     seen.add(key);
 
+    if (trade.liquidityUsd >= COPY_TRADE_CONFIG.GOPLUS_SKIP_LIQUIDITY_USD) continue;
+
     const data = await fetchGoPlusData(trade.tokenAddress, trade.chain);
     if (!data) continue; // GoPlus unavailable - fail open
 
