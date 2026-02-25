@@ -26,7 +26,6 @@ export async function runDirectionalCycle(): Promise<void> {
       return;
     }
 
-    // Run pipeline once - shared data for both AI and rule engines
     const analyses = await runMarketDataPipeline();
 
     const aiDecisions: QuantAIDecision[] = [];
@@ -38,16 +37,11 @@ export async function runDirectionalCycle(): Promise<void> {
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
-    // Rule engine: pure math decisions on same data
     const ruleDecisions = runRuleDecisionEngine(analyses);
-
-    // Micro engine: orderbook imbalance + L/S ratio decisions on same data
     const microDecisions = runMicroDecisionEngine(analyses);
-
-    // VWAP engine: mean reversion on VWAP deviation
     const vwapDecisions = runVwapDecisionEngine(analyses);
 
-    // Separate open-pair tracking: each engine can hold a position on the same pair
+
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)

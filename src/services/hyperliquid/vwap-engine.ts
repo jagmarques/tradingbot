@@ -13,7 +13,6 @@ import {
 function evaluateVwapPair(analysis: PairAnalysis): QuantAIDecision | null {
   const { pair, markPrice, regime } = analysis;
 
-  // Volatile regime: no trades
   if (regime === "volatile") return null;
 
   const ind1h = analysis.indicators["1h"];
@@ -26,39 +25,36 @@ function evaluateVwapPair(analysis: PairAnalysis): QuantAIDecision | null {
 
   if (vwap1h === null) return null;
 
-  // Deviation percentages
   const dev1h = ((markPrice - vwap1h) / vwap1h) * 100;
   const dev4h = vwap4h !== null ? ((markPrice - vwap4h) / vwap4h) * 100 : 0;
   const dev15m = vwap15m !== null ? ((markPrice - vwap15m) / vwap15m) * 100 : null;
 
-  // Dead zone: no trade when deviation is between thresholds
+  // Dead zone
   if (dev1h > VWAP_DEVIATION_LONG_PCT && dev1h < VWAP_DEVIATION_SHORT_PCT) return null;
 
-  // Determine direction
   let direction: "long" | "short";
   if (dev1h <= VWAP_DEVIATION_LONG_PCT) {
-    direction = "long"; // Price far below VWAP -> mean reversion up
+    direction = "long";
   } else {
-    direction = "short"; // Price far above VWAP -> mean reversion down
+    direction = "short";
   }
 
-  // 4h trend conflict filter: skip if 4h strongly confirms deviation (trend, not reversion)
+  // 4h trend conflict: skip if 4h strongly confirms deviation
   if (direction === "long" && dev4h < -VWAP_TREND_CONFLICT_PCT) return null;
   if (direction === "short" && dev4h > VWAP_TREND_CONFLICT_PCT) return null;
 
-  // Confidence calculation
   let confidence = VWAP_BASE_CONFIDENCE;
 
-  // Larger 1h deviation boost
+  // Deviation magnitude boost
   if (Math.abs(dev1h) >= 3) confidence += 10;
   else if (Math.abs(dev1h) >= 2) confidence += 5;
 
-  // RSI confirmation from 1h
+  // RSI confirmation
   const rsi = ind1h.rsi;
   if (direction === "long" && rsi !== null && rsi < 40) confidence += 10;
   if (direction === "short" && rsi !== null && rsi > 60) confidence += 10;
 
-  // Bollinger Band alignment from 1h (near band = +5)
+  // BB alignment
   const bb = ind1h.bollingerBands;
   if (bb !== null) {
     if (direction === "long" && bb.lower !== null) {
@@ -71,27 +67,23 @@ function evaluateVwapPair(analysis: PairAnalysis): QuantAIDecision | null {
     }
   }
 
-  // 4h trend conflicting for mean reversion (same direction deviation = trend, not reversion)
+  // 4h mild conflict penalty
   if (direction === "long" && dev4h < 0) confidence -= 15;
   if (direction === "short" && dev4h > 0) confidence -= 15;
 
-  // Tight BB width boost
   if (bb !== null && bb.width !== null && bb.width < 0.03) confidence += 5;
 
-  // 15m entry timing bonus: tighter than 1h = approaching reversal
+  // 15m tighter than 1h = approaching reversal
   if (dev15m !== null && Math.abs(dev15m) < Math.abs(dev1h)) confidence += 5;
 
-  // Cap confidence
   confidence = Math.min(90, Math.max(0, confidence));
 
-  // ATR-based stop/TP
   const atr = ind1h.atr ?? markPrice * 0.01;
   const stopDistance = atr * VWAP_STOP_ATR_MULTIPLIER;
   const tpDistance = stopDistance * VWAP_REWARD_RISK_RATIO;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  // Kelly sizing with isRuleBased=true (60% min confidence gate)
   const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true);
   if (suggestedSizeUsd <= 0) return null;
 
