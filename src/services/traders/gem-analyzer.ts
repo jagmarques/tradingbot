@@ -630,27 +630,54 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
             })();
     console.log(`[CopyTrade] GOPLUS FLAG: ${trade.tokenSymbol} (${trade.chain}) - ${reason} (${matchingTrades.length} trades)`);
 
+    const isHoneypot = reason === "honeypot";
+
     for (const t of matchingTrades) {
-      t.currentPriceUsd = 0;
-      const closed = await exitCopyTrade(t, "honeypot", -100, reason);
-      if (!closed) {
-        console.log(`[CopyTrade] GoPlus close failed: ${t.tokenSymbol} (${t.chain}) wallet=${t.walletAddress.slice(0, 8)} - already closed`);
-        continue;
+      if (isHoneypot) {
+        // Honeypot: can't sell, total loss
+        t.currentPriceUsd = 0;
+        const closed = await exitCopyTrade(t, "honeypot", -100, reason);
+        if (!closed) {
+          console.log(`[CopyTrade] GoPlus close failed: ${t.tokenSymbol} (${t.chain}) wallet=${t.walletAddress.slice(0, 8)} - already closed`);
+          continue;
+        }
+        notifyCopyTrade({
+          walletAddress: t.walletAddress,
+          tokenSymbol: t.tokenSymbol,
+          chain: t.chain,
+          side: "sell",
+          priceUsd: 0,
+          liquidityOk: false,
+          liquidityUsd: 0,
+          skipReason: reason,
+          pnlPct: -100,
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
+      } else {
+        // Non-honeypot risk flag: token still sellable at current price
+        const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+        const pnlPct = t.pnlPct - feePct;
+        const closed = await exitCopyTrade(t, "lp_unlocked", pnlPct, reason);
+        if (!closed) {
+          console.log(`[CopyTrade] GoPlus close failed: ${t.tokenSymbol} (${t.chain}) wallet=${t.walletAddress.slice(0, 8)} - already closed`);
+          continue;
+        }
+        notifyCopyTrade({
+          walletAddress: t.walletAddress,
+          tokenSymbol: t.tokenSymbol,
+          chain: t.chain,
+          side: "sell",
+          priceUsd: t.currentPriceUsd,
+          liquidityOk: false,
+          liquidityUsd: t.liquidityUsd,
+          skipReason: reason,
+          pnlPct,
+        }).catch(err => console.error("[CopyTrade] Notification error:", err));
       }
-      notifyCopyTrade({
-        walletAddress: t.walletAddress,
-        tokenSymbol: t.tokenSymbol,
-        chain: t.chain,
-        side: "sell",
-        priceUsd: t.currentPriceUsd,
-        liquidityOk: false,
-        liquidityUsd: 0,
-        skipReason: reason,
-        pnlPct: -100,
-      }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
 
-    incrementRugCount(trade.tokenAddress, trade.chain);
+    if (isHoneypot) {
+      incrementRugCount(trade.tokenAddress, trade.chain);
+    }
   }
 }
 

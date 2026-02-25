@@ -204,6 +204,7 @@ export type CopyExitReason =
   | "stale_price"
   | "liquidity_rug"
   | "honeypot"
+  | "lp_unlocked"
   | "max_hold_time";
 
 export interface CopyTrade {
