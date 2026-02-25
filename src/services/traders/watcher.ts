@@ -424,6 +424,36 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
+  if (priceUsd < 1e-9) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: 0,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: false,
+      liquidityUsd,
+      skipReason: "price too low",
+      buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
+    });
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - price too low ($${priceUsd.toExponential(2)})`);
+    return;
+  }
+
   const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!goPlusData) {
     insertCopyTrade({

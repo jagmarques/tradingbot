@@ -157,6 +157,10 @@ export function initInsiderTables(): void {
   db.prepare("UPDATE insider_copy_trades SET hold_price_usd = current_price_usd WHERE hold_price_usd IS NULL AND exit_reason NOT IN ('liquidity_rug', 'honeypot')").run();
   db.prepare("UPDATE insider_copy_trades SET hold_price_usd = 0 WHERE hold_price_usd IS NULL AND exit_reason IN ('liquidity_rug', 'honeypot')").run();
 
+  // Clamp any existing rows with insane pnl_pct values
+  db.prepare("UPDATE insider_copy_trades SET pnl_pct = 10000 WHERE pnl_pct > 10000").run();
+  db.prepare("UPDATE insider_copy_trades SET pnl_pct = -100 WHERE pnl_pct < -100").run();
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_rug_counts (
       token_address TEXT NOT NULL,
@@ -813,7 +817,7 @@ export function updateCopyTradePrice(walletAddress: string, tokenAddress: string
     UPDATE insider_copy_trades
     SET current_price_usd = ?,
         pnl_pct = CASE
-          WHEN buy_price_usd > 0 AND ? > 0 THEN MAX(((? / buy_price_usd - 1) * 100 - ?), -100)
+          WHEN buy_price_usd > 0 AND ? > 0 THEN MIN(MAX(((? / buy_price_usd - 1) * 100 - ?), -100), 10000)
           ELSE 0
         END
     WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'
