@@ -653,21 +653,33 @@ async function _scanWalletHistoryInner(): Promise<void> {
   }
 }
 
+// Track last-known P&L status per wallet+token to log only changes
+const pnlStatusCache = new Map<string, string>();
+
 async function enrichInsiderPnl(): Promise<void> {
   const insiders = getInsiderWallets(undefined, INSIDER_CONFIG.MIN_GEM_HITS);
+  let totalProcessed = 0;
+  let statusChanges = 0;
 
   for (const wallet of insiders) {
     const hits = getGemHitsForWallet(wallet.address, wallet.chain);
 
     for (const hit of hits) {
-      if (hit.status === 'sold' || hit.status === 'transferred') continue; // Terminal status, skip
+      if (hit.status === 'sold' || hit.status === 'transferred') continue;
 
       try {
         const pnl = await getWalletTokenPnl(hit.walletAddress, hit.tokenAddress, hit.chain);
         updateGemHitPnl(hit.walletAddress, hit.tokenAddress, hit.chain, pnl.buyTokens, pnl.sellTokens, pnl.status, pnl.buyDate, pnl.sellDate);
-        console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
+        totalProcessed++;
 
-        // Auto-close paper trade when high-score insider sells
+        const cacheKey = `${hit.walletAddress}_${hit.tokenAddress}_${hit.chain}`;
+        const prevStatus = pnlStatusCache.get(cacheKey);
+        if (prevStatus !== pnl.status) {
+          console.log(`[InsiderScanner] P&L: ${hit.walletAddress.slice(0, 8)} ${hit.tokenSymbol} -> ${pnl.status} (buy: ${pnl.buyTokens.toFixed(0)} sell: ${pnl.sellTokens.toFixed(0)})`);
+          pnlStatusCache.set(cacheKey, pnl.status);
+          statusChanges++;
+        }
+
         if ((pnl.status === "sold" || pnl.status === "transferred") && wallet.score > WATCHER_CONFIG.MIN_WALLET_SCORE) {
           const paperTrade = getGemPaperTrade(hit.tokenSymbol, hit.chain);
           if (paperTrade && paperTrade.status === "open") {
@@ -682,6 +694,8 @@ async function enrichInsiderPnl(): Promise<void> {
       await new Promise((r) => setTimeout(r, 500));
     }
   }
+
+  console.log(`[InsiderScanner] P&L enrichment: ${totalProcessed} wallets, ${statusChanges} status changes`);
 }
 
 async function updateHeldGemPrices(): Promise<void> {

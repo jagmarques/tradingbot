@@ -255,6 +255,8 @@ export const COPY_TRADE_CONFIG = {
   GOPLUS_CHECK_INTERVAL_MS: 5 * 60 * 1000,
   MAX_HOLD_TIME_MS: 4 * 24 * 60 * 60 * 1000, // 4 days max hold
   MIN_PAIR_AGE_MS: 2 * 60 * 60 * 1000, // 2 hours - brand-new tokens are highest rug risk
+  BIG_CAP_LIQUIDITY_USD: 5_000_000, // skip tokens with >= $5M liquidity (established, not insider gems)
+  GOPLUS_SKIP_LIQUIDITY_USD: 1_000_000, // skip GoPlus for tokens with >= $1M liquidity
 };
 
 export function getPositionSize(score: number, copyStats?: { wins: number; totalTrades: number; grossProfit: number; grossLoss: number }): number {

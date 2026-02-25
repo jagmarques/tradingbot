@@ -13,11 +13,17 @@ import { getApproxUsdValue } from "../copy/filter.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
 const pausedWallets = new Map<string, number>();
+const walletSkipStreak = new Map<string, number>();
 
 export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
   if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
+
+// Stablecoins/pegged assets NOT already in LP_TOKEN_SYMBOLS
+const KNOWN_STABLECOINS = new Set([
+  "PAXG", "XAUt", "JPYC", "sUSDS", "BUIDL", "ONDO",
+]);
 
 const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
@@ -156,6 +162,14 @@ export async function processInsiderBuy(tokenInfo: {
 }): Promise<void> {
   if (isRecentlySkipped(tokenInfo.tokenAddress, tokenInfo.chain)) return;
 
+  const skipCount = walletSkipStreak.get(tokenInfo.walletAddress) ?? 0;
+  if (skipCount >= 15) {
+    pauseWallet(tokenInfo.walletAddress);
+    walletSkipStreak.delete(tokenInfo.walletAddress);
+    console.log(`[CopyTrade] Auto-paused ${tokenInfo.walletAddress.slice(0, 8)} - ${skipCount} consecutive skips`);
+    return;
+  }
+
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
   if (tokenBuyLock.has(tokenLockKey)) {
     if (!tokenRetryDone.has(tokenLockKey)) {
@@ -167,6 +181,7 @@ export async function processInsiderBuy(tokenInfo: {
   tokenBuyLock.add(tokenLockKey);
   tokenRetryDone.delete(tokenLockKey);
 
+  let successfulBuy = false;
   try {
   const existingCopy = getCopyTrade(tokenInfo.walletAddress, tokenInfo.tokenAddress, tokenInfo.chain);
   if (existingCopy) return;
@@ -274,9 +289,14 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Price-based stablecoin filter: tokens priced $0.90-$1.10 are almost certainly stablecoins
-  if (priceUsd >= 0.90 && priceUsd <= 1.10) {
-    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - likely stablecoin (price $${priceUsd.toFixed(4)})`);
+  if (KNOWN_STABLECOINS.has(symbol)) {
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - known stablecoin/pegged asset`);
+    return;
+  }
+
+  if (liquidityUsd >= COPY_TRADE_CONFIG.BIG_CAP_LIQUIDITY_USD) {
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - big-cap token (liq $${(liquidityUsd / 1e6).toFixed(1)}M)`);
     return;
   }
 
@@ -349,6 +369,7 @@ export async function processInsiderBuy(tokenInfo: {
       console.log(`[CopyTrade] LIVE ACCUMULATE: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
     }
     increaseCopyTradeAmount(existingTokenTrade.id, addAmount, priceUsd);
+    successfulBuy = true;
     console.log(`[CopyTrade] Accumulate: ${symbol} (${tokenInfo.chain}) +$${addAmount.toFixed(2)} (insider #${existingTokenTrade.insiderCount + 1}, total $${(existingTokenTrade.amountUsd + addAmount).toFixed(2)})`);
     notifyCopyTrade({
       walletAddress: tokenInfo.walletAddress,
@@ -447,63 +468,67 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
-  if (!goPlusData) {
-    insertCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      tokenAddress: tokenInfo.tokenAddress,
-      chain: tokenInfo.chain,
-      pairAddress: pair?.pairAddress ?? null,
-      side: "buy",
-      buyPriceUsd: priceUsd,
-      currentPriceUsd: priceUsd,
-      amountUsd: positionAmount,
-      pnlPct: 0,
-      status: "skipped",
-      liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
-      liquidityUsd,
-      skipReason: "GoPlus unavailable",
-      buyTimestamp: Date.now(),
-      tokenCreatedAt: pair?.pairCreatedAt ?? null,
-      closeTimestamp: null,
-      exitReason: null,
-      insiderCount: 1,
-      peakPnlPct: 0,
-      walletScoreAtBuy: tokenInfo.walletScore,
-      exitDetail: null,
-    });
-    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus API unavailable`);
-    return;
-  }
-  if (isGoPlusKillSwitch(goPlusData)) {
-    insertCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      tokenAddress: tokenInfo.tokenAddress,
-      chain: tokenInfo.chain,
-      pairAddress: pair?.pairAddress ?? null,
-      side: "buy",
-      buyPriceUsd: priceUsd,
-      currentPriceUsd: priceUsd,
-      amountUsd: positionAmount,
-      pnlPct: 0,
-      status: "skipped",
-      liquidityOk: true,
-      liquidityUsd,
-      skipReason: "GoPlus kill-switch",
-      buyTimestamp: Date.now(),
-      tokenCreatedAt: pair?.pairCreatedAt ?? null,
-      closeTimestamp: null,
-      exitReason: null,
-      insiderCount: 1,
-      peakPnlPct: 0,
-      walletScoreAtBuy: tokenInfo.walletScore,
-      exitDetail: null,
-    });
-    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
-    console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
-    return;
+  if (liquidityUsd < COPY_TRADE_CONFIG.GOPLUS_SKIP_LIQUIDITY_USD) {
+    const goPlusData = await fetchGoPlusData(tokenInfo.tokenAddress, tokenInfo.chain);
+    if (!goPlusData) {
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: positionAmount,
+        pnlPct: 0,
+        status: "skipped",
+        liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
+        liquidityUsd,
+        skipReason: "GoPlus unavailable",
+        buyTimestamp: Date.now(),
+        tokenCreatedAt: pair?.pairCreatedAt ?? null,
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
+      });
+      console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus API unavailable`);
+      return;
+    }
+    if (isGoPlusKillSwitch(goPlusData)) {
+      insertCopyTrade({
+        walletAddress: tokenInfo.walletAddress,
+        tokenSymbol: symbol,
+        tokenAddress: tokenInfo.tokenAddress,
+        chain: tokenInfo.chain,
+        pairAddress: pair?.pairAddress ?? null,
+        side: "buy",
+        buyPriceUsd: priceUsd,
+        currentPriceUsd: priceUsd,
+        amountUsd: positionAmount,
+        pnlPct: 0,
+        status: "skipped",
+        liquidityOk: true,
+        liquidityUsd,
+        skipReason: "GoPlus kill-switch",
+        buyTimestamp: Date.now(),
+        tokenCreatedAt: pair?.pairCreatedAt ?? null,
+        closeTimestamp: null,
+        exitReason: null,
+        insiderCount: 1,
+        peakPnlPct: 0,
+        walletScoreAtBuy: tokenInfo.walletScore,
+        exitDetail: null,
+      });
+      markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+      console.log(`[CopyTrade] Skipped ${symbol} (${tokenInfo.chain}) - GoPlus kill-switch (honeypot/high-tax/scam)`);
+      return;
+    }
+  } else {
+    console.log(`[CopyTrade] Skip GoPlus for ${symbol} (${tokenInfo.chain}) - high liquidity $${(liquidityUsd / 1e6).toFixed(1)}M`);
   }
 
   const liquidityOk = liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD;
@@ -534,6 +559,7 @@ export async function processInsiderBuy(tokenInfo: {
       exitDetail: null,
     });
     console.log(`[CopyTrade] ${liquidityOk ? "Paper buy" : "Skipped"}: ${symbol} (${tokenInfo.chain}) ${formatPrice(priceUsd)}, liq $${liquidityUsd.toFixed(0)}`);
+    if (liquidityOk) successfulBuy = true;
     if (liquidityOk) {
       notifyCopyTrade({
         walletAddress: tokenInfo.walletAddress,
@@ -616,6 +642,7 @@ export async function processInsiderBuy(tokenInfo: {
         isLive: true,
       });
       console.log(`[CopyTrade] LIVE BUY: ${symbol} (${tokenInfo.chain}) tx=${result.txHash}`);
+      successfulBuy = true;
       notifyCopyTrade({
         walletAddress: tokenInfo.walletAddress,
         tokenSymbol: symbol,
@@ -632,6 +659,11 @@ export async function processInsiderBuy(tokenInfo: {
   }
   } finally {
     tokenBuyLock.delete(tokenLockKey);
+    if (successfulBuy) {
+      walletSkipStreak.delete(tokenInfo.walletAddress);
+    } else {
+      walletSkipStreak.set(tokenInfo.walletAddress, (walletSkipStreak.get(tokenInfo.walletAddress) ?? 0) + 1);
+    }
   }
 }
 
@@ -828,6 +860,7 @@ export function clearWatcherMemory(): void {
   lastSeenTxTimestamp.clear();
   pausedWallets.clear();
   processedTxHashes.clear();
+  walletSkipStreak.clear();
 }
 
 export function pauseWallet(address: string): void {
