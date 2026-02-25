@@ -3,6 +3,7 @@ import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runRuleDecisionEngine } from "./rule-engine.js";
 import { runMicroDecisionEngine } from "./micro-engine.js";
+import { runVwapDecisionEngine } from "./vwap-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -43,6 +44,9 @@ export async function runDirectionalCycle(): Promise<void> {
     // Micro engine: orderbook imbalance + L/S ratio decisions on same data
     const microDecisions = runMicroDecisionEngine(analyses);
 
+    // VWAP engine: mean reversion on VWAP deviation
+    const vwapDecisions = runVwapDecisionEngine(analyses);
+
     // Separate open-pair tracking: each engine can hold a position on the same pair
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -57,6 +61,11 @@ export async function runDirectionalCycle(): Promise<void> {
     const microOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "micro-directional")
+        .map(p => p.pair),
+    );
+    const vwapOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "vwap-directional")
         .map(p => p.pair),
     );
 
@@ -159,8 +168,41 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let vwapExecuted = 0;
+    for (const decision of vwapDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      if (vwapOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] VWAP: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        3,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "vwap-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        vwapExecuted++;
+        vwapOpenPairs.add(decision.pair);
+        console.log(
+          `[QuantScheduler] VWAP: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Rule ${ruleExecuted}/${ruleDecisions.length}, Micro ${microExecuted}/${microDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Rule ${ruleExecuted}/${ruleDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}`,
     );
   } finally {
     cycleRunning = false;
