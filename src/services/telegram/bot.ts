@@ -741,7 +741,6 @@ export async function sendMainMenu(): Promise<void> {
 
   try {
     const toDelete: number[] = [];
-    if (lastMenuMessageId) toDelete.push(lastMenuMessageId);
     toDelete.push(...dataMessageIds);
     if (lastPromptMessageId) toDelete.push(lastPromptMessageId);
     if (lastTimezonePromptId) toDelete.push(lastTimezonePromptId);
@@ -752,13 +751,25 @@ export async function sendMainMenu(): Promise<void> {
     const currentBot = bot;
     await Promise.all(toDelete.map(id => currentBot.api.deleteMessage(currentChatId, id).catch(() => {})));
 
-    lastMenuMessageId = null;
     dataMessageIds.length = 0;
     lastPromptMessageId = null;
     lastTimezonePromptId = null;
     alertMessageIds.length = 0;
     insiderExtraMessageIds.length = 0;
     lastAlertWithButtonId = null;
+
+    if (lastMenuMessageId) {
+      try {
+        await bot.api.editMessageText(chatId, lastMenuMessageId, "🤖", {
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
+        });
+        return;
+      } catch {
+        // Edit failed (message deleted externally, too old, etc.) - fall through to send new
+        lastMenuMessageId = null;
+      }
+    }
 
     const msg = await bot.api.sendMessage(chatId, "🤖", {
       parse_mode: "HTML",
