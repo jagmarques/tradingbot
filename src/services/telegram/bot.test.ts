@@ -89,9 +89,9 @@ describe("Telegram Bot", () => {
     it("should register command handlers", async () => {
       await startBot();
       expect(mockCommand).toHaveBeenCalledWith("start", expect.any(Function));
-      expect(mockCommand).toHaveBeenCalledWith("status", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("balance", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("stop", expect.any(Function));
+      expect(mockCommand).toHaveBeenCalledWith("pnl", expect.any(Function));
     });
   });
 

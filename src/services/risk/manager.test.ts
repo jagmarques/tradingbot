@@ -29,8 +29,26 @@ vi.mock("../polygon/wallet.js", () => ({
 
 describe("Risk Manager", () => {
   beforeAll(() => {
-    // Initialize in-memory database for tests
     initDb(":memory:");
+    const db = getDb();
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS insider_copy_trades (
+        id TEXT PRIMARY KEY,
+        wallet_address TEXT NOT NULL,
+        token_symbol TEXT NOT NULL,
+        token_address TEXT NOT NULL,
+        chain TEXT NOT NULL,
+        side TEXT NOT NULL DEFAULT 'buy',
+        buy_price_usd REAL NOT NULL,
+        current_price_usd REAL NOT NULL,
+        amount_usd REAL NOT NULL DEFAULT 10,
+        pnl_pct REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'open',
+        buy_timestamp INTEGER NOT NULL,
+        close_timestamp INTEGER DEFAULT NULL,
+        exit_reason TEXT DEFAULT NULL
+      )
+    `);
   });
 
   afterAll(() => {

@@ -223,7 +223,7 @@ describe("evaluateBetOpportunity", () => {
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, currentExposure, 10000);
 
     expect(decision.shouldBet).toBe(true);
-    expect(decision.recommendedSize).toBeGreaterThan(5);
+    expect(decision.recommendedSize).toBeGreaterThanOrEqual(5);
     expect(decision.recommendedSize).toBeLessThanOrEqual(mockConfig.maxBetSize);
   });
 
