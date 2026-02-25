@@ -655,17 +655,6 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
   }
 }
 
-// function computeAdjustedPnl(trade: CopyTrade): number {
-//   let adj = trade.pnlPct;
-//   if (trade.liquidityUsd > 0 && trade.liquidityUsd < COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD) {
-//     const t = Math.max(0, Math.min(1, trade.liquidityUsd / COPY_TRADE_CONFIG.LIQUIDITY_RUG_FLOOR_USD));
-//     const dynamicFee = COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT + t * (COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT - COPY_TRADE_CONFIG.ESTIMATED_RUG_FEE_PCT);
-//     adj -= dynamicFee - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
-//   }
-//   adj -= estimatePriceImpactPct(trade.amountUsd, trade.liquidityUsd);
-//   return adj;
-// }
-
 export async function refreshCopyTradePrices(): Promise<void> {
   const now = Date.now();
   if (now - lastCopyTradeRefresh < 30_000) return;
@@ -823,11 +812,31 @@ export async function refreshCopyTradePrices(): Promise<void> {
     }
   }
 
-  // Track peak P&L for stats (no trailing stops - only exit on insider sell or safety exits)
+  // Track peak P&L and enforce stop loss
   const refreshedTrades = getOpenCopyTrades();
   for (const trade of refreshedTrades) {
     if (trade.pnlPct > trade.peakPnlPct) {
       updateCopyTradePeakPnl(trade.id, trade.pnlPct);
+    }
+
+    // Stop loss exit
+    if (trade.pnlPct <= COPY_TRADE_CONFIG.STOP_LOSS_PCT) {
+      console.log(`[CopyTrade] STOP LOSS: ${trade.tokenSymbol} (${trade.chain}) at ${trade.pnlPct.toFixed(0)}% <= ${COPY_TRADE_CONFIG.STOP_LOSS_PCT}%`);
+      const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+      const pnlPct = trade.pnlPct - feePct;
+      const closed = await exitCopyTrade(trade, "stop_loss", pnlPct, `pnl_${trade.pnlPct.toFixed(0)}pct`);
+      if (!closed) continue;
+      notifyCopyTrade({
+        walletAddress: trade.walletAddress,
+        tokenSymbol: trade.tokenSymbol,
+        chain: trade.chain,
+        side: "sell",
+        priceUsd: trade.currentPriceUsd,
+        liquidityOk: trade.liquidityOk,
+        liquidityUsd: trade.liquidityUsd,
+        skipReason: "stop loss",
+        pnlPct,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
   }
 
