@@ -58,7 +58,7 @@ export function cleanupProcessedTxHashes(): void {
   }
 }
 
-function isLpToken(symbol: string): boolean {
+export function isLpOrStable(symbol: string): boolean {
   return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
 }
 
@@ -269,7 +269,7 @@ export async function processInsiderBuy(tokenInfo: {
     }
   }
 
-  if (isLpToken(symbol)) {
+  if (isLpOrStable(symbol)) {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
     return;
   }
@@ -756,7 +756,7 @@ async function watchInsiderWallets(): Promise<void> {
         const ts = parseInt(tx.timeStamp);
         if (ts <= lastSeenTs) return false;
         if (tx.to.toLowerCase() !== wallet.address.toLowerCase()) return false;
-        if (isLpToken(tx.tokenSymbol)) return false;
+        if (isLpOrStable(tx.tokenSymbol)) return false;
         return true;
       });
 

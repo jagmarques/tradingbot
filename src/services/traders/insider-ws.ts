@@ -4,7 +4,7 @@ import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker, SKIP_TOKEN_ADDRESSES } from "./types.js";
 import { isBotOrBurnAddress } from "./scanner.js";
-import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused, cleanupProcessedTxHashes } from "./watcher.js";
+import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused, cleanupProcessedTxHashes, isLpOrStable } from "./watcher.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
@@ -212,6 +212,7 @@ async function handleTransferLog(chain: string, log: {
         return;
       }
       const tokenSymbol = await resolveTokenSymbol(tokenAddress, chain);
+      if (isLpOrStable(tokenSymbol)) return;
       console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} bought ${tokenSymbol} (${chain})`);
       const walletScore = getInsiderWalletScore(toAddress, chain);
       await processInsiderBuy({
