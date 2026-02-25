@@ -20,20 +20,42 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
+// Pattern-based detection instead of hardcoded lists.
+// Stablecoins, wrapped natives, LP tokens, and lending receipts are caught
+// dynamically by naming conventions. Anything that slips through is caught
+// by BIG_CAP_LIQUIDITY_USD ($500k) since these tokens all have high liquidity.
 
-const LP_TOKEN_SYMBOLS = new Set([
-  "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
-  "PGL", "JLP", "BPT", "G-UNI", "xSUSHI",
-  "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM",
-  "aUSDC", "aWETH", "aDAI", "cUSDC", "cETH", "cDAI",
-  "USDC", "USDT", "DAI", "WBTC", "stETH", "USDbC", "BUSD", "TUSD", "FRAX",
-  "mUSD", "USDS", "USDP", "GUSD", "LUSD", "sUSD", "PYUSD", "crvUSD", "GHO",
-  "DOLA", "alUSD", "MIM", "USDD", "FDUSD", "USDe", "USD+", "UST", "RAI", "FEI",
-  "EURS", "EURT", "agEUR", "EURe", "jEUR", "XSGD", "XIDR", "BRZ", "TRYB",
-  "USD1", "RLUSD", "USDG", "EURC", "USD0", "FRXUSD", "DUSD", "AUSD", "CUSD",
-  "OUSD", "VAI", "USDA", "USR", "MKUSD", "lisUSD", "EURA", "CADC", "USDX",
-  "USDs", "USDB", "USDM", "YUSD", "USDL", "USDV", "USDJ", "USDN",
+const WRAPPED_NATIVE_TOKENS = new Set([
+  "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM", "WBTC",
 ]);
+
+function isStablecoinSymbol(s: string): boolean {
+  const upper = s.toUpperCase();
+  // Direct USD-pegged patterns: USDC, USDT, USDX, USD+, USD0, etc.
+  if (/^[A-Z]*USD[A-Z0-9+]*$/.test(upper)) return true;
+  // Prefix patterns: aUSDC, cUSDC, sUSDe, frxUSD, etc.
+  if (/USD/.test(upper) && upper.length <= 8) return true;
+  // Known fiat stablecoins by pattern: EUR*, GBP*, JPY*, SGD*, etc.
+  if (/^(EUR|GBP|JPY|SGD|IDR|BRZ|TRY|CAD)[A-Z]*$/.test(upper)) return true;
+  // Common standalone names
+  if (upper === "DAI" || upper === "FRAX" || upper === "MIM" || upper === "GHO" || upper === "RAI" || upper === "FEI" || upper === "VAI" || upper === "DOLA") return true;
+  return false;
+}
+
+function isLendingReceipt(s: string): boolean {
+  // Aave (aToken), Compound (cToken), staked wrappers
+  if (/^[acrs][A-Z]{2,}$/.test(s)) return true;
+  // Lido stETH, Rocket Pool rETH, wrapped staked
+  if (s === "stETH" || s === "rETH" || s === "wstETH" || s === "cbBTC" || s === "cbETH") return true;
+  return false;
+}
+
+function isLpToken(s: string): boolean {
+  if (s.includes("-LP") || s.includes("LP-")) return true;
+  if (s.startsWith("UNI-") || s.startsWith("SUSHI-")) return true;
+  if (s === "SLP" || s === "BPT" || s === "PGL" || s === "JLP" || s === "G-UNI") return true;
+  return false;
+}
 
 const processedTxHashes = new Map<string, number>();
 
@@ -61,9 +83,10 @@ export function cleanupProcessedTxHashes(): void {
 }
 
 export function isLpOrStable(symbol: string): boolean {
-  return LP_TOKEN_SYMBOLS.has(symbol)
-    || symbol.includes("-LP")
-    || symbol.startsWith("UNI-")
+  return isLpToken(symbol)
+    || isStablecoinSymbol(symbol)
+    || isLendingReceipt(symbol)
+    || WRAPPED_NATIVE_TOKENS.has(symbol)
     || symbol.startsWith("fw");
 }
 
@@ -212,7 +235,7 @@ export async function processInsiderBuy(tokenInfo: {
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
   console.log(`[CopyTrade] Position size: ${symbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
-  if (liquidityUsd > 0 && liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
+  if (liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
     insertCopyTrade({
       walletAddress: tokenInfo.walletAddress,
       tokenSymbol: symbol,
@@ -248,37 +271,6 @@ export async function processInsiderBuy(tokenInfo: {
     console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - already pumped ${(h24Change / 100).toFixed(0)}x > ${INSIDER_CONFIG.MAX_BUY_PUMP}x limit`);
     return;
   }
-
-  // const pairAgeDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
-  // if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
-  //   insertCopyTrade({
-  //     walletAddress: tokenInfo.walletAddress,
-  //     tokenSymbol: symbol,
-  //     tokenAddress: tokenInfo.tokenAddress,
-  //     chain: tokenInfo.chain,
-  //     pairAddress: pair?.pairAddress ?? null,
-  //     side: "buy",
-  //     buyPriceUsd: priceUsd,
-  //     currentPriceUsd: priceUsd,
-  //     amountUsd: 0,
-  //     pnlPct: 0,
-  //     status: "skipped",
-  //     liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
-  //     liquidityUsd,
-  //     skipReason: "old_pair",
-  //     buyTimestamp: Date.now(),
-  //     tokenCreatedAt: pair.pairCreatedAt,
-  //     closeTimestamp: null,
-  //     exitReason: null,
-  //     insiderCount: 1,
-  //     peakPnlPct: 0,
-  //     walletScoreAtBuy: tokenInfo.walletScore,
-  //     exitDetail: null,
-  //   });
-  //   markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
-  //   console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too old`);
-  //   return;
-  // }
 
   if (pair?.pairCreatedAt) {
     const pairAgeMs = Date.now() - pair.pairCreatedAt;
