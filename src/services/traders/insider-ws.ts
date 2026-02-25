@@ -1,10 +1,11 @@
 import WebSocket from "ws";
-import { id as keccak256 } from "ethers";
+import { id as keccak256, AbiCoder } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { getInsiderWallets, getWalletCopyTradeStats, getInsiderWalletScore } from "./storage.js";
 import { WATCHER_CONFIG, INSIDER_WS_CONFIG, KNOWN_DEX_ROUTERS, ALCHEMY_CHAIN_MAP, getAlchemyWssUrl, checkCircuitBreaker, SKIP_TOKEN_ADDRESSES } from "./types.js";
 import { isBotOrBurnAddress } from "./scanner.js";
 import { processInsiderBuy, processInsiderSell, markTransferProcessed, isTransferProcessed, setWebSocketActive, pauseWallet, isWalletPaused, cleanupProcessedTxHashes } from "./watcher.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 
 const TRANSFER_TOPIC = keccak256("Transfer(address,address,uint256)");
 
@@ -22,6 +23,8 @@ let syncingWs = false;
 const watchedWalletsByChain = new Map<string, Set<string>>();
 
 const processingLock = new Set<string>();
+
+const tokenSymbolCache = new Map<string, string>();
 
 function nextRpcId(): number {
   return rpcId++;
@@ -52,6 +55,56 @@ function getQualifiedWalletsByChain(): Map<string, string[]> {
     byChain.set(w.chain, list);
   }
   return byChain;
+}
+
+async function resolveTokenSymbol(tokenAddress: string, chain: string): Promise<string> {
+  const cacheKey = `${chain}:${tokenAddress}`;
+  const cached = tokenSymbolCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  try {
+    const env = loadEnv();
+    const alchemyChain = ALCHEMY_CHAIN_MAP[chain];
+    if (!alchemyChain || !env.ALCHEMY_API_KEY) {
+      tokenSymbolCache.set(cacheKey, "UNKNOWN");
+      return "UNKNOWN";
+    }
+
+    const httpsUrl = `https://${alchemyChain}-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`;
+    const response = await fetchWithTimeout(httpsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [{ to: tokenAddress, data: "0x95d89b41" }, "latest"],
+      }),
+      timeoutMs: 5_000,
+      retries: 1,
+    });
+
+    if (!response.ok) {
+      tokenSymbolCache.set(cacheKey, "UNKNOWN");
+      return "UNKNOWN";
+    }
+
+    const json = (await response.json()) as { result?: string; error?: unknown };
+    const result = json.result;
+
+    if (!result || result === "0x" || result.length < 2) {
+      tokenSymbolCache.set(cacheKey, "UNKNOWN");
+      return "UNKNOWN";
+    }
+
+    const decoded = new AbiCoder().decode(["string"], result)[0] as string;
+    const symbol = decoded.replace(/\0/g, "").trim() || "UNKNOWN";
+    tokenSymbolCache.set(cacheKey, symbol);
+    return symbol;
+  } catch {
+    tokenSymbolCache.set(cacheKey, "UNKNOWN");
+    return "UNKNOWN";
+  }
 }
 
 function subscribeBuys(chain: string, wallets: string[]): void {
@@ -132,7 +185,6 @@ async function handleTransferLog(chain: string, log: {
   const toAddress = unpadAddress(log.topics[2]);
   const txHash = log.transactionHash;
 
-  // Dedup: check before processing; mark only after success
   if (txHash && isTransferProcessed(txHash)) return;
 
   const wallets = watchedWalletsByChain.get(chain);
@@ -142,7 +194,6 @@ async function handleTransferLog(chain: string, log: {
   const isSell = wallets.has(fromAddress) && isDexRouter(toAddress, chain);
 
   if (isBuy) {
-    // Circuit breaker: skip silently if wallet is durably paused
     if (isWalletPaused(toAddress)) return;
 
     const lockKey = `buy_${toAddress}_${tokenAddress}_${chain}`;
@@ -160,13 +211,14 @@ async function handleTransferLog(chain: string, log: {
         }
         return;
       }
-      console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} received token ${tokenAddress.slice(0, 10)} (${chain})`);
+      const tokenSymbol = await resolveTokenSymbol(tokenAddress, chain);
+      console.log(`[InsiderWS] Transfer IN: ${toAddress.slice(0, 8)} bought ${tokenSymbol} (${chain})`);
       const walletScore = getInsiderWalletScore(toAddress, chain);
       await processInsiderBuy({
         walletAddress: toAddress,
         walletScore,
         tokenAddress,
-        tokenSymbol: "UNKNOWN",
+        tokenSymbol,
         chain,
         hasTradeHistory: copyStats.totalTrades > 0,
       });
@@ -177,7 +229,6 @@ async function handleTransferLog(chain: string, log: {
       processingLock.delete(lockKey);
     }
   } else if (isSell) {
-    // Circuit breaker: skip silently if wallet is durably paused
     if (isWalletPaused(fromAddress)) return;
 
     const lockKey = `sell_${fromAddress}_${tokenAddress}_${chain}`;
@@ -194,7 +245,6 @@ async function handleTransferLog(chain: string, log: {
     }
   }
 
-  // Neither buy nor sell: mark processed to avoid re-processing irrelevant transfers
   if (!isBuy && !isSell && txHash) markTransferProcessed(txHash);
 }
 
@@ -206,7 +256,6 @@ function handleMessage(chain: string, raw: string): void {
     return;
   }
 
-  // Handle subscription confirmation
   if (typeof msg.id === "number" && msg.result && typeof msg.result === "string") {
     const pending = pendingRequests.get(msg.id);
     if (pending) {
@@ -222,7 +271,6 @@ function handleMessage(chain: string, raw: string): void {
     return;
   }
 
-  // Handle subscription error
   if (typeof msg.id === "number" && msg.error) {
     const pending = pendingRequests.get(msg.id);
     const errorObj = msg.error as Record<string, unknown>;
@@ -233,7 +281,6 @@ function handleMessage(chain: string, raw: string): void {
     return;
   }
 
-  // Handle subscription event
   if (msg.method === "eth_subscription") {
     const params = msg.params as Record<string, unknown> | undefined;
     if (!params) return;
@@ -371,7 +418,6 @@ async function syncSubscriptions(): Promise<void> {
     const totalWallets = Array.from(watchedWalletsByChain.values()).reduce((sum, s) => sum + s.size, 0);
     console.log(`[InsiderWS] Sync: ${totalWallets} wallets across ${totalChains} chains`);
 
-    // Cleanup dedup map
     cleanupProcessedTxHashes();
   } finally {
     syncingWs = false;
@@ -388,10 +434,9 @@ export function startInsiderWebSocket(): void {
   if (monitorRunning) return;
   monitorRunning = true;
 
-  // Tell watcher to use longer poll interval
   setWebSocketActive(true);
 
-  console.log("[InsiderWS] Started (Alchemy WebSocket, real-time Transfer detection)");
+  console.log("[InsiderWS] Started");
 
   syncSubscriptions().catch((err) => console.error("[InsiderWS] syncSubscriptions error:", err));
 

@@ -186,7 +186,7 @@ export const INSIDER_CONFIG = {
   SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as EvmChain[],
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
-  MAX_HISTORY_TOKENS: 25, // max unique tokens to check per wallet history scan
+  MAX_HISTORY_TOKENS: 50, // max unique tokens to check per wallet history scan
   HISTORY_MIN_FDV_USD: 5000, // min FDV to qualify
   SNIPER_MAX_HOLD_MS: 24 * 60 * 60 * 1000, // max hold time to be considered a sniper flip
 };

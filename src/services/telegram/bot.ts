@@ -40,7 +40,6 @@ const alertMessageIds: number[] = [];
 const insiderExtraMessageIds: number[] = [];
 let callbackProcessing = false;
 
-// Only TELEGRAM_CHAT_ID user can send commands
 function isAuthorized(ctx: Context): boolean {
   const fromId = ctx.from?.id?.toString();
 
@@ -81,7 +80,6 @@ export async function startBot(): Promise<void> {
 
   bot = new Bot(env.TELEGRAM_BOT_TOKEN);
 
-  // Command handlers
   bot.command("start", handleStart);
   bot.command("balance", handleBalance);
   bot.command("pnl", handlePnl);
@@ -102,7 +100,6 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // Callback handlers
   bot.callbackQuery("balance", async (ctx) => {
     if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     callbackProcessing = true;
@@ -365,7 +362,6 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
 
-  // Settings
   bot.callbackQuery("settings", async (ctx) => {
     if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     callbackProcessing = true;
@@ -680,15 +676,12 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
 
-  // Text handler for timezone detection during setup
   bot.on("message:text", handleTextInput);
 
-  // Error handling
   bot.catch((err) => {
     console.error("[Telegram] Bot error:", err);
   });
 
-  // Start polling in background (don't await - it's infinite)
   bot.start().catch((err) => {
     console.error("[Telegram] Bot start error:", err);
     process.exit(1);
@@ -817,9 +810,13 @@ function splitLongMessage(text: string): string[] {
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
+    if (lastMenuMessageId) {
+      await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
+      lastMenuMessageId = null;
+    }
+
     const chunks = splitLongMessage(text);
 
-    // Edit in-place when we have exactly one existing message and one new chunk
     if (dataMessageIds.length === 1 && chunks.length === 1) {
       try {
         await bot.api.editMessageText(chatId, dataMessageIds[0], chunks[0], {
@@ -828,11 +825,10 @@ async function sendDataMessage(text: string, inlineKeyboard?: { text: string; ca
         });
         return;
       } catch {
-        // Edit failed (message too old, deleted, etc.) - fall through to delete+send
+        // fall through to delete+send
       }
     }
 
-    // Delete all previous data messages
     for (const id of dataMessageIds) {
       await bot.api.deleteMessage(chatId, id).catch(() => {});
     }
@@ -854,7 +850,6 @@ async function sendDataMessage(text: string, inlineKeyboard?: { text: string; ca
   }
 }
 
-// Command handlers
 async function handleStart(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /start from user ${ctx.from?.id}`);
@@ -901,7 +896,6 @@ async function handleBalance(ctx: Context): Promise<void> {
   try {
     const formatWei = (wei: bigint): string => (Number(wei) / 1e18).toFixed(4);
 
-    // Fetch balances sequentially to avoid RPC batching issues
     const maticBalance = await getMaticBalanceFormatted().catch(() => "Error");
     const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
     const baseEthBalance = await getBaseEthBalance().catch(() => BigInt(0));
@@ -1212,7 +1206,6 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
   }
 
   try {
-    // Clean up overflow pages from previous insiders view
     if (bot && chatId) {
       for (const id of insiderExtraMessageIds) {
         await bot.api.deleteMessage(chatId, id).catch(() => {});

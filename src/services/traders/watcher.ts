@@ -14,7 +14,6 @@ import { getApproxUsdValue } from "../copy/filter.js";
 const lastSeenTxTimestamp = new Map<string, number>();
 const pausedWallets = new Map<string, number>();
 
-// AMM price impact: amountUsd / (2 * liquidityUsd) * 100, capped at 50%
 export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number): number {
   if (liquidityUsd <= 0 || amountUsd <= 0) return 0;
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
@@ -34,7 +33,6 @@ const LP_TOKEN_SYMBOLS = new Set([
   "USDs", "USDB", "USDM", "YUSD", "USDL", "USDV", "USDJ", "USDN",
 ]);
 
-// Dedup: tx hashes already processed by WebSocket (shared with insider-ws.ts)
 const processedTxHashes = new Map<string, number>();
 
 export function markTransferProcessed(txHash: string): void {
@@ -130,9 +128,8 @@ export async function processInsiderSell(
 const tokenBuyLock = new Set<string>();
 const tokenRetryDone = new Set<string>();
 
-// Cache of recently skipped tokens to avoid re-fetching DexScreener/GoPlus for old/bad tokens
 const recentlySkippedTokens = new Map<string, number>();
-const SKIP_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const SKIP_CACHE_TTL_MS = 60 * 60 * 1000;
 
 function isRecentlySkipped(tokenAddress: string, chain: string): boolean {
   const key = `${tokenAddress.toLowerCase()}_${chain}`;
@@ -157,7 +154,6 @@ export async function processInsiderBuy(tokenInfo: {
   chain: string;
   hasTradeHistory?: boolean;
 }): Promise<void> {
-  // Skip tokens that were recently rejected (old pair, honeypot, no price, etc.)
   if (isRecentlySkipped(tokenInfo.tokenAddress, tokenInfo.chain)) return;
 
   const tokenLockKey = `${tokenInfo.tokenAddress}_${tokenInfo.chain}`;
@@ -182,13 +178,10 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // Score-based position sizing with performance history
   const stats = getWalletCopyTradeStats(tokenInfo.walletAddress);
   const baseAmount = getPositionSize(tokenInfo.walletScore, stats && stats.totalTrades > 0 ? { wins: stats.wins, totalTrades: stats.totalTrades, grossProfit: stats.grossProfit, grossLoss: stats.grossLoss } : undefined);
   const positionAmount = baseAmount;
-  console.log(`[CopyTrade] Position size: ${tokenInfo.tokenSymbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
-  // Exposure check (accumulation bypasses)
   const existingTokenTrade = getOpenCopyTradeByToken(tokenInfo.tokenAddress, tokenInfo.chain);
   if (!existingTokenTrade) {
     const openTrades = getOpenCopyTrades();
@@ -203,6 +196,7 @@ export async function processInsiderBuy(tokenInfo: {
   const priceUsd = pair ? parseFloat(pair.priceUsd || "0") : 0;
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
+  console.log(`[CopyTrade] Position size: ${symbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
 
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
@@ -242,7 +236,6 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  // min pair age guard
   if (pair?.pairCreatedAt) {
     const pairAgeMs = Date.now() - pair.pairCreatedAt;
     if (pairAgeMs < COPY_TRADE_CONFIG.MIN_PAIR_AGE_MS) {
