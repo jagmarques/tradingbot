@@ -810,11 +810,6 @@ function splitLongMessage(text: string): string[] {
 async function sendDataMessage(text: string, inlineKeyboard?: { text: string; callback_data: string }[][]): Promise<void> {
   if (!bot || !chatId) return;
   try {
-    if (lastMenuMessageId) {
-      await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
-      lastMenuMessageId = null;
-    }
-
     const chunks = splitLongMessage(text);
 
     if (dataMessageIds.length === 1 && chunks.length === 1) {

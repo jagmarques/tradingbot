@@ -236,7 +236,8 @@ async function handleTransferLog(chain: string, log: {
     if (processingLock.has(lockKey)) return;
     processingLock.add(lockKey);
     try {
-      console.log(`[InsiderWS] Transfer OUT: ${fromAddress.slice(0, 8)} sent token ${tokenAddress.slice(0, 10)} (${chain})`);
+      const soldSymbol = await resolveTokenSymbol(tokenAddress, chain);
+      console.log(`[InsiderWS] Transfer OUT: ${fromAddress.slice(0, 8)} sold ${soldSymbol} (${chain})`);
       await processInsiderSell(fromAddress, tokenAddress, chain, true);
       if (txHash) markTransferProcessed(txHash);
     } catch (err) {

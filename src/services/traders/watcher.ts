@@ -20,9 +20,12 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
-// Stablecoins/pegged assets NOT already in LP_TOKEN_SYMBOLS
-const KNOWN_STABLECOINS = new Set([
+// Pegged assets, blue-chip tokens, and DeFi tokens to skip early
+const KNOWN_SKIP_TOKENS = new Set([
   "PAXG", "XAUt", "JPYC", "sUSDS", "BUIDL", "ONDO",
+  "cbBTC", "wstETH", "SHIB", "LINK", "AAVE", "PENDLE", "MATIC", "MORPHO",
+  "RPL", "ARB", "ENA", "ZRO", "PEPE", "SOL", "stETH", "SNX", "BNT",
+  "RARI", "QSP", "EUL", "FLUID",
 ]);
 
 const LP_TOKEN_SYMBOLS = new Set([
@@ -65,7 +68,11 @@ export function cleanupProcessedTxHashes(): void {
 }
 
 export function isLpOrStable(symbol: string): boolean {
-  return LP_TOKEN_SYMBOLS.has(symbol) || symbol.includes("-LP") || symbol.startsWith("UNI-");
+  return LP_TOKEN_SYMBOLS.has(symbol)
+    || KNOWN_SKIP_TOKENS.has(symbol)
+    || symbol.includes("-LP")
+    || symbol.startsWith("UNI-")
+    || symbol.startsWith("fw");
 }
 
 export async function processInsiderSell(
@@ -285,12 +292,7 @@ export async function processInsiderBuy(tokenInfo: {
   }
 
   if (isLpOrStable(symbol)) {
-    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/wrapper token`);
-    return;
-  }
-
-  if (KNOWN_STABLECOINS.has(symbol)) {
-    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - known stablecoin/pegged asset`);
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - LP/skip token`);
     return;
   }
 
