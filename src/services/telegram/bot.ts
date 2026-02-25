@@ -1,4 +1,5 @@
 import { Bot, Context } from "grammy";
+import { readFileSync, writeFileSync } from "fs";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
 import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
 import {
@@ -30,9 +31,31 @@ import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled
 import { getClient } from "../hyperliquid/client.js";
 import { getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
 
+const MENU_MSG_ID_PATH = process.env.DB_PATH
+  ? process.env.DB_PATH.replace("trades.db", "menu_msg_id.txt")
+  : "/app/data/menu_msg_id.txt";
+
+function loadPersistedMenuMsgId(): number | null {
+  try {
+    const raw = readFileSync(MENU_MSG_ID_PATH, "utf8").trim();
+    const id = parseInt(raw, 10);
+    return isNaN(id) ? null : id;
+  } catch {
+    return null;
+  }
+}
+
+function persistMenuMsgId(id: number | null): void {
+  try {
+    writeFileSync(MENU_MSG_ID_PATH, id === null ? "" : String(id), "utf8");
+  } catch {
+    // non-critical
+  }
+}
+
 let bot: Bot | null = null;
 let chatId: string | null = null;
-let lastMenuMessageId: number | null = null;
+let lastMenuMessageId: number | null = loadPersistedMenuMsgId();
 const dataMessageIds: number[] = [];
 let lastTimezonePromptId: number | null = null;
 let lastPromptMessageId: number | null = null;
@@ -766,8 +789,10 @@ export async function sendMainMenu(): Promise<void> {
         });
         return;
       } catch {
-        // Edit failed (message deleted externally, too old, etc.) - fall through to send new
+        // Edit failed - delete old to avoid duplicate
+        await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
         lastMenuMessageId = null;
+        persistMenuMsgId(null);
       }
     }
 
@@ -776,6 +801,7 @@ export async function sendMainMenu(): Promise<void> {
       reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
     });
     lastMenuMessageId = msg.message_id;
+    persistMenuMsgId(lastMenuMessageId);
   } catch (err) {
     console.error("[Telegram] Failed to send menu:", err);
   }
