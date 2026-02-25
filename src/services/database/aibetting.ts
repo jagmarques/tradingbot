@@ -224,7 +224,7 @@ export function getBettingStats(): {
     totalPnl: stats.total_pnl || 0,
     totalInvested: stats.total_invested || 0,
     avgEdge: stats.avg_ev || 0,
-    bestCategories: [], // TODO: track by category
+    bestCategories: [],
   };
 }
 

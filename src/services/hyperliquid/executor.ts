@@ -48,8 +48,7 @@ export async function openPosition(
     console.warn(`[Quant Executor] Live mode blocked: paper validation incomplete (${daysElapsed.toFixed(1)}/${QUANT_PAPER_VALIDATION_DAYS} days)`);
     return null;
   }
-  // TODO: Wire real Hyperliquid order placement here when ready
-  console.warn(`[Quant Executor] Live order placement not yet wired. Paper validation passed but real execution requires SDK order integration.`);
+  console.warn(`[Quant Executor] Live order placement not implemented.`);
   return null;
 }
 

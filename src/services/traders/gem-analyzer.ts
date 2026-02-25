@@ -8,7 +8,6 @@ import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1in
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
 import type { Chain } from "./types.js";
-// import { estimatePriceImpactPct } from "./watcher.js";
 
 // Price failure tracking (shared across copy trades and gem buys)
 const MAX_PRICE_FAILURES = 3;
