@@ -72,12 +72,12 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliquid perpetual futures.
 
-- Three decision engines: AI (DeepSeek), Rule (RSI+MACD+BB), Micro (orderbook imbalance, L/S optional, OI optional)
+- Four decision engines: AI (DeepSeek), Rule (RSI+MACD+BB), Micro (orderbook imbalance, L/S optional, OI optional), VWAP (mean reversion on volume-weighted average price deviation)
 - Multi-timeframe data (15m/1h/4h candles, indicators, regime classification)
 - Kelly criterion position sizing (half Kelly, stop-distance-adjusted)
 - Trailing stop + stagnation exit (4h) + stop-loss (1% max)
 - Funding rate arbitrage (delta-neutral, short when funding > 12% APR)
-- 3x leverage, 12 concurrent positions, $25 rolling 24h drawdown limit
+- 3x leverage, 15 concurrent positions, $25 rolling 24h drawdown limit
 - 3-minute cycle, 10s monitor, 14-day paper validation before live
 
 ## Telegram
