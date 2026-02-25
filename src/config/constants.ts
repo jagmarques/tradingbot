@@ -85,8 +85,9 @@ export const RULE_BB_PROXIMITY_PCT = 0.5; // Within 0.5% of BB band = "near"
 export const RULE_MIN_CONFIDENCE = 60; // Minimum confidence to generate a signal
 
 // Microstructure Decision Engine
-export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.65;
-export const MICRO_IMBALANCE_SHORT_THRESHOLD = 0.35;
+export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.60;
+export const MICRO_IMBALANCE_SHORT_THRESHOLD = 0.40;
+export const MICRO_OI_MIN_PCT = -0.5;
 export const MICRO_BASE_CONFIDENCE = 65;
 export const MICRO_OI_SURGE_PCT = 2;
 export const MICRO_STOP_ATR_MULTIPLIER = 1.5;

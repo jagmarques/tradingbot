@@ -5,6 +5,7 @@ import {
   MICRO_IMBALANCE_SHORT_THRESHOLD,
   MICRO_BASE_CONFIDENCE,
   MICRO_OI_SURGE_PCT,
+  MICRO_OI_MIN_PCT,
   MICRO_STOP_ATR_MULTIPLIER,
   MICRO_REWARD_RISK_RATIO,
 } from "../../config/constants.js";
@@ -14,18 +15,16 @@ function evaluateMicroPair(analysis: PairAnalysis): QuantAIDecision | null {
 
   if (!microstructure) return null;
 
-  const { orderbookImbalance, longShortRatio, oiDelta, oiDeltaPct } = microstructure;
+  const { orderbookImbalance, longShortRatio, oiDeltaPct } = microstructure;
 
-  // All microstructure data must be present
-  if (!orderbookImbalance || !longShortRatio || oiDelta === null || oiDeltaPct === null) {
-    return null;
-  }
+  // Orderbook imbalance required; L/S ratio and OI are optional boosters
+  if (!orderbookImbalance) return null;
 
   const { imbalanceRatio, spreadBps } = orderbookImbalance;
-  const { globalTrend } = longShortRatio;
+  const globalTrend = longShortRatio?.globalTrend ?? null;
 
-  // No trade: OI falling (liquidation cascade)
-  if (oiDelta <= 0) return null;
+  // Skip if OI falling too hard (liquidation cascade)
+  if (oiDeltaPct !== null && oiDeltaPct < MICRO_OI_MIN_PCT) return null;
 
   // No trade: imbalance in dead zone
   if (imbalanceRatio >= MICRO_IMBALANCE_SHORT_THRESHOLD && imbalanceRatio <= MICRO_IMBALANCE_LONG_THRESHOLD) {
@@ -37,17 +36,27 @@ function evaluateMicroPair(analysis: PairAnalysis): QuantAIDecision | null {
   let direction: "long" | "short" | null = null;
   let confidence = MICRO_BASE_CONFIDENCE;
   let reasoning = "";
+  const oiStr = oiDeltaPct !== null ? `OI ${oiDeltaPct >= 0 ? "+" : ""}${oiDeltaPct.toFixed(1)}%` : "OI n/a";
+  const lsStr = globalTrend ?? "n/a";
 
-  // LONG: bid-heavy orderbook + shorts closing/stable + OI rising
-  if (imbalanceRatio > MICRO_IMBALANCE_LONG_THRESHOLD && (globalTrend === "falling" || globalTrend === "stable")) {
+  // LONG: bid-heavy orderbook (L/S confirming is a bonus, not required)
+  if (imbalanceRatio > MICRO_IMBALANCE_LONG_THRESHOLD) {
+    const lsConfirms = !globalTrend || globalTrend === "falling" || globalTrend === "stable";
+    if (!lsConfirms) {
+      return null; // L/S rising = crowd is long, don't join
+    }
     direction = "long";
-    reasoning = `Micro: OB imbalance ${imbalanceRatio.toFixed(2)} bid-heavy, L/S ${globalTrend}, OI +${oiDeltaPct.toFixed(1)}%`;
+    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} bid-heavy, L/S ${lsStr}, ${oiStr}`;
   }
 
-  // SHORT: ask-heavy orderbook + longs piling in (contrarian) + OI rising
-  if (imbalanceRatio < MICRO_IMBALANCE_SHORT_THRESHOLD && globalTrend === "rising") {
+  // SHORT: ask-heavy orderbook
+  if (imbalanceRatio < MICRO_IMBALANCE_SHORT_THRESHOLD) {
+    const lsConfirms = !globalTrend || globalTrend === "rising" || globalTrend === "stable";
+    if (!lsConfirms) {
+      return null; // L/S falling = crowd is short, don't join
+    }
     direction = "short";
-    reasoning = `Micro: OB imbalance ${imbalanceRatio.toFixed(2)} ask-heavy, L/S ${globalTrend}, OI +${oiDeltaPct.toFixed(1)}%`;
+    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} ask-heavy, L/S ${lsStr}, ${oiStr}`;
   }
 
   if (direction === null) return null;
@@ -59,8 +68,11 @@ function evaluateMicroPair(analysis: PairAnalysis): QuantAIDecision | null {
   if (spreadBps > 10) {
     confidence -= 5; // Thin book, less reliable
   }
-  if (oiDeltaPct > MICRO_OI_SURGE_PCT) {
+  if (oiDeltaPct !== null && oiDeltaPct > MICRO_OI_SURGE_PCT) {
     confidence += 5; // OI surge
+  }
+  if (oiDeltaPct !== null && oiDeltaPct > 0) {
+    confidence += 3; // OI rising (new money)
   }
 
   confidence = Math.min(90, Math.max(0, confidence));
