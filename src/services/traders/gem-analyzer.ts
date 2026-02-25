@@ -634,7 +634,10 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
     for (const t of matchingTrades) {
       t.currentPriceUsd = 0;
       const closed = await exitCopyTrade(t, "honeypot", -100, reason);
-      if (!closed) continue;
+      if (!closed) {
+        console.log(`[CopyTrade] GoPlus close failed: ${t.tokenSymbol} (${t.chain}) wallet=${t.walletAddress.slice(0, 8)} - already closed`);
+        continue;
+      }
       notifyCopyTrade({
         walletAddress: t.walletAddress,
         tokenSymbol: t.tokenSymbol,
@@ -825,6 +828,32 @@ export async function refreshCopyTradePrices(): Promise<void> {
   for (const trade of refreshedTrades) {
     if (trade.pnlPct > trade.peakPnlPct) {
       updateCopyTradePeakPnl(trade.id, trade.pnlPct);
+    }
+  }
+
+  // Enforce max hold time (4 days)
+  for (const trade of refreshedTrades) {
+    const holdDurationMs = Date.now() - trade.buyTimestamp;
+    if (holdDurationMs > COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS) {
+      const holdDays = (holdDurationMs / 86_400_000).toFixed(1);
+      console.log(`[CopyTrade] MAX HOLD: ${trade.tokenSymbol} (${trade.chain}) held ${holdDays}d > ${(COPY_TRADE_CONFIG.MAX_HOLD_TIME_MS / 86_400_000).toFixed(0)}d limit`);
+
+      const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
+      const pnlPct = trade.pnlPct - feePct;
+
+      const closed = await exitCopyTrade(trade, "max_hold_time", pnlPct, `held_${holdDays}d`);
+      if (!closed) continue;
+      notifyCopyTrade({
+        walletAddress: trade.walletAddress,
+        tokenSymbol: trade.tokenSymbol,
+        chain: trade.chain,
+        side: "sell",
+        priceUsd: trade.currentPriceUsd,
+        liquidityOk: trade.liquidityOk,
+        liquidityUsd: trade.liquidityUsd,
+        skipReason: "max hold time",
+        pnlPct,
+      }).catch(err => console.error("[CopyTrade] Notification error:", err));
     }
   }
 }

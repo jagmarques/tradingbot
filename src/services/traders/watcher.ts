@@ -1,5 +1,5 @@
 import type { EvmChain } from "./types.js";
-import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, getPositionSize, checkCircuitBreaker } from "./types.js";
+import { WATCHER_CONFIG, COPY_TRADE_CONFIG, INSIDER_WS_CONFIG, INSIDER_CONFIG, KNOWN_DEX_ROUTERS, SKIP_TOKEN_ADDRESSES, getPositionSize, checkCircuitBreaker } from "./types.js";
 import type { Chain } from "./types.js";
 import { getInsiderWallets, insertCopyTrade, getCopyTrade, getOpenCopyTradeByToken, increaseCopyTradeAmount, getOpenCopyTrades, getRugCount, updateCopyTradePrice, getWalletCopyTradeStats, updateCopyTradeTokenCreatedAt } from "./storage.js";
 import { etherscanRateLimitedFetch, buildExplorerUrl, EXPLORER_SUPPORTED_CHAINS } from "./scanner.js";
@@ -26,6 +26,11 @@ const KNOWN_SKIP_TOKENS = new Set([
   "cbBTC", "wstETH", "SHIB", "LINK", "AAVE", "PENDLE", "MATIC", "MORPHO",
   "RPL", "ARB", "ENA", "ZRO", "PEPE", "SOL", "stETH", "SNX", "BNT",
   "RARI", "QSP", "EUL", "FLUID",
+  // Expanded filter: established DeFi protocols and non-gem tokens
+  "ADS", "ATF", "BICO", "CHAMP", "DMTR", "ENSO", "ESP",
+  "FET", "GORK", "KARRAT", "KIMCHI", "OHM", "OMNI", "POL",
+  "POWER", "PUFFER", "PUNCH", "RLB", "rETH", "rust",
+  "SKY", "TET", "TORN", "WXT", "XFIT",
 ]);
 
 const LP_TOKEN_SYMBOLS = new Set([
@@ -219,6 +224,36 @@ export async function processInsiderBuy(tokenInfo: {
   const liquidityUsd = pair?.liquidity?.usd ?? 0;
   const symbol = pair?.baseToken?.symbol || tokenInfo.tokenSymbol;
   console.log(`[CopyTrade] Position size: ${symbol} (${tokenInfo.chain}) score=${tokenInfo.walletScore} -> $${positionAmount}`);
+
+  if (liquidityUsd > 0 && liquidityUsd < COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD) {
+    insertCopyTrade({
+      walletAddress: tokenInfo.walletAddress,
+      tokenSymbol: symbol,
+      tokenAddress: tokenInfo.tokenAddress,
+      chain: tokenInfo.chain,
+      pairAddress: pair?.pairAddress ?? null,
+      side: "buy",
+      buyPriceUsd: priceUsd,
+      currentPriceUsd: priceUsd,
+      amountUsd: 0,
+      pnlPct: 0,
+      status: "skipped",
+      liquidityOk: false,
+      liquidityUsd,
+      skipReason: `low liquidity $${liquidityUsd.toFixed(0)}`,
+      buyTimestamp: Date.now(),
+      tokenCreatedAt: pair?.pairCreatedAt ?? null,
+      closeTimestamp: null,
+      exitReason: null,
+      insiderCount: 1,
+      peakPnlPct: 0,
+      walletScoreAtBuy: tokenInfo.walletScore,
+      exitDetail: null,
+    });
+    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - low liquidity $${liquidityUsd.toFixed(0)} < $${COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD}`);
+    return;
+  }
 
   const h24Change = pair?.priceChange?.h24 ?? 0;
   if (h24Change > INSIDER_CONFIG.MAX_BUY_PUMP * 100) {
@@ -791,6 +826,8 @@ async function watchInsiderWallets(): Promise<void> {
         if (ts <= lastSeenTs) return false;
         if (tx.to.toLowerCase() !== wallet.address.toLowerCase()) return false;
         if (isLpOrStable(tx.tokenSymbol)) return false;
+        const skipAddrs = SKIP_TOKEN_ADDRESSES[wallet.chain];
+        if (skipAddrs?.has(tx.contractAddress.toLowerCase())) return false;
         return true;
       });
 
