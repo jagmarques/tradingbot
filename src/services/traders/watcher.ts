@@ -20,40 +20,16 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
-// Pattern-based detection instead of hardcoded lists.
-// Stablecoins, wrapped natives, LP tokens, and lending receipts are caught
-// dynamically by naming conventions. Anything that slips through is caught
-// by BIG_CAP_LIQUIDITY_USD ($500k) since these tokens all have high liquidity.
-
-const WRAPPED_NATIVE_TOKENS = new Set([
-  "WETH", "WMATIC", "WBNB", "WAVAX", "WFTM", "WBTC",
-]);
-
 function isStablecoinSymbol(s: string): boolean {
-  const upper = s.toUpperCase();
-  // Direct USD-pegged patterns: USDC, USDT, USDX, USD+, USD0, etc.
-  if (/^[A-Z]*USD[A-Z0-9+]*$/.test(upper)) return true;
-  // Prefix patterns: aUSDC, cUSDC, sUSDe, frxUSD, etc.
-  if (/USD/.test(upper) && upper.length <= 8) return true;
-  // Known fiat stablecoins by pattern: EUR*, GBP*, JPY*, SGD*, etc.
-  if (/^(EUR|GBP|JPY|SGD|IDR|BRZ|TRY|CAD)[A-Z]*$/.test(upper)) return true;
-  // Common standalone names
-  if (upper === "DAI" || upper === "FRAX" || upper === "MIM" || upper === "GHO" || upper === "RAI" || upper === "FEI" || upper === "VAI" || upper === "DOLA") return true;
-  return false;
-}
-
-function isLendingReceipt(s: string): boolean {
-  // Aave (aToken), Compound (cToken), staked wrappers
-  if (/^[acrs][A-Z]{2,}$/.test(s)) return true;
-  // Lido stETH, Rocket Pool rETH, wrapped staked
-  if (s === "stETH" || s === "rETH" || s === "wstETH" || s === "cbBTC" || s === "cbETH") return true;
+  const u = s.toUpperCase();
+  if (/USD/.test(u)) return true;
+  if (/^(EUR|GBP|JPY|SGD|IDR|BRZ|TRY|CAD)[A-Z]*$/.test(u)) return true;
   return false;
 }
 
 function isLpToken(s: string): boolean {
   if (s.includes("-LP") || s.includes("LP-")) return true;
   if (s.startsWith("UNI-") || s.startsWith("SUSHI-")) return true;
-  if (s === "SLP" || s === "BPT" || s === "PGL" || s === "JLP" || s === "G-UNI") return true;
   return false;
 }
 
@@ -85,8 +61,6 @@ export function cleanupProcessedTxHashes(): void {
 export function isLpOrStable(symbol: string): boolean {
   return isLpToken(symbol)
     || isStablecoinSymbol(symbol)
-    || isLendingReceipt(symbol)
-    || WRAPPED_NATIVE_TOKENS.has(symbol)
     || symbol.startsWith("fw");
 }
 
@@ -318,12 +292,6 @@ export async function processInsiderBuy(tokenInfo: {
 
   // Accumulation path
   if (existingTokenTrade) {
-    // if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
-    //   markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
-    //   console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old`);
-    //   return;
-    // }
-    // Only add if this wallet's target size exceeds current position
     const walletTarget = positionAmount;
     if (walletTarget <= existingTokenTrade.amountUsd) {
       console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - current $${existingTokenTrade.amountUsd.toFixed(0)} >= wallet target $${walletTarget}`);
