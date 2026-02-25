@@ -244,7 +244,7 @@ export async function notifyQuantTradeEntry(params: {
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "rule-directional" ? "Rule" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "rule-directional" ? "Rule" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "vwap-directional" ? "VWAP" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -272,6 +272,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "rule-directional" ? "Rule" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "vwap-directional" ? "VWAP" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -280,7 +281,8 @@ export async function notifyQuantTradeExit(params: {
     `Exit: ${params.exitPrice}\n` +
     `Size: $${params.size.toFixed(2)}\n` +
     `P&L: ${indicator}$${Math.abs(params.pnl).toFixed(2)} (${indicator}${Math.abs(pnlPct).toFixed(1)}%)\n` +
-    `Reason: ${escapeHtml(params.exitReason)}`;
+    `Reason: ${escapeHtml(params.exitReason)}\n` +
+    `Type: ${typeLabel}`;
   await sendMessage(message);
 }
 

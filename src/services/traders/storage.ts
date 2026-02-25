@@ -838,10 +838,11 @@ export function closeCopyTrade(
   const db = getDb();
   const wa = normalizeAddr(walletAddress);
   const ta = normalizeAddr(tokenAddress);
+  const clampedPnl = Math.min(10000, Math.max(-100, pnlPct));
 
   const result = db.prepare(
     "UPDATE insider_copy_trades SET status = 'closed', close_timestamp = ?, exit_reason = ?, exit_detail = ?, current_price_usd = ?, pnl_pct = ?, sell_tx_hash = ? WHERE wallet_address = ? AND token_address = ? AND chain = ? AND status = 'open'",
-  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, pnlPct, sellTxHash ?? null, wa, ta, chain);
+  ).run(Date.now(), exitReason, exitDetail ?? null, finalPriceUsd, clampedPnl, sellTxHash ?? null, wa, ta, chain);
   if (exitReason === 'liquidity_rug' || exitReason === 'honeypot') {
     db.prepare(
       "UPDATE insider_copy_trades SET hold_price_usd = 0 WHERE token_address = ? AND chain = ? AND exit_reason IN ('liquidity_rug', 'honeypot')"
