@@ -294,7 +294,13 @@ export async function processInsiderBuy(tokenInfo: {
       console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d)`);
       return;
     }
-    const addAmount = existingTokenTrade.amountUsd * 0.50;
+    // Only add if this wallet's target size exceeds current position
+    const walletTarget = positionAmount;
+    if (walletTarget <= existingTokenTrade.amountUsd) {
+      console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - current $${existingTokenTrade.amountUsd.toFixed(0)} >= wallet target $${walletTarget}`);
+      return;
+    }
+    const addAmount = walletTarget - existingTokenTrade.amountUsd;
     const openTrades = getOpenCopyTrades();
     const currentExposure = openTrades.reduce((sum, t) => sum + t.amountUsd, 0);
     if (currentExposure + addAmount > COPY_TRADE_CONFIG.MAX_EXPOSURE_USD) {
