@@ -20,17 +20,11 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
-// Pegged assets, blue-chip tokens, and DeFi tokens to skip early
+// Pegged/wrapped tokens to skip before API calls (stablecoins, gold, wrapped ETH etc.)
+// Established tokens are caught dynamically by BIG_CAP_LIQUIDITY_USD ($500k)
 const KNOWN_SKIP_TOKENS = new Set([
   "PAXG", "XAUt", "JPYC", "sUSDS", "BUIDL", "ONDO",
-  "cbBTC", "wstETH", "SHIB", "LINK", "AAVE", "PENDLE", "MATIC", "MORPHO",
-  "RPL", "ARB", "ENA", "ZRO", "PEPE", "SOL", "stETH", "SNX", "BNT",
-  "RARI", "QSP", "EUL", "FLUID",
-  // Expanded filter: established DeFi protocols and non-gem tokens
-  "ADS", "ATF", "BICO", "CHAMP", "DMTR", "ENSO", "ESP",
-  "FET", "GORK", "KARRAT", "KIMCHI", "OHM", "OMNI", "POL",
-  "POWER", "PUFFER", "PUNCH", "RLB", "rETH", "rust",
-  "SKY", "TET", "TORN", "WXT", "XFIT",
+  "cbBTC", "wstETH", "stETH", "rETH",
 ]);
 
 const LP_TOKEN_SYMBOLS = new Set([
