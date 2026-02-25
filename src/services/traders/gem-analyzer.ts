@@ -628,6 +628,12 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
               const totalUnlocked = lps.reduce((s, lp) => String(lp.is_locked) !== "1" ? s + parseFloat(lp.percent ?? "0") : s, 0);
               return totalUnlocked > 0.7 ? "lp_unlocked" : "goplus_flag";
             })();
+    // LP unlock handled by rug monitor; only exit on honeypot/tax
+    if (reason === "lp_unlocked" || reason === "goplus_flag") {
+      console.log(`[CopyTrade] GoPlus skip (no exit): ${trade.tokenSymbol} (${trade.chain}) - ${reason}`);
+      continue;
+    }
+
     console.log(`[CopyTrade] GOPLUS FLAG: ${trade.tokenSymbol} (${trade.chain}) - ${reason} (${matchingTrades.length} trades)`);
 
     const isHoneypot = reason === "honeypot";
