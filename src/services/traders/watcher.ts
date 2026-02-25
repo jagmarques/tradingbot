@@ -20,12 +20,6 @@ export function estimatePriceImpactPct(amountUsd: number, liquidityUsd: number):
   return Math.min(50, (amountUsd / (2 * liquidityUsd)) * 100);
 }
 
-// Pegged/wrapped tokens to skip before API calls (stablecoins, gold, wrapped ETH etc.)
-// Established tokens are caught dynamically by BIG_CAP_LIQUIDITY_USD ($500k)
-const KNOWN_SKIP_TOKENS = new Set([
-  "PAXG", "XAUt", "JPYC", "sUSDS", "BUIDL", "ONDO",
-  "cbBTC", "wstETH", "stETH", "rETH",
-]);
 
 const LP_TOKEN_SYMBOLS = new Set([
   "UNI-V2", "UNI-V3", "SLP", "SUSHI-LP", "CAKE-LP",
@@ -68,7 +62,6 @@ export function cleanupProcessedTxHashes(): void {
 
 export function isLpOrStable(symbol: string): boolean {
   return LP_TOKEN_SYMBOLS.has(symbol)
-    || KNOWN_SKIP_TOKENS.has(symbol)
     || symbol.includes("-LP")
     || symbol.startsWith("UNI-")
     || symbol.startsWith("fw");
