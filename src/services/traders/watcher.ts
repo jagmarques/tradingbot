@@ -205,36 +205,36 @@ export async function processInsiderBuy(tokenInfo: {
     return;
   }
 
-  const pairAgeDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
-  if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
-    insertCopyTrade({
-      walletAddress: tokenInfo.walletAddress,
-      tokenSymbol: symbol,
-      tokenAddress: tokenInfo.tokenAddress,
-      chain: tokenInfo.chain,
-      pairAddress: pair?.pairAddress ?? null,
-      side: "buy",
-      buyPriceUsd: priceUsd,
-      currentPriceUsd: priceUsd,
-      amountUsd: 0,
-      pnlPct: 0,
-      status: "skipped",
-      liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
-      liquidityUsd,
-      skipReason: "old_pair",
-      buyTimestamp: Date.now(),
-      tokenCreatedAt: pair.pairCreatedAt,
-      closeTimestamp: null,
-      exitReason: null,
-      insiderCount: 1,
-      peakPnlPct: 0,
-      walletScoreAtBuy: tokenInfo.walletScore,
-      exitDetail: null,
-    });
-    markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
-    console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d > ${INSIDER_CONFIG.MAX_GEM_AGE_DAYS}d)`);
-    return;
-  }
+  // const pairAgeDays = pair?.pairCreatedAt ? (Date.now() - pair.pairCreatedAt) / 86_400_000 : 0;
+  // if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+  //   insertCopyTrade({
+  //     walletAddress: tokenInfo.walletAddress,
+  //     tokenSymbol: symbol,
+  //     tokenAddress: tokenInfo.tokenAddress,
+  //     chain: tokenInfo.chain,
+  //     pairAddress: pair?.pairAddress ?? null,
+  //     side: "buy",
+  //     buyPriceUsd: priceUsd,
+  //     currentPriceUsd: priceUsd,
+  //     amountUsd: 0,
+  //     pnlPct: 0,
+  //     status: "skipped",
+  //     liquidityOk: liquidityUsd >= COPY_TRADE_CONFIG.MIN_LIQUIDITY_USD,
+  //     liquidityUsd,
+  //     skipReason: "old_pair",
+  //     buyTimestamp: Date.now(),
+  //     tokenCreatedAt: pair.pairCreatedAt,
+  //     closeTimestamp: null,
+  //     exitReason: null,
+  //     insiderCount: 1,
+  //     peakPnlPct: 0,
+  //     walletScoreAtBuy: tokenInfo.walletScore,
+  //     exitDetail: null,
+  //   });
+  //   markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+  //   console.log(`[CopyTrade] Skip ${symbol} (${tokenInfo.chain}) - pair too old`);
+  //   return;
+  // }
 
   if (pair?.pairCreatedAt) {
     const pairAgeMs = Date.now() - pair.pairCreatedAt;
@@ -282,11 +282,11 @@ export async function processInsiderBuy(tokenInfo: {
 
   // Accumulation path
   if (existingTokenTrade) {
-    if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
-      markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
-      console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old (${Math.round(pairAgeDays)}d)`);
-      return;
-    }
+    // if (pair?.pairCreatedAt && pairAgeDays > INSIDER_CONFIG.MAX_GEM_AGE_DAYS) {
+    //   markSkipped(tokenInfo.tokenAddress, tokenInfo.chain);
+    //   console.log(`[CopyTrade] Skip accumulation ${symbol} (${tokenInfo.chain}) - pair too old`);
+    //   return;
+    // }
     // Only add if this wallet's target size exceeds current position
     const walletTarget = positionAmount;
     if (walletTarget <= existingTokenTrade.amountUsd) {
