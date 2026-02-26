@@ -35,7 +35,7 @@ export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
 // Hyperliquid Quant Trading
-export const HYPERLIQUID_MAX_LEVERAGE = 5; // Hard cap per RISK-01
+export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
 export const QUANT_MAX_POSITIONS = 15; // Max concurrent positions (3 pairs x 5 trade types)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
