@@ -681,7 +681,8 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
       }
     }
 
-    if (isHoneypot) {
+    // Count honeypot and high-tax tokens as rugs (wallet quality signal)
+    if (isHoneypot || reason === "high_sell_tax" || reason === "high_buy_tax") {
       incrementRugCount(trade.tokenAddress, trade.chain);
     }
   }

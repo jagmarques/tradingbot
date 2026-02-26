@@ -918,7 +918,8 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const scoreBefore = score;
       if (rugRate > INSIDER_CONFIG.RUG_RATE_CAP_THRESHOLD) {
         score = Math.min(score, 50);
-        rugPenaltyApplied = -(scoreBefore - score); // negative = points lost
+        // Use -1 sentinel when score was already <= 50 so audit shows cap fired
+        rugPenaltyApplied = scoreBefore > score ? -(scoreBefore - score) : -1;
       } else if (rugRate > INSIDER_CONFIG.RUG_RATE_HIGH_THRESHOLD) {
         score = Math.max(0, score - 15);
         rugPenaltyApplied = -15;
