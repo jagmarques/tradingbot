@@ -1,6 +1,6 @@
 import { fetchWithTimeout } from "../../utils/fetch.js";
 
-const RATE_LIMIT_MS = 12_000; // ~5 req/min
+const RATE_LIMIT_MS = 15_000; // 4 req/min (5/min limit has no jitter margin at 12s)
 const COOLDOWN_MS = 5 * 60 * 1000;
 
 let nextAvailableAt = 0;
