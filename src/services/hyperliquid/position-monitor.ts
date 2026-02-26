@@ -5,6 +5,7 @@ import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { isPaperMode } from "../../config/env.js";
+import { saveQuantPosition } from "../database/quant.js";
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -72,6 +73,7 @@ async function checkPositionStops(): Promise<void> {
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
+        saveQuantPosition(position);
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;

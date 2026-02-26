@@ -358,6 +358,10 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec(`ALTER TABLE quant_positions ADD COLUMN take_profit REAL`);
     console.log("[Database] Migrated quant_positions: added stop_loss, take_profit columns");
   }
+  if (!qpColNames.includes("max_unrealized_pnl_pct")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN max_unrealized_pnl_pct REAL`);
+    console.log("[Database] Migrated quant_positions: added max_unrealized_pnl_pct column");
+  }
 
   console.log("[Database] Initialized at", finalPath);
   return db;

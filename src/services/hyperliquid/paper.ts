@@ -231,8 +231,8 @@ export async function paperClosePosition(
         position.size *
         position.leverage;
 
-  // Tier 0 taker 0.045% on entry + exit
-  const fees = position.size * 0.00045 * 2;
+  // Tier 0 taker 0.045% on entry + exit (notional = size * leverage)
+  const fees = position.size * position.leverage * 0.00045 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
 
   let spotPnl = 0;
