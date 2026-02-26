@@ -62,6 +62,14 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN launch_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN is_rugged INTEGER DEFAULT 0"); } catch { /* already exists */ }
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
+  // Backfill is_rugged for tokens already in token_rug_counts
+  db.prepare(`
+    UPDATE insider_gem_hits SET is_rugged = 1
+    WHERE is_rugged = 0 AND EXISTS (
+      SELECT 1 FROM token_rug_counts trc
+      WHERE trc.token_address = insider_gem_hits.token_address AND trc.chain = insider_gem_hits.chain
+    )
+  `).run();
 
   try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_gem_count INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_rate_pct REAL DEFAULT 0"); } catch { /* already exists */ }
@@ -244,7 +252,7 @@ export function incrementRugCount(tokenAddress: string, chain: string): void {
       last_rugged_at = ?
   `).run(ta, chain, now, now);
 
-  // Mark all gem hits for this token as rugged for audit trail
+  // Mark gem hits for audit trail
   db.prepare(
     "UPDATE insider_gem_hits SET is_rugged = 1 WHERE token_address = ? AND chain = ?"
   ).run(ta, chain);

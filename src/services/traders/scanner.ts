@@ -839,8 +839,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     return (p + z * z / (2 * n) - z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / (1 + z * z / n);
   }
 
-  // Multi-factor wallet scoring (0-100)
-  // Returns score plus rug penalty details for DB persistence and logging
+  // Multi-factor wallet scoring (0-100), returns score + rug penalty details
   function computeWalletScore(wallet: {
     gem_count: number;
     gems_recent: number;
@@ -907,7 +906,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       }
     }
 
-    // Rug rate penalty: requires minimum sample size to avoid penalising small-sample wallets
+    // Rug rate penalty (requires min sample: 5+ gems, 2+ rugged)
     const rugRate = wallet.gem_count > 0 ? wallet.rugged_gem_count / wallet.gem_count : 0;
     const rugRatePct = Math.round(rugRate * 100);
     let rugPenaltyApplied = 0;
@@ -1024,27 +1023,29 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const copyStats = copyStatsMap.get(group.wallet_address);
       const mpKey = `${group.wallet_address}_${group.chain}`;
       const medianPump = medianPumpMap.get(mpKey);
-      const result = computeWalletScore(group, copyStats && copyStats.totalTrades > 0 ? copyStats : undefined, medianPump);
-      const { score, rugGemCount, rugRatePct, rugPenaltyApplied } = result;
+      const scoring = computeWalletScore(group, copyStats && copyStats.totalTrades > 0 ? copyStats : undefined, medianPump);
+      const { score, rugGemCount, rugRatePct, rugPenaltyApplied } = scoring;
       scores.push(score);
       if (rugPenaltyApplied !== 0) {
         console.log(`[InsiderScanner] Rug penalty: ${group.wallet_address.slice(0, 8)} rugRate=${rugRatePct}% (${rugGemCount}/${group.gem_count}) penalty=${rugPenaltyApplied}`);
       }
 
+      // Always upsert so deleteInsiderWalletsBelow cleans up penalized wallets
+      upsertInsiderWallet({
+        address: group.wallet_address,
+        chain: group.chain,
+        gemHitCount: group.gem_count,
+        gems,
+        score,
+        firstSeenAt: group.first_seen,
+        lastSeenAt: group.last_seen,
+        rugGemCount,
+        rugRatePct,
+        rugPenaltyApplied,
+        scoringTimestamp: Date.now(),
+      });
+
       if (score > WATCHER_CONFIG.MIN_WALLET_SCORE) {
-        upsertInsiderWallet({
-          address: group.wallet_address,
-          chain: group.chain,
-          gemHitCount: group.gem_count,
-          gems,
-          score,
-          firstSeenAt: group.first_seen,
-          lastSeenAt: group.last_seen,
-          rugGemCount,
-          rugRatePct,
-          rugPenaltyApplied,
-          scoringTimestamp: Date.now(),
-        });
         const walletKey = `${group.wallet_address}_${group.chain}`;
         if (!existingQualified.has(walletKey)) {
           console.log(`[InsiderScanner] New qualified wallet: ${group.wallet_address.slice(0, 8)} (${group.chain}) score=${score} gems=${group.gem_count}`);
