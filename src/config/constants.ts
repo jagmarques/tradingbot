@@ -58,12 +58,12 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000; // 10 seconds between 
 export const FUNDING_ARB_MIN_APR = 0.12; // 12% annualized minimum to open (delta-neutral threshold)
 export const FUNDING_ARB_CLOSE_APR = 0.05; // 5% annualized - close when rate normalizes below this
 export const FUNDING_ARB_DELTA_NEUTRAL = true; // Record virtual spot long hedge for delta-neutral mode
-export const FUNDING_ARB_LEVERAGE = 1; // 1x leverage only (minimal directional risk)
+export const FUNDING_ARB_LEVERAGE = 10;
 export const FUNDING_ARB_MAX_SIZE_USD = 10; // $10 max per funding position
 export const FUNDING_ARB_MAX_POSITIONS = 3; // Max 3 funding positions ($30 total, leaves $70 for directional)
 export const FUNDING_ARB_SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour between scans
 export const FUNDING_ARB_MONITOR_INTERVAL_MS = 10 * 60 * 1000; // 10 min between normalization checks
-export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss (wider than directional, since 1x leverage)
+export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss on collateral (wider than directional)
 export const FUNDING_ARB_TAKE_PROFIT_PCT = 10; // 10% take-profit
 
 // Directional Trading Scheduler

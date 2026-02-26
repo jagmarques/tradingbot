@@ -238,11 +238,9 @@ export async function paperClosePosition(
   let spotPnl = 0;
   if (position.spotHedgePrice && position.spotHedgePrice > 0) {
     if (position.direction === "short") {
-      // Short perp + virtual spot long: delta-neutral, spot profits when price rises
-      spotPnl = ((currentPrice - position.spotHedgePrice) / position.spotHedgePrice) * position.size;
+      spotPnl = ((currentPrice - position.spotHedgePrice) / position.spotHedgePrice) * position.size * position.leverage;
     } else {
-      // Long perp + virtual spot short: delta-neutral, spot profits when price falls
-      spotPnl = ((position.spotHedgePrice - currentPrice) / position.spotHedgePrice) * position.size;
+      spotPnl = ((position.spotHedgePrice - currentPrice) / position.spotHedgePrice) * position.size * position.leverage;
     }
     console.log(
       `[Quant Paper] Spot hedge P&L: entry ${position.spotHedgePrice} -> exit ${currentPrice} = $${spotPnl.toFixed(4)}`
