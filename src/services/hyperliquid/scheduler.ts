@@ -63,9 +63,20 @@ export async function runDirectionalCycle(): Promise<void> {
         .map(p => p.pair),
     );
 
+    const globalPairDirections = new Map<string, "long" | "short">();
+    for (const p of getOpenQuantPositions()) {
+      globalPairDirections.set(p.pair, p.direction);
+    }
+
     let aiExecuted = 0;
     for (const decision of aiDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
 
       if (aiOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -90,6 +101,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         aiExecuted++;
         aiOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -99,6 +111,12 @@ export async function runDirectionalCycle(): Promise<void> {
     let ruleExecuted = 0;
     for (const decision of ruleDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Rule: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
 
       if (ruleOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Rule: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -123,6 +141,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         ruleExecuted++;
         ruleOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] Rule: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -132,6 +151,12 @@ export async function runDirectionalCycle(): Promise<void> {
     let microExecuted = 0;
     for (const decision of microDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Micro: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
 
       if (microOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Micro: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -156,6 +181,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         microExecuted++;
         microOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] Micro: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -165,6 +191,12 @@ export async function runDirectionalCycle(): Promise<void> {
     let vwapExecuted = 0;
     for (const decision of vwapDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] VWAP: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
 
       if (vwapOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] VWAP: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -189,6 +221,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         vwapExecuted++;
         vwapOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] VWAP: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
