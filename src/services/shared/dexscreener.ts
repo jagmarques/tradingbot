@@ -36,13 +36,20 @@ async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<
   await enqueue();
   try {
     const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
-    const resp = await fetchWithTimeout(url, { timeoutMs: 10_000 });
-    if (resp.status === 429) {
+    let resp: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      resp = await fetchWithTimeout(url, { timeoutMs: 10_000, retries: 0 });
+      if (resp.status !== 429) break;
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+      // Second 429 — trigger cooldown
       geckoCooldownUntil = Date.now() + GECKO_COOLDOWN_MS;
       console.log(`[DexScreener] GeckoTerminal 429 - cooling down 5min for ${network}/${tokenAddress.slice(0, 10)}`);
       return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     }
-    if (!resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+    if (!resp || !resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     const data = await resp.json() as {
       data?: {
         attributes?: {
