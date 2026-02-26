@@ -51,12 +51,13 @@ async function checkPositionStops(): Promise<void> {
         const maintRate = HYPERLIQUID_MAINTENANCE_MARGIN_RATE[position.pair] ?? 0.02;
         const notional = position.size * position.leverage;
         const maintenanceMargin = maintRate * notional;
+        const equity = position.size + unrealizedPnl;
 
-        if (unrealizedPnl < 0 && Math.abs(unrealizedPnl) >= maintenanceMargin) {
+        if (unrealizedPnl < 0 && equity <= maintenanceMargin) {
           console.log(
-            `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} unrealized $${unrealizedPnl.toFixed(2)} exceeds maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
+            `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} equity $${equity.toFixed(2)} <= maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
           );
-          await closePosition(position.id, `liquidation (loss $${Math.abs(unrealizedPnl).toFixed(2)} >= margin $${maintenanceMargin.toFixed(2)})`);
+          await closePosition(position.id, `liquidation (equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
           continue;
