@@ -41,8 +41,8 @@ export async function fetchWithTimeout(
 
       return response;
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        if (err.message?.includes("Fetch timeout") && attempt < retries) {
+      if (err instanceof Error && err.message?.includes("Fetch timeout")) {
+        if (attempt < retries) {
           lastError = err;
           continue;
         }
