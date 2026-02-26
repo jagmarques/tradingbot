@@ -8,6 +8,7 @@ import {
   FUNDING_ARB_TAKE_PROFIT_PCT,
   FUNDING_ARB_CLOSE_APR,
   FUNDING_ARB_SCAN_INTERVAL_MS,
+  FUNDING_ARB_MONITOR_INTERVAL_MS,
   FUNDING_ARB_DELTA_NEUTRAL,
 } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
@@ -146,7 +147,7 @@ export function startFundingArbMonitor(): void {
 
   monitorInterval = setInterval(() => {
     void checkFundingRateNormalization();
-  }, FUNDING_ARB_SCAN_INTERVAL_MS);
+  }, FUNDING_ARB_MONITOR_INTERVAL_MS);
 }
 
 export function stopFundingArbMonitor(): void {
