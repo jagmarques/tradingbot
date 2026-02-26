@@ -849,6 +849,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     unique_tokens: number;
     first_seen: number;
     last_seen: number;
+    rugged_gem_count: number;
   }, copyStats?: WalletCopyTradeStats, medianPump?: number): number {
     // Legacy formula: gems(30, 60d window) + avg_pump(30, 60d window) + hold_rate(20) + recency(20, 30d linear) = 100
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
@@ -862,38 +863,52 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
 
     const totalTrades = copyStats?.totalTrades ?? 0;
 
-    // No copy trade history: use legacy formula
-    if (totalTrades < 1) return legacyScore;
+    let score: number;
 
-    // New formula: gems(15, 60d) + median_pump(10, 60d) + win_rate(15, 60d) + profit_factor(20, 60d) + expectancy(20, 60d) + recency(20, 7d half-life) = 100
-    const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
-    const mp = medianPump ?? wallet.avg_pump;
-    const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
-    const cs = copyStats as WalletCopyTradeStats;
+    if (totalTrades < 1) {
+      // No copy trade history: use legacy formula
+      score = legacyScore;
+    } else {
+      // New formula: gems(15, 60d) + median_pump(10, 60d) + win_rate(15, 60d) + profit_factor(20, 60d) + expectancy(20, 60d) + recency(20, 7d half-life) = 100
+      const newGemScore = Math.min(15, Math.round(15 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
+      const mp = medianPump ?? wallet.avg_pump;
+      const medianPumpScore = Math.min(10, Math.round(10 * Math.sqrt(Math.min(mp, 50)) / Math.sqrt(50)));
+      const cs = copyStats as WalletCopyTradeStats;
 
-    // Wilson lower bound as effective win rate: naturally penalises low-sample wallets
-    const effectiveWR = wilsonLowerBound(cs.wins, cs.totalTrades);
-    const winRateScore = Math.round(15 * effectiveWR);
+      // Wilson lower bound as effective win rate: naturally penalises low-sample wallets
+      const effectiveWR = wilsonLowerBound(cs.wins, cs.totalTrades);
+      const winRateScore = Math.round(15 * effectiveWR);
 
-    const pf = cs.grossProfit / Math.max(cs.grossLoss, 1);
-    const pfConfidence = Math.min(1, cs.totalTrades / 10);
-    const profitFactorScore = Math.min(20, Math.round(20 * Math.min(pf, 3) / 3 * pfConfidence));
+      const pf = cs.grossProfit / Math.max(cs.grossLoss, 1);
+      const pfConfidence = Math.min(1, cs.totalTrades / 10);
+      const profitFactorScore = Math.min(20, Math.round(20 * Math.min(pf, 3) / 3 * pfConfidence));
 
-    // Expectancy: (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct)
-    const losses = cs.totalTrades - cs.wins;
-    const avgWinPct = cs.wins > 0 ? cs.grossProfit / cs.wins : 0;
-    const avgLossPct = losses > 0 ? cs.grossLoss / losses : 0;
-    const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
-    const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 50));
+      // Expectancy: (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct)
+      const losses = cs.totalTrades - cs.wins;
+      const avgWinPct = cs.wins > 0 ? cs.grossProfit / cs.wins : 0;
+      const avgLossPct = losses > 0 ? cs.grossLoss / losses : 0;
+      const rawExpectancy = (effectiveWR * avgWinPct) - ((1 - effectiveWR) * avgLossPct);
+      const expectancyScore = Math.min(20, Math.round(20 * Math.max(0, rawExpectancy) / 50));
 
-    // Recency: exponential decay with 7-day half-life
-    const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 7));
+      // Recency: exponential decay with 7-day half-life
+      const recencyScore = Math.round(20 * Math.pow(0.5, daysSinceLastSeen / 7));
 
-    let score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
+      score = Math.min(100, newGemScore + medianPumpScore + winRateScore + profitFactorScore + expectancyScore + recencyScore);
 
-    // Expectancy floor: negative expectancy after 10+ trades caps score at 50
-    if (rawExpectancy <= 0 && cs.totalTrades >= 10) {
+      // Expectancy floor: negative expectancy after 10+ trades caps score at 50
+      if (rawExpectancy <= 0 && cs.totalTrades >= 10) {
+        score = Math.min(score, 50);
+      }
+    }
+
+    // Rug rate penalty: wallets with high rug frequency get penalized or disqualified
+    const rugRate = wallet.gem_count > 0 ? wallet.rugged_gem_count / wallet.gem_count : 0;
+    if (rugRate > 0.4) {
       score = Math.min(score, 50);
+    } else if (rugRate > 0.2) {
+      score = Math.max(0, score - 15);
+    } else if (rugRate > 0.1) {
+      score = Math.max(0, score - 8);
     }
 
     return score;
@@ -924,7 +939,11 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
              SUM(CASE WHEN status = 'holding' THEN 1 ELSE 0 END) as holding_count,
              SUM(CASE WHEN status IS NOT NULL AND status != 'unknown' THEN 1 ELSE 0 END) as enriched_count,
              COUNT(DISTINCT token_address) as unique_tokens,
-             SUM(CASE WHEN buy_timestamp > ? THEN 1 ELSE 0 END) as gems_recent
+             SUM(CASE WHEN buy_timestamp > ? THEN 1 ELSE 0 END) as gems_recent,
+             SUM(CASE WHEN EXISTS (
+               SELECT 1 FROM token_rug_counts trc
+               WHERE trc.token_address = insider_gem_hits.token_address AND trc.chain = insider_gem_hits.chain
+             ) THEN 1 ELSE 0 END) as rugged_gem_count
       FROM insider_gem_hits
       WHERE NOT (status = 'sold' AND sell_date > 0 AND buy_date > 0
             AND (sell_date - buy_date) < ?)
@@ -944,6 +963,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       enriched_count: number;
       unique_tokens: number;
       gems_recent: number;
+      rugged_gem_count: number;
     }>;
 
     const allPumps = db.prepare(`
@@ -988,6 +1008,10 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
       const medianPump = medianPumpMap.get(mpKey);
       const score = computeWalletScore(group, copyStats && copyStats.totalTrades > 0 ? copyStats : undefined, medianPump);
       scores.push(score);
+      const rugRate = group.gem_count > 0 ? group.rugged_gem_count / group.gem_count : 0;
+      if (rugRate > 0.1) {
+        console.log(`[InsiderScanner] Rug penalty: ${group.wallet_address.slice(0, 8)} rugRate=${Math.round(rugRate * 100)}% (${group.rugged_gem_count}/${group.gem_count})`);
+      }
 
       if (score > WATCHER_CONFIG.MIN_WALLET_SCORE) {
         upsertInsiderWallet({
