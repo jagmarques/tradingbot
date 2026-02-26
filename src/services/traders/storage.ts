@@ -60,7 +60,13 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN sell_date INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN max_pump_multiple REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN launch_price_usd REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN is_rugged INTEGER DEFAULT 0"); } catch { /* already exists */ }
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
+
+  try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_gem_count INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_rate_pct REAL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_penalty_applied INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE insider_wallets ADD COLUMN scoring_timestamp INTEGER DEFAULT 0"); } catch { /* already exists */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS insider_gem_analyses (
@@ -237,6 +243,11 @@ export function incrementRugCount(tokenAddress: string, chain: string): void {
       rug_count = rug_count + 1,
       last_rugged_at = ?
   `).run(ta, chain, now, now);
+
+  // Mark all gem hits for this token as rugged for audit trail
+  db.prepare(
+    "UPDATE insider_gem_hits SET is_rugged = 1 WHERE token_address = ? AND chain = ?"
+  ).run(ta, chain);
 }
 
 export function getRugCount(tokenAddress: string, chain: string): number {
@@ -281,8 +292,9 @@ export function upsertInsiderWallet(wallet: InsiderWallet): void {
   db.prepare(`
     INSERT OR REPLACE INTO insider_wallets (
       address, chain, gem_hit_count, gems, score,
-      first_seen_at, last_seen_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      first_seen_at, last_seen_at, updated_at,
+      rug_gem_count, rug_rate_pct, rug_penalty_applied, scoring_timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
   `).run(
     normalizeAddr(wallet.address),
     wallet.chain,
@@ -290,7 +302,11 @@ export function upsertInsiderWallet(wallet: InsiderWallet): void {
     JSON.stringify(wallet.gems),
     wallet.score,
     wallet.firstSeenAt,
-    wallet.lastSeenAt
+    wallet.lastSeenAt,
+    wallet.rugGemCount ?? 0,
+    wallet.rugRatePct ?? 0,
+    wallet.rugPenaltyApplied ?? 0,
+    wallet.scoringTimestamp ?? Date.now()
   );
 }
 
@@ -451,6 +467,10 @@ function mapRowToInsiderWallet(row: Record<string, unknown>): InsiderWallet {
     score: row.score as number,
     firstSeenAt: row.first_seen_at as number,
     lastSeenAt: row.last_seen_at as number,
+    rugGemCount: (row.rug_gem_count as number) ?? 0,
+    rugRatePct: (row.rug_rate_pct as number) ?? 0,
+    rugPenaltyApplied: (row.rug_penalty_applied as number) ?? 0,
+    scoringTimestamp: (row.scoring_timestamp as number) ?? 0,
   };
 }
 

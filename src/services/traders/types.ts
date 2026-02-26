@@ -164,6 +164,10 @@ export interface InsiderWallet {
   firstSeenAt: number;
   lastSeenAt: number;
   score: number; // higher = more gems
+  rugGemCount?: number;
+  rugRatePct?: number;
+  rugPenaltyApplied?: number; // points deducted (negative) or 0
+  scoringTimestamp?: number;
 }
 
 export interface InsiderScanResult {
@@ -189,6 +193,12 @@ export const INSIDER_CONFIG = {
   MAX_HISTORY_TOKENS: 50, // max unique tokens to check per wallet history scan
   HISTORY_MIN_FDV_USD: 5000, // min FDV to qualify
   SNIPER_MAX_HOLD_MS: 24 * 60 * 60 * 1000, // max hold time to be considered a sniper flip
+  // Rug rate penalty thresholds (applied after scoring formulas)
+  RUG_RATE_CAP_THRESHOLD: 0.4,  // rug rate above this caps score at 50
+  RUG_RATE_HIGH_THRESHOLD: 0.2, // rug rate above this applies -15 penalty
+  RUG_RATE_LOW_THRESHOLD: 0.1,  // rug rate above this applies -8 penalty
+  RUG_RATE_MIN_SAMPLE: 5,       // minimum total gems before rug rate is computed
+  RUG_RATE_MIN_RUGS: 2,         // minimum absolute rugged gems before any penalty applies
 };
 
 export const WATCHER_CONFIG = {

@@ -42,7 +42,7 @@ Copies EVM token buys from high-scoring insider wallets.
 - Exit on insider sell only (plus safety exits: rug, honeypot, stale price)
 - Real-time rug detection via Alchemy WebSocket (Uniswap V2/V3 Burn events)
 - Pre-pump token discovery: catches tokens with 10-99% change and high tx count
-- GoPlus security checks, $10k min liquidity, $200 max exposure, 30s price refresh
+- GoPlus security checks, $20k min liquidity, $200 max exposure, 30s price refresh
 - Dynamic position sizing: $3-$20 based on score + copy trade performance (profit factor, win rate)
 - Live mode: buys/sells via 1inch routing
 - Block-based early buyer detection (first 50 blocks of pair creation)
@@ -54,6 +54,7 @@ Copies EVM token buys from high-scoring insider wallets.
 **Wallet scoring (score > 60 required):**
 - Legacy (no copy trades): gems + avg pump + hold rate + recency = 100pts
 - Advanced (with copy trades): gems + median pump + Wilson WR + profit factor + expectancy + recency = 100pts
+- Rug rate penalty: applied after main formula if wallet has 5+ gems and 2+ rugged; >40% rug rate caps at 50, >20% applies -15, >10% applies -8
 - Dynamic sizing: proven profitable wallets (PF>2, WR>50%) get 1.5x, losing wallets get 0.5x
 - Circuit breaker: 3 consecutive losses = 24h pause
 
@@ -77,7 +78,7 @@ AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliqui
 - Kelly criterion position sizing (half Kelly, stop-distance-adjusted)
 - Trailing stop + stagnation exit (4h) + stop-loss (1% max)
 - Funding rate arbitrage (delta-neutral, short when funding > 12% APR)
-- 3x leverage, 15 concurrent positions, $25 rolling 24h drawdown limit
+- 3x leverage (AI/Rule/VWAP), 5x leverage (Micro), 15 concurrent positions, $25 rolling 24h drawdown limit
 - 3-minute cycle, 10s monitor, 14-day paper validation before live
 
 ## Telegram
