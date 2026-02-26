@@ -856,7 +856,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
     rugRatePct: number;
     rugPenaltyApplied: number;
   } {
-    // Legacy formula: gems(30, 60d) + avg_pump(30, 60d) + hold_rate(20) + recency(20, 30d linear) = 100
+    // Legacy formula: gems(30, 60d) + avg_pump(30, all-time) + hold_rate(20) + recency(20, 30d linear) = 100
     const gemCountScore = Math.min(30, Math.round(30 * Math.log2(Math.max(1, wallet.gems_recent)) / Math.log2(20)));
     const avgPumpScore = Math.min(30, Math.round(30 * Math.sqrt(Math.min(wallet.avg_pump, 50)) / Math.sqrt(50)));
     // Only gems with known status count in the denominator; unenriched gems are neutral

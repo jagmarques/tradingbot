@@ -214,6 +214,8 @@ export type CopyExitReason =
   | "stale_price"
   | "liquidity_rug"
   | "honeypot"
+  | "high_sell_tax"
+  | "high_buy_tax"
   | "lp_unlocked"
   | "max_hold_time";
 

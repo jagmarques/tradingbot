@@ -640,7 +640,7 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
 
     for (const t of matchingTrades) {
       if (isHoneypot) {
-        // Honeypot: can't sell, total loss
+        // Can't sell, total loss
         t.currentPriceUsd = 0;
         const closed = await exitCopyTrade(t, "honeypot", -100, reason);
         if (!closed) {
@@ -659,10 +659,10 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
           pnlPct: -100,
         }).catch(err => console.error("[CopyTrade] Notification error:", err));
       } else {
-        // Non-honeypot risk flag: token still sellable at current price
+        // High tax: still sellable, exit at current price
         const feePct = COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT;
         const pnlPct = t.pnlPct - feePct;
-        const closed = await exitCopyTrade(t, "lp_unlocked", pnlPct, reason);
+        const closed = await exitCopyTrade(t, reason as CopyExitReason, pnlPct, reason);
         if (!closed) {
           console.log(`[CopyTrade] GoPlus close failed: ${t.tokenSymbol} (${t.chain}) wallet=${t.walletAddress.slice(0, 8)} - already closed`);
           continue;
@@ -681,7 +681,7 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
       }
     }
 
-    // Count honeypot and high-tax tokens as rugs (wallet quality signal)
+    // Count honeypot/high-tax as rugs for wallet scoring
     if (isHoneypot || reason === "high_sell_tax" || reason === "high_buy_tax") {
       incrementRugCount(trade.tokenAddress, trade.chain);
     }
