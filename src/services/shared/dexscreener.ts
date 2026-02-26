@@ -2,6 +2,7 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { geckoFetch } from "./gecko.js";
 
 const RATE_LIMIT_MS = 1100;
+let lastDexAt = 0;
 let queue: Promise<void> = Promise.resolve();
 
 const DEX_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
@@ -76,7 +77,10 @@ export function clearPriceCache(): void {
 }
 
 function enqueue(): Promise<void> {
-  const myTurn = queue.then(() => new Promise<void>((r) => setTimeout(r, RATE_LIMIT_MS)));
+  const now = Date.now();
+  const delay = Math.max(0, lastDexAt + RATE_LIMIT_MS - now);
+  lastDexAt = now + delay;
+  const myTurn = queue.then(() => new Promise<void>((r) => setTimeout(r, delay)));
   queue = myTurn;
   return myTurn;
 }

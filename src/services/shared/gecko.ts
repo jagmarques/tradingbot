@@ -12,7 +12,7 @@ async function geckoMakeFetch(url: string, timeoutMs: number): Promise<Response 
     const resp = await fetchWithTimeout(url, { timeoutMs, retries: 0 });
     if (resp.status === 429) {
       cooldownUntil = Date.now() + COOLDOWN_MS;
-      console.log(`[Gecko] 429 - cooling down 5min for ${url.slice(url.lastIndexOf("/api/v2") + 7, url.lastIndexOf("/api/v2") + 67)}`);
+      console.log(`[Gecko] 429 - cooling down 5min: ${url.split("/api/v2")[1]?.slice(0, 60) ?? url.slice(-60)}`);
       return null;
     }
     return resp;
