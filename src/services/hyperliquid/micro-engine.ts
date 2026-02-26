@@ -39,30 +39,30 @@ function evaluateMicroPair(analysis: PairAnalysis): QuantAIDecision | null {
   const oiStr = oiDeltaPct !== null ? `OI ${oiDeltaPct >= 0 ? "+" : ""}${oiDeltaPct.toFixed(1)}%` : "OI n/a";
   const lsStr = globalTrend ?? "n/a";
 
-  // LONG: bid-heavy orderbook (L/S confirming is a bonus, not required)
+  // SHORT: bid-heavy orderbook (contrarian — fade the crowd)
   if (imbalanceRatio > MICRO_IMBALANCE_LONG_THRESHOLD) {
-    const lsConfirms = !globalTrend || globalTrend === "falling" || globalTrend === "stable";
-    if (!lsConfirms) {
-      return null; // L/S rising = crowd is long, don't join
-    }
-    direction = "long";
-    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} bid-heavy, L/S ${lsStr}, ${oiStr}`;
-  }
-
-  // SHORT: ask-heavy orderbook
-  if (imbalanceRatio < MICRO_IMBALANCE_SHORT_THRESHOLD) {
     const lsConfirms = !globalTrend || globalTrend === "rising" || globalTrend === "stable";
     if (!lsConfirms) {
-      return null; // L/S falling = crowd is short, don't join
+      return null; // L/S falling = crowd already exiting, no crowd to fade
     }
     direction = "short";
-    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} ask-heavy, L/S ${lsStr}, ${oiStr}`;
+    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} bid-heavy contrarian short, L/S ${lsStr}, ${oiStr}`;
+  }
+
+  // LONG: ask-heavy orderbook (contrarian — fade the crowd)
+  if (imbalanceRatio < MICRO_IMBALANCE_SHORT_THRESHOLD) {
+    const lsConfirms = !globalTrend || globalTrend === "falling" || globalTrend === "stable";
+    if (!lsConfirms) {
+      return null; // L/S rising = crowd already exiting, no crowd to fade
+    }
+    direction = "long";
+    reasoning = `Micro: OB ${imbalanceRatio.toFixed(2)} ask-heavy contrarian long, L/S ${lsStr}, ${oiStr}`;
   }
 
   if (direction === null) return null;
 
   // Confidence boosters
-  if ((direction === "long" && imbalanceRatio > 0.75) || (direction === "short" && imbalanceRatio < 0.25)) {
+  if ((direction === "short" && imbalanceRatio > 0.75) || (direction === "long" && imbalanceRatio < 0.25)) {
     confidence += 10; // Extreme imbalance
   }
   if (spreadBps > 10) {
