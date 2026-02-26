@@ -49,8 +49,8 @@ export async function fetchWithTimeout(
         throw err;
       }
       if (err instanceof TypeError) {
-        lastError = err;
-        continue;
+        if (attempt < retries) { lastError = err; continue; }
+        throw err;
       }
       throw err;
     } finally {
