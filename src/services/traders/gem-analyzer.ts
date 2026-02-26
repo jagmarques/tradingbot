@@ -780,19 +780,23 @@ export async function refreshCopyTradePrices(): Promise<void> {
           console.log(`[CopyTrade] PERIODIC RUG: ${tradesForToken[0].tokenSymbol} (${token.chain}) - ${reason} (${tradesForToken.length} trades)`);
 
           for (const trade of tradesForToken) {
-            const computedPnl = -100;
-            trade.currentPriceUsd = 0;
-            const closed = await exitCopyTrade(trade, "liquidity_rug", computedPnl, "liquidity_rug");
+            const isTrueRug = belowFloor || liquidityUsd === 0;
+            const computedPnl = isTrueRug
+              ? -100
+              : Math.max(-100, Math.min(10000, (trade.buyPriceUsd > 0 ? ((priceUsd / trade.buyPriceUsd) - 1) * 100 : 0) - COPY_TRADE_CONFIG.ESTIMATED_FEE_PCT));
+            const exitReason: CopyExitReason = isTrueRug ? "liquidity_rug" : "liquidity_drop";
+            if (isTrueRug) trade.currentPriceUsd = 0;
+            const closed = await exitCopyTrade(trade, exitReason, computedPnl, exitReason);
             if (!closed) continue;
             notifyCopyTrade({
               walletAddress: trade.walletAddress,
               tokenSymbol: trade.tokenSymbol,
               chain: trade.chain,
               side: "sell",
-              priceUsd,
+              priceUsd: isTrueRug ? 0 : priceUsd,
               liquidityOk: false,
               liquidityUsd,
-              skipReason: "liquidity rug",
+              skipReason: isTrueRug ? "liquidity rug" : "liquidity drop",
               pnlPct: computedPnl,
             }).catch(err => console.error("[CopyTrade] Notification error:", err));
           }

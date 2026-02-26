@@ -213,6 +213,7 @@ export type CopyExitReason =
   | "stop_loss"
   | "stale_price"
   | "liquidity_rug"
+  | "liquidity_drop"
   | "honeypot"
   | "high_sell_tax"
   | "high_buy_tax"

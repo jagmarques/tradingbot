@@ -164,10 +164,10 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
       expect.any(String),
       trade.tokenAddress,
       trade.chain,
-      "liquidity_rug",
+      "liquidity_drop",
       expect.any(Number),
       expect.any(Number),
-      "liquidity_rug",
+      "liquidity_drop",
       undefined
     );
   });
