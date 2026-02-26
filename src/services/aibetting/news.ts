@@ -179,8 +179,8 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
       responseText = result.body;
       break;
     } catch (err) {
-      console.warn(`[News] GDELT fetch error (attempt ${attempt + 1}/3): ${err instanceof Error ? err.message : err}`);
       if (attempt === 2) {
+        console.warn(`[News] GDELT fetch error after 3 attempts: ${err instanceof Error ? err.message : err}`);
         gdeltConsecutiveFailures++;
         if (gdeltConsecutiveFailures >= GDELT_CIRCUIT_OPEN_THRESHOLD) {
           gdeltCooldownUntil = Date.now() + GDELT_COOLDOWN_MS;
