@@ -25,8 +25,7 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
-  // AI requires 75%+ (LLM confidence is unreliable). Rule engine uses 60%+ (math-derived).
-  const minConfidence = isRuleBased ? 60 : 75;
+  const minConfidence = isRuleBased ? 60 : 65;
   if (confidence < minConfidence) return 0;
 
   const edge = winProb - 0.5;

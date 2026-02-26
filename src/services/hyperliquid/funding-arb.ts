@@ -74,8 +74,11 @@ export async function runFundingArbCycle(): Promise<void> {
       if (FUNDING_ARB_DELTA_NEUTRAL) {
         position.spotHedgePrice = markPrice;
         saveQuantPosition(position);
+        const hedgeDesc = direction === "short"
+          ? "short perp + virtual spot long"
+          : "long perp + virtual spot short";
         console.log(
-          `[FundingArb] Opened delta-neutral ${pair}: short perp + virtual spot long @ ${markPrice} (${(annualizedRate * 100).toFixed(1)}% APR)`,
+          `[FundingArb] Opened delta-neutral ${pair}: ${hedgeDesc} @ ${markPrice} (${(annualizedRate * 100).toFixed(1)}% APR)`,
         );
       } else {
         console.log(
