@@ -1,13 +1,8 @@
 import { fetchWithTimeout } from "../../utils/fetch.js";
+import { geckoFetch } from "./gecko.js";
 
 const RATE_LIMIT_MS = 1100;
 let queue: Promise<void> = Promise.resolve();
-
-const GECKO_PRICE_RATE_LIMIT_MS = 12_000; // ~5 req/min
-let geckoLastAt = 0;
-
-const GECKO_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
-let geckoCooldownUntil = 0;
 
 const DEX_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 let dexCooldownUntil = 0;
@@ -33,23 +28,10 @@ const GECKO_NETWORKS: Record<string, string> = {
 async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<{ priceUsd: number; liquidityUsd: number; fdv: number }> {
   const network = GECKO_NETWORKS[chain];
   if (!network || !tokenAddress) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
-  const now = Date.now();
-  if (now < geckoCooldownUntil) {
-    return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
-  }
-  if (now - geckoLastAt < GECKO_PRICE_RATE_LIMIT_MS) {
-    return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
-  }
-  geckoLastAt = now;
+  const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
+  const resp = await geckoFetch(url);
+  if (!resp || !resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
   try {
-    const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
-    const resp = await fetchWithTimeout(url, { timeoutMs: 10_000, retries: 0 });
-    if (resp.status === 429) {
-      geckoCooldownUntil = Date.now() + GECKO_COOLDOWN_MS;
-      console.log(`[DexScreener] GeckoTerminal 429 - cooling down 5min for ${network}/${tokenAddress.slice(0, 10)}`);
-      return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
-    }
-    if (!resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     const data = await resp.json() as {
       data?: {
         attributes?: {

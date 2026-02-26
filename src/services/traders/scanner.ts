@@ -8,6 +8,7 @@ import { getDb } from "../database/db.js";
 import { KNOWN_EXCHANGES, KNOWN_DEX_ROUTERS } from "./types.js";
 import { analyzeGemsBackground, refreshGemPaperPrices, sellGemPosition } from "./gem-analyzer.js";
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
+import { geckoQueuedFetch } from "../shared/gecko.js";
 import { formatPrice } from "../../utils/format.js";
 
 // GeckoTerminal API
@@ -68,28 +69,6 @@ export function isBotOrBurnAddress(addr: string): boolean {
   return false;
 }
 
-// GeckoTerminal: ~12 calls/cycle, actual limit ~6/min (stricter than documented), 15s spacing
-let geckoQueue: Promise<void> = Promise.resolve();
-
-async function geckoRateLimitedFetch(url: string): Promise<Response> {
-  const myTurn = geckoQueue.then(() => new Promise<void>((r) => setTimeout(r, 15_000)));
-  geckoQueue = myTurn;
-  await myTurn;
-  const response = await fetchWithTimeout(url);
-  if (response.status !== 429) return response;
-  const delays = [15_000, 30_000, 60_000];
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const delay = delays[attempt - 1];
-    const endpoint = url.replace("https://api.geckoterminal.com/api/v2", "").slice(0, 60);
-    console.log(`[InsiderScanner] GeckoTerminal 429 on ${endpoint}, retry ${attempt}/3 in ${delay / 1000}s`);
-    await new Promise((r) => setTimeout(r, delay));
-    const retry = await fetchWithTimeout(url);
-    if (retry.status !== 429) return retry;
-  }
-  const exhaustedEndpoint = url.replace("https://api.geckoterminal.com/api/v2", "").slice(0, 60);
-  console.log(`[InsiderScanner] GeckoTerminal 429 exhausted retries for ${exhaustedEndpoint}`);
-  return response;
-}
 
 async function fetchLaunchPrice(chain: EvmChain, pairAddress: string): Promise<number> {
   if (!pairAddress) return 0;
@@ -97,8 +76,8 @@ async function fetchLaunchPrice(chain: EvmChain, pairAddress: string): Promise<n
   if (!network) return 0;
   try {
     const url = `${GECKO_BASE}/networks/${network}/pools/${pairAddress}/ohlcv/day?limit=200&currency=usd`;
-    const resp = await geckoRateLimitedFetch(url);
-    if (!resp.ok) return 0;
+    const resp = await geckoQueuedFetch(url);
+    if (!resp || !resp.ok) return 0;
     const data = await resp.json() as { data?: { attributes?: { ohlcv_list?: number[][] } } };
     const candles = data?.data?.attributes?.ohlcv_list;
     if (!candles || candles.length === 0) return 0;
@@ -149,10 +128,10 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
 
   try {
     const url = `${GECKO_BASE}/networks/${networkId}/trending_pools`;
-    const response = await geckoRateLimitedFetch(url);
+    const response = await geckoQueuedFetch(url);
 
-    if (!response.ok) {
-      console.error(`[InsiderScanner] GeckoTerminal API returned ${response.status} for ${chain}`);
+    if (!response || !response.ok) {
+      if (response) console.error(`[InsiderScanner] GeckoTerminal API returned ${response.status} for ${chain}`);
       return [];
     }
 
@@ -204,9 +183,9 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   try {
     if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
       const newPoolsUrl = `${GECKO_BASE}/networks/${networkId}/new_pools`;
-      const newPoolsResponse = await geckoRateLimitedFetch(newPoolsUrl);
+      const newPoolsResponse = await geckoQueuedFetch(newPoolsUrl);
 
-      if (newPoolsResponse.ok) {
+      if (newPoolsResponse && newPoolsResponse.ok) {
         const newPoolsData = (await newPoolsResponse.json()) as { data: GeckoPool[] };
         const newPools = newPoolsData.data || [];
         let newCount = 0;
@@ -255,9 +234,9 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
   try {
     if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
       const topPoolsUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_volume_usd_desc&page=1`;
-      const topPoolsResponse = await geckoRateLimitedFetch(topPoolsUrl);
+      const topPoolsResponse = await geckoQueuedFetch(topPoolsUrl);
 
-      if (topPoolsResponse.ok) {
+      if (topPoolsResponse && topPoolsResponse.ok) {
         const topPoolsData = (await topPoolsResponse.json()) as { data: GeckoPool[] };
         const topPools = topPoolsData.data || [];
         let topCount = 0;
@@ -307,9 +286,9 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
     if (pumped.length < INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) {
       // Tx-count sort surfaces micro-caps with unusual activity (many small trades = insider accumulation)
       const risingUrl = `${GECKO_BASE}/networks/${networkId}/pools?sort=h24_tx_count_desc&page=1`;
-      const risingResponse = await geckoRateLimitedFetch(risingUrl);
+      const risingResponse = await geckoQueuedFetch(risingUrl);
 
-      if (risingResponse.ok) {
+      if (risingResponse && risingResponse.ok) {
         const risingData = (await risingResponse.json()) as { data: GeckoPool[] };
         const risingPools = risingData.data || [];
         let risingCount = 0;
