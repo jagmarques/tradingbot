@@ -159,15 +159,7 @@ ${getRegimeInstruction(analysis.regime)}
 === INSTRUCTIONS ===
 Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be capped automatically.
 
-IMPORTANT: Only trade when you see a CLEAR setup with multiple confirming signals. Return flat (confidence < 50) when:
-- Indicators conflict (RSI says one thing, MACD says another)
-- Price is in the middle of the range with no clear direction
-- Volume is declining
-- No strong trend or extreme mean-reversion setup
-
-Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
-
-Most of the time you should return flat. Only trade the best setups.
+Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
 
 OUTPUT JSON ONLY (no markdown, no extra text):
 {
