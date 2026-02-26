@@ -3,6 +3,9 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 const RATE_LIMIT_MS = 1100;
 let queue: Promise<void> = Promise.resolve();
 
+const GECKO_PRICE_RATE_LIMIT_MS = 12_000; // ~5 req/min
+let geckoLastAt = 0;
+
 const GECKO_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 let geckoCooldownUntil = 0;
 
@@ -30,26 +33,23 @@ const GECKO_NETWORKS: Record<string, string> = {
 async function geckoTerminalPrice(chain: string, tokenAddress: string): Promise<{ priceUsd: number; liquidityUsd: number; fdv: number }> {
   const network = GECKO_NETWORKS[chain];
   if (!network || !tokenAddress) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
-  if (Date.now() < geckoCooldownUntil) {
+  const now = Date.now();
+  if (now < geckoCooldownUntil) {
     return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
   }
-  await enqueue();
+  if (now - geckoLastAt < GECKO_PRICE_RATE_LIMIT_MS) {
+    return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+  }
+  geckoLastAt = now;
   try {
     const url = `https://api.geckoterminal.com/api/v2/networks/${network}/tokens/${tokenAddress}`;
-    let resp: Response | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      resp = await fetchWithTimeout(url, { timeoutMs: 10_000, retries: 0 });
-      if (resp.status !== 429) break;
-      if (attempt === 0) {
-        await new Promise(r => setTimeout(r, 5000));
-        continue;
-      }
-      // Second 429 — trigger cooldown
+    const resp = await fetchWithTimeout(url, { timeoutMs: 10_000, retries: 0 });
+    if (resp.status === 429) {
       geckoCooldownUntil = Date.now() + GECKO_COOLDOWN_MS;
       console.log(`[DexScreener] GeckoTerminal 429 - cooling down 5min for ${network}/${tokenAddress.slice(0, 10)}`);
       return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     }
-    if (!resp || !resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
+    if (!resp.ok) return { priceUsd: 0, liquidityUsd: 0, fdv: 0 };
     const data = await resp.json() as {
       data?: {
         attributes?: {
@@ -98,6 +98,7 @@ function enqueue(): Promise<void> {
   queue = myTurn;
   return myTurn;
 }
+
 
 export async function dexScreenerFetch(chain: string, tokenAddress: string): Promise<DexPair | null> {
   if (!tokenAddress) return null;

@@ -163,16 +163,16 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
   };
 
   let responseText: string | null = null;
-  let allRateLimited = true;
+  let rateLimitedCount = 0;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const result = await httpsGet(url, headers, 30000);
       if (result.status === 429) {
+        rateLimitedCount++;
         const backoff = (attempt + 1) * 5000;
         await new Promise(r => setTimeout(r, backoff));
         continue;
       }
-      allRateLimited = false;
       if (result.status !== 200) {
         console.warn(`[News] GDELT HTTP ${result.status}`);
         return [];
@@ -181,7 +181,6 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
       responseText = result.body;
       break;
     } catch (err) {
-      allRateLimited = false;
       if (attempt === 2) {
         console.warn(`[News] GDELT fetch error after 3 attempts: ${err instanceof Error ? err.message : err}`);
         gdeltConsecutiveFailures++;
@@ -196,7 +195,7 @@ async function fetchGdeltArticles(query: string): Promise<GdeltArticle[]> {
     }
   }
 
-  if (allRateLimited && !responseText) {
+  if (rateLimitedCount === 3) {
     gdeltConsecutiveFailures++;
     if (gdeltConsecutiveFailures >= GDELT_CIRCUIT_OPEN_THRESHOLD) {
       gdeltCooldownUntil = Date.now() + GDELT_COOLDOWN_MS;

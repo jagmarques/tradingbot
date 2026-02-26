@@ -1,5 +1,12 @@
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
+
 export async function fetchWithTimeout(
   url: string | URL,
   options?: RequestInit & { timeoutMs?: number; retries?: number; retryDelayMs?: number }
@@ -28,7 +35,7 @@ export async function fetchWithTimeout(
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       const urlStr = url.toString().slice(0, 80);
-      controller.abort(new Error(`Fetch timeout after ${timeoutMs}ms: ${urlStr}`));
+      controller.abort(new TimeoutError(`Fetch timeout after ${timeoutMs}ms: ${urlStr}`));
     }, timeoutMs);
 
     try {
@@ -41,7 +48,7 @@ export async function fetchWithTimeout(
 
       return response;
     } catch (err) {
-      if (err instanceof Error && err.message?.includes("Fetch timeout")) {
+      if (err instanceof TimeoutError) {
         if (attempt < retries) {
           lastError = err;
           continue;
