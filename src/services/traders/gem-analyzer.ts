@@ -25,7 +25,7 @@ const GOPLUS_CHAIN_IDS: Record<string, string> = {
   avalanche: "43114",
 };
 
-const GOPLUS_RATE_LIMIT_MS = 2_000;
+const GOPLUS_RATE_LIMIT_MS = 6_000; // ~10 req/min
 const GOPLUS_COOLDOWN_MS = 5 * 60 * 1000;
 let goplusNextAt = 0;
 let goplusCooldownUntil = 0;
@@ -624,7 +624,7 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
 
     if (trade.liquidityUsd >= COPY_TRADE_CONFIG.GOPLUS_SKIP_LIQUIDITY_USD) continue;
 
-    if (fetchCount > 0) await new Promise(r => setTimeout(r, 2_000));
+    if (fetchCount > 0) await new Promise(r => setTimeout(r, 6_000));
     fetchCount++;
 
     const data = await fetchGoPlusData(trade.tokenAddress, trade.chain);
