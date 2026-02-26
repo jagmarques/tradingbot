@@ -64,7 +64,7 @@ vi.mock("../copy/filter.js", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { refreshCopyTradePrices, checkGoPlusForOpenTrades, isGoPlusKillSwitch } from "./gem-analyzer.js";
+import { refreshCopyTradePrices, checkGoPlusForOpenTrades, isGoPlusKillSwitch, resetGoPlusRateLimit } from "./gem-analyzer.js";
 
 function makeTrade(overrides: Partial<{
   walletAddress: string;
@@ -219,6 +219,7 @@ describe("refreshCopyTradePrices - liquidity rug check", () => {
 describe("checkGoPlusForOpenTrades - GoPlus periodic re-check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetGoPlusRateLimit();
   });
 
   it("exits trade flagged as honeypot by GoPlus", async () => {

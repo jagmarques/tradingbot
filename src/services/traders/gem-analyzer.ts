@@ -7,6 +7,7 @@ import { getApproxUsdValue } from "../copy/filter.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
+import { fetchWithTimeout } from "../../utils/fetch.js";
 import type { Chain } from "./types.js";
 
 // Price failure tracking (shared across copy trades and gem buys)
@@ -24,6 +25,16 @@ const GOPLUS_CHAIN_IDS: Record<string, string> = {
   avalanche: "43114",
 };
 
+const GOPLUS_RATE_LIMIT_MS = 2_000;
+const GOPLUS_COOLDOWN_MS = 5 * 60 * 1000;
+let goplusNextAt = 0;
+let goplusCooldownUntil = 0;
+
+export function resetGoPlusRateLimit(): void {
+  goplusNextAt = 0;
+  goplusCooldownUntil = 0;
+}
+
 export async function fetchGoPlusData(tokenAddress: string, chain: string): Promise<Record<string, unknown> | null> {
   const chainId = GOPLUS_CHAIN_IDS[chain];
   if (!chainId) {
@@ -31,21 +42,21 @@ export async function fetchGoPlusData(tokenAddress: string, chain: string): Prom
     return null;
   }
 
+  const now = Date.now();
+  if (now < goplusCooldownUntil || now < goplusNextAt) return null;
+  goplusNextAt = now + GOPLUS_RATE_LIMIT_MS;
+
   const url = `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${tokenAddress}`;
+  console.log(`[GemAnalyzer] GoPlus fetch for ${tokenAddress} on ${chain}`);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const response = await fetchWithTimeout(url, { timeoutMs: 10_000, retries: 0 });
 
-    console.log(`[GemAnalyzer] GoPlus fetch for ${tokenAddress} on ${chain}`);
-
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
+    if (response.status === 429) {
+      goplusCooldownUntil = Date.now() + GOPLUS_COOLDOWN_MS;
+      console.warn(`[GemAnalyzer] GoPlus 429 - cooling down 5min`);
+      return null;
     }
-
     if (!response.ok) {
       console.warn(`[GemAnalyzer] GoPlus API error: ${response.status}`);
       return null;
@@ -56,6 +67,11 @@ export async function fetchGoPlusData(tokenAddress: string, chain: string): Prom
       result: Record<string, Record<string, unknown>>;
     };
 
+    if (data.code === 4029) {
+      goplusCooldownUntil = Date.now() + GOPLUS_COOLDOWN_MS;
+      console.warn(`[GemAnalyzer] GoPlus rate limit (4029) - cooling down 5min`);
+      return null;
+    }
     if (data.code !== 1) {
       console.warn(`[GemAnalyzer] GoPlus error code ${data.code}`);
       return null;
@@ -63,8 +79,7 @@ export async function fetchGoPlusData(tokenAddress: string, chain: string): Prom
     if (!data.result) return null;
 
     const key = tokenAddress.toLowerCase();
-    const tokenData = data.result[key];
-    return tokenData || null;
+    return data.result[key] || null;
   } catch (error) {
     console.warn(`[GemAnalyzer] GoPlus fetch failed for ${tokenAddress}:`, error instanceof Error ? error.message : "unknown");
     return null;
@@ -601,12 +616,16 @@ export async function checkGoPlusForOpenTrades(): Promise<void> {
   if (openTrades.length === 0) return;
 
   const seen = new Set<string>();
+  let fetchCount = 0;
   for (const trade of openTrades) {
     const key = `${trade.tokenAddress.toLowerCase()}_${trade.chain}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
     if (trade.liquidityUsd >= COPY_TRADE_CONFIG.GOPLUS_SKIP_LIQUIDITY_USD) continue;
+
+    if (fetchCount > 0) await new Promise(r => setTimeout(r, 2_000));
+    fetchCount++;
 
     const data = await fetchGoPlusData(trade.tokenAddress, trade.chain);
     if (!data) continue; // GoPlus unavailable - fail open
