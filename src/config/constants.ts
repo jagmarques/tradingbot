@@ -110,16 +110,6 @@ export const BREAKOUT_STAGNATION_BARS = 6; // 6 x 4h = 24h
 export const BREAKOUT_ADX_MIN = 20;
 export const BREAKOUT_BASE_CONFIDENCE = 65;
 
-// BB Squeeze Breakout Engine (4h squeeze + breakout, best out-of-sample: Sharpe 1.14, +5.21% / 125d)
-export const SQUEEZE_BB_PERIOD = 15;
-export const SQUEEZE_PERCENTILE = 25;
-export const SQUEEZE_STOP_ATR_MULT = 2.0;
-export const SQUEEZE_REWARD_RISK_RATIO = 3.0;
-export const SQUEEZE_VOLUME_THRESHOLD = 1.5;
-export const SQUEEZE_STAGNATION_BARS = 9; // 9 x 4h = 36h
-export const SQUEEZE_BASE_CONFIDENCE = 65;
-export const SQUEEZE_PERCENTILE_WINDOW = 100;
-
 // MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 3.20, +24.48% / 125d, tune-mtf-v2)
 export const MTF_DAILY_SMA_PERIOD = 100;
 export const MTF_DAILY_ADX_MIN = 18;
