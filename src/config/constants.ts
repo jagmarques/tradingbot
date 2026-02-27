@@ -74,16 +74,6 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
-// Rule-Based Decision Engine
-export const RULE_RSI_OVERSOLD = 30;
-export const RULE_RSI_OVERBOUGHT = 70;
-export const RULE_RSI_PULLBACK_LOW = 40;
-export const RULE_RSI_PULLBACK_HIGH = 60;
-export const RULE_STOP_ATR_MULTIPLIER = 1.5;
-export const RULE_REWARD_RISK_RATIO = 2.0;
-export const RULE_BB_PROXIMITY_PCT = 1.5;
-export const RULE_MIN_CONFIDENCE = 60;
-
 // Microstructure Decision Engine
 export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.60;
 export const MICRO_IMBALANCE_SHORT_THRESHOLD = 0.40;
@@ -92,14 +82,6 @@ export const MICRO_BASE_CONFIDENCE = 65;
 export const MICRO_OI_SURGE_PCT = 2;
 export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
 export const MICRO_REWARD_RISK_RATIO = 2.0;
-
-// VWAP Deviation Mean Reversion Engine
-export const VWAP_DEVIATION_LONG_PCT = -5.0;
-export const VWAP_DEVIATION_SHORT_PCT = 4.0;
-export const VWAP_TREND_CONFLICT_PCT = 2.0;
-export const VWAP_BASE_CONFIDENCE = 65;
-export const VWAP_STOP_ATR_MULTIPLIER = 2.0;
-export const VWAP_REWARD_RISK_RATIO = 2.5;
 
 // BB Squeeze Engine
 export const BB_SQUEEZE_DAILY_SMA_PERIOD = 70;

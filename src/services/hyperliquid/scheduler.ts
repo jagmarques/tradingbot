@@ -2,7 +2,6 @@ import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runMicroDecisionEngine } from "./micro-engine.js";
-import { runVwapDecisionEngine } from "./vwap-engine.js";
 import { runMtfDecisionEngine } from "./mtf-engine.js";
 import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
 import { runIchimokuDecisionEngine } from "./ichimoku-engine.js";
@@ -42,7 +41,6 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     const microDecisions = runMicroDecisionEngine(analyses);
-    const vwapDecisions = runVwapDecisionEngine(analyses);
     const mtfDecisions = await runMtfDecisionEngine(analyses);
     const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
     const ichimokuDecisions = await runIchimokuDecisionEngine(analyses);
@@ -57,11 +55,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const microOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "micro-directional")
-        .map(p => p.pair),
-    );
-    const vwapOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "vwap-directional")
         .map(p => p.pair),
     );
     const mtfOpenPairs = new Set(
@@ -171,46 +164,6 @@ export async function runDirectionalCycle(): Promise<void> {
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] Micro: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let vwapExecuted = 0;
-    for (const decision of vwapDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] VWAP: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (vwapOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] VWAP: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "vwap-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        vwapExecuted++;
-        vwapOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] VWAP: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -416,7 +369,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, Ichimoku ${ichimokuExecuted}/${ichimokuDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, Ichimoku ${ichimokuExecuted}/${ichimokuDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

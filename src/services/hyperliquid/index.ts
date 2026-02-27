@@ -7,7 +7,6 @@ import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 import { startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
-import { runBacktestBackground } from "./backtest.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -39,8 +38,6 @@ export function initQuant(): number {
   startPositionMonitor();
   startFundingArbMonitor();
   startQuantScheduler();
-  runBacktestBackground();
-
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
   console.log(`[Quant] Initialized (${isPaperMode() ? "paper" : "live"} mode), ${count} open positions`);
@@ -88,14 +85,9 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Funding Rate Arbitrage
 export { runFundingArbCycle, startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 
-// Rule-Based Decision Engine
-export { runRuleDecisionEngine } from "./rule-engine.js";
-
 // Microstructure Decision Engine
 export { runMicroDecisionEngine } from "./micro-engine.js";
 
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
-// Backtest
-export { runBacktest, getCachedBacktest, runBacktestBackground } from "./backtest.js";

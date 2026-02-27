@@ -28,7 +28,6 @@ import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
-import { getCachedBacktest } from "../hyperliquid/backtest.js";
 import { getClient } from "../hyperliquid/client.js";
 import { getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
 
@@ -2408,9 +2407,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const dailyLoss = getDailyLossTotal();
   const funding = getFundingIncome();
   const aiStats = getQuantStats("ai-directional");
-  const ruleStats = getQuantStats("rule-directional");
   const microStats = getQuantStats("micro-directional");
-  const vwapStats = getQuantStats("vwap-directional");
   const mtfStats = getQuantStats("mtf-directional");
   const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
   const ichimokuStats = getQuantStats("ichimoku-directional");
@@ -2439,9 +2436,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
         pos.tradeType === "funding" ? "[F]" :
-        pos.tradeType === "rule-directional" ? "[R]" :
         pos.tradeType === "micro-directional" ? "[M]" :
-        pos.tradeType === "vwap-directional" ? "[V]" :
         pos.tradeType === "mtf-directional" ? "[T]" :
         pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
         pos.tradeType === "ichimoku-directional" ? "[IK]" :
@@ -2465,23 +2460,27 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   const fundingPnl = funding.totalIncome;
-  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + microStats.totalPnl + vwapStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + ichimokuStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
-  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + microStats.totalTrades + vwapStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + ichimokuStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
+  const totalPnl = aiStats.totalPnl + microStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + ichimokuStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
+  const totalTrades = aiStats.totalTrades + microStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + ichimokuStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
 
-  const statLine = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }): string =>
-    `${label}: ${pnl(s.totalPnl)} | ${s.totalTrades}t | ${s.totalTrades > 0 ? s.winRate.toFixed(0) : 0}%w\n`;
+  const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }): string => {
+    const ret = s.totalPnl.toFixed(1);
+    const sign = s.totalPnl >= 0 ? "+" : "";
+    const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
+    return `${label}: ${sign}${ret}% ${s.totalTrades}T${wr}\n`;
+  };
 
+  const totalSign = totalPnl >= 0 ? "+" : "";
   text += `\n`;
-  text += statLine("AI", aiStats);
-  text += statLine("Micro", microStats);
-  text += statLine("VWAP", vwapStats);
-  text += statLine("MTF", mtfStats);
-  text += statLine("BBSqueeze", bbSqueezeStats);
-  text += statLine("Ichimoku", ichimokuStats);
-  text += statLine("DemaCross", demaCrossStats);
-  text += statLine("CciTrend", cciTrendStats);
-  text += `Funding: ${pnl(fundingPnl)} | ${funding.tradeCount}t\n`;
-  text += `Total: ${pnl(totalPnl)} | ${totalTrades}t\n`;
+  text += sl("MTF", mtfStats);
+  text += sl("BBSqueeze", bbSqueezeStats);
+  text += sl("Ichimoku", ichimokuStats);
+  text += sl("DemaCross", demaCrossStats);
+  text += sl("CciTrend", cciTrendStats);
+  text += sl("AI", aiStats);
+  text += sl("Micro", microStats);
+  text += `Funding: ${fundingPnl >= 0 ? "+" : ""}${fundingPnl.toFixed(1)}% ${funding.tradeCount}T\n`;
+  text += `Total: ${totalSign}${totalPnl.toFixed(1)}% ${totalTrades}T\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
@@ -2490,37 +2489,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} — ready for live\n`;
   } else {
     text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} paper validation\n`;
-  }
-
-  const bt = getCachedBacktest();
-  if (bt) {
-    const ruleTotalReturn =
-      bt.ruleResults.length > 0
-        ? bt.ruleResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / bt.ruleResults.length - 100
-        : 0;
-    const vwapTotalReturn =
-      bt.vwapResults.length > 0
-        ? bt.vwapResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / bt.vwapResults.length - 100
-        : 0;
-
-    text += `\n<b>Backtest</b> | 180d\n`;
-    text += `Rule: `;
-    for (const r of bt.ruleResults) {
-      const sign = r.totalReturn >= 0 ? "+" : "";
-      text += `${r.pair} ${sign}${r.totalReturn.toFixed(1)}% ${r.trades.length}T ${r.winRate.toFixed(0)}%W | `;
-    }
-    const rSign = ruleTotalReturn >= 0 ? "+" : "";
-    text += `Avg ${rSign}${ruleTotalReturn.toFixed(1)}%\n`;
-
-    text += `VWAP: `;
-    for (const r of bt.vwapResults) {
-      const sign = r.totalReturn >= 0 ? "+" : "";
-      text += `${r.pair} ${sign}${r.totalReturn.toFixed(1)}% ${r.trades.length}T ${r.winRate.toFixed(0)}%W | `;
-    }
-    const vSign = vwapTotalReturn >= 0 ? "+" : "";
-    text += `Avg ${vSign}${vwapTotalReturn.toFixed(1)}%\n`;
-  } else {
-    text += `\nBacktest: loading...\n`;
   }
 
   const buttons: { text: string; callback_data: string }[][] = [];
