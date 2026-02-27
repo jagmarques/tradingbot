@@ -238,7 +238,7 @@ function sharpe(pnls: number[]): number {
 
 // ─── Grid ─────────────────────────────────────────────────────────────────────
 
-const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB"];
+const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
 const DAYS = 365;
 const TRAIN_FRAC = 240 / 365;
 

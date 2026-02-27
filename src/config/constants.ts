@@ -40,7 +40,7 @@ export const QUANT_MAX_POSITIONS = 10; // Max concurrent positions (5 pairs x ~2
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE"];
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -144,5 +144,12 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   AVAX: 0.01,
   LINK: 0.01,
   ARB: 0.01,
+  BNB: 0.01,
   OP: 0.01,
+  SUI: 0.01,
+  INJ: 0.01,
+  NEAR: 0.01,
+  ATOM: 0.01,
+  APT: 0.01,
+  WIF: 0.01,
 };

@@ -264,7 +264,7 @@ function sharpe(pnls: number[]): number {
   return std === 0 ? 0 : (mean / std) * Math.sqrt(pnls.length);
 }
 
-const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB"];
+const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
 const DAYS = 365;
 const TRAIN_FRAC = 240 / 365;
 
