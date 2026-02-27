@@ -3,9 +3,11 @@ import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runMicroDecisionEngine } from "./micro-engine.js";
 import { runVwapDecisionEngine } from "./vwap-engine.js";
-import { runBreakoutDecisionEngine } from "./breakout-engine.js";
 import { runMtfDecisionEngine } from "./mtf-engine.js";
-import { runMacdTrendDecisionEngine } from "./macd-engine.js";
+import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
+import { runIchimokuDecisionEngine } from "./ichimoku-engine.js";
+import { runDemaCrossDecisionEngine } from "./dema-cross-engine.js";
+import { runCciTrendDecisionEngine } from "./cci-trend-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -41,9 +43,11 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const microDecisions = runMicroDecisionEngine(analyses);
     const vwapDecisions = runVwapDecisionEngine(analyses);
-    const breakoutDecisions = runBreakoutDecisionEngine(analyses);
     const mtfDecisions = await runMtfDecisionEngine(analyses);
-    const macdDecisions = await runMacdTrendDecisionEngine(analyses);
+    const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
+    const ichimokuDecisions = await runIchimokuDecisionEngine(analyses);
+    const demaCrossDecisions = await runDemaCrossDecisionEngine(analyses);
+    const cciTrendDecisions = await runCciTrendDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -60,19 +64,29 @@ export async function runDirectionalCycle(): Promise<void> {
         .filter(p => p.tradeType === "vwap-directional")
         .map(p => p.pair),
     );
-    const breakoutOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "breakout-directional")
-        .map(p => p.pair),
-    );
     const mtfOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "mtf-directional")
         .map(p => p.pair),
     );
-    const macdOpenPairs = new Set(
+    const bbSqueezeOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "macd-directional")
+        .filter(p => p.tradeType === "bb-squeeze-directional")
+        .map(p => p.pair),
+    );
+    const ichimokuOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "ichimoku-directional")
+        .map(p => p.pair),
+    );
+    const demaCrossOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "dema-cross-directional")
+        .map(p => p.pair),
+    );
+    const cciTrendOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "cci-trend-directional")
         .map(p => p.pair),
     );
 
@@ -201,46 +215,6 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    let breakoutExecuted = 0;
-    for (const decision of breakoutDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Breakout: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (breakoutOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Breakout: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "breakout-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        breakoutExecuted++;
-        breakoutOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] Breakout: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
     let mtfExecuted = 0;
     for (const decision of mtfDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
@@ -281,18 +255,18 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    let macdExecuted = 0;
-    for (const decision of macdDecisions) {
+    let bbSqueezeExecuted = 0;
+    for (const decision of bbSqueezeDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
       if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] MACD: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        console.log(`[QuantScheduler] BBSqueeze: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
 
-      if (macdOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] MACD: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (bbSqueezeOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] BBSqueeze: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -306,23 +280,143 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "macd-directional",
+        "bb-squeeze-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        macdExecuted++;
-        macdOpenPairs.add(decision.pair);
+        bbSqueezeExecuted++;
+        bbSqueezeOpenPairs.add(decision.pair);
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
-          `[QuantScheduler] MACD: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] BBSqueeze: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let ichimokuExecuted = 0;
+    for (const decision of ichimokuDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Ichimoku: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (ichimokuOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Ichimoku: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "ichimoku-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        ichimokuExecuted++;
+        ichimokuOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] Ichimoku: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let demaCrossExecuted = 0;
+    for (const decision of demaCrossDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] DemaCross: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (demaCrossOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] DemaCross: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "dema-cross-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        demaCrossExecuted++;
+        demaCrossOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] DemaCross: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let cciTrendExecuted = 0;
+    for (const decision of cciTrendDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] CciTrend: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (cciTrendOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] CciTrend: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "cci-trend-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        cciTrendExecuted++;
+        cciTrendOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] CciTrend: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}, Breakout ${breakoutExecuted}/${breakoutDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, MACD ${macdExecuted}/${macdDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, Ichimoku ${ichimokuExecuted}/${ichimokuDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

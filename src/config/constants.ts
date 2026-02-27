@@ -36,7 +36,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 10; // Max concurrent positions (5 pairs x ~2 engines active)
+export const QUANT_MAX_POSITIONS = 30; // Max concurrent positions (8 engines x ~3-4 active pairs each)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
@@ -101,28 +101,53 @@ export const VWAP_BASE_CONFIDENCE = 65;
 export const VWAP_STOP_ATR_MULTIPLIER = 2.0;
 export const VWAP_REWARD_RISK_RATIO = 2.5;
 
-// Breakout Engine (4h channel breakout, best out-of-sample: Sharpe 1.78, +8.56% / 125d, 16-pair retune)
-export const BREAKOUT_LOOKBACK_BARS = 20;
-export const BREAKOUT_STOP_ATR_MULT = 1.5;
-export const BREAKOUT_REWARD_RISK_RATIO = 2.0;
-export const BREAKOUT_VOLUME_THRESHOLD = 2.0;
-export const BREAKOUT_STAGNATION_BARS = 6; // 6 x 4h = 24h
-export const BREAKOUT_ADX_MIN = 20;
-export const BREAKOUT_BASE_CONFIDENCE = 65;
+// BB Squeeze Engine
+export const BB_SQUEEZE_DAILY_SMA_PERIOD = 70;
+export const BB_SQUEEZE_DAILY_ADX_MIN = 15;
+export const BB_SQUEEZE_BB_PERIOD = 15;
+export const BB_SQUEEZE_BB_STDDEV = 1.5;
+export const BB_SQUEEZE_WINDOW = 50;
+export const BB_SQUEEZE_THRESH = 0.30;
+export const BB_SQUEEZE_STOP_ATR_MULT = 2.5;
+export const BB_SQUEEZE_REWARD_RISK = 4.0;
+export const BB_SQUEEZE_STAGNATION_BARS = 6;
+export const BB_SQUEEZE_BASE_CONFIDENCE = 65;
+export const BB_SQUEEZE_DAILY_LOOKBACK_DAYS = 120;
 
-// MACD Trend Engine (daily SMA + ADX filter + 4h MACD histogram cross, backtest: Sharpe 3.47, +0.098%/day, 67% WR, 16-pair retune)
-export const MACD_TREND_DAILY_SMA_PERIOD = 100;
-export const MACD_TREND_DAILY_ADX_MIN = 20;
-export const MACD_TREND_FAST = 12;
-export const MACD_TREND_SLOW = 26;
-export const MACD_TREND_SIGNAL = 7;
-export const MACD_TREND_STOP_ATR_MULT = 2.5;
-export const MACD_TREND_REWARD_RISK = 3.5;
-export const MACD_TREND_STAGNATION_BARS = 12;
-export const MACD_TREND_BASE_CONFIDENCE = 65;
-export const MACD_TREND_DAILY_LOOKBACK_DAYS = 120;
+// Ichimoku TK Engine
+export const ICHIMOKU_DAILY_SMA_PERIOD = 70;
+export const ICHIMOKU_DAILY_ADX_MIN = 18;
+export const ICHIMOKU_TENKAN_PERIOD = 7;
+export const ICHIMOKU_KIJUN_PERIOD = 22;
+export const ICHIMOKU_STOP_ATR_MULT = 2.0;
+export const ICHIMOKU_REWARD_RISK = 3.5;
+export const ICHIMOKU_STAGNATION_BARS = 12;
+export const ICHIMOKU_BASE_CONFIDENCE = 65;
+export const ICHIMOKU_DAILY_LOOKBACK_DAYS = 120;
 
-// MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 5.43, +36.59% / 125d, tune-mtf-v2 16-pair)
+// DEMA Cross Engine
+export const DEMA_CROSS_DAILY_SMA_PERIOD = 70;
+export const DEMA_CROSS_DAILY_ADX_MIN = 18;
+export const DEMA_CROSS_FAST = 8;
+export const DEMA_CROSS_SLOW = 34;
+export const DEMA_CROSS_STOP_ATR_MULT = 2.0;
+export const DEMA_CROSS_REWARD_RISK = 3.5;
+export const DEMA_CROSS_STAGNATION_BARS = 9;
+export const DEMA_CROSS_BASE_CONFIDENCE = 65;
+export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 120;
+
+// CCI Trend Engine
+export const CCI_TREND_DAILY_SMA_PERIOD = 70;
+export const CCI_TREND_DAILY_ADX_MIN = 18;
+export const CCI_TREND_PERIOD = 14;
+export const CCI_TREND_THRESHOLD = 100;
+export const CCI_TREND_STOP_ATR_MULT = 2.0;
+export const CCI_TREND_REWARD_RISK = 3.5;
+export const CCI_TREND_STAGNATION_BARS = 9;
+export const CCI_TREND_BASE_CONFIDENCE = 65;
+export const CCI_TREND_DAILY_LOOKBACK_DAYS = 120;
+
+// MTF Engine
 export const MTF_DAILY_SMA_PERIOD = 100;
 export const MTF_DAILY_ADX_MIN = 18;
 export const MTF_RSI_PULLBACK_LOW = 35;

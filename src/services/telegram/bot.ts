@@ -2411,9 +2411,11 @@ async function handleQuant(ctx: Context): Promise<void> {
   const ruleStats = getQuantStats("rule-directional");
   const microStats = getQuantStats("micro-directional");
   const vwapStats = getQuantStats("vwap-directional");
-  const breakoutStats = getQuantStats("breakout-directional");
   const mtfStats = getQuantStats("mtf-directional");
-  const macdStats = getQuantStats("macd-directional");
+  const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
+  const ichimokuStats = getQuantStats("ichimoku-directional");
+  const demaCrossStats = getQuantStats("dema-cross-directional");
+  const cciTrendStats = getQuantStats("cci-trend-directional");
 
   const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2440,9 +2442,11 @@ async function handleQuant(ctx: Context): Promise<void> {
         pos.tradeType === "rule-directional" ? "[R]" :
         pos.tradeType === "micro-directional" ? "[M]" :
         pos.tradeType === "vwap-directional" ? "[V]" :
-        pos.tradeType === "breakout-directional" ? "[B]" :
         pos.tradeType === "mtf-directional" ? "[T]" :
-        pos.tradeType === "macd-directional" ? "[MC]" : "[AI]";
+        pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
+        pos.tradeType === "ichimoku-directional" ? "[IK]" :
+        pos.tradeType === "dema-cross-directional" ? "[DX]" :
+        pos.tradeType === "cci-trend-directional" ? "[CI]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2461,17 +2465,23 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   const fundingPnl = funding.totalIncome;
-  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + microStats.totalPnl + vwapStats.totalPnl + breakoutStats.totalPnl + mtfStats.totalPnl + macdStats.totalPnl + fundingPnl;
-  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + microStats.totalTrades + vwapStats.totalTrades + breakoutStats.totalTrades + mtfStats.totalTrades + macdStats.totalTrades + funding.tradeCount;
+  const totalPnl = aiStats.totalPnl + ruleStats.totalPnl + microStats.totalPnl + vwapStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + ichimokuStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
+  const totalTrades = aiStats.totalTrades + ruleStats.totalTrades + microStats.totalTrades + vwapStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + ichimokuStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
 
-  text += `\nAI: ${pnl(aiStats.totalPnl)} | ${aiStats.totalTrades} trades | ${aiStats.totalTrades > 0 ? aiStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `Micro: ${pnl(microStats.totalPnl)} | ${microStats.totalTrades} trades | ${microStats.totalTrades > 0 ? microStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `VWAP: ${pnl(vwapStats.totalPnl)} | ${vwapStats.totalTrades} trades | ${vwapStats.totalTrades > 0 ? vwapStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `MTF: ${pnl(mtfStats.totalPnl)} | ${mtfStats.totalTrades} trades | ${mtfStats.totalTrades > 0 ? mtfStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `Breakout: ${pnl(breakoutStats.totalPnl)} | ${breakoutStats.totalTrades} trades | ${breakoutStats.totalTrades > 0 ? breakoutStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `MACD: ${pnl(macdStats.totalPnl)} | ${macdStats.totalTrades} trades | ${macdStats.totalTrades > 0 ? macdStats.winRate.toFixed(0) : 0}% win\n`;
-  text += `Funding: ${pnl(fundingPnl)} | ${funding.tradeCount} trades\n`;
-  text += `Total: ${pnl(totalPnl)} | ${totalTrades} trades\n`;
+  const statLine = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }): string =>
+    `${label}: ${pnl(s.totalPnl)} | ${s.totalTrades}t | ${s.totalTrades > 0 ? s.winRate.toFixed(0) : 0}%w\n`;
+
+  text += `\n`;
+  text += statLine("AI", aiStats);
+  text += statLine("Micro", microStats);
+  text += statLine("VWAP", vwapStats);
+  text += statLine("MTF", mtfStats);
+  text += statLine("BBSqueeze", bbSqueezeStats);
+  text += statLine("Ichimoku", ichimokuStats);
+  text += statLine("DemaCross", demaCrossStats);
+  text += statLine("CciTrend", cciTrendStats);
+  text += `Funding: ${pnl(fundingPnl)} | ${funding.tradeCount}t\n`;
+  text += `Total: ${pnl(totalPnl)} | ${totalTrades}t\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);

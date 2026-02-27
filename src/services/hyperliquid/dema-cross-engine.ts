@@ -1,17 +1,15 @@
-import { MACD } from "technicalindicators";
+import { EMA } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  MACD_TREND_DAILY_SMA_PERIOD,
-  MACD_TREND_DAILY_ADX_MIN,
-  MACD_TREND_FAST,
-  MACD_TREND_SLOW,
-  MACD_TREND_SIGNAL,
-  MACD_TREND_STOP_ATR_MULT,
-  MACD_TREND_REWARD_RISK,
-  MACD_TREND_STAGNATION_BARS,
-  MACD_TREND_BASE_CONFIDENCE,
-  MACD_TREND_DAILY_LOOKBACK_DAYS,
+  DEMA_CROSS_DAILY_SMA_PERIOD,
+  DEMA_CROSS_DAILY_ADX_MIN,
+  DEMA_CROSS_FAST,
+  DEMA_CROSS_SLOW,
+  DEMA_CROSS_STOP_ATR_MULT,
+  DEMA_CROSS_REWARD_RISK,
+  DEMA_CROSS_BASE_CONFIDENCE,
+  DEMA_CROSS_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -34,7 +32,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - MACD_TREND_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - DEMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -50,7 +48,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[MacdEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[DemaCrossEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -63,18 +61,12 @@ function computeDailySma(closes: number[], period: number, idx: number): number 
 
 function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): number | null {
   if (idx < period * 2) return null;
-  let trSum = 0;
-  let plusDmSum = 0;
-  let minusDmSum = 0;
+  let trSum = 0, plusDmSum = 0, minusDmSum = 0;
   for (let i = idx - period + 1; i <= idx; i++) {
     if (i <= 0) return null;
     const highDiff = candles[i].high - candles[i - 1].high;
     const lowDiff = candles[i - 1].low - candles[i].low;
-    const tr = Math.max(
-      candles[i].high - candles[i].low,
-      Math.abs(candles[i].high - candles[i - 1].close),
-      Math.abs(candles[i].low - candles[i - 1].close),
-    );
+    const tr = Math.max(candles[i].high - candles[i].low, Math.abs(candles[i].high - candles[i - 1].close), Math.abs(candles[i].low - candles[i - 1].close));
     trSum += tr;
     plusDmSum += highDiff > lowDiff && highDiff > 0 ? highDiff : 0;
     minusDmSum += lowDiff > highDiff && lowDiff > 0 ? lowDiff : 0;
@@ -87,65 +79,64 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-export async function evaluateMacdPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+function computeDEMA(closes: number[], period: number): (number | null)[] {
+  const n = closes.length;
+  const ema1Raw = EMA.calculate({ values: closes, period });
+  const ema2Raw = EMA.calculate({ values: ema1Raw, period });
+  const result: (number | null)[] = new Array(n).fill(null);
+  ema2Raw.forEach((e2, i) => {
+    const e1Idx = i + (period - 1);
+    const closesIdx = e1Idx + (period - 1);
+    if (closesIdx < n) result[closesIdx] = 2 * ema1Raw[e1Idx] - e2;
+  });
+  return result;
+}
+
+export async function evaluateDemaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < MACD_TREND_SLOW + MACD_TREND_SIGNAL + 2) return null;
+  if (!candles4h || candles4h.length < DEMA_CROSS_SLOW * 2 + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
+  const n = closes4h.length;
+  const fastArr = computeDEMA(closes4h, DEMA_CROSS_FAST);
+  const slowArr = computeDEMA(closes4h, DEMA_CROSS_SLOW);
 
-  // MACD histogram cross: prev bar <= 0 and current bar > 0 (long), or prev > 0 and current <= 0 (short)
-  const macdResults = MACD.calculate({
-    values: closes4h,
-    fastPeriod: MACD_TREND_FAST,
-    slowPeriod: MACD_TREND_SLOW,
-    signalPeriod: MACD_TREND_SIGNAL,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
-  });
-
-  if (macdResults.length < 2) return null;
-
-  const prevHist = macdResults[macdResults.length - 2].histogram;
-  const curHist = macdResults[macdResults.length - 1].histogram;
-  if (prevHist === undefined || curHist === undefined) return null;
-
-  let macdDirection: "long" | "short" | null = null;
-  if (prevHist <= 0 && curHist > 0) macdDirection = "long";
-  else if (prevHist > 0 && curHist <= 0) macdDirection = "short";
-
-  if (macdDirection === null) return null;
+  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
+  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
+  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < MACD_TREND_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < DEMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, MACD_TREND_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, DEMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < MACD_TREND_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < DEMA_CROSS_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // Trend filter: only take longs in uptrend, shorts in downtrend
-  if (macdDirection === "long" && !dailyUptrend) return null;
-  if (macdDirection === "short" && !dailyDowntrend) return null;
+  let direction: "long" | "short" | null = null;
+  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
+  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
 
-  const ind4h = analysis.indicators["4h"];
-  const atr = ind4h.atr ?? markPrice * 0.02;
-  const stopDistance = atr * MACD_TREND_STOP_ATR_MULT;
-  const tpDistance = stopDistance * MACD_TREND_REWARD_RISK;
-  const stopLoss = macdDirection === "long" ? markPrice - stopDistance : markPrice + stopDistance;
-  const takeProfit = macdDirection === "long" ? markPrice + tpDistance : markPrice - tpDistance;
+  if (direction === null) return null;
 
-  let confidence = MACD_TREND_BASE_CONFIDENCE;
+  const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
+  const stopDistance = atr * DEMA_CROSS_STOP_ATR_MULT;
+  const tpDistance = stopDistance * DEMA_CROSS_REWARD_RISK;
+  const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
+  const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
+
+  let confidence = DEMA_CROSS_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -154,11 +145,11 @@ export async function evaluateMacdPair(analysis: PairAnalysis): Promise<QuantAID
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const reasoning = `MACD: ${macdDirection} histogram cross (${prevHist.toFixed(4)} -> ${curHist.toFixed(4)}), daily ${macdDirection === "long" ? "uptrend" : "downtrend"} (close ${smaDev}% vs SMA${MACD_TREND_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)}), stag ${MACD_TREND_STAGNATION_BARS * 4}h`;
+  const reasoning = `DemaCross: DEMA(${DEMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} DEMA(${DEMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${DEMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
-    direction: macdDirection,
+    direction,
     entryPrice: markPrice,
     stopLoss,
     takeProfit,
@@ -170,24 +161,24 @@ export async function evaluateMacdPair(analysis: PairAnalysis): Promise<QuantAID
   };
 }
 
-export async function runMacdTrendDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runDemaCrossDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateMacdPair(analysis);
+      const decision = await evaluateDemaCrossPair(analysis);
       if (decision) {
         console.log(
-          `[MacdEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[DemaCrossEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[MacdEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[DemaCrossEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[MacdEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[DemaCrossEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }
