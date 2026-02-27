@@ -101,6 +101,37 @@ export const VWAP_BASE_CONFIDENCE = 65;
 export const VWAP_STOP_ATR_MULTIPLIER = 2.0;
 export const VWAP_REWARD_RISK_RATIO = 2.5;
 
+// Breakout Engine (4h channel breakout, best out-of-sample: Sharpe 1.52, +9.69% / 125d)
+export const BREAKOUT_LOOKBACK_BARS = 20;
+export const BREAKOUT_STOP_ATR_MULT = 1.5;
+export const BREAKOUT_REWARD_RISK_RATIO = 2.0;
+export const BREAKOUT_VOLUME_THRESHOLD = 2.0;
+export const BREAKOUT_STAGNATION_BARS = 6; // 6 x 4h = 24h
+export const BREAKOUT_ADX_MIN = 20;
+export const BREAKOUT_BASE_CONFIDENCE = 65;
+
+// BB Squeeze Breakout Engine (4h squeeze + breakout, best out-of-sample: Sharpe 1.14, +5.21% / 125d)
+export const SQUEEZE_BB_PERIOD = 15;
+export const SQUEEZE_PERCENTILE = 25;
+export const SQUEEZE_STOP_ATR_MULT = 2.0;
+export const SQUEEZE_REWARD_RISK_RATIO = 3.0;
+export const SQUEEZE_VOLUME_THRESHOLD = 1.5;
+export const SQUEEZE_STAGNATION_BARS = 9; // 9 x 4h = 36h
+export const SQUEEZE_BASE_CONFIDENCE = 65;
+export const SQUEEZE_PERCENTILE_WINDOW = 100;
+
+// MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 3.20, +14.45% / 125d)
+export const MTF_DAILY_SMA_PERIOD = 60;
+export const MTF_DAILY_ADX_MIN = 20;
+export const MTF_RSI_PULLBACK_LOW = 35;
+export const MTF_RSI_PULLBACK_HIGH = 45;
+export const MTF_RSI_TURN_DELTA = 2;
+export const MTF_STOP_ATR_MULT = 2.0;
+export const MTF_REWARD_RISK_RATIO = 2.5;
+export const MTF_STAGNATION_BARS = 6; // 6 x 4h = 24h
+export const MTF_BASE_CONFIDENCE = 65;
+export const MTF_DAILY_LOOKBACK_DAYS = 100; // days of daily candles to maintain
+
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   BTC: 0.02,   // 40x max
