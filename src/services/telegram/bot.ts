@@ -2440,7 +2440,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const demaCrossStats = getQuantStats("dema-cross-directional");
   const cciTrendStats = getQuantStats("cci-trend-directional");
 
-  const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
+  const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
@@ -2510,17 +2510,15 @@ async function handleQuant(ctx: Context): Promise<void> {
   const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 
   const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string): string => {
-    const ret = s.totalPnl.toFixed(1);
-    const sign = s.totalPnl >= 0 ? "+" : "";
+    const ret = `${s.totalPnl >= 0 ? "+" : "-"}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const openCnt = openCountByType.get(typeKey) ?? 0;
     const openStr = openCnt > 0 ? ` (${openCnt}o)` : "";
     const unr = unrealizedByType.get(typeKey);
     const unrStr = unr !== undefined && unr !== 0 ? ` | unr ${fmtUnr(unr)}` : "";
-    return `${label}: ${sign}${ret}% ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
+    return `${label}: ${ret} ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
   };
 
-  const totalSign = totalPnl >= 0 ? "+" : "";
   text += `\n`;
   text += sl("MTF", mtfStats, "mtf-directional");
   text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
@@ -2533,8 +2531,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   const fundingOpenStr = fundingOpenCnt > 0 ? ` (${fundingOpenCnt}o)` : "";
   const fundingUnr = unrealizedByType.get("funding");
   const fundingUnrStr = fundingUnr !== undefined && fundingUnr !== 0 ? ` | unr ${fmtUnr(fundingUnr)}` : "";
-  text += `Funding: ${fundingPnl >= 0 ? "+" : ""}${fundingPnl.toFixed(1)}% ${funding.tradeCount}T${fundingOpenStr}${fundingUnrStr}\n`;
-  text += `Total: ${totalSign}${totalPnl.toFixed(1)}% ${totalTrades}T\n`;
+  const fmtFunding = `${fundingPnl >= 0 ? "+" : "-"}$${Math.abs(fundingPnl).toFixed(1)}`;
+  text += `Funding: ${fmtFunding} ${funding.tradeCount}T${fundingOpenStr}${fundingUnrStr}\n`;
+  const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
+  text += `Total: ${fmtTotal} ${totalTrades}T\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
