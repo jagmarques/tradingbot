@@ -130,9 +130,10 @@ function buildAnalysisAtIndex(
   pair: string,
   idx: number,
 ): PairAnalysis {
-  const slice1h = candles1h.slice(0, idx + 1);
+  const slice1h = candles1h.slice(Math.max(0, idx - 99), idx + 1);
   const currentTs = candles1h[idx].timestamp;
-  const slice4h = candles4h.filter((c) => c.timestamp <= currentTs);
+  const all4hBefore = candles4h.filter((c) => c.timestamp <= currentTs);
+  const slice4h = all4hBefore.slice(Math.max(0, all4hBefore.length - 30));
 
   const indicators1h = computeIndicators(slice1h);
   const indicators4h = computeIndicators(slice4h);
