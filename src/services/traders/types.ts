@@ -187,7 +187,7 @@ export const INSIDER_CONFIG = {
   MAX_GEM_AGE_DAYS: 30,
   EARLY_BUYER_BLOCKS: 50, // bought within first 50 blocks of pair creation
   MAX_TOKENS_PER_SCAN: 20,
-  SCAN_CHAINS: ["ethereum", "arbitrum", "polygon", "avalanche"] as EvmChain[],
+  SCAN_CHAINS: ["ethereum"] as EvmChain[],
   SCAN_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes between scans (avoids GeckoTerminal 429s)
   INTER_CHAIN_DELAY_MS: 10_000, // 10s delay between chains to spread GeckoTerminal load
   MAX_HISTORY_TOKENS: 50, // max unique tokens to check per wallet history scan
@@ -302,11 +302,6 @@ export function getPositionSize(score: number, copyStats?: { wins: number; total
 
 export const ALCHEMY_CHAIN_MAP: Record<string, string> = {
   ethereum: "eth",
-  base: "base",
-  arbitrum: "arb",
-  polygon: "polygon",
-  optimism: "opt",
-  // avalanche not supported by Alchemy WebSocket - omitted intentionally
 };
 
 export function getAlchemyWssUrl(chain: string): string | null {
