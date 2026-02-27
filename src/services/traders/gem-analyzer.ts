@@ -742,7 +742,14 @@ export async function refreshCopyTradePrices(): Promise<void> {
 
     if (priceUsd > 0) {
       updateCopyTradePrice(token.walletAddress, token.tokenAddress, token.chain, priceUsd);
-      updateCopyTradeHoldPrice(token.tokenAddress, token.chain, priceUsd);
+      const openTrade = openTrades.find(t => t.tokenAddress.toLowerCase() === addrKey && t.chain === token.chain);
+      const buyPrice = openTrade?.buyPriceUsd ?? 0;
+      const ratio = buyPrice > 0 ? priceUsd / buyPrice : 0;
+      if (buyPrice > 0 && ratio > 1_000_000) {
+        console.warn(`[Gems] Bad hold price for ${token.tokenAddress}: ${priceUsd} vs buy ${buyPrice} (${ratio.toFixed(0)}x), skipping`);
+      } else {
+        updateCopyTradeHoldPrice(token.tokenAddress, token.chain, priceUsd);
+      }
       copyPriceFailures.delete(failKey);
       updated++;
       if (pair?.pairCreatedAt) {

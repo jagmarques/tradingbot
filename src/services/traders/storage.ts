@@ -1098,11 +1098,11 @@ export function getHoldComparison(): { holdPnlUsd: number; actualPnlUsd: number 
     SELECT COALESCE(SUM(
       CASE
         WHEN hold_price_usd IS NOT NULL AND hold_price_usd > 0 AND buy_price_usd > 0
-          THEN ((hold_price_usd / buy_price_usd - 1) * 100 - 3) / 100.0 * amount_usd
+          THEN MIN(MAX((hold_price_usd / buy_price_usd - 1) * 100 - 3, -100), 10000) / 100.0 * amount_usd
         WHEN hold_price_usd IS NOT NULL AND hold_price_usd = 0
           THEN -1.0 * amount_usd
         WHEN buy_price_usd > 0 AND current_price_usd > 0
-          THEN ((current_price_usd / buy_price_usd - 1) * 100 - 3) / 100.0 * amount_usd
+          THEN MIN(MAX((current_price_usd / buy_price_usd - 1) * 100 - 3, -100), 10000) / 100.0 * amount_usd
         ELSE 0
       END
     ), 0) as total
