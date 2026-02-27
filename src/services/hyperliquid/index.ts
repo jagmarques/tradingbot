@@ -85,9 +85,6 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Funding Rate Arbitrage
 export { runFundingArbCycle, startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 
-// Microstructure Decision Engine
-export { runMicroDecisionEngine } from "./micro-engine.js";
-
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 

@@ -2433,10 +2433,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   const dailyLoss = getDailyLossTotal();
   const funding = getFundingIncome();
   const aiStats = getQuantStats("ai-directional");
-  const microStats = getQuantStats("micro-directional");
   const mtfStats = getQuantStats("mtf-directional");
   const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
-  const ichimokuStats = getQuantStats("ichimoku-directional");
   const demaCrossStats = getQuantStats("dema-cross-directional");
   const cciTrendStats = getQuantStats("cci-trend-directional");
 
@@ -2464,10 +2462,8 @@ async function handleQuant(ctx: Context): Promise<void> {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
         pos.tradeType === "funding" ? "[F]" :
-        pos.tradeType === "micro-directional" ? "[M]" :
         pos.tradeType === "mtf-directional" ? "[T]" :
         pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
-        pos.tradeType === "ichimoku-directional" ? "[IK]" :
         pos.tradeType === "dema-cross-directional" ? "[DX]" :
         pos.tradeType === "cci-trend-directional" ? "[CI]" : "[AI]";
       let upnlStr = "";
@@ -2504,8 +2500,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   const fundingPnl = funding.totalIncome;
-  const totalPnl = aiStats.totalPnl + microStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + ichimokuStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
-  const totalTrades = aiStats.totalTrades + microStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + ichimokuStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
+  const totalPnl = aiStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
+  const totalTrades = aiStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
 
   const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 
@@ -2522,11 +2518,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += `\n`;
   text += sl("MTF", mtfStats, "mtf-directional");
   text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
-  text += sl("Ichimoku", ichimokuStats, "ichimoku-directional");
   text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
   text += sl("CciTrend", cciTrendStats, "cci-trend-directional");
   text += sl("AI", aiStats, "ai-directional");
-  text += sl("Micro", microStats, "micro-directional");
   const fundingOpenCnt = openCountByType.get("funding") ?? 0;
   const fundingOpenStr = fundingOpenCnt > 0 ? ` (${fundingOpenCnt}o)` : "";
   const fundingUnr = unrealizedByType.get("funding");

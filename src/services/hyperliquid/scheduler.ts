@@ -1,10 +1,8 @@
 import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
-import { runMicroDecisionEngine } from "./micro-engine.js";
 import { runMtfDecisionEngine } from "./mtf-engine.js";
 import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
-import { runIchimokuDecisionEngine } from "./ichimoku-engine.js";
 import { runDemaCrossDecisionEngine } from "./dema-cross-engine.js";
 import { runCciTrendDecisionEngine } from "./cci-trend-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
@@ -40,21 +38,14 @@ export async function runDirectionalCycle(): Promise<void> {
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
-    const microDecisions = runMicroDecisionEngine(analyses);
     const mtfDecisions = await runMtfDecisionEngine(analyses);
     const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
-    const ichimokuDecisions = await runIchimokuDecisionEngine(analyses);
     const demaCrossDecisions = await runDemaCrossDecisionEngine(analyses);
     const cciTrendDecisions = await runCciTrendDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)
-        .map(p => p.pair),
-    );
-    const microOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "micro-directional")
         .map(p => p.pair),
     );
     const mtfOpenPairs = new Set(
@@ -65,11 +56,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const bbSqueezeOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "bb-squeeze-directional")
-        .map(p => p.pair),
-    );
-    const ichimokuOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "ichimoku-directional")
         .map(p => p.pair),
     );
     const demaCrossOpenPairs = new Set(
@@ -124,46 +110,6 @@ export async function runDirectionalCycle(): Promise<void> {
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let microExecuted = 0;
-    for (const decision of microDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Micro: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (microOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Micro: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "micro-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        microExecuted++;
-        microOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] Micro: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -244,46 +190,6 @@ export async function runDirectionalCycle(): Promise<void> {
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] BBSqueeze: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let ichimokuExecuted = 0;
-    for (const decision of ichimokuDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Ichimoku: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (ichimokuOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Ichimoku: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "ichimoku-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        ichimokuExecuted++;
-        ichimokuOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] Ichimoku: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -369,7 +275,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, Ichimoku ${ichimokuExecuted}/${ichimokuDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

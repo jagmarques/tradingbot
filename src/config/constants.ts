@@ -74,15 +74,6 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
-// Microstructure Decision Engine
-export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.60;
-export const MICRO_IMBALANCE_SHORT_THRESHOLD = 0.40;
-export const MICRO_OI_MIN_PCT = -0.5;
-export const MICRO_BASE_CONFIDENCE = 65;
-export const MICRO_OI_SURGE_PCT = 2;
-export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
-export const MICRO_REWARD_RISK_RATIO = 2.0;
-
 // BB Squeeze Engine
 export const BB_SQUEEZE_DAILY_SMA_PERIOD = 70;
 export const BB_SQUEEZE_DAILY_ADX_MIN = 15;
@@ -92,44 +83,33 @@ export const BB_SQUEEZE_WINDOW = 50;
 export const BB_SQUEEZE_THRESH = 0.30;
 export const BB_SQUEEZE_STOP_ATR_MULT = 2.5;
 export const BB_SQUEEZE_REWARD_RISK = 4.0;
-export const BB_SQUEEZE_STAGNATION_BARS = 6;
+export const BB_SQUEEZE_STAGNATION_BARS = 12; // 12 x 4h = 48h (backtest optimal)
 export const BB_SQUEEZE_BASE_CONFIDENCE = 65;
 export const BB_SQUEEZE_DAILY_LOOKBACK_DAYS = 120;
 
-// Ichimoku TK Engine
-export const ICHIMOKU_DAILY_SMA_PERIOD = 70;
-export const ICHIMOKU_DAILY_ADX_MIN = 18;
-export const ICHIMOKU_TENKAN_PERIOD = 7;
-export const ICHIMOKU_KIJUN_PERIOD = 22;
-export const ICHIMOKU_STOP_ATR_MULT = 2.0;
-export const ICHIMOKU_REWARD_RISK = 3.5;
-export const ICHIMOKU_STAGNATION_BARS = 12;
-export const ICHIMOKU_BASE_CONFIDENCE = 65;
-export const ICHIMOKU_DAILY_LOOKBACK_DAYS = 120;
-
-// DEMA Cross Engine
-export const DEMA_CROSS_DAILY_SMA_PERIOD = 70;
+// DEMA Cross Engine (optimal: +0.415%/day, Sharpe 5.77)
+export const DEMA_CROSS_DAILY_SMA_PERIOD = 100;
 export const DEMA_CROSS_DAILY_ADX_MIN = 18;
-export const DEMA_CROSS_FAST = 8;
-export const DEMA_CROSS_SLOW = 34;
-export const DEMA_CROSS_STOP_ATR_MULT = 2.0;
-export const DEMA_CROSS_REWARD_RISK = 3.5;
-export const DEMA_CROSS_STAGNATION_BARS = 9;
+export const DEMA_CROSS_FAST = 5;
+export const DEMA_CROSS_SLOW = 21;
+export const DEMA_CROSS_STOP_ATR_MULT = 2.5;
+export const DEMA_CROSS_REWARD_RISK = 2.5;
+export const DEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const DEMA_CROSS_BASE_CONFIDENCE = 65;
-export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 120;
+export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
-// CCI Trend Engine
+// CCI Trend Engine (optimal: +0.314%/day, Sharpe 4.84)
 export const CCI_TREND_DAILY_SMA_PERIOD = 70;
 export const CCI_TREND_DAILY_ADX_MIN = 18;
-export const CCI_TREND_PERIOD = 14;
+export const CCI_TREND_PERIOD = 20;
 export const CCI_TREND_THRESHOLD = 100;
-export const CCI_TREND_STOP_ATR_MULT = 2.0;
+export const CCI_TREND_STOP_ATR_MULT = 2.5;
 export const CCI_TREND_REWARD_RISK = 3.5;
-export const CCI_TREND_STAGNATION_BARS = 9;
+export const CCI_TREND_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const CCI_TREND_BASE_CONFIDENCE = 65;
 export const CCI_TREND_DAILY_LOOKBACK_DAYS = 120;
 
-// MTF Engine
+// MTF Engine (optimal: +0.246%/day, Sharpe 4.65)
 export const MTF_DAILY_SMA_PERIOD = 100;
 export const MTF_DAILY_ADX_MIN = 18;
 export const MTF_RSI_PULLBACK_LOW = 35;
@@ -137,9 +117,9 @@ export const MTF_RSI_PULLBACK_HIGH = 52;
 export const MTF_RSI_TURN_DELTA = 2;
 export const MTF_STOP_ATR_MULT = 2.0;
 export const MTF_REWARD_RISK_RATIO = 3.0;
-export const MTF_STAGNATION_BARS = 9; // 9 x 4h = 36h
+export const MTF_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const MTF_BASE_CONFIDENCE = 65;
-export const MTF_DAILY_LOOKBACK_DAYS = 120; // 120 days covers SMA(100) + buffer
+export const MTF_DAILY_LOOKBACK_DAYS = 120;
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
