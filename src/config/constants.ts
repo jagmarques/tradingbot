@@ -76,13 +76,13 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
 // Rule-Based Decision Engine
-export const RULE_RSI_OVERSOLD = 30;
-export const RULE_RSI_OVERBOUGHT = 70;
+export const RULE_RSI_OVERSOLD = 35;
+export const RULE_RSI_OVERBOUGHT = 65;
 export const RULE_RSI_PULLBACK_LOW = 40;
 export const RULE_RSI_PULLBACK_HIGH = 60;
 export const RULE_STOP_ATR_MULTIPLIER = 1.5;
 export const RULE_REWARD_RISK_RATIO = 2.0;
-export const RULE_BB_PROXIMITY_PCT = 0.5; // Within 0.5% of BB band = "near"
+export const RULE_BB_PROXIMITY_PCT = 1.5;
 export const RULE_MIN_CONFIDENCE = 60; // Minimum confidence to generate a signal
 
 // Microstructure Decision Engine
