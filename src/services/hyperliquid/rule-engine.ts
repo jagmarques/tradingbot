@@ -11,7 +11,7 @@ import {
   RULE_MIN_CONFIDENCE,
 } from "../../config/constants.js";
 
-function evaluatePair(analysis: PairAnalysis): QuantAIDecision | null {
+export function evaluatePair(analysis: PairAnalysis): QuantAIDecision | null {
   const { pair, regime, markPrice } = analysis;
   const ind = analysis.indicators["1h"];
 

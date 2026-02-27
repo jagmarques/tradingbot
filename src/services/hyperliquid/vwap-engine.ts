@@ -10,7 +10,7 @@ import {
   RULE_BB_PROXIMITY_PCT,
 } from "../../config/constants.js";
 
-function evaluateVwapPair(analysis: PairAnalysis): QuantAIDecision | null {
+export function evaluateVwapPair(analysis: PairAnalysis): QuantAIDecision | null {
   const { pair, markPrice, regime } = analysis;
 
   if (regime === "volatile") return null;

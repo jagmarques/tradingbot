@@ -46,3 +46,34 @@ export function calculateQuantPositionSize(
 
   return Math.floor(size * 100) / 100;
 }
+
+export function calculateBacktestPositionSize(
+  confidence: number,
+  entryPrice: number,
+  stopLoss: number,
+  balance: number,
+  isRuleBased = false,
+): number {
+  if (balance <= 0) return 0;
+
+  const winProb = confidence / 100;
+  const stopDistance = Math.abs(entryPrice - stopLoss) / entryPrice;
+  const maxStopFraction = QUANT_AI_STOP_LOSS_MAX_PCT / 100;
+  const effectiveStop = Math.min(stopDistance, maxStopFraction);
+  if (effectiveStop <= 0) return 0;
+
+  const minConfidence = isRuleBased ? 60 : 65;
+  if (confidence < minConfidence) return 0;
+
+  const edge = winProb - 0.5;
+  if (edge <= 0) return 0;
+
+  const kellyFull = (edge * 2) / effectiveStop;
+  const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
+  const rawSize = balance * kellyFractional;
+  const maxSize = (balance * 0.95) / QUANT_MAX_POSITIONS;
+  const size = Math.min(rawSize, maxSize);
+
+  if (size < 1) return 0;
+  return Math.floor(size * 100) / 100;
+}
