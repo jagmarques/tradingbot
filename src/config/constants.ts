@@ -98,20 +98,20 @@ export const DEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const DEMA_CROSS_BASE_CONFIDENCE = 65;
 export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
-// CCI Trend Engine (optimal: +0.314%/day, Sharpe 4.84)
-export const CCI_TREND_DAILY_SMA_PERIOD = 70;
-export const CCI_TREND_DAILY_ADX_MIN = 18;
+// CCI Trend Engine (optimal: +0.416%/day, Sharpe 6.08)
+export const CCI_TREND_DAILY_SMA_PERIOD = 50;
+export const CCI_TREND_DAILY_ADX_MIN = 15;
 export const CCI_TREND_PERIOD = 20;
 export const CCI_TREND_THRESHOLD = 100;
-export const CCI_TREND_STOP_ATR_MULT = 2.5;
-export const CCI_TREND_REWARD_RISK = 3.5;
+export const CCI_TREND_STOP_ATR_MULT = 3;
+export const CCI_TREND_REWARD_RISK = 3;
 export const CCI_TREND_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const CCI_TREND_BASE_CONFIDENCE = 65;
 export const CCI_TREND_DAILY_LOOKBACK_DAYS = 120;
 
-// MTF Engine (optimal: +0.246%/day, Sharpe 4.65)
-export const MTF_DAILY_SMA_PERIOD = 100;
-export const MTF_DAILY_ADX_MIN = 18;
+// MTF Engine (optimal: +0.271%/day, Sharpe 4.39)
+export const MTF_DAILY_SMA_PERIOD = 70;
+export const MTF_DAILY_ADX_MIN = 14;
 export const MTF_RSI_PULLBACK_LOW = 35;
 export const MTF_RSI_PULLBACK_HIGH = 52;
 export const MTF_RSI_TURN_DELTA = 2;
