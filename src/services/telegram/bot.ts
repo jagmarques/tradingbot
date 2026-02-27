@@ -770,8 +770,11 @@ export async function sendMainMenu(): Promise<void> {
           reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
         });
         return;
-      } catch {
-        // Edit failed - delete old to avoid duplicate
+      } catch (editErr) {
+        if (editErr instanceof Error && editErr.message.includes("message is not modified")) {
+          return; // Already showing correct content
+        }
+        // Edit failed for other reason - delete old to avoid duplicate
         await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
         lastMenuMessageId = null;
         persistMenuMsgId(null);
@@ -838,7 +841,10 @@ async function sendDataMessage(text: string, inlineKeyboard?: { text: string; ca
           reply_markup: inlineKeyboard ? { inline_keyboard: inlineKeyboard } : undefined,
         });
         return;
-      } catch {
+      } catch (editErr) {
+        if (editErr instanceof Error && editErr.message.includes("message is not modified")) {
+          return; // Already showing correct content
+        }
         // fall through to delete+send
       }
     }
