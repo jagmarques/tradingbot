@@ -1,5 +1,5 @@
 // Stagnation timeout - exit at break-even if stuck too long
-export const STAGNATION_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+export const STAGNATION_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
 
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
