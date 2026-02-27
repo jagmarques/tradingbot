@@ -2487,9 +2487,12 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `\n${posLines.join("\n")}\n`;
   }
 
-  // Compute unrealized P&L per strategy from open positions
+  // Compute unrealized P&L and open count per strategy from open positions
   const unrealizedByType = new Map<string, number>();
+  const openCountByType = new Map<string, number>();
   for (const pos of openPositions) {
+    const key = pos.tradeType ?? "ai-directional";
+    openCountByType.set(key, (openCountByType.get(key) ?? 0) + 1);
     const rawMid = mids[pos.pair];
     if (!rawMid) continue;
     const currentPrice = parseFloat(rawMid);
@@ -2497,7 +2500,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     const upnl = pos.direction === "long"
       ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
       : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-    const key = pos.tradeType ?? "ai-directional";
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
@@ -2505,27 +2507,33 @@ async function handleQuant(ctx: Context): Promise<void> {
   const totalPnl = aiStats.totalPnl + microStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + ichimokuStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
   const totalTrades = aiStats.totalTrades + microStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + ichimokuStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
 
-  const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, unrUsd?: number): string => {
+  const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
+
+  const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string): string => {
     const ret = s.totalPnl.toFixed(1);
     const sign = s.totalPnl >= 0 ? "+" : "";
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
-    let unrStr = "";
-    if (unrUsd !== undefined && unrUsd !== 0) {
-      unrStr = ` | unr ${unrUsd >= 0 ? "+" : ""}$${unrUsd.toFixed(2)}`;
-    }
-    return `${label}: ${sign}${ret}% ${s.totalTrades}T${wr}${unrStr}\n`;
+    const openCnt = openCountByType.get(typeKey) ?? 0;
+    const openStr = openCnt > 0 ? ` (${openCnt}o)` : "";
+    const unr = unrealizedByType.get(typeKey);
+    const unrStr = unr !== undefined && unr !== 0 ? ` | unr ${fmtUnr(unr)}` : "";
+    return `${label}: ${sign}${ret}% ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
   };
 
   const totalSign = totalPnl >= 0 ? "+" : "";
   text += `\n`;
-  text += sl("MTF", mtfStats, unrealizedByType.get("mtf-directional"));
-  text += sl("BBSqueeze", bbSqueezeStats, unrealizedByType.get("bb-squeeze-directional"));
-  text += sl("Ichimoku", ichimokuStats, unrealizedByType.get("ichimoku-directional"));
-  text += sl("DemaCross", demaCrossStats, unrealizedByType.get("dema-cross-directional"));
-  text += sl("CciTrend", cciTrendStats, unrealizedByType.get("cci-trend-directional"));
-  text += sl("AI", aiStats, unrealizedByType.get("ai-directional"));
-  text += sl("Micro", microStats, unrealizedByType.get("micro-directional"));
-  text += `Funding: ${fundingPnl >= 0 ? "+" : ""}${fundingPnl.toFixed(1)}% ${funding.tradeCount}T\n`;
+  text += sl("MTF", mtfStats, "mtf-directional");
+  text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
+  text += sl("Ichimoku", ichimokuStats, "ichimoku-directional");
+  text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
+  text += sl("CciTrend", cciTrendStats, "cci-trend-directional");
+  text += sl("AI", aiStats, "ai-directional");
+  text += sl("Micro", microStats, "micro-directional");
+  const fundingOpenCnt = openCountByType.get("funding") ?? 0;
+  const fundingOpenStr = fundingOpenCnt > 0 ? ` (${fundingOpenCnt}o)` : "";
+  const fundingUnr = unrealizedByType.get("funding");
+  const fundingUnrStr = fundingUnr !== undefined && fundingUnr !== 0 ? ` | unr ${fmtUnr(fundingUnr)}` : "";
+  text += `Funding: ${fundingPnl >= 0 ? "+" : ""}${fundingPnl.toFixed(1)}% ${funding.tradeCount}T${fundingOpenStr}${fundingUnrStr}\n`;
   text += `Total: ${totalSign}${totalPnl.toFixed(1)}% ${totalTrades}T\n`;
 
   const validation = getQuantValidationMetrics();
