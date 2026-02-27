@@ -1,8 +1,9 @@
-// EMA Pullback strategy backtest: daily EMA trend filter + 4h EMA pullback entry.
+// Ichimoku TK Cross strategy: daily SMA+ADX trend filter + 4h Tenkan/Kijun cross entry.
+// Tenkan = (N-period highest high + lowest low) / 2. TK cross = Tenkan crosses Kijun.
 // Walk-forward: train 240d / test ~125d. 0.29% round-trip costs, 10x leverage.
-// Run: npx tsx scripts/tune-ema-pullback.ts
+// Run: npx tsx scripts/tune-ichimoku.ts
 
-import { EMA, ATR, ADX } from "technicalindicators";
+import { ATR, ADX } from "technicalindicators";
 
 interface Candle {
   timestamp: number;
@@ -14,9 +15,10 @@ interface Candle {
 }
 
 interface Params {
-  dailyEmaPeriod: number;
-  h4EmaPeriod: number;
-  h4AdxMin: number;
+  dailySmaPeriod: number;
+  dailyAdxMin: number;
+  tenkanPeriod: number;
+  kijunPeriod: number;
   stopAtrMult: number;
   rrRatio: number;
   stagnationH: number;
@@ -58,32 +60,62 @@ async function fetchCandles(coin: string, interval: string, days: number): Promi
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-interface DailyPreInd {
-  ema: Record<number, (number | null)[]>;
+function tkKey(tenkan: number, kijun: number): string { return `${tenkan}_${kijun}`; }
+
+interface TKBar { tenkan: number | null; kijun: number | null; }
+
+function computeTK(candles: Candle[], tenkanPeriod: number, kijunPeriod: number): TKBar[] {
+  const n = candles.length;
+  const result: TKBar[] = new Array(n).fill(null).map(() => ({ tenkan: null, kijun: null }));
+
+  for (let i = 0; i < n; i++) {
+    if (i >= tenkanPeriod - 1) {
+      let hi = -Infinity, lo = Infinity;
+      for (let k = i - tenkanPeriod + 1; k <= i; k++) { hi = Math.max(hi, candles[k].high); lo = Math.min(lo, candles[k].low); }
+      result[i].tenkan = (hi + lo) / 2;
+    }
+    if (i >= kijunPeriod - 1) {
+      let hi = -Infinity, lo = Infinity;
+      for (let k = i - kijunPeriod + 1; k <= i; k++) { hi = Math.max(hi, candles[k].high); lo = Math.min(lo, candles[k].low); }
+      result[i].kijun = (hi + lo) / 2;
+    }
+  }
+  return result;
 }
 
-function precomputeDaily(candles: Candle[], emaPeriods: number[]): DailyPreInd {
+interface DailyPreInd {
+  sma: Record<number, (number | null)[]>;
+  adx: (number | null)[];
+}
+
+function precomputeDaily(candles: Candle[], smaPeriods: number[]): DailyPreInd {
   const n = candles.length;
   const closes = candles.map((c) => c.close);
+  const highs = candles.map((c) => c.high);
+  const lows = candles.map((c) => c.low);
 
-  const ema: Record<number, (number | null)[]> = {};
-  for (const period of emaPeriods) {
-    const raw = EMA.calculate({ period, values: closes });
+  const adxRaw = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
+  const adxArr: (number | null)[] = new Array(n).fill(null);
+  adxRaw.forEach((v, i) => { adxArr[n - adxRaw.length + i] = v?.adx ?? null; });
+
+  const sma: Record<number, (number | null)[]> = {};
+  for (const period of smaPeriods) {
     const arr: (number | null)[] = new Array(n).fill(null);
-    raw.forEach((v, i) => { arr[n - raw.length + i] = v; });
-    ema[period] = arr;
+    for (let i = period - 1; i < n; i++) {
+      const sum = closes.slice(i - period + 1, i + 1).reduce((s, v) => s + v, 0);
+      arr[i] = sum / period;
+    }
+    sma[period] = arr;
   }
-
-  return { ema };
+  return { sma, adx: adxArr };
 }
 
 interface H4PreInd {
   atr: (number | null)[];
-  adx: (number | null)[];
-  ema: Record<number, (number | null)[]>;
+  tk: Record<string, TKBar[]>;
 }
 
-function precompute4h(candles: Candle[], emaPeriods: number[]): H4PreInd {
+function precompute4h(candles: Candle[], tkCombos: Array<{ tenkan: number; kijun: number }>): H4PreInd {
   const n = candles.length;
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);
@@ -93,19 +125,11 @@ function precompute4h(candles: Candle[], emaPeriods: number[]): H4PreInd {
   const atrArr: (number | null)[] = new Array(n).fill(null);
   atrRaw.forEach((v, i) => { atrArr[n - atrRaw.length + i] = v; });
 
-  const adxRaw = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
-  const adxArr: (number | null)[] = new Array(n).fill(null);
-  adxRaw.forEach((v, i) => { adxArr[n - adxRaw.length + i] = v?.adx ?? null; });
-
-  const ema: Record<number, (number | null)[]> = {};
-  for (const period of emaPeriods) {
-    const raw = EMA.calculate({ period, values: closes });
-    const arr: (number | null)[] = new Array(n).fill(null);
-    raw.forEach((v, i) => { arr[n - raw.length + i] = v; });
-    ema[period] = arr;
+  const tk: Record<string, TKBar[]> = {};
+  for (const { tenkan, kijun } of tkCombos) {
+    tk[tkKey(tenkan, kijun)] = computeTK(candles, tenkan, kijun);
   }
-
-  return { atr: atrArr, adx: adxArr, ema };
+  return { atr: atrArr, tk };
 }
 
 const LEV = 10;
@@ -121,7 +145,7 @@ function runBacktest(
   preDaily: DailyPreInd,
   idxDailyAt: number[],
   p: Params,
-  startIdx = 50,
+  startIdx = 60,
   endIdx?: number,
 ): BacktestResult {
   const end = endIdx ?? candles4h.length;
@@ -131,6 +155,9 @@ function runBacktest(
   let trades = 0;
   let wins = 0;
   const tradePnlPcts: number[] = [];
+
+  const tkArr = pre4h.tk[tkKey(p.tenkanPeriod, p.kijunPeriod)];
+  if (!tkArr) return { trades: 0, wins: 0, totalReturn: 0, maxDrawdown: 0, tradePnlPcts: [], days: 0 };
 
   type Pos = { dir: "long" | "short"; entry: number; entryIdx: number; sl: number; tp: number; peak: number; size: number };
   let pos: Pos | null = null;
@@ -169,34 +196,26 @@ function runBacktest(
       const dIdx = idxDailyAt[i];
       if (dIdx < 0) continue;
 
-      const dailyEma = preDaily.ema[p.dailyEmaPeriod]?.[dIdx] ?? null;
+      const dailySma = preDaily.sma[p.dailySmaPeriod]?.[dIdx] ?? null;
+      const dailyAdx = preDaily.adx[dIdx];
       const dailyClose = dailyCandles[dIdx].close;
-      if (dailyEma === null) continue;
 
-      const dailyUptrend = dailyClose > dailyEma;
-      const dailyDowntrend = dailyClose < dailyEma;
+      if (dailySma === null || dailyAdx === null) continue;
+      if (dailyAdx < p.dailyAdxMin) continue;
 
-      const h4Adx = pre4h.adx[i];
-      if (h4Adx === null || h4Adx < p.h4AdxMin) continue;
+      const dailyUptrend = dailyClose > dailySma;
+      const dailyDowntrend = dailyClose < dailySma;
 
-      const h4Ema = pre4h.ema[p.h4EmaPeriod]?.[i] ?? null;
-      const h4EmaPrev = pre4h.ema[p.h4EmaPeriod]?.[i - 1] ?? null;
-      if (h4Ema === null || h4EmaPrev === null) continue;
-
-      const currClose = c.close;
-      const prevClose = candles4h[i - 1].close;
+      const curr = tkArr[i];
+      const prev = tkArr[i - 1];
+      if (!curr || !prev || curr.tenkan === null || curr.kijun === null || prev.tenkan === null || prev.kijun === null) continue;
 
       let dir: "long" | "short" | null = null;
 
-      // Long: daily uptrend, previous bar close <= EMA (pullback touched EMA), current bar close > EMA (bounce above)
-      if (dailyUptrend && prevClose <= h4EmaPrev && currClose > h4Ema) {
-        dir = "long";
-      }
-
-      // Short: daily downtrend, previous bar close >= EMA (pullback touched EMA), current bar close < EMA (rejection below)
-      if (dailyDowntrend && prevClose >= h4EmaPrev && currClose < h4Ema) {
-        dir = "short";
-      }
+      // TK bullish cross: tenkan crosses above kijun
+      if (dailyUptrend && prev.tenkan < prev.kijun && curr.tenkan >= curr.kijun) dir = "long";
+      // TK bearish cross: tenkan crosses below kijun
+      if (dailyDowntrend && prev.tenkan > prev.kijun && curr.tenkan <= curr.kijun) dir = "short";
 
       if (dir !== null && i + 1 < end) {
         const entryPrice = candles4h[i + 1].open;
@@ -230,114 +249,90 @@ function sharpe(pnls: number[]): number {
   return std === 0 ? 0 : (mean / std) * Math.sqrt(pnls.length);
 }
 
-const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB"];
+const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
 const DAYS = 365;
 const TRAIN_FRAC = 240 / 365;
 
-// Phase 1: signal params (fix risk at stopAtr=2.0, rr=2.5, stag=6)
-const DAILY_EMA_VALS = [30, 50, 70, 100];
-const H4_EMA_VALS = [13, 17, 21, 26];
-const H4_ADX_VALS = [15, 20, 25];
+const DAILY_SMA_VALS = [50, 70, 100, 120];
+const DAILY_ADX_VALS = [15, 18, 20, 25];
+const TENKAN_VALS = [7, 9, 12, 15];
+const KIJUN_VALS = [22, 26, 30, 39];
 
-// Phase 2: risk params on best Phase 1
 const STOP_ATR_VALS = [1.5, 2.0, 2.5];
-const RR_VALS = [2.0, 2.5, 3.0, 3.5];
+const RR_VALS = [2.5, 3.0, 3.5, 4.0];
 const STAG_VALS = [6, 9, 12];
 
-const ALL_DAILY_EMA_PERIODS = [...new Set(DAILY_EMA_VALS)];
-const ALL_H4_EMA_PERIODS = [...new Set(H4_EMA_VALS)];
+const ALL_SMA_PERIODS = [...new Set(DAILY_SMA_VALS)];
+const TK_COMBOS = TENKAN_VALS.flatMap((t) => KIJUN_VALS.filter((k) => k > t).map((k) => ({ tenkan: t, kijun: k })));
 
 interface TrainResult { params: Params; trainReturn: number }
 
 const PHASE1_GRID: Params[] = [];
-for (const dailyEmaPeriod of DAILY_EMA_VALS) {
-  for (const h4EmaPeriod of H4_EMA_VALS) {
-    for (const h4AdxMin of H4_ADX_VALS) {
-      PHASE1_GRID.push({
-        dailyEmaPeriod, h4EmaPeriod, h4AdxMin,
-        stopAtrMult: 2.0, rrRatio: 2.5, stagnationH: 6,
-      });
+for (const dailySmaPeriod of DAILY_SMA_VALS) {
+  for (const dailyAdxMin of DAILY_ADX_VALS) {
+    for (const { tenkan: tenkanPeriod, kijun: kijunPeriod } of TK_COMBOS) {
+      PHASE1_GRID.push({ dailySmaPeriod, dailyAdxMin, tenkanPeriod, kijunPeriod, stopAtrMult: 2.0, rrRatio: 2.5, stagnationH: 9 });
     }
   }
 }
 
 async function main() {
-  console.log(`=== tune-ema-pullback.ts: EMA Pullback Strategy, ${PAIRS.length} pairs, ${DAYS}d data ===`);
-  console.log(`Phase 1: ${PHASE1_GRID.length} combos (dailyEma[${DAILY_EMA_VALS}] x h4Ema[${H4_EMA_VALS}] x h4Adx[${H4_ADX_VALS}])`);
-  console.log(`Phase 2: best Phase 1 x ${STOP_ATR_VALS.length} stopAtrMult x ${RR_VALS.length} rrRatio x ${STAG_VALS.length} stag = ${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos`);
-  console.log("Fetching data (4h + daily candles for each pair)...");
+  console.log(`=== tune-ichimoku.ts: Ichimoku TK Cross Strategy, ${PAIRS.length} pairs, ${DAYS}d data ===`);
+  console.log(`TK combos: ${TK_COMBOS.length} | Phase 1: ${PHASE1_GRID.length} combos | Phase 2: ${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos`);
+  console.log("Fetching data...");
 
   let dailyInterval = "1d";
 
-  type PairData = {
-    h4: Candle[];
-    pre4h: H4PreInd;
-    dailyCandles: Candle[];
-    preDaily: DailyPreInd;
-    idxDailyAt: number[];
-    trainEnd: number;
-  };
+  type PairData = { h4: Candle[]; pre4h: H4PreInd; dailyCandles: Candle[]; preDaily: DailyPreInd; idxDailyAt: number[]; trainEnd: number; };
   const candleMap: Record<string, PairData> = {};
 
   for (const pair of PAIRS) {
     try {
       process.stdout.write(`  ${pair} (4h)... `);
       const h4 = await fetchCandles(pair, "4h", DAYS);
-      const pre4h = precompute4h(h4, ALL_H4_EMA_PERIODS);
+      const pre4h = precompute4h(h4, TK_COMBOS);
 
-      process.stdout.write(`${h4.length} candles. Daily (${dailyInterval})... `);
+      process.stdout.write(`${h4.length} candles. Daily... `);
       let dailyCandles: Candle[];
       try {
         dailyCandles = await fetchCandles(pair, dailyInterval, DAYS);
-      } catch (e) {
-        if (dailyInterval === "1d") {
-          console.log(`(${dailyInterval} failed, trying 24h)`);
-          dailyInterval = "24h";
-          dailyCandles = await fetchCandles(pair, dailyInterval, DAYS);
-        } else {
-          throw e;
-        }
+      } catch {
+        if (dailyInterval === "1d") { dailyInterval = "24h"; dailyCandles = await fetchCandles(pair, dailyInterval, DAYS); }
+        else throw new Error("daily fetch failed");
       }
 
-      const preDaily = precomputeDaily(dailyCandles, ALL_DAILY_EMA_PERIODS);
-
+      const preDaily = precomputeDaily(dailyCandles, ALL_SMA_PERIODS);
       const idxDailyAt: number[] = new Array(h4.length).fill(-1);
       let j = 0;
-      for (let i = 0; i < h4.length; i++) {
-        while (j < dailyCandles.length && dailyCandles[j].timestamp <= h4[i].timestamp) j++;
-        idxDailyAt[i] = j - 1;
-      }
+      for (let i = 0; i < h4.length; i++) { while (j < dailyCandles.length && dailyCandles[j].timestamp <= h4[i].timestamp) j++; idxDailyAt[i] = j - 1; }
 
       const trainEnd = Math.floor(h4.length * TRAIN_FRAC);
       candleMap[pair] = { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd };
-      console.log(`${dailyCandles.length} daily candles. Train end: ${trainEnd}`);
-    } catch (e) {
-      console.warn(`  ${pair}: fetch failed (${(e as Error).message}), skipping`);
-    }
+      console.log(`${dailyCandles.length} daily candles.`);
+    } catch (e) { console.warn(`  ${pair}: failed (${(e as Error).message}), skipping`); }
   }
 
   const pairs = PAIRS.filter((p) => candleMap[p]);
   if (pairs.length === 0) { console.error("No pairs loaded"); process.exit(1); }
-  console.log(`\nDaily interval used: "${dailyInterval}"`);
 
   const samp = candleMap[pairs[0]];
-  const trainDays = (samp.h4[samp.trainEnd - 1].timestamp - samp.h4[50].timestamp) / 86400_000;
+  const trainDays = (samp.h4[samp.trainEnd - 1].timestamp - samp.h4[60].timestamp) / 86400_000;
   const testDays = (samp.h4[samp.h4.length - 1].timestamp - samp.h4[samp.trainEnd].timestamp) / 86400_000;
-  console.log(`Walk-forward: ~${trainDays.toFixed(0)}d train, ~${testDays.toFixed(0)}d test`);
+  console.log(`Walk-forward: ~${trainDays.toFixed(0)}d train, ~${testDays.toFixed(0)}d test\n`);
 
-  console.log(`\nPhase 1 training (${PHASE1_GRID.length} combos x ${pairs.length} pairs)...`);
+  console.log(`Phase 1 training (${PHASE1_GRID.length} combos)...`);
   const phase1: TrainResult[] = [];
   for (const params of PHASE1_GRID) {
     let total = 0;
     for (const pair of pairs) {
       const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
-      total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
+      total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 60, trainEnd).totalReturn;
     }
     phase1.push({ params, trainReturn: total / pairs.length });
   }
   phase1.sort((a, b) => b.trainReturn - a.trainReturn);
   const best1 = phase1[0].params;
-  console.log(`  Best Phase 1 (train): dailyEma=${best1.dailyEmaPeriod} h4Ema=${best1.h4EmaPeriod} h4Adx=${best1.h4AdxMin} | return: ${phase1[0].trainReturn.toFixed(2)}%`);
+  console.log(`  Best Phase 1: sma=${best1.dailySmaPeriod} adx=${best1.dailyAdxMin} TK=${best1.tenkanPeriod}/${best1.kijunPeriod} | train: ${phase1[0].trainReturn.toFixed(2)}%`);
 
   console.log(`\nPhase 2 training (${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos)...`);
   const phase2: TrainResult[] = [];
@@ -348,7 +343,7 @@ async function main() {
         let total = 0;
         for (const pair of pairs) {
           const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
-          total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
+          total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 60, trainEnd).totalReturn;
         }
         phase2.push({ params, trainReturn: total / pairs.length });
       }
@@ -359,81 +354,38 @@ async function main() {
   const allTrain = [...phase1, ...phase2].sort((a, b) => b.trainReturn - a.trainReturn);
   const top5 = allTrain.slice(0, 5);
 
-  console.log(`\nEvaluating top-5 on TEST set (~${testDays.toFixed(0)}d out-of-sample)...`);
+  console.log(`\nEvaluating top-5 on TEST set (~${testDays.toFixed(0)}d)...`);
   const results: WalkForwardResult[] = [];
-
   for (const { params, trainReturn } of top5) {
-    let testRet = 0;
-    let testTrades = 0;
-    let testWins = 0;
-    let testDD = 0;
+    let testRet = 0, testTrades = 0, testWins = 0, testDD = 0, tDays = 0;
     const allPnls: number[] = [];
-    let tDays = 0;
-
     for (const pair of pairs) {
       const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
       const r = runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, trainEnd);
-      testRet += r.totalReturn;
-      testTrades += r.trades;
-      testWins += r.wins;
-      testDD = Math.max(testDD, r.maxDrawdown);
-      allPnls.push(...r.tradePnlPcts);
-      tDays = Math.max(tDays, r.days);
+      testRet += r.totalReturn; testTrades += r.trades; testWins += r.wins;
+      testDD = Math.max(testDD, r.maxDrawdown); allPnls.push(...r.tradePnlPcts); tDays = Math.max(tDays, r.days);
     }
-
-    results.push({
-      params,
-      trainReturn,
-      testReturn: testRet / pairs.length,
-      testDays: tDays,
-      profitPerDay: tDays > 0 ? (testRet / pairs.length) / tDays : 0,
-      testTrades,
-      testWinRate: testTrades > 0 ? (testWins / testTrades) * 100 : 0,
-      testMaxDrawdown: testDD,
-      testSharpe: sharpe(allPnls),
-    });
+    results.push({ params, trainReturn, testReturn: testRet / pairs.length, testDays: tDays, profitPerDay: tDays > 0 ? (testRet / pairs.length) / tDays : 0, testTrades, testWinRate: testTrades > 0 ? (testWins / testTrades) * 100 : 0, testMaxDrawdown: testDD, testSharpe: sharpe(allPnls) });
   }
 
   results.sort((a, b) => b.profitPerDay - a.profitPerDay);
-
   console.log("\n=== RESULTS: Top-5 by out-of-sample %/day ===\n");
   console.log("Rk  %/day   TestRet  TrainRet  Trades  WR    MaxDD   Sharpe  Params");
-  console.log("-".repeat(130));
+  console.log("-".repeat(120));
   results.forEach((r, i) => {
     const p = r.params;
-    const tag = `dailyEma=${p.dailyEmaPeriod} h4Ema=${p.h4EmaPeriod} h4Adx=${p.h4AdxMin} stopAtr=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`;
-    console.log(`${String(i + 1).padStart(2)}  ${r.profitPerDay >= 0 ? "+" : ""}${r.profitPerDay.toFixed(3)}  ${r.testReturn >= 0 ? "+" : ""}${r.testReturn.toFixed(2)}%    ${r.trainReturn >= 0 ? "+" : ""}${r.trainReturn.toFixed(2)}%   ${String(r.testTrades).padStart(6)}  ${r.testWinRate.toFixed(0)}%  ${r.testMaxDrawdown.toFixed(1)}%  ${r.testSharpe >= 0 ? " " : ""}${r.testSharpe.toFixed(2)}   ${tag}`);
+    console.log(`${String(i + 1).padStart(2)}  ${r.profitPerDay >= 0 ? "+" : ""}${r.profitPerDay.toFixed(3)}  ${r.testReturn >= 0 ? "+" : ""}${r.testReturn.toFixed(2)}%    ${r.trainReturn >= 0 ? "+" : ""}${r.trainReturn.toFixed(2)}%   ${String(r.testTrades).padStart(6)}  ${r.testWinRate.toFixed(0)}%  ${r.testMaxDrawdown.toFixed(1)}%  ${r.testSharpe >= 0 ? " " : ""}${r.testSharpe.toFixed(2)}   sma=${p.dailySmaPeriod} adx=${p.dailyAdxMin} TK=${p.tenkanPeriod}/${p.kijunPeriod} stop=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`);
   });
 
   const best = results[0];
   const bp = best.params;
-  console.log("\n=== RECOMMENDED CONSTANTS ===\n");
-  console.log(`EMA_PULLBACK_DAILY_EMA_PERIOD = ${bp.dailyEmaPeriod}`);
-  console.log(`EMA_PULLBACK_H4_EMA_PERIOD    = ${bp.h4EmaPeriod}`);
-  console.log(`EMA_PULLBACK_H4_ADX_MIN       = ${bp.h4AdxMin}`);
-  console.log(`EMA_PULLBACK_STOP_ATR_MULT    = ${bp.stopAtrMult}`);
-  console.log(`EMA_PULLBACK_REWARD_RISK      = ${bp.rrRatio}`);
-  console.log(`EMA_PULLBACK_STAGNATION_H     = ${bp.stagnationH * 4}h`);
-  console.log(`\nNote: Best %/day = ${best.profitPerDay >= 0 ? "+" : ""}${best.profitPerDay.toFixed(4)}, test Sharpe = ${best.testSharpe.toFixed(2)}, trades = ${best.testTrades}`);
-
-  const MTF_BEST_PER_DAY = 0.196;
-  const MTF_BEST_SHARPE = 3.20;
-  const beatsExisting = best.profitPerDay > MTF_BEST_PER_DAY && best.testSharpe > MTF_BEST_SHARPE;
-
-  console.log("\n=== ASSESSMENT ===");
-  console.log(`Current MTF best: +${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}`);
+  console.log(`\nBest: ${best.profitPerDay >= 0 ? "+" : ""}${best.profitPerDay.toFixed(4)}%/day, Sharpe ${best.testSharpe.toFixed(2)}, trades ${best.testTrades}`);
   if (best.testSharpe > 1.0 && best.testTrades > 30) {
-    console.log(`VIABLE: Sharpe ${best.testSharpe.toFixed(2)} > 1.0, trades ${best.testTrades} > 30.`);
-    if (beatsExisting) {
-      console.log(`BEATS MTF: +${best.profitPerDay.toFixed(4)}%/day vs +${MTF_BEST_PER_DAY}%/day. CREATE LIVE ENGINE recommended.`);
-    } else {
-      console.log(`Does NOT beat MTF (+${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}). Viable but not superior - do not implement live engine.`);
-    }
+    console.log(`VIABLE (Sharpe ${best.testSharpe.toFixed(2)}, ${best.testTrades} trades).`);
+    console.log(`vs MTF +0.293%/day: Ichimoku is ${best.profitPerDay > 0.293 ? "BETTER" : "worse"}`);
+    console.log(`vs EMA Ribbon +0.180%/day: Ichimoku is ${best.profitPerDay > 0.180 ? "BETTER" : "worse"}`);
   } else {
-    const reasons: string[] = [];
-    if (best.testSharpe <= 1.0) reasons.push(`Sharpe ${best.testSharpe.toFixed(2)} <= 1.0`);
-    if (best.testTrades <= 30) reasons.push(`trades ${best.testTrades} <= 30`);
-    console.log(`NOT VIABLE: ${reasons.join(", ")}. Do not implement.`);
+    console.log(`NOT VIABLE. TK cross signal insufficient for this market type.`);
   }
 }
 

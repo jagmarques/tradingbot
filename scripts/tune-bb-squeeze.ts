@@ -1,8 +1,9 @@
-// MACD Histogram Crossover strategy backtest: daily SMA+ADX trend filter + 4h MACD histogram entry.
+// Bollinger Band Squeeze Release strategy: volatility-based breakout after low-volatility squeeze.
+// Entry when BB Width drops to bottom quartile then price breaks above/below band. Daily SMA+ADX filter.
 // Walk-forward: train 240d / test ~125d. 0.29% round-trip costs, 10x leverage.
-// Run: npx tsx scripts/tune-macd-trend.ts
+// Run: npx tsx scripts/tune-bb-squeeze.ts
 
-import { MACD, ATR, ADX } from "technicalindicators";
+import { BollingerBands, ATR, ADX } from "technicalindicators";
 
 interface Candle {
   timestamp: number;
@@ -16,9 +17,10 @@ interface Candle {
 interface Params {
   dailySmaPeriod: number;
   dailyAdxMin: number;
-  macdFast: number;
-  macdSlow: number;
-  macdSignal: number;
+  bbPeriod: number;
+  bbStdDev: number;
+  squeezeWindow: number;  // bars to look back for squeeze detection
+  squeezeThresh: number;  // BB Width must be below this percentile (0.0-1.0)
   stopAtrMult: number;
   rrRatio: number;
   stagnationH: number;
@@ -60,6 +62,10 @@ async function fetchCandles(coin: string, interval: string, days: number): Promi
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
+function bbKey(period: number, stdDev: number): string { return `${period}_${stdDev}`; }
+
+interface BBBar { upper: number | null; middle: number | null; lower: number | null; width: number | null; }
+
 interface DailyPreInd {
   sma: Record<number, (number | null)[]>;
   adx: (number | null)[];
@@ -84,29 +90,15 @@ function precomputeDaily(candles: Candle[], smaPeriods: number[]): DailyPreInd {
     }
     sma[period] = arr;
   }
-
   return { sma, adx: adxArr };
-}
-
-// MACD combo key for precomputed cache
-function macdKey(fast: number, slow: number, signal: number): string {
-  return `${fast}_${slow}_${signal}`;
-}
-
-interface MacdBar {
-  macdLine: number | null;
-  histogram: number | null;
 }
 
 interface H4PreInd {
   atr: (number | null)[];
-  macd: Record<string, MacdBar[]>;
+  bb: Record<string, BBBar[]>;
 }
 
-function precompute4h(
-  candles: Candle[],
-  macdCombos: Array<{ fast: number; slow: number; signal: number }>,
-): H4PreInd {
+function precompute4h(candles: Candle[], bbCombos: Array<{ period: number; stdDev: number }>): H4PreInd {
   const n = candles.length;
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);
@@ -116,28 +108,19 @@ function precompute4h(
   const atrArr: (number | null)[] = new Array(n).fill(null);
   atrRaw.forEach((v, i) => { atrArr[n - atrRaw.length + i] = v; });
 
-  const macd: Record<string, MacdBar[]> = {};
-  for (const { fast, slow, signal } of macdCombos) {
-    const key = macdKey(fast, slow, signal);
-    const raw = MACD.calculate({
-      values: closes,
-      fastPeriod: fast,
-      slowPeriod: slow,
-      signalPeriod: signal,
-      SimpleMAOscillator: false,
-      SimpleMASignal: false,
-    });
-    const arr: MacdBar[] = new Array(n).fill(null).map(() => ({ macdLine: null, histogram: null }));
+  const bb: Record<string, BBBar[]> = {};
+  for (const { period, stdDev } of bbCombos) {
+    const key = bbKey(period, stdDev);
+    const raw = BollingerBands.calculate({ values: closes, period, stdDev });
+    const arr: BBBar[] = new Array(n).fill(null).map(() => ({ upper: null, middle: null, lower: null, width: null }));
     raw.forEach((v, i) => {
-      arr[n - raw.length + i] = {
-        macdLine: v.MACD ?? null,
-        histogram: v.histogram ?? null,
-      };
+      const idx = n - raw.length + i;
+      const width = v.middle > 0 ? (v.upper - v.lower) / v.middle : null;
+      arr[idx] = { upper: v.upper, middle: v.middle, lower: v.lower, width };
     });
-    macd[key] = arr;
+    bb[key] = arr;
   }
-
-  return { atr: atrArr, macd };
+  return { atr: atrArr, bb };
 }
 
 const LEV = 10;
@@ -153,7 +136,7 @@ function runBacktest(
   preDaily: DailyPreInd,
   idxDailyAt: number[],
   p: Params,
-  startIdx = 50,
+  startIdx = 80,
   endIdx?: number,
 ): BacktestResult {
   const end = endIdx ?? candles4h.length;
@@ -164,9 +147,9 @@ function runBacktest(
   let wins = 0;
   const tradePnlPcts: number[] = [];
 
-  const key = macdKey(p.macdFast, p.macdSlow, p.macdSignal);
-  const macdBars = pre4h.macd[key];
-  if (!macdBars) return { trades: 0, wins: 0, totalReturn: 0, maxDrawdown: 0, tradePnlPcts: [], days: 0 };
+  const key = bbKey(p.bbPeriod, p.bbStdDev);
+  const bbArr = pre4h.bb[key];
+  if (!bbArr) return { trades: 0, wins: 0, totalReturn: 0, maxDrawdown: 0, tradePnlPcts: [], days: 0 };
 
   type Pos = { dir: "long" | "short"; entry: number; entryIdx: number; sl: number; tp: number; peak: number; size: number };
   let pos: Pos | null = null;
@@ -201,7 +184,7 @@ function runBacktest(
         pos = null;
       }
     } else {
-      if (i < 1) continue;
+      if (i < p.squeezeWindow) continue;
       const dIdx = idxDailyAt[i];
       if (dIdx < 0) continue;
 
@@ -215,22 +198,30 @@ function runBacktest(
       const dailyUptrend = dailyClose > dailySma;
       const dailyDowntrend = dailyClose < dailySma;
 
-      const curr = macdBars[i];
-      const prev = macdBars[i - 1];
-      if (!curr || !prev) continue;
-      if (curr.histogram === null || prev.histogram === null || curr.macdLine === null) continue;
+      const curr = bbArr[i];
+      const prev = bbArr[i - 1];
+      if (!curr || !prev || curr.upper === null || curr.lower === null || curr.width === null || prev.upper === null || prev.lower === null) continue;
+
+      // Compute BB Width percentile over squeezeWindow bars
+      const widths: number[] = [];
+      for (let k = i - p.squeezeWindow; k < i; k++) {
+        const w = bbArr[k]?.width;
+        if (w !== null && w !== undefined) widths.push(w);
+      }
+      if (widths.length < p.squeezeWindow * 0.5) continue;
+      widths.sort((a, b) => a - b);
+      const threshold = widths[Math.floor(widths.length * p.squeezeThresh)];
+
+      // In a squeeze: previous bar's width was below threshold
+      const prevInSqueeze = prev.width !== null && prev.width <= threshold;
+      if (!prevInSqueeze) continue;
 
       let dir: "long" | "short" | null = null;
 
-      // Long: histogram crosses from negative to positive AND MACD line still below zero (oversold bounce)
-      if (dailyUptrend && prev.histogram < 0 && curr.histogram >= 0 && curr.macdLine < 0) {
-        dir = "long";
-      }
-
-      // Short: histogram crosses from positive to negative AND MACD line still above zero (overbought rejection)
-      if (dailyDowntrend && prev.histogram > 0 && curr.histogram <= 0 && curr.macdLine > 0) {
-        dir = "short";
-      }
+      // Breakout: price closes above upper band while in squeeze AND daily uptrend
+      if (dailyUptrend && c.close > curr.upper) dir = "long";
+      // Breakdown: price closes below lower band while in squeeze AND daily downtrend
+      if (dailyDowntrend && c.close < curr.lower) dir = "short";
 
       if (dir !== null && i + 1 < end) {
         const entryPrice = candles4h[i + 1].open;
@@ -268,116 +259,88 @@ const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB",
 const DAYS = 365;
 const TRAIN_FRAC = 240 / 365;
 
-// Phase 1: signal params (fix risk at stopAtr=2.0, rr=2.5, stag=6)
 const DAILY_SMA_VALS = [50, 70, 100];
-const DAILY_ADX_VALS = [15, 20, 25];
-const MACD_FAST_VALS = [8, 12];
-const MACD_SLOW_VALS = [21, 26];
-const MACD_SIGNAL_VALS = [7, 9];
+const DAILY_ADX_VALS = [15, 18, 20];
+const BB_PERIOD_VALS = [15, 20, 25];
+const BB_STDDEV_VALS = [1.5, 2.0, 2.5];
+const SQUEEZE_WINDOW_VALS = [30, 50, 70];
+const SQUEEZE_THRESH_VALS = [0.20, 0.25, 0.30];
 
-// Phase 2: risk params on best Phase 1
 const STOP_ATR_VALS = [1.5, 2.0, 2.5];
-const RR_VALS = [2.0, 2.5, 3.0, 3.5];
+const RR_VALS = [2.5, 3.0, 3.5, 4.0];
 const STAG_VALS = [6, 9, 12];
 
 const ALL_SMA_PERIODS = [...new Set(DAILY_SMA_VALS)];
-const MACD_COMBOS = MACD_FAST_VALS.flatMap((fast) =>
-  MACD_SLOW_VALS.flatMap((slow) =>
-    MACD_SIGNAL_VALS.map((signal) => ({ fast, slow, signal }))
-  )
-).filter((c) => c.fast < c.slow);
+const BB_COMBOS = BB_PERIOD_VALS.flatMap((p) => BB_STDDEV_VALS.map((s) => ({ period: p, stdDev: s })));
 
 interface TrainResult { params: Params; trainReturn: number }
 
 const PHASE1_GRID: Params[] = [];
 for (const dailySmaPeriod of DAILY_SMA_VALS) {
   for (const dailyAdxMin of DAILY_ADX_VALS) {
-    for (const { fast: macdFast, slow: macdSlow, signal: macdSignal } of MACD_COMBOS) {
-      PHASE1_GRID.push({
-        dailySmaPeriod, dailyAdxMin, macdFast, macdSlow, macdSignal,
-        stopAtrMult: 2.0, rrRatio: 2.5, stagnationH: 6,
-      });
+    for (const { period: bbPeriod, stdDev: bbStdDev } of BB_COMBOS) {
+      for (const squeezeWindow of SQUEEZE_WINDOW_VALS) {
+        for (const squeezeThresh of SQUEEZE_THRESH_VALS) {
+          PHASE1_GRID.push({ dailySmaPeriod, dailyAdxMin, bbPeriod, bbStdDev, squeezeWindow, squeezeThresh, stopAtrMult: 2.0, rrRatio: 2.5, stagnationH: 9 });
+        }
+      }
     }
   }
 }
 
 async function main() {
-  console.log(`=== tune-macd-trend.ts: MACD Histogram Crossover Strategy, ${PAIRS.length} pairs, ${DAYS}d data ===`);
-  console.log(`Phase 1: ${PHASE1_GRID.length} combos (dailySma[${DAILY_SMA_VALS}] x dailyAdx[${DAILY_ADX_VALS}] x macdCombos[${MACD_COMBOS.length}])`);
-  console.log(`Phase 2: best Phase 1 x ${STOP_ATR_VALS.length} stopAtrMult x ${RR_VALS.length} rrRatio x ${STAG_VALS.length} stag = ${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos`);
-  console.log("Fetching data (4h + daily candles for each pair)...");
+  console.log(`=== tune-bb-squeeze.ts: Bollinger Band Squeeze Release, ${PAIRS.length} pairs, ${DAYS}d data ===`);
+  console.log(`Phase 1: ${PHASE1_GRID.length} combos | Phase 2: ${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos`);
+  console.log("Fetching data...");
 
   let dailyInterval = "1d";
 
-  type PairData = {
-    h4: Candle[];
-    pre4h: H4PreInd;
-    dailyCandles: Candle[];
-    preDaily: DailyPreInd;
-    idxDailyAt: number[];
-    trainEnd: number;
-  };
+  type PairData = { h4: Candle[]; pre4h: H4PreInd; dailyCandles: Candle[]; preDaily: DailyPreInd; idxDailyAt: number[]; trainEnd: number; };
   const candleMap: Record<string, PairData> = {};
 
   for (const pair of PAIRS) {
     try {
       process.stdout.write(`  ${pair} (4h)... `);
       const h4 = await fetchCandles(pair, "4h", DAYS);
-      const pre4h = precompute4h(h4, MACD_COMBOS);
-
-      process.stdout.write(`${h4.length} candles. Daily (${dailyInterval})... `);
+      const pre4h = precompute4h(h4, BB_COMBOS);
+      process.stdout.write(`${h4.length} candles. Daily... `);
       let dailyCandles: Candle[];
       try {
         dailyCandles = await fetchCandles(pair, dailyInterval, DAYS);
-      } catch (e) {
-        if (dailyInterval === "1d") {
-          console.log(`(${dailyInterval} failed, trying 24h)`);
-          dailyInterval = "24h";
-          dailyCandles = await fetchCandles(pair, dailyInterval, DAYS);
-        } else {
-          throw e;
-        }
+      } catch {
+        if (dailyInterval === "1d") { dailyInterval = "24h"; dailyCandles = await fetchCandles(pair, dailyInterval, DAYS); }
+        else throw new Error("daily fetch failed");
       }
-
       const preDaily = precomputeDaily(dailyCandles, ALL_SMA_PERIODS);
-
       const idxDailyAt: number[] = new Array(h4.length).fill(-1);
       let j = 0;
-      for (let i = 0; i < h4.length; i++) {
-        while (j < dailyCandles.length && dailyCandles[j].timestamp <= h4[i].timestamp) j++;
-        idxDailyAt[i] = j - 1;
-      }
-
+      for (let i = 0; i < h4.length; i++) { while (j < dailyCandles.length && dailyCandles[j].timestamp <= h4[i].timestamp) j++; idxDailyAt[i] = j - 1; }
       const trainEnd = Math.floor(h4.length * TRAIN_FRAC);
       candleMap[pair] = { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd };
-      console.log(`${dailyCandles.length} daily candles. Train end: ${trainEnd}`);
-    } catch (e) {
-      console.warn(`  ${pair}: fetch failed (${(e as Error).message}), skipping`);
-    }
+      console.log(`${dailyCandles.length} daily.`);
+    } catch (e) { console.warn(`  ${pair}: failed (${(e as Error).message}), skipping`); }
   }
 
   const pairs = PAIRS.filter((p) => candleMap[p]);
   if (pairs.length === 0) { console.error("No pairs loaded"); process.exit(1); }
-  console.log(`\nDaily interval used: "${dailyInterval}"`);
 
   const samp = candleMap[pairs[0]];
-  const trainDays = (samp.h4[samp.trainEnd - 1].timestamp - samp.h4[50].timestamp) / 86400_000;
   const testDays = (samp.h4[samp.h4.length - 1].timestamp - samp.h4[samp.trainEnd].timestamp) / 86400_000;
-  console.log(`Walk-forward: ~${trainDays.toFixed(0)}d train, ~${testDays.toFixed(0)}d test`);
+  console.log(`Walk-forward: ~${((240 / 365) * DAYS).toFixed(0)}d train, ~${testDays.toFixed(0)}d test\n`);
 
-  console.log(`\nPhase 1 training (${PHASE1_GRID.length} combos x ${pairs.length} pairs)...`);
+  console.log(`Phase 1 training (${PHASE1_GRID.length} combos)...`);
   const phase1: TrainResult[] = [];
   for (const params of PHASE1_GRID) {
     let total = 0;
     for (const pair of pairs) {
       const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
-      total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
+      total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 80, trainEnd).totalReturn;
     }
     phase1.push({ params, trainReturn: total / pairs.length });
   }
   phase1.sort((a, b) => b.trainReturn - a.trainReturn);
   const best1 = phase1[0].params;
-  console.log(`  Best Phase 1 (train): dailySma=${best1.dailySmaPeriod} dailyAdx=${best1.dailyAdxMin} macd=${best1.macdFast}/${best1.macdSlow}/${best1.macdSignal} | return: ${phase1[0].trainReturn.toFixed(2)}%`);
+  console.log(`  Best Phase 1: sma=${best1.dailySmaPeriod} adx=${best1.dailyAdxMin} BB(${best1.bbPeriod},${best1.bbStdDev}) squeeze=${best1.squeezeWindow}w@${best1.squeezeThresh} | train: ${phase1[0].trainReturn.toFixed(2)}%`);
 
   console.log(`\nPhase 2 training (${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos)...`);
   const phase2: TrainResult[] = [];
@@ -388,94 +351,45 @@ async function main() {
         let total = 0;
         for (const pair of pairs) {
           const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
-          total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
+          total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 80, trainEnd).totalReturn;
         }
         phase2.push({ params, trainReturn: total / pairs.length });
       }
     }
   }
-  phase2.sort((a, b) => b.trainReturn - a.trainReturn);
 
   const allTrain = [...phase1, ...phase2].sort((a, b) => b.trainReturn - a.trainReturn);
   const top5 = allTrain.slice(0, 5);
 
-  console.log(`\nEvaluating top-5 on TEST set (~${testDays.toFixed(0)}d out-of-sample)...`);
+  console.log(`\nEvaluating top-5 on TEST set (~${testDays.toFixed(0)}d)...`);
   const results: WalkForwardResult[] = [];
-
   for (const { params, trainReturn } of top5) {
-    let testRet = 0;
-    let testTrades = 0;
-    let testWins = 0;
-    let testDD = 0;
+    let testRet = 0, testTrades = 0, testWins = 0, testDD = 0, tDays = 0;
     const allPnls: number[] = [];
-    let tDays = 0;
-
     for (const pair of pairs) {
       const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
       const r = runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, trainEnd);
-      testRet += r.totalReturn;
-      testTrades += r.trades;
-      testWins += r.wins;
-      testDD = Math.max(testDD, r.maxDrawdown);
-      allPnls.push(...r.tradePnlPcts);
-      tDays = Math.max(tDays, r.days);
+      testRet += r.totalReturn; testTrades += r.trades; testWins += r.wins;
+      testDD = Math.max(testDD, r.maxDrawdown); allPnls.push(...r.tradePnlPcts); tDays = Math.max(tDays, r.days);
     }
-
-    results.push({
-      params,
-      trainReturn,
-      testReturn: testRet / pairs.length,
-      testDays: tDays,
-      profitPerDay: tDays > 0 ? (testRet / pairs.length) / tDays : 0,
-      testTrades,
-      testWinRate: testTrades > 0 ? (testWins / testTrades) * 100 : 0,
-      testMaxDrawdown: testDD,
-      testSharpe: sharpe(allPnls),
-    });
+    results.push({ params, trainReturn, testReturn: testRet / pairs.length, testDays: tDays, profitPerDay: tDays > 0 ? (testRet / pairs.length) / tDays : 0, testTrades, testWinRate: testTrades > 0 ? (testWins / testTrades) * 100 : 0, testMaxDrawdown: testDD, testSharpe: sharpe(allPnls) });
   }
 
   results.sort((a, b) => b.profitPerDay - a.profitPerDay);
-
   console.log("\n=== RESULTS: Top-5 by out-of-sample %/day ===\n");
   console.log("Rk  %/day   TestRet  TrainRet  Trades  WR    MaxDD   Sharpe  Params");
-  console.log("-".repeat(140));
+  console.log("-".repeat(130));
   results.forEach((r, i) => {
     const p = r.params;
-    const tag = `dailySma=${p.dailySmaPeriod} dailyAdx=${p.dailyAdxMin} macd=${p.macdFast}/${p.macdSlow}/${p.macdSignal} stopAtr=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`;
-    console.log(`${String(i + 1).padStart(2)}  ${r.profitPerDay >= 0 ? "+" : ""}${r.profitPerDay.toFixed(3)}  ${r.testReturn >= 0 ? "+" : ""}${r.testReturn.toFixed(2)}%    ${r.trainReturn >= 0 ? "+" : ""}${r.trainReturn.toFixed(2)}%   ${String(r.testTrades).padStart(6)}  ${r.testWinRate.toFixed(0)}%  ${r.testMaxDrawdown.toFixed(1)}%  ${r.testSharpe >= 0 ? " " : ""}${r.testSharpe.toFixed(2)}   ${tag}`);
+    console.log(`${String(i + 1).padStart(2)}  ${r.profitPerDay >= 0 ? "+" : ""}${r.profitPerDay.toFixed(3)}  ${r.testReturn >= 0 ? "+" : ""}${r.testReturn.toFixed(2)}%    ${r.trainReturn >= 0 ? "+" : ""}${r.trainReturn.toFixed(2)}%   ${String(r.testTrades).padStart(6)}  ${r.testWinRate.toFixed(0)}%  ${r.testMaxDrawdown.toFixed(1)}%  ${r.testSharpe >= 0 ? " " : ""}${r.testSharpe.toFixed(2)}   sma=${p.dailySmaPeriod} adx=${p.dailyAdxMin} BB(${p.bbPeriod},${p.bbStdDev}) sq=${p.squeezeWindow}@${p.squeezeThresh} stop=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`);
   });
 
   const best = results[0];
-  const bp = best.params;
-  console.log("\n=== RECOMMENDED CONSTANTS ===\n");
-  console.log(`MACD_TREND_DAILY_SMA_PERIOD  = ${bp.dailySmaPeriod}`);
-  console.log(`MACD_TREND_DAILY_ADX_MIN     = ${bp.dailyAdxMin}`);
-  console.log(`MACD_TREND_FAST              = ${bp.macdFast}`);
-  console.log(`MACD_TREND_SLOW              = ${bp.macdSlow}`);
-  console.log(`MACD_TREND_SIGNAL            = ${bp.macdSignal}`);
-  console.log(`MACD_TREND_STOP_ATR_MULT     = ${bp.stopAtrMult}`);
-  console.log(`MACD_TREND_REWARD_RISK       = ${bp.rrRatio}`);
-  console.log(`MACD_TREND_STAGNATION_H      = ${bp.stagnationH * 4}h`);
-  console.log(`\nNote: Best %/day = ${best.profitPerDay >= 0 ? "+" : ""}${best.profitPerDay.toFixed(4)}, test Sharpe = ${best.testSharpe.toFixed(2)}, trades = ${best.testTrades}`);
-
-  const MTF_BEST_PER_DAY = 0.196;
-  const MTF_BEST_SHARPE = 3.20;
-  const beatsExisting = best.profitPerDay > MTF_BEST_PER_DAY && best.testSharpe > MTF_BEST_SHARPE;
-
-  console.log("\n=== ASSESSMENT ===");
-  console.log(`Current MTF best: +${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}`);
+  console.log(`\nBest: ${best.profitPerDay >= 0 ? "+" : ""}${best.profitPerDay.toFixed(4)}%/day, Sharpe ${best.testSharpe.toFixed(2)}, trades ${best.testTrades}`);
   if (best.testSharpe > 1.0 && best.testTrades > 30) {
-    console.log(`VIABLE: Sharpe ${best.testSharpe.toFixed(2)} > 1.0, trades ${best.testTrades} > 30.`);
-    if (beatsExisting) {
-      console.log(`BEATS MTF: +${best.profitPerDay.toFixed(4)}%/day vs +${MTF_BEST_PER_DAY}%/day. CREATE LIVE ENGINE recommended.`);
-    } else {
-      console.log(`Does NOT beat MTF (+${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}). Viable but not superior - do not implement live engine.`);
-    }
+    console.log(`VIABLE. vs MTF +0.293%/day: ${best.profitPerDay > 0.293 ? "BEATS IT" : "below"}. vs EMA Ribbon +0.180%/day: ${best.profitPerDay > 0.180 ? "BEATS IT" : "below"}.`);
   } else {
-    const reasons: string[] = [];
-    if (best.testSharpe <= 1.0) reasons.push(`Sharpe ${best.testSharpe.toFixed(2)} <= 1.0`);
-    if (best.testTrades <= 30) reasons.push(`trades ${best.testTrades} <= 30`);
-    console.log(`NOT VIABLE: ${reasons.join(", ")}. Do not implement.`);
+    console.log("NOT VIABLE. Volatility squeeze breakouts don't generalize across these 16 pairs.");
   }
 }
 
