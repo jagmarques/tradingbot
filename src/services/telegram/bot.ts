@@ -276,25 +276,7 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
       callbackProcessing = false;
     }
   });
-  bot.callbackQuery(/^insiders_chain_([a-z]+)_([a-z]+)$/, async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      const match = ctx.match;
-      if (!match) return;
-      const chainVal = match[1];
-      const tabVal = match[2] as "holding" | "wallets";
-      const resolvedChain = chainVal === "all" ? undefined : chainVal;
-      await handleInsiders(ctx, tabVal, resolvedChain);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (insiders_chain):", err);
-      await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
+
   bot.callbackQuery("bets", async (ctx) => {
     if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     callbackProcessing = true;
@@ -1231,7 +1213,7 @@ async function handleBettors(ctx: Context): Promise<void> {
   }
 }
 
-async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallets", chain?: string): Promise<void> {
+async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallets"): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /insiders from user ${ctx.from?.id}`);
     return;
@@ -1247,28 +1229,14 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
     const chainButtons = [
       [
-        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
-      ],
-      [
-        { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
-        { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
-        { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
-      ],
-      [
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
-        { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
-        { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-      ],
-      [
-        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
+        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: "insiders_wallets" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
       ],
     ];
 
     if (tab === "holding") {
       try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
-      let trades = getOpenCopyTrades();
-      if (chain) trades = trades.filter(t => t.chain === chain);
+      const trades = getOpenCopyTrades();
 
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
 
@@ -1300,7 +1268,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     if (tab === "wallets") {
       try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
       const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
-      const walletStats = getInsiderWalletsWithStats(chain as "ethereum" | "base" | "arbitrum" | "polygon" | "optimism" | "avalanche" | undefined);
+      const walletStats = getInsiderWalletsWithStats();
 
       if (walletStats.length === 0) {
         const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1330,21 +1298,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     console.error("[Telegram] Insiders error:", err);
     const errorButtons = [
       [
-        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: chain ? `insiders_chain_${chain}_wallets` : "insiders_wallets" },
-        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: chain ? `insiders_chain_${chain}_holding` : "insiders_holding" },
-      ],
-      [
-        { text: chain === "ethereum" ? "* Eth" : "Eth", callback_data: `insiders_chain_ethereum_${tab}` },
-        { text: chain === "base" ? "* Base" : "Base", callback_data: `insiders_chain_base_${tab}` },
-        { text: chain === "arbitrum" ? "* Arb" : "Arb", callback_data: `insiders_chain_arbitrum_${tab}` },
-      ],
-      [
-        { text: chain === "polygon" ? "* Poly" : "Poly", callback_data: `insiders_chain_polygon_${tab}` },
-        { text: chain === "optimism" ? "* Opt" : "Opt", callback_data: `insiders_chain_optimism_${tab}` },
-        { text: chain === "avalanche" ? "* Avax" : "Avax", callback_data: `insiders_chain_avalanche_${tab}` },
-      ],
-      [
-        { text: !chain ? "* All Chains" : "All Chains", callback_data: `insiders_chain_all_${tab}` },
+        { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: "insiders_wallets" },
+        { text: tab === "holding" ? "* Holding" : "Holding", callback_data: "insiders_holding" },
       ],
     ];
     const backButton = [...errorButtons, [{ text: "Back", callback_data: "main_menu" }]];
