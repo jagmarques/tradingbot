@@ -37,11 +37,11 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 15; // Max concurrent positions (3 pairs x 5 trade types)
+export const QUANT_MAX_POSITIONS = 8; // Max concurrent positions (5 pairs x ~1-2 engines active)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL"];
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -95,8 +95,8 @@ export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
 export const MICRO_REWARD_RISK_RATIO = 2.0;
 
 // VWAP Deviation Mean Reversion Engine
-export const VWAP_DEVIATION_LONG_PCT = -1.5;   // Long when price is 1.5%+ below VWAP
-export const VWAP_DEVIATION_SHORT_PCT = 1.5;    // Short when price is 1.5%+ above VWAP
+export const VWAP_DEVIATION_LONG_PCT = -3.0;   // Long when price is 3%+ below VWAP
+export const VWAP_DEVIATION_SHORT_PCT = 3.0;    // Short when price is 3%+ above VWAP
 export const VWAP_TREND_CONFLICT_PCT = 3.0;     // Skip if 4h opposes by 3%+
 export const VWAP_BASE_CONFIDENCE = 65;
 export const VWAP_STOP_ATR_MULTIPLIER = 1.5;
@@ -107,7 +107,8 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   BTC: 0.02,   // 40x max
   ETH: 0.0125, // 25x max
   SOL: 0.01,   // 20x max
-  DOGE: 0.01,
+  XRP: 0.02,   // 50x max
+  DOGE: 0.02,  // 50x max
   AVAX: 0.01,
   LINK: 0.01,
   ARB: 0.01,
