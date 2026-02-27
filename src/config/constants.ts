@@ -112,10 +112,10 @@ export const BREAKOUT_BASE_CONFIDENCE = 65;
 
 // MACD Trend Engine (daily SMA + ADX filter + 4h MACD histogram cross, backtest: Sharpe 3.47, +0.098%/day, 67% WR, 16-pair retune)
 export const MACD_TREND_DAILY_SMA_PERIOD = 100;
-export const MACD_TREND_DAILY_ADX_MIN = 15;
-export const MACD_TREND_FAST = 8;
+export const MACD_TREND_DAILY_ADX_MIN = 20;
+export const MACD_TREND_FAST = 12;
 export const MACD_TREND_SLOW = 26;
-export const MACD_TREND_SIGNAL = 9;
+export const MACD_TREND_SIGNAL = 7;
 export const MACD_TREND_STOP_ATR_MULT = 2.5;
 export const MACD_TREND_REWARD_RISK = 3.5;
 export const MACD_TREND_STAGNATION_BARS = 12;
