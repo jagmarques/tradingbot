@@ -1,5 +1,4 @@
-// Stagnation timeout - exit at break-even if stuck too long
-export const STAGNATION_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+export const STAGNATION_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12h
 
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
@@ -76,14 +75,14 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
 // Rule-Based Decision Engine
-export const RULE_RSI_OVERSOLD = 35;
-export const RULE_RSI_OVERBOUGHT = 65;
+export const RULE_RSI_OVERSOLD = 30;
+export const RULE_RSI_OVERBOUGHT = 60;
 export const RULE_RSI_PULLBACK_LOW = 40;
 export const RULE_RSI_PULLBACK_HIGH = 60;
 export const RULE_STOP_ATR_MULTIPLIER = 1.5;
 export const RULE_REWARD_RISK_RATIO = 2.0;
 export const RULE_BB_PROXIMITY_PCT = 1.5;
-export const RULE_MIN_CONFIDENCE = 60; // Minimum confidence to generate a signal
+export const RULE_MIN_CONFIDENCE = 60;
 
 // Microstructure Decision Engine
 export const MICRO_IMBALANCE_LONG_THRESHOLD = 0.60;
@@ -95,9 +94,9 @@ export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
 export const MICRO_REWARD_RISK_RATIO = 2.0;
 
 // VWAP Deviation Mean Reversion Engine
-export const VWAP_DEVIATION_LONG_PCT = -3.0;   // Long when price is 3%+ below VWAP
-export const VWAP_DEVIATION_SHORT_PCT = 3.0;    // Short when price is 3%+ above VWAP
-export const VWAP_TREND_CONFLICT_PCT = 3.0;     // Skip if 4h opposes by 3%+
+export const VWAP_DEVIATION_LONG_PCT = -4.0;
+export const VWAP_DEVIATION_SHORT_PCT = 2.0;
+export const VWAP_TREND_CONFLICT_PCT = 3.0;
 export const VWAP_BASE_CONFIDENCE = 65;
 export const VWAP_STOP_ATR_MULTIPLIER = 1.5;
 export const VWAP_REWARD_RISK_RATIO = 2.0;
