@@ -120,17 +120,17 @@ export const SQUEEZE_STAGNATION_BARS = 9; // 9 x 4h = 36h
 export const SQUEEZE_BASE_CONFIDENCE = 65;
 export const SQUEEZE_PERCENTILE_WINDOW = 100;
 
-// MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 3.20, +14.45% / 125d)
-export const MTF_DAILY_SMA_PERIOD = 60;
-export const MTF_DAILY_ADX_MIN = 20;
+// MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 3.20, +24.48% / 125d, tune-mtf-v2)
+export const MTF_DAILY_SMA_PERIOD = 100;
+export const MTF_DAILY_ADX_MIN = 18;
 export const MTF_RSI_PULLBACK_LOW = 35;
-export const MTF_RSI_PULLBACK_HIGH = 45;
+export const MTF_RSI_PULLBACK_HIGH = 52;
 export const MTF_RSI_TURN_DELTA = 2;
-export const MTF_STOP_ATR_MULT = 2.0;
+export const MTF_STOP_ATR_MULT = 2.5;
 export const MTF_REWARD_RISK_RATIO = 2.5;
-export const MTF_STAGNATION_BARS = 6; // 6 x 4h = 24h
+export const MTF_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const MTF_BASE_CONFIDENCE = 65;
-export const MTF_DAILY_LOOKBACK_DAYS = 100; // days of daily candles to maintain
+export const MTF_DAILY_LOOKBACK_DAYS = 120; // 120 days covers SMA(100) + buffer
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
