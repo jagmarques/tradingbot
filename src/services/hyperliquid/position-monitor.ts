@@ -77,9 +77,9 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      if (peak > 2) {
-        // Absolute trail: close if P&L drops more than 1% from peak
-        const trailTrigger = peak - 1;
+      if (peak > 5) {
+        // Absolute trail: close if P&L drops more than 2% from peak
+        const trailTrigger = peak - 2;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(
             `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (trail trigger: ${trailTrigger.toFixed(2)}%)`,

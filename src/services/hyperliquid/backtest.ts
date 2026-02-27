@@ -249,10 +249,10 @@ function backtestEngine(
           ? candle.high >= takeProfit
           : candle.low <= takeProfit;
 
-      // Trailing stop: if peak > 2%, trail at peak - 1%
-      const trailTrigger = position.peakPnlPct - 1;
+      // Trailing stop: if peak > 5%, trail at peak - 2%
+      const trailTrigger = position.peakPnlPct - 2;
       const trailingHit =
-        position.peakPnlPct > 2 && unrealizedPnlPct <= trailTrigger;
+        position.peakPnlPct > 5 && unrealizedPnlPct <= trailTrigger;
 
       // Stagnation check
       const stagnationHit = idx - position.entryIdx >= stagnationCandles;

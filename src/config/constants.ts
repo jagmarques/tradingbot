@@ -76,7 +76,7 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as li
 
 // Rule-Based Decision Engine
 export const RULE_RSI_OVERSOLD = 30;
-export const RULE_RSI_OVERBOUGHT = 60;
+export const RULE_RSI_OVERBOUGHT = 70;
 export const RULE_RSI_PULLBACK_LOW = 40;
 export const RULE_RSI_PULLBACK_HIGH = 60;
 export const RULE_STOP_ATR_MULTIPLIER = 1.5;
