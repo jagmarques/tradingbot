@@ -23,7 +23,6 @@ interface DailyCache {
   fetchedAtHour: number;
 }
 
-// Cache daily candles per pair, refreshed once per hour (daily bars don't change frequently)
 const dailyCandleCache = new Map<string, DailyCache>();
 
 async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
@@ -61,7 +60,6 @@ function computeDailySma(closes: number[], period: number, idx: number): number 
 
 function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): number | null {
   if (idx < period * 2) return null;
-  // Simple Wilder ADX approximation
   let trSum = 0;
   let plusDmSum = 0;
   let minusDmSum = 0;
@@ -98,22 +96,12 @@ export async function evaluateMtfPair(analysis: PairAnalysis): Promise<QuantAIDe
 
   if (rsi4h === null || n4h < 2) return null;
 
-  // Get previous RSI (from second-to-last 4h bar)
-  // We approximate it using the 4h candles' RSI directly - pipeline only gives current RSI
-  // We use the trend of RSI via the current bar vs the ATR-based estimate
-  // For a simpler approach: we compare current RSI to a slightly lower value using the last candle
-  // This is a limitation - we only have current RSI, not previous. Skip rsiTurnDelta filter here
-  // and rely on the RSI being in the zone (pullback confirmed) as the entry signal.
-  // The direction of the move is confirmed by the daily trend filter.
-
-  // Daily candle fetch
   const dailyCandles = await fetchDailyCandles(pair);
   if (dailyCandles.length < MTF_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
 
-  // Last completed daily bar
   const lastDailyIdx = dLen - 1;
   const dailySma = computeDailySma(dailyCloses, MTF_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
@@ -127,12 +115,10 @@ export async function evaluateMtfPair(analysis: PairAnalysis): Promise<QuantAIDe
 
   let direction: "long" | "short" | null = null;
 
-  // Long: daily uptrend + 4h RSI in pullback zone [rsiPullbackLow, rsiPullbackHigh]
   if (dailyUptrend && rsi4h >= MTF_RSI_PULLBACK_LOW && rsi4h <= MTF_RSI_PULLBACK_HIGH) {
     direction = "long";
   }
 
-  // Short: daily downtrend + 4h RSI in corresponding zone [100-rsiPullbackHigh, 100-rsiPullbackLow]
   const shortLow = 100 - MTF_RSI_PULLBACK_HIGH;
   const shortHigh = 100 - MTF_RSI_PULLBACK_LOW;
   if (dailyDowntrend && rsi4h >= shortLow && rsi4h <= shortHigh) {
@@ -148,10 +134,9 @@ export async function evaluateMtfPair(analysis: PairAnalysis): Promise<QuantAIDe
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
   let confidence = MTF_BASE_CONFIDENCE;
-  // Strong daily trend booster
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
-  // RSI deeply in pullback zone = cleaner entry
+  // deeper pullback = stronger entry
   const midPullback = (MTF_RSI_PULLBACK_LOW + MTF_RSI_PULLBACK_HIGH) / 2;
   if (direction === "long" && rsi4h < midPullback) confidence += 5;
   if (direction === "short" && rsi4h > 100 - midPullback) confidence += 5;

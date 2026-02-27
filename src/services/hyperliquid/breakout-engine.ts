@@ -19,10 +19,8 @@ export function evaluateBreakoutPair(analysis: PairAnalysis): QuantAIDecision | 
   const ind4h = analysis.indicators["4h"];
   const adx = ind4h.adx;
 
-  // ADX filter: must have trend momentum
   if (adx === null || adx < BREAKOUT_ADX_MIN) return null;
 
-  // Volume filter: current bar must have a spike vs 20-bar average
   const n = candles4h.length;
   if (n < 20) return null;
   const volumes = candles4h.map((c) => c.volume);
@@ -30,7 +28,6 @@ export function evaluateBreakoutPair(analysis: PairAnalysis): QuantAIDecision | 
   const curVol = volumes[n - 1];
   if (volAvg <= 0 || curVol / volAvg < BREAKOUT_VOLUME_THRESHOLD) return null;
 
-  // Channel high/low from previous lookback bars (exclude current bar)
   const lookbackStart = n - 1 - BREAKOUT_LOOKBACK_BARS;
   if (lookbackStart < 0) return null;
   let channelHigh = -Infinity;
@@ -54,10 +51,9 @@ export function evaluateBreakoutPair(analysis: PairAnalysis): QuantAIDecision | 
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
   let confidence = BREAKOUT_BASE_CONFIDENCE;
-  // ADX strength booster
   if (adx > 30) confidence += 10;
   else if (adx > 25) confidence += 5;
-  // Volume spike booster
+  // vol spike
   if (volAvg > 0 && curVol / volAvg > 3) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
 
