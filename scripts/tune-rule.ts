@@ -1,11 +1,5 @@
-/**
- * Rule engine walk-forward parameter tuning.
- * Walk-forward: train 120 days, test 60 days.
- * Grid: ~90 combos (81 Phase 1 + 9 Phase 2 refinements).
- * Includes 0.10% slippage per side on top of 0.045% fee.
- *
- * Run: npx tsx scripts/tune-rule.ts
- */
+// Rule engine walk-forward tuning. Train 120d / test 60d, 90 combos, 0.29% round-trip.
+// Run: npx tsx scripts/tune-rule.ts
 
 import { RSI, MACD, BollingerBands, ATR, VWAP, ADX } from "technicalindicators";
 
@@ -165,9 +159,9 @@ function classifyRegime(ind: Indicators): "trending" | "ranging" | "volatile" {
 // ─── Backtest engine ──────────────────────────────────────────────────────────
 
 const LEV = 10;
-const FEE_RATE = 0.00045 * 2;     // 0.09% fee round-trip
-const SLIPPAGE_RATE = 0.001 * 2;  // 0.10% slippage per side = 0.20% round-trip
-const TOTAL_COST = FEE_RATE + SLIPPAGE_RATE; // 0.29% total round-trip
+const FEE_RATE = 0.00045 * 2;    // 0.09%
+const SLIPPAGE_RATE = 0.001 * 2; // 0.20%
+const TOTAL_COST = FEE_RATE + SLIPPAGE_RATE; // 0.29% total
 const STARTING_BALANCE = 100;
 
 function runBacktest(
@@ -364,7 +358,6 @@ async function main() {
     const pre1h = precomputeAllIndicators(h1);
     const pre4h = precomputeAllIndicators(h4);
 
-    // Walk-forward split: first 120 days = training, final 60 days = test
     const trainEnd = Math.floor(h1.length * (120 / 180));
 
     // Pre-compute 4h index pointer
@@ -379,15 +372,12 @@ async function main() {
     console.log(`${h1.length} 1h candles (train: ${trainEnd}, test: ${h1.length - trainEnd})`);
   }
 
-  // Validate split makes sense
   const samplePair = candleMap[PAIRS[0]];
   const trainDays = samplePair.trainEnd > 0
     ? (samplePair.h1[samplePair.trainEnd - 1].timestamp - samplePair.h1[100].timestamp) / 86400_000
     : 0;
   const testDays = (samplePair.h1[samplePair.h1.length - 1].timestamp - samplePair.h1[samplePair.trainEnd].timestamp) / 86400_000;
   console.log(`\nWalk-forward: ~${trainDays.toFixed(0)}d training, ~${testDays.toFixed(0)}d test`);
-
-  // ── Phase 1: Train on first 120 days ──────────────────────────────────────
 
   console.log(`\nRunning Phase 1 on TRAINING set (${PHASE1_GRID.length} combos x ${PAIRS.length} pairs)...`);
   type TrainResult = { params: RuleParams; avgTrainReturn: number };
@@ -407,8 +397,6 @@ async function main() {
   const bestPhase1 = phase1Train[0].params;
   console.log(`  Best Phase 1 (train): RSI ${bestPhase1.rsiOversold}/${bestPhase1.rsiOverbought} BB ${bestPhase1.bbProximityPct}% stop ${bestPhase1.stopAtrMult}x | train return: ${phase1Train[0].avgTrainReturn.toFixed(2)}%`);
 
-  // ── Phase 2: Sweep rr + stagnation on training set ────────────────────────
-
   console.log(`\nRunning Phase 2 on TRAINING set (${RR_RATIOS_P2.length * STAGNATION_H_P2.length} combos)...`);
   const phase2Train: TrainResult[] = [];
   for (const rrRatio of RR_RATIOS_P2) {
@@ -425,15 +413,12 @@ async function main() {
   }
   phase2Train.sort((a, b) => b.avgTrainReturn - a.avgTrainReturn);
 
-  // Collect top-5 unique configs from all training results (phase 1 + phase 2)
   const allTrainCombined: { params: RuleParams; trainReturn: number }[] = [
     ...phase1Train.map((r) => ({ params: r.params, trainReturn: r.avgTrainReturn })),
     ...phase2Train.map((r) => ({ params: r.params, trainReturn: r.avgTrainReturn })),
   ];
   allTrainCombined.sort((a, b) => b.trainReturn - a.trainReturn);
   const top5Train = allTrainCombined.slice(0, 5);
-
-  // ── Evaluate top-5 on TEST set ────────────────────────────────────────────
 
   console.log(`\nEvaluating top-5 training configs on TEST set (final 60 days)...`);
   const walkForwardResults: WalkForwardResult[] = [];

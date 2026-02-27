@@ -1,11 +1,5 @@
-/**
- * VWAP engine walk-forward parameter tuning.
- * Walk-forward: train 120 days, test 60 days.
- * Grid: ~90 combos (81 Phase 1 + 9 Phase 2 refinements).
- * Includes 0.10% slippage per side on top of 0.045% fee.
- *
- * Run: npx tsx scripts/tune-vwap.ts
- */
+// VWAP engine walk-forward tuning. Train 120d / test 60d, 90 combos, 0.29% round-trip.
+// Run: npx tsx scripts/tune-vwap.ts
 
 import { RSI, MACD, BollingerBands, ATR, VWAP, ADX } from "technicalindicators";
 
@@ -108,7 +102,7 @@ interface PrecomputedIndicators {
   adx: (number | null)[];
 }
 
-// Rolling VWAP over a window of candles (matches live engine's 100-candle window)
+// Rolling 100-candle VWAP (matches live engine)
 const VWAP_WINDOW = 100;
 
 function computeRollingVwap(candles: Candle[]): (number | null)[] {
@@ -150,7 +144,6 @@ function precomputeAllIndicators(candles: Candle[]): PrecomputedIndicators {
   const atrArr: (number | null)[] = new Array(n).fill(null);
   atrRaw.forEach((v, i) => { atrArr[n - atrRaw.length + i] = v; });
 
-  // Use rolling 100-candle VWAP to match live engine behavior (not cumulative)
   const vwapArr = computeRollingVwap(candles);
 
   const adxRaw = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
@@ -181,9 +174,9 @@ function classifyRegime(ind: Indicators): "trending" | "ranging" | "volatile" {
 // ─── Backtest engine ──────────────────────────────────────────────────────────
 
 const LEV = 10;
-const FEE_RATE = 0.00045 * 2;     // 0.09% fee round-trip
-const SLIPPAGE_RATE = 0.001 * 2;  // 0.10% slippage per side = 0.20% round-trip
-const TOTAL_COST = FEE_RATE + SLIPPAGE_RATE; // 0.29% total round-trip
+const FEE_RATE = 0.00045 * 2;    // 0.09%
+const SLIPPAGE_RATE = 0.001 * 2; // 0.20%
+const TOTAL_COST = FEE_RATE + SLIPPAGE_RATE; // 0.29% total
 const STARTING_BALANCE = 100;
 
 function runBacktest(
@@ -372,7 +365,6 @@ async function main() {
     const pre1h = precomputeAllIndicators(h1);
     const pre4h = precomputeAllIndicators(h4);
 
-    // Walk-forward split: first 120 days = training, final 60 days = test
     const trainEnd = Math.floor(h1.length * (120 / 180));
 
     // Pre-compute 4h index pointer
@@ -394,8 +386,6 @@ async function main() {
   const testDays = (samplePair.h1[samplePair.h1.length - 1].timestamp - samplePair.h1[samplePair.trainEnd].timestamp) / 86400_000;
   console.log(`\nWalk-forward: ~${trainDays.toFixed(0)}d training, ~${testDays.toFixed(0)}d test`);
 
-  // ── Phase 1: Train on first 120 days ──────────────────────────────────────
-
   console.log(`\nRunning Phase 1 on TRAINING set (${PHASE1_GRID.length} combos x ${PAIRS.length} pairs)...`);
   type TrainResult = { params: VwapParams; avgTrainReturn: number };
   const phase1Train: TrainResult[] = [];
@@ -414,8 +404,6 @@ async function main() {
   const bestPhase1 = phase1Train[0].params;
   console.log(`  Best Phase 1 (train): dev ${bestPhase1.deviationLongPct}%/${bestPhase1.deviationShortPct}% conflict ${bestPhase1.trendConflictPct}% stop ${bestPhase1.stopAtrMult}x | train return: ${phase1Train[0].avgTrainReturn.toFixed(2)}%`);
 
-  // ── Phase 2: Sweep rr + stagnation on training set ────────────────────────
-
   console.log(`\nRunning Phase 2 on TRAINING set (${RR_RATIOS_P2.length * STAGNATION_H_P2.length} combos)...`);
   const phase2Train: TrainResult[] = [];
   for (const rrRatio of RR_RATIOS_P2) {
@@ -432,15 +420,12 @@ async function main() {
   }
   phase2Train.sort((a, b) => b.avgTrainReturn - a.avgTrainReturn);
 
-  // Collect top-5 unique configs from all training results
   const allTrainCombined: { params: VwapParams; trainReturn: number }[] = [
     ...phase1Train.map((r) => ({ params: r.params, trainReturn: r.avgTrainReturn })),
     ...phase2Train.map((r) => ({ params: r.params, trainReturn: r.avgTrainReturn })),
   ];
   allTrainCombined.sort((a, b) => b.trainReturn - a.trainReturn);
   const top5Train = allTrainCombined.slice(0, 5);
-
-  // ── Evaluate top-5 on TEST set ────────────────────────────────────────────
 
   console.log(`\nEvaluating top-5 training configs on TEST set (final 60 days)...`);
   const walkForwardResults: WalkForwardResult[] = [];
