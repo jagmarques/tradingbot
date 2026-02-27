@@ -1,8 +1,8 @@
-// RSI(2) mean reversion backtest: 4h RSI(2) oversold/overbought with daily SMA trend filter.
+// EMA Pullback strategy backtest: daily EMA trend filter + 4h EMA pullback entry.
 // Walk-forward: train 240d / test ~125d. 0.29% round-trip costs, 10x leverage.
-// Run: npx tsx scripts/tune-rsi2.ts
+// Run: npx tsx scripts/tune-ema-pullback.ts
 
-import { ATR, RSI } from "technicalindicators";
+import { EMA, ATR, ADX } from "technicalindicators";
 
 interface Candle {
   timestamp: number;
@@ -14,12 +14,12 @@ interface Candle {
 }
 
 interface Params {
-  rsi2Threshold: number;   // RSI(2) extreme threshold (long < threshold, short > 100-threshold)
-  dailySmaPeriod: number;  // daily SMA for uptrend/downtrend context
-  rsi14Min: number;        // 4h RSI(14) > this for longs (not in full downtrend)
-  stopAtrMult: number;     // ATR stop multiplier (tight -- mean reversion)
-  rrRatio: number;         // reward:risk
-  stagnationH: number;     // 4h bars stagnation (fast exits)
+  dailyEmaPeriod: number;
+  h4EmaPeriod: number;
+  h4AdxMin: number;
+  stopAtrMult: number;
+  rrRatio: number;
+  stagnationH: number;
 }
 
 interface BacktestResult {
@@ -43,8 +43,6 @@ interface WalkForwardResult {
   testSharpe: number;
 }
 
-// ─── Fetch ────────────────────────────────────────────────────────────────────
-
 async function fetchCandles(coin: string, interval: string, days: number): Promise<Candle[]> {
   const endTime = Date.now();
   const startTime = endTime - days * 86400_000;
@@ -60,31 +58,32 @@ async function fetchCandles(coin: string, interval: string, days: number): Promi
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-// ─── Daily SMA Precompute ─────────────────────────────────────────────────────
-
-function precomputeDailySma(closes: number[], periods: number[]): Record<number, (number | null)[]> {
-  const n = closes.length;
-  const result: Record<number, (number | null)[]> = {};
-  for (const period of periods) {
-    const arr: (number | null)[] = new Array(n).fill(null);
-    for (let i = period - 1; i < n; i++) {
-      const sum = closes.slice(i - period + 1, i + 1).reduce((s, v) => s + v, 0);
-      arr[i] = sum / period;
-    }
-    result[period] = arr;
-  }
-  return result;
+interface DailyPreInd {
+  ema: Record<number, (number | null)[]>;
 }
 
-// ─── 4h Indicators ────────────────────────────────────────────────────────────
+function precomputeDaily(candles: Candle[], emaPeriods: number[]): DailyPreInd {
+  const n = candles.length;
+  const closes = candles.map((c) => c.close);
+
+  const ema: Record<number, (number | null)[]> = {};
+  for (const period of emaPeriods) {
+    const raw = EMA.calculate({ period, values: closes });
+    const arr: (number | null)[] = new Array(n).fill(null);
+    raw.forEach((v, i) => { arr[n - raw.length + i] = v; });
+    ema[period] = arr;
+  }
+
+  return { ema };
+}
 
 interface H4PreInd {
   atr: (number | null)[];
-  rsi2: (number | null)[];
-  rsi14: (number | null)[];
+  adx: (number | null)[];
+  ema: Record<number, (number | null)[]>;
 }
 
-function precompute4h(candles: Candle[]): H4PreInd {
+function precompute4h(candles: Candle[], emaPeriods: number[]): H4PreInd {
   const n = candles.length;
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);
@@ -94,18 +93,20 @@ function precompute4h(candles: Candle[]): H4PreInd {
   const atrArr: (number | null)[] = new Array(n).fill(null);
   atrRaw.forEach((v, i) => { atrArr[n - atrRaw.length + i] = v; });
 
-  const rsi2Raw = RSI.calculate({ values: closes, period: 2 });
-  const rsi2Arr: (number | null)[] = new Array(n).fill(null);
-  rsi2Raw.forEach((v, i) => { rsi2Arr[n - rsi2Raw.length + i] = v; });
+  const adxRaw = ADX.calculate({ high: highs, low: lows, close: closes, period: 14 });
+  const adxArr: (number | null)[] = new Array(n).fill(null);
+  adxRaw.forEach((v, i) => { adxArr[n - adxRaw.length + i] = v?.adx ?? null; });
 
-  const rsi14Raw = RSI.calculate({ values: closes, period: 14 });
-  const rsi14Arr: (number | null)[] = new Array(n).fill(null);
-  rsi14Raw.forEach((v, i) => { rsi14Arr[n - rsi14Raw.length + i] = v; });
+  const ema: Record<number, (number | null)[]> = {};
+  for (const period of emaPeriods) {
+    const raw = EMA.calculate({ period, values: closes });
+    const arr: (number | null)[] = new Array(n).fill(null);
+    raw.forEach((v, i) => { arr[n - raw.length + i] = v; });
+    ema[period] = arr;
+  }
 
-  return { atr: atrArr, rsi2: rsi2Arr, rsi14: rsi14Arr };
+  return { atr: atrArr, adx: adxArr, ema };
 }
-
-// ─── Backtest ─────────────────────────────────────────────────────────────────
 
 const LEV = 10;
 const FEE_RATE = 0.00045 * 2;
@@ -117,7 +118,7 @@ function runBacktest(
   candles4h: Candle[],
   pre4h: H4PreInd,
   dailyCandles: Candle[],
-  dailySma: Record<number, (number | null)[]>,
+  preDaily: DailyPreInd,
   idxDailyAt: number[],
   p: Params,
   startIdx = 50,
@@ -164,30 +165,36 @@ function runBacktest(
         pos = null;
       }
     } else {
+      if (i < 1) continue;
       const dIdx = idxDailyAt[i];
       if (dIdx < 0) continue;
 
-      const smaArr = dailySma[p.dailySmaPeriod];
+      const dailyEma = preDaily.ema[p.dailyEmaPeriod]?.[dIdx] ?? null;
       const dailyClose = dailyCandles[dIdx].close;
-      const smaVal = smaArr?.[dIdx] ?? null;
-      if (smaVal === null) continue;
+      if (dailyEma === null) continue;
 
-      const dailyUptrend = dailyClose > smaVal;
-      const dailyDowntrend = dailyClose < smaVal;
+      const dailyUptrend = dailyClose > dailyEma;
+      const dailyDowntrend = dailyClose < dailyEma;
 
-      const rsi2 = pre4h.rsi2[i];
-      const rsi14 = pre4h.rsi14[i];
-      if (rsi2 === null || rsi14 === null) continue;
+      const h4Adx = pre4h.adx[i];
+      if (h4Adx === null || h4Adx < p.h4AdxMin) continue;
+
+      const h4Ema = pre4h.ema[p.h4EmaPeriod]?.[i] ?? null;
+      const h4EmaPrev = pre4h.ema[p.h4EmaPeriod]?.[i - 1] ?? null;
+      if (h4Ema === null || h4EmaPrev === null) continue;
+
+      const currClose = c.close;
+      const prevClose = candles4h[i - 1].close;
 
       let dir: "long" | "short" | null = null;
 
-      // Long: 4h RSI(2) deeply oversold + daily uptrend + 4h RSI(14) not in downtrend
-      if (dailyUptrend && rsi2 < p.rsi2Threshold && rsi14 > p.rsi14Min) {
+      // Long: daily uptrend, previous bar close <= EMA (pullback touched EMA), current bar close > EMA (bounce above)
+      if (dailyUptrend && prevClose <= h4EmaPrev && currClose > h4Ema) {
         dir = "long";
       }
 
-      // Short: 4h RSI(2) deeply overbought + daily downtrend + 4h RSI(14) not in uptrend
-      if (dailyDowntrend && rsi2 > (100 - p.rsi2Threshold) && rsi14 < (100 - p.rsi14Min)) {
+      // Short: daily downtrend, previous bar close >= EMA (pullback touched EMA), current bar close < EMA (rejection below)
+      if (dailyDowntrend && prevClose >= h4EmaPrev && currClose < h4Ema) {
         dir = "short";
       }
 
@@ -223,41 +230,41 @@ function sharpe(pnls: number[]): number {
   return std === 0 ? 0 : (mean / std) * Math.sqrt(pnls.length);
 }
 
-// ─── Grid ─────────────────────────────────────────────────────────────────────
-
 const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB"];
 const DAYS = 365;
 const TRAIN_FRAC = 240 / 365;
 
-// 108 combos: 3 x 2 x 3 x 3 x 2
-const RSI2_THRESHOLD_VALS = [3, 5, 8];
-const DAILY_SMA_VALS = [40, 50];
-const STOP_ATR_VALS = [0.8, 1.0, 1.2];
-const RR_VALS = [1.5, 2.0, 2.5];
-const STAG_VALS = [2, 3]; // 8h, 12h
+// Phase 1: signal params (fix risk at stopAtr=2.0, rr=2.5, stag=6)
+const DAILY_EMA_VALS = [30, 50, 70, 100];
+const H4_EMA_VALS = [13, 17, 21, 26];
+const H4_ADX_VALS = [15, 20, 25];
 
-const ALL_SMA_PERIODS = [...new Set(DAILY_SMA_VALS)];
+// Phase 2: risk params on best Phase 1
+const STOP_ATR_VALS = [1.5, 2.0, 2.5];
+const RR_VALS = [2.0, 2.5, 3.0, 3.5];
+const STAG_VALS = [6, 9, 12];
+
+const ALL_DAILY_EMA_PERIODS = [...new Set(DAILY_EMA_VALS)];
+const ALL_H4_EMA_PERIODS = [...new Set(H4_EMA_VALS)];
 
 interface TrainResult { params: Params; trainReturn: number }
 
-const GRID: Params[] = [];
-for (const rsi2Threshold of RSI2_THRESHOLD_VALS) {
-  for (const dailySmaPeriod of DAILY_SMA_VALS) {
-    for (const stopAtrMult of STOP_ATR_VALS) {
-      for (const rrRatio of RR_VALS) {
-        for (const stagnationH of STAG_VALS) {
-          GRID.push({ rsi2Threshold, dailySmaPeriod, rsi14Min: 30, stopAtrMult, rrRatio, stagnationH });
-        }
-      }
+const PHASE1_GRID: Params[] = [];
+for (const dailyEmaPeriod of DAILY_EMA_VALS) {
+  for (const h4EmaPeriod of H4_EMA_VALS) {
+    for (const h4AdxMin of H4_ADX_VALS) {
+      PHASE1_GRID.push({
+        dailyEmaPeriod, h4EmaPeriod, h4AdxMin,
+        stopAtrMult: 2.0, rrRatio: 2.5, stagnationH: 6,
+      });
     }
   }
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 async function main() {
-  console.log(`=== tune-rsi2.ts: RSI(2) Mean Reversion, ${PAIRS.length} pairs, ${DAYS}d data ===`);
-  console.log(`Grid: ${GRID.length} combos (rsi2Threshold[${RSI2_THRESHOLD_VALS}] x dailySma[${DAILY_SMA_VALS}] x stopAtr[${STOP_ATR_VALS}] x rr[${RR_VALS}] x stag[${STAG_VALS}])`);
+  console.log(`=== tune-ema-pullback.ts: EMA Pullback Strategy, ${PAIRS.length} pairs, ${DAYS}d data ===`);
+  console.log(`Phase 1: ${PHASE1_GRID.length} combos (dailyEma[${DAILY_EMA_VALS}] x h4Ema[${H4_EMA_VALS}] x h4Adx[${H4_ADX_VALS}])`);
+  console.log(`Phase 2: best Phase 1 x ${STOP_ATR_VALS.length} stopAtrMult x ${RR_VALS.length} rrRatio x ${STAG_VALS.length} stag = ${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos`);
   console.log("Fetching data (4h + daily candles for each pair)...");
 
   let dailyInterval = "1d";
@@ -266,7 +273,7 @@ async function main() {
     h4: Candle[];
     pre4h: H4PreInd;
     dailyCandles: Candle[];
-    dailySma: Record<number, (number | null)[]>;
+    preDaily: DailyPreInd;
     idxDailyAt: number[];
     trainEnd: number;
   };
@@ -276,7 +283,7 @@ async function main() {
     try {
       process.stdout.write(`  ${pair} (4h)... `);
       const h4 = await fetchCandles(pair, "4h", DAYS);
-      const pre4h = precompute4h(h4);
+      const pre4h = precompute4h(h4, ALL_H4_EMA_PERIODS);
 
       process.stdout.write(`${h4.length} candles. Daily (${dailyInterval})... `);
       let dailyCandles: Candle[];
@@ -292,7 +299,7 @@ async function main() {
         }
       }
 
-      const dailySma = precomputeDailySma(dailyCandles.map((c) => c.close), ALL_SMA_PERIODS);
+      const preDaily = precomputeDaily(dailyCandles, ALL_DAILY_EMA_PERIODS);
 
       const idxDailyAt: number[] = new Array(h4.length).fill(-1);
       let j = 0;
@@ -302,7 +309,7 @@ async function main() {
       }
 
       const trainEnd = Math.floor(h4.length * TRAIN_FRAC);
-      candleMap[pair] = { h4, pre4h, dailyCandles, dailySma, idxDailyAt, trainEnd };
+      candleMap[pair] = { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd };
       console.log(`${dailyCandles.length} daily candles. Train end: ${trainEnd}`);
     } catch (e) {
       console.warn(`  ${pair}: fetch failed (${(e as Error).message}), skipping`);
@@ -311,28 +318,47 @@ async function main() {
 
   const pairs = PAIRS.filter((p) => candleMap[p]);
   if (pairs.length === 0) { console.error("No pairs loaded"); process.exit(1); }
+  console.log(`\nDaily interval used: "${dailyInterval}"`);
 
   const samp = candleMap[pairs[0]];
   const trainDays = (samp.h4[samp.trainEnd - 1].timestamp - samp.h4[50].timestamp) / 86400_000;
   const testDays = (samp.h4[samp.h4.length - 1].timestamp - samp.h4[samp.trainEnd].timestamp) / 86400_000;
   console.log(`Walk-forward: ~${trainDays.toFixed(0)}d train, ~${testDays.toFixed(0)}d test`);
 
-  // Train
-  console.log(`\nTraining (${GRID.length} combos x ${pairs.length} pairs)...`);
-  const trainResults: TrainResult[] = [];
-  for (const params of GRID) {
+  console.log(`\nPhase 1 training (${PHASE1_GRID.length} combos x ${pairs.length} pairs)...`);
+  const phase1: TrainResult[] = [];
+  for (const params of PHASE1_GRID) {
     let total = 0;
     for (const pair of pairs) {
-      const { h4, pre4h, dailyCandles, dailySma, idxDailyAt, trainEnd } = candleMap[pair];
-      total += runBacktest(h4, pre4h, dailyCandles, dailySma, idxDailyAt, params, 50, trainEnd).totalReturn;
+      const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
+      total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
     }
-    trainResults.push({ params, trainReturn: total / pairs.length });
+    phase1.push({ params, trainReturn: total / pairs.length });
   }
-  trainResults.sort((a, b) => b.trainReturn - a.trainReturn);
+  phase1.sort((a, b) => b.trainReturn - a.trainReturn);
+  const best1 = phase1[0].params;
+  console.log(`  Best Phase 1 (train): dailyEma=${best1.dailyEmaPeriod} h4Ema=${best1.h4EmaPeriod} h4Adx=${best1.h4AdxMin} | return: ${phase1[0].trainReturn.toFixed(2)}%`);
 
-  const top5 = trainResults.slice(0, 5);
+  console.log(`\nPhase 2 training (${STOP_ATR_VALS.length * RR_VALS.length * STAG_VALS.length} combos)...`);
+  const phase2: TrainResult[] = [];
+  for (const stopAtrMult of STOP_ATR_VALS) {
+    for (const rrRatio of RR_VALS) {
+      for (const stagnationH of STAG_VALS) {
+        const params: Params = { ...best1, stopAtrMult, rrRatio, stagnationH };
+        let total = 0;
+        for (const pair of pairs) {
+          const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
+          total += runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, 50, trainEnd).totalReturn;
+        }
+        phase2.push({ params, trainReturn: total / pairs.length });
+      }
+    }
+  }
+  phase2.sort((a, b) => b.trainReturn - a.trainReturn);
 
-  // Evaluate on test set
+  const allTrain = [...phase1, ...phase2].sort((a, b) => b.trainReturn - a.trainReturn);
+  const top5 = allTrain.slice(0, 5);
+
   console.log(`\nEvaluating top-5 on TEST set (~${testDays.toFixed(0)}d out-of-sample)...`);
   const results: WalkForwardResult[] = [];
 
@@ -345,8 +371,8 @@ async function main() {
     let tDays = 0;
 
     for (const pair of pairs) {
-      const { h4, pre4h, dailyCandles, dailySma, idxDailyAt, trainEnd } = candleMap[pair];
-      const r = runBacktest(h4, pre4h, dailyCandles, dailySma, idxDailyAt, params, trainEnd);
+      const { h4, pre4h, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
+      const r = runBacktest(h4, pre4h, dailyCandles, preDaily, idxDailyAt, params, trainEnd);
       testRet += r.totalReturn;
       testTrades += r.trades;
       testWins += r.wins;
@@ -370,41 +396,44 @@ async function main() {
 
   results.sort((a, b) => b.profitPerDay - a.profitPerDay);
 
-  // Output
   console.log("\n=== RESULTS: Top-5 by out-of-sample %/day ===\n");
   console.log("Rk  %/day   TestRet  TrainRet  Trades  WR    MaxDD   Sharpe  Params");
-  console.log("─".repeat(120));
+  console.log("-".repeat(130));
   results.forEach((r, i) => {
     const p = r.params;
-    const tag = `rsi2Thr=${p.rsi2Threshold} dailySma=${p.dailySmaPeriod} stopAtr=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`;
+    const tag = `dailyEma=${p.dailyEmaPeriod} h4Ema=${p.h4EmaPeriod} h4Adx=${p.h4AdxMin} stopAtr=${p.stopAtrMult} rr=${p.rrRatio} stag=${p.stagnationH * 4}h`;
     console.log(`${String(i + 1).padStart(2)}  ${r.profitPerDay >= 0 ? "+" : ""}${r.profitPerDay.toFixed(3)}  ${r.testReturn >= 0 ? "+" : ""}${r.testReturn.toFixed(2)}%    ${r.trainReturn >= 0 ? "+" : ""}${r.trainReturn.toFixed(2)}%   ${String(r.testTrades).padStart(6)}  ${r.testWinRate.toFixed(0)}%  ${r.testMaxDrawdown.toFixed(1)}%  ${r.testSharpe >= 0 ? " " : ""}${r.testSharpe.toFixed(2)}   ${tag}`);
   });
 
   const best = results[0];
   const bp = best.params;
   console.log("\n=== RECOMMENDED CONSTANTS ===\n");
-  console.log(`RSI2_THRESHOLD             = ${bp.rsi2Threshold}`);
-  console.log(`RSI2_DAILY_SMA_PERIOD      = ${bp.dailySmaPeriod}`);
-  console.log(`RSI2_RSI14_MIN             = ${bp.rsi14Min}`);
-  console.log(`RSI2_STOP_ATR_MULT         = ${bp.stopAtrMult}`);
-  console.log(`RSI2_REWARD_RISK_RATIO     = ${bp.rrRatio}`);
-  console.log(`RSI2_STAGNATION_BARS       = ${bp.stagnationH}`);
+  console.log(`EMA_PULLBACK_DAILY_EMA_PERIOD = ${bp.dailyEmaPeriod}`);
+  console.log(`EMA_PULLBACK_H4_EMA_PERIOD    = ${bp.h4EmaPeriod}`);
+  console.log(`EMA_PULLBACK_H4_ADX_MIN       = ${bp.h4AdxMin}`);
+  console.log(`EMA_PULLBACK_STOP_ATR_MULT    = ${bp.stopAtrMult}`);
+  console.log(`EMA_PULLBACK_REWARD_RISK      = ${bp.rrRatio}`);
+  console.log(`EMA_PULLBACK_STAGNATION_H     = ${bp.stagnationH * 4}h`);
   console.log(`\nNote: Best %/day = ${best.profitPerDay >= 0 ? "+" : ""}${best.profitPerDay.toFixed(4)}, test Sharpe = ${best.testSharpe.toFixed(2)}, trades = ${best.testTrades}`);
-  console.log(`Current VWAP: +0.015%/day, Sharpe 0.32`);
+
+  const MTF_BEST_PER_DAY = 0.196;
+  const MTF_BEST_SHARPE = 3.20;
+  const beatsExisting = best.profitPerDay > MTF_BEST_PER_DAY && best.testSharpe > MTF_BEST_SHARPE;
 
   console.log("\n=== ASSESSMENT ===");
+  console.log(`Current MTF best: +${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}`);
   if (best.testSharpe > 1.0 && best.testTrades > 30) {
     console.log(`VIABLE: Sharpe ${best.testSharpe.toFixed(2)} > 1.0, trades ${best.testTrades} > 30.`);
-    if (best.profitPerDay > 0.015) {
-      console.log(`BEATS VWAP: +${best.profitPerDay.toFixed(4)}%/day vs +0.015%/day. REPLACE VWAP with RSI2 engine.`);
+    if (beatsExisting) {
+      console.log(`BEATS MTF: +${best.profitPerDay.toFixed(4)}%/day vs +${MTF_BEST_PER_DAY}%/day. CREATE LIVE ENGINE recommended.`);
     } else {
-      console.log(`Does NOT beat VWAP (+0.015%/day). Do not deploy.`);
+      console.log(`Does NOT beat MTF (+${MTF_BEST_PER_DAY}%/day, Sharpe ${MTF_BEST_SHARPE}). Viable but not superior - do not implement live engine.`);
     }
   } else {
     const reasons: string[] = [];
     if (best.testSharpe <= 1.0) reasons.push(`Sharpe ${best.testSharpe.toFixed(2)} <= 1.0`);
     if (best.testTrades <= 30) reasons.push(`trades ${best.testTrades} <= 30`);
-    console.log(`NOT VIABLE: ${reasons.join(", ")}. Do not implement RSI2 engine.`);
+    console.log(`NOT VIABLE: ${reasons.join(", ")}. Do not implement.`);
   }
 }
 
