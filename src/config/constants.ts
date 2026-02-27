@@ -37,7 +37,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 8; // Max concurrent positions (5 pairs x ~1-2 engines active)
+export const QUANT_MAX_POSITIONS = 10; // Max concurrent positions (5 pairs x ~2 engines active)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
@@ -59,8 +59,8 @@ export const FUNDING_ARB_MIN_APR = 0.12; // 12% annualized minimum to open (delt
 export const FUNDING_ARB_CLOSE_APR = 0.05; // 5% annualized - close when rate normalizes below this
 export const FUNDING_ARB_DELTA_NEUTRAL = true; // Record virtual spot long hedge for delta-neutral mode
 export const FUNDING_ARB_LEVERAGE = 10;
-export const FUNDING_ARB_MAX_SIZE_USD = 10; // $10 max per funding position
-export const FUNDING_ARB_MAX_POSITIONS = 3; // Max 3 funding positions ($30 total, leaves $70 for directional)
+export const FUNDING_ARB_MAX_SIZE_USD = 5; // $5 max per funding position
+export const FUNDING_ARB_MAX_POSITIONS = 3; // Max 3 funding positions ($15 total, leaves $85 for directional)
 export const FUNDING_ARB_SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour between scans
 export const FUNDING_ARB_MONITOR_INTERVAL_MS = 10 * 60 * 1000; // 10 min between normalization checks
 export const FUNDING_ARB_STOP_LOSS_PCT = 5; // 5% stop-loss on collateral (wider than directional)

@@ -600,7 +600,7 @@ async function _scanWalletHistoryInner(): Promise<void> {
           }
           const pumpMultiple = launchPriceUsd > 0 && priceUsd > 0
             ? priceUsd / launchPriceUsd
-            : fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
+            : 1.0;
           const symbol = pair.baseToken?.symbol || tokenInfo.symbol;
 
           const hit: GemHit = {
@@ -742,7 +742,7 @@ async function updateHeldGemPrices(): Promise<void> {
       if (token.launchPrice > 0 && priceUsd > 0) {
         newMultiple = priceUsd / token.launchPrice;
       } else {
-        newMultiple = fdvUsd / INSIDER_CONFIG.HISTORY_MIN_FDV_USD;
+        newMultiple = 1.0;
       }
       const changeRatio = Math.abs(newMultiple - token.oldMultiple) / Math.max(token.oldMultiple, 0.01);
       if (changeRatio > 0.1) {
