@@ -94,12 +94,12 @@ export const MICRO_STOP_ATR_MULTIPLIER = 1.5;
 export const MICRO_REWARD_RISK_RATIO = 2.0;
 
 // VWAP Deviation Mean Reversion Engine
-export const VWAP_DEVIATION_LONG_PCT = -4.0;
-export const VWAP_DEVIATION_SHORT_PCT = 2.0;
-export const VWAP_TREND_CONFLICT_PCT = 3.0;
+export const VWAP_DEVIATION_LONG_PCT = -5.0;
+export const VWAP_DEVIATION_SHORT_PCT = 4.0;
+export const VWAP_TREND_CONFLICT_PCT = 2.0;
 export const VWAP_BASE_CONFIDENCE = 65;
-export const VWAP_STOP_ATR_MULTIPLIER = 1.5;
-export const VWAP_REWARD_RISK_RATIO = 2.0;
+export const VWAP_STOP_ATR_MULTIPLIER = 2.0;
+export const VWAP_REWARD_RISK_RATIO = 2.5;
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
