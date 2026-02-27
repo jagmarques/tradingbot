@@ -13,6 +13,7 @@ const connections = new Map<string, WebSocket>();
 const buySubIds = new Map<string, string>();   // chain -> subscription id
 const sellSubIds = new Map<string, string>();  // chain -> subscription id
 const reconnectAttempts = new Map<string, number>();
+const consecutiveRateLimits = new Map<string, number>();
 const pendingRequests = new Map<number, { chain: string; type: "buy" | "sell" }>();
 const currentWalletsByChain = new Map<string, string[]>();
 
@@ -311,6 +312,7 @@ function connectChain(chain: string, wallets: string[]): WebSocket | null {
   ws.on("open", () => {
     console.log(`[InsiderWS] Connected to Alchemy (${chain}), ${wallets.length} wallets`);
     reconnectAttempts.set(chain, 0);
+    consecutiveRateLimits.set(chain, 0);
 
     watchedWalletsByChain.set(chain, new Set(wallets));
 
@@ -337,6 +339,7 @@ function connectChain(chain: string, wallets: string[]): WebSocket | null {
     }
 
     if (!monitorRunning) return;
+    if ((consecutiveRateLimits.get(chain) ?? 0) >= 5) return;
 
     const attempts = reconnectAttempts.get(chain) ?? 0;
     const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
@@ -354,7 +357,18 @@ function connectChain(chain: string, wallets: string[]): WebSocket | null {
   });
 
   ws.on("error", (err: Error) => {
-    console.error(`[InsiderWS] WebSocket error (${chain}):`, err.message);
+    if (err.message.includes("429")) {
+      const count = (consecutiveRateLimits.get(chain) ?? 0) + 1;
+      consecutiveRateLimits.set(chain, count);
+      if (count >= 5) {
+        console.log(`[InsiderWS] Alchemy rate-limited on ${chain} (${count}x), giving up. Falling back to polling.`);
+      } else {
+        console.log(`[InsiderWS] Alchemy 429 on ${chain} (${count}/5)`);
+      }
+    } else {
+      consecutiveRateLimits.set(chain, 0);
+      console.error(`[InsiderWS] WebSocket error (${chain}):`, err.message);
+    }
   });
 
   return ws;
@@ -462,6 +476,7 @@ export function stopInsiderWebSocket(): void {
   sellSubIds.clear();
   pendingRequests.clear();
   reconnectAttempts.clear();
+  consecutiveRateLimits.clear();
   watchedWalletsByChain.clear();
   currentWalletsByChain.clear();
   processingLock.clear();

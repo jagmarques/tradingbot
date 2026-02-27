@@ -20,6 +20,7 @@ const connections = new Map<string, WebSocket>(); // per chain
 const subscriptions = new Map<string, Map<string, string>>(); // chain -> (pair -> subId)
 const pairToToken = new Map<string, { tokenAddress: string; tokenSymbol: string; chain: string }>();
 const reconnectAttempts = new Map<string, number>();
+const consecutiveRateLimits = new Map<string, number>();
 const pendingRequests = new Map<number, { chain: string; pairAddress: string }>();
 
 let monitorRunning = false;
@@ -256,6 +257,7 @@ function connectChain(chain: string): WebSocket | null {
   ws.on("open", () => {
     console.log(`[RugMonitor] Connected to Alchemy (${chain})`);
     reconnectAttempts.set(chain, 0);
+    consecutiveRateLimits.set(chain, 0);
 
     const chainSubs = subscriptions.get(chain);
     if (chainSubs) chainSubs.clear();
@@ -280,6 +282,7 @@ function connectChain(chain: string): WebSocket | null {
     if (!monitorRunning) return;
 
     if (intentionalClose.delete(chain)) return; // planned disconnect, don't reconnect
+    if ((consecutiveRateLimits.get(chain) ?? 0) >= 5) return;
 
     const attempts = (reconnectAttempts.get(chain) ?? 0);
     const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
@@ -292,7 +295,18 @@ function connectChain(chain: string): WebSocket | null {
   });
 
   ws.on("error", (err: Error) => {
-    console.error(`[RugMonitor] WebSocket error (${chain}):`, err.message);
+    if (err.message.includes("429")) {
+      const count = (consecutiveRateLimits.get(chain) ?? 0) + 1;
+      consecutiveRateLimits.set(chain, count);
+      if (count >= 5) {
+        console.log(`[RugMonitor] Alchemy rate-limited on ${chain} (${count}x), giving up. Falling back to polling.`);
+      } else {
+        console.log(`[RugMonitor] Alchemy 429 on ${chain} (${count}/5)`);
+      }
+    } else {
+      consecutiveRateLimits.set(chain, 0);
+      console.error(`[RugMonitor] WebSocket error (${chain}):`, err.message);
+    }
   });
 
   return ws;
@@ -438,6 +452,7 @@ export function stopRugMonitor(): void {
   pendingRequests.clear();
   recheckCounts.clear();
   reconnectAttempts.clear();
+  consecutiveRateLimits.clear();
   intentionalClose.clear();
 
   for (const [chain, ws] of connections) {
