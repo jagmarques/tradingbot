@@ -28,7 +28,7 @@ import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
-import { runBacktest } from "../hyperliquid/backtest.js";
+import { getCachedBacktest } from "../hyperliquid/backtest.js";
 import { getClient } from "../hyperliquid/client.js";
 import { getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
 
@@ -115,7 +115,6 @@ export async function startBot(): Promise<void> {
   bot.command("clearcopies", handleClearCopies);
   bot.command("resetpaper", handleReset);
   bot.command("mode", handleMode);
-  bot.command("backtest", handleBacktest);
   bot.command("insiders", async (ctx) => {
     try {
       await handleInsiders(ctx, "wallets");
@@ -863,46 +862,6 @@ async function sendDataMessage(text: string, inlineKeyboard?: { text: string; ca
     }
   } catch (err) {
     console.error("[Telegram] Failed to send data message:", err);
-  }
-}
-
-async function handleBacktest(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-  try {
-    await ctx.reply("Running backtest on 180 days of data...");
-    const { ruleResults, vwapResults } = await runBacktest();
-
-    const ruleTotalReturn =
-      ruleResults.length > 0
-        ? ruleResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / ruleResults.length - 100
-        : 0;
-    const vwapTotalReturn =
-      vwapResults.length > 0
-        ? vwapResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / vwapResults.length - 100
-        : 0;
-
-    let msg = `Backtest -- 180 days | ${ruleResults.map((r) => r.pair).join(" ")}\n\n`;
-    msg += `RULE ENGINE\n`;
-    for (const r of ruleResults) {
-      const sign = r.totalReturn >= 0 ? "+" : "";
-      msg += `${r.pair}: ${sign}${r.totalReturn.toFixed(1)}% | ${r.trades.length}T | ${r.winRate.toFixed(0)}%W | DD ${r.maxDrawdown.toFixed(1)}%\n`;
-    }
-    const ruleSign = ruleTotalReturn >= 0 ? "+" : "";
-    msg += `Avg: ${ruleSign}${ruleTotalReturn.toFixed(1)}% on $100\n\n`;
-
-    msg += `VWAP ENGINE\n`;
-    for (const r of vwapResults) {
-      const sign = r.totalReturn >= 0 ? "+" : "";
-      msg += `${r.pair}: ${sign}${r.totalReturn.toFixed(1)}% | ${r.trades.length}T | ${r.winRate.toFixed(0)}%W | DD ${r.maxDrawdown.toFixed(1)}%\n`;
-    }
-    const vwapSign = vwapTotalReturn >= 0 ? "+" : "";
-    msg += `Avg: ${vwapSign}${vwapTotalReturn.toFixed(1)}% on $100`;
-
-    await ctx.reply(msg);
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[Telegram] Backtest error: ${errMsg}`);
-    await ctx.reply(`Backtest failed: ${errMsg}`).catch(() => {});
   }
 }
 
@@ -2513,6 +2472,37 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} — ready for live\n`;
   } else {
     text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} paper validation\n`;
+  }
+
+  const bt = getCachedBacktest();
+  if (bt) {
+    const ruleTotalReturn =
+      bt.ruleResults.length > 0
+        ? bt.ruleResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / bt.ruleResults.length - 100
+        : 0;
+    const vwapTotalReturn =
+      bt.vwapResults.length > 0
+        ? bt.vwapResults.reduce((sum, r) => sum + (100 + r.totalReturn), 0) / bt.vwapResults.length - 100
+        : 0;
+
+    text += `\n<b>Backtest</b> | 180d\n`;
+    text += `Rule: `;
+    for (const r of bt.ruleResults) {
+      const sign = r.totalReturn >= 0 ? "+" : "";
+      text += `${r.pair} ${sign}${r.totalReturn.toFixed(1)}% ${r.trades.length}T ${r.winRate.toFixed(0)}%W | `;
+    }
+    const rSign = ruleTotalReturn >= 0 ? "+" : "";
+    text += `Avg ${rSign}${ruleTotalReturn.toFixed(1)}%\n`;
+
+    text += `VWAP: `;
+    for (const r of bt.vwapResults) {
+      const sign = r.totalReturn >= 0 ? "+" : "";
+      text += `${r.pair} ${sign}${r.totalReturn.toFixed(1)}% ${r.trades.length}T ${r.winRate.toFixed(0)}%W | `;
+    }
+    const vSign = vwapTotalReturn >= 0 ? "+" : "";
+    text += `Avg ${vSign}${vwapTotalReturn.toFixed(1)}%\n`;
+  } else {
+    text += `\nBacktest: loading...\n`;
   }
 
   const buttons: { text: string; callback_data: string }[][] = [];
