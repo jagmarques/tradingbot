@@ -62,6 +62,7 @@ let lastPromptMessageId: number | null = null;
 const alertMessageIds: number[] = [];
 const insiderExtraMessageIds: number[] = [];
 let callbackProcessing = false;
+let activeOpId = 0;
 
 function isAuthorized(ctx: Context): boolean {
   const fromId = ctx.from?.id?.toString();
@@ -480,8 +481,8 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
   bot.callbackQuery("main_menu", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
+    activeOpId++;
+    callbackProcessing = false;
     try {
       await sendMainMenu();
       await ctx.answerCallbackQuery();
@@ -489,8 +490,6 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
       console.error("[Telegram] Callback error (main_menu):", err);
       await ctx.reply("Failed to load menu. Try again.").catch(() => {});
       await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
     }
   });
   bot.callbackQuery("manage", async (ctx) => {
@@ -900,6 +899,7 @@ async function handleBalance(ctx: Context): Promise<void> {
     return;
   }
 
+  const myOpId = activeOpId;
   const fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   if (isPaperMode()) {
@@ -922,6 +922,8 @@ async function handleBalance(ctx: Context): Promise<void> {
     const arbitrumEthBalance = await getArbitrumEthBalance().catch(() => BigInt(0));
     const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
 
+    if (activeOpId !== myOpId) return;
+
     const lines = [
       `Polygon MATIC: ${maticBalance}`,
       `Polygon USDC: ${usdcBalance}`,
@@ -935,6 +937,7 @@ async function handleBalance(ctx: Context): Promise<void> {
     await sendDataMessage(message, backButton);
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
+    if (activeOpId !== myOpId) return;
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch balances", backButton);
   }
@@ -945,6 +948,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     console.warn(`[Telegram] Unauthorized /pnl from user ${ctx.from?.id}`);
     return;
   }
+
+  const myOpId = activeOpId;
 
   try {
     const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
@@ -1072,9 +1077,11 @@ async function handlePnl(ctx: Context): Promise<void> {
     }
 
     const allButtons = [[{ text: "Back", callback_data: "main_menu" }]];
+    if (activeOpId !== myOpId) return;
     await sendDataMessage(message, allButtons);
   } catch (err) {
     console.error("[Telegram] P&L error:", err);
+    if (activeOpId !== myOpId) return;
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to load P&L", backButton);
   }
@@ -1225,6 +1232,8 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     return;
   }
 
+  const myOpId = activeOpId;
+
   try {
     if (bot && chatId) {
       for (const id of insiderExtraMessageIds) {
@@ -1242,6 +1251,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
     if (tab === "holding") {
       try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
+      if (activeOpId !== myOpId) return;
       const trades = getOpenCopyTrades();
 
       const buttons = [...chainButtons, [{ text: "Back", callback_data: "main_menu" }]];
@@ -1273,6 +1283,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
     if (tab === "wallets") {
       try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
+      if (activeOpId !== myOpId) return;
       const { getInsiderWalletsWithStats } = await import("../traders/storage.js");
       const walletStats = getInsiderWalletsWithStats();
 
@@ -1302,6 +1313,7 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
 
   } catch (err) {
     console.error("[Telegram] Insiders error:", err);
+    if (activeOpId !== myOpId) return;
     const errorButtons = [
       [
         { text: tab === "wallets" ? "* Wallets" : "Wallets", callback_data: "insiders_wallets" },
@@ -1318,6 +1330,8 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
     console.warn(`[Telegram] Unauthorized /bets from user ${ctx.from?.id}`);
     return;
   }
+
+  const myOpId = activeOpId;
 
   try {
     const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
@@ -1381,6 +1395,8 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
         positionLines += `  ${conf}%conf | ${ev}%ev | ${shortDate(bet.entryTimestamp)}\n\n`;
       }
 
+      if (activeOpId !== myOpId) return;
+
       message += `Unreal: ${pnl(totalPnlVal)} | Real: ${pnl(aiStats.totalPnl)}\n`;
       message += `${openBets.length} open | ${$(totalInvested)} inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
       message += positionLines;
@@ -1427,6 +1443,7 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
     } else if (tab === "copy") {
       // Copy Open tab - Polymarket copy positions
       const positionsWithValues = await getOpenPositionsWithValues();
+      if (activeOpId !== myOpId) return;
       const polyStats = getCopyStats();
 
       if (positionsWithValues.length === 0) {
@@ -1503,9 +1520,11 @@ async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_
     }
 
     const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
+    if (activeOpId !== myOpId) return;
     await sendDataMessage(message, allButtons);
   } catch (err) {
     console.error("[Telegram] Bets error:", err);
+    if (activeOpId !== myOpId) return;
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch bets", backButton);
   }
@@ -2393,6 +2412,7 @@ function findTimezoneForOffset(offsetHours: number): string | null {
 async function handleQuant(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
+  const myOpId = activeOpId;
   const env = loadEnv();
   const quantEnabled = env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY;
 
@@ -2435,6 +2455,8 @@ async function handleQuant(ctx: Context): Promise<void> {
       // Prices unavailable - show positions without unrealized P&L
     }
   }
+
+  if (activeOpId !== myOpId) return;
 
   if (openPositions.length > 0) {
     const posLines: string[] = [];
@@ -2521,5 +2543,6 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
   buttons.push([{ text: "Back", callback_data: "main_menu" }]);
 
+  if (activeOpId !== myOpId) return;
   await sendDataMessage(text, buttons);
 }
