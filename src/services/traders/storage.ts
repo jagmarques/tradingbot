@@ -1065,6 +1065,13 @@ export function getRugStats(): { count: number; pnlUsd: number } {
 export function updateCopyTradeHoldPrice(tokenAddress: string, chain: string, holdPriceUsd: number): void {
   const db = getDb();
   const ta = normalizeAddr(tokenAddress);
+  const minBuyRow = db.prepare(
+    "SELECT MIN(buy_price_usd) as minBuy FROM insider_copy_trades WHERE token_address = ? AND chain = ? AND buy_price_usd > 0"
+  ).get(ta, chain) as { minBuy: number | null };
+  if (minBuyRow?.minBuy && holdPriceUsd / minBuyRow.minBuy > 1_000_000) {
+    console.warn(`[Gems] Rejected bad hold price ${holdPriceUsd} for ${tokenAddress} (buy: ${minBuyRow.minBuy})`);
+    return;
+  }
   db.prepare(`
     UPDATE insider_copy_trades
     SET hold_price_usd = ?
