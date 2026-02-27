@@ -11,6 +11,28 @@ import {
   HYPERLIQUID_MAX_LEVERAGE,
 } from "../../config/constants.js";
 
+let cachedResults: { ruleResults: BacktestResult[]; vwapResults: BacktestResult[] } | null = null;
+let backtestRunning = false;
+
+export function getCachedBacktest(): { ruleResults: BacktestResult[]; vwapResults: BacktestResult[] } | null {
+  return cachedResults;
+}
+
+export function runBacktestBackground(): void {
+  if (backtestRunning || cachedResults !== null) return;
+  backtestRunning = true;
+  runBacktest()
+    .then(() => {
+      console.log("[Backtest] Background run complete, results cached");
+    })
+    .catch((err) => {
+      console.error("[Backtest] Background run failed:", err instanceof Error ? err.message : String(err));
+    })
+    .finally(() => {
+      backtestRunning = false;
+    });
+}
+
 interface BacktestTrade {
   pair: string;
   engine: string;
@@ -25,7 +47,7 @@ interface BacktestTrade {
   exitReason: string;
 }
 
-interface BacktestResult {
+export interface BacktestResult {
   engine: string;
   pair: string;
   trades: BacktestTrade[];
@@ -345,5 +367,7 @@ export async function runBacktest(
     vwapResults.push(vwapResult);
   }
 
-  return { ruleResults, vwapResults };
+  const result = { ruleResults, vwapResults };
+  cachedResults = result;
+  return result;
 }
