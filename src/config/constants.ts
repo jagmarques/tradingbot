@@ -110,6 +110,18 @@ export const BREAKOUT_STAGNATION_BARS = 6; // 6 x 4h = 24h
 export const BREAKOUT_ADX_MIN = 20;
 export const BREAKOUT_BASE_CONFIDENCE = 65;
 
+// MACD Trend Engine (daily SMA + ADX filter + 4h MACD histogram cross, backtest: Sharpe 4.14, +0.135%/day, 72% WR)
+export const MACD_TREND_DAILY_SMA_PERIOD = 100;
+export const MACD_TREND_DAILY_ADX_MIN = 20;
+export const MACD_TREND_FAST = 12;
+export const MACD_TREND_SLOW = 26;
+export const MACD_TREND_SIGNAL = 7;
+export const MACD_TREND_STOP_ATR_MULT = 2.5;
+export const MACD_TREND_REWARD_RISK = 3.5;
+export const MACD_TREND_STAGNATION_BARS = 12;
+export const MACD_TREND_BASE_CONFIDENCE = 65;
+export const MACD_TREND_DAILY_LOOKBACK_DAYS = 120;
+
 // MTF Trend+Pullback Engine (daily trend + 4h RSI pullback, best out-of-sample: Sharpe 3.20, +24.48% / 125d, tune-mtf-v2)
 export const MTF_DAILY_SMA_PERIOD = 100;
 export const MTF_DAILY_ADX_MIN = 18;

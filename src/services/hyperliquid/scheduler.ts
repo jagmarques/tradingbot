@@ -5,6 +5,7 @@ import { runMicroDecisionEngine } from "./micro-engine.js";
 import { runVwapDecisionEngine } from "./vwap-engine.js";
 import { runBreakoutDecisionEngine } from "./breakout-engine.js";
 import { runMtfDecisionEngine } from "./mtf-engine.js";
+import { runMacdTrendDecisionEngine } from "./macd-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -42,6 +43,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const vwapDecisions = runVwapDecisionEngine(analyses);
     const breakoutDecisions = runBreakoutDecisionEngine(analyses);
     const mtfDecisions = await runMtfDecisionEngine(analyses);
+    const macdDecisions = await runMacdTrendDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -66,6 +68,11 @@ export async function runDirectionalCycle(): Promise<void> {
     const mtfOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "mtf-directional")
+        .map(p => p.pair),
+    );
+    const macdOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "macd-directional")
         .map(p => p.pair),
     );
 
@@ -274,8 +281,48 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let macdExecuted = 0;
+    for (const decision of macdDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] MACD: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (macdOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] MACD: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "macd-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        macdExecuted++;
+        macdOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] MACD: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}, Breakout ${breakoutExecuted}/${breakoutDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Micro ${microExecuted}/${microDecisions.length}, VWAP ${vwapExecuted}/${vwapDecisions.length}, Breakout ${breakoutExecuted}/${breakoutDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, MACD ${macdExecuted}/${macdDecisions.length}`,
     );
   } finally {
     cycleRunning = false;
