@@ -29,7 +29,7 @@ import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison 
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { getQuantStats, getFundingIncome, getQuantValidationMetrics } from "../database/quant.js";
+import { getQuantStats, getQuantValidationMetrics } from "../database/quant.js";
 
 const MENU_MSG_ID_PATH = process.env.DB_PATH
   ? process.env.DB_PATH.replace("trades.db", "menu_msg_id.txt")
@@ -2431,7 +2431,6 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
-  const funding = getFundingIncome();
   const aiStats = getQuantStats("ai-directional");
   const mtfStats = getQuantStats("mtf-directional");
   const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
@@ -2461,7 +2460,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     for (const pos of openPositions) {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
-        pos.tradeType === "funding" ? "[F]" :
         pos.tradeType === "mtf-directional" ? "[T]" :
         pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
         pos.tradeType === "dema-cross-directional" ? "[DX]" :
@@ -2499,9 +2497,11 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const fundingPnl = funding.totalIncome;
-  const totalPnl = aiStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl + fundingPnl;
-  const totalTrades = aiStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades + funding.tradeCount;
+  const totalPnl = aiStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades;
+
+  let totalUnr = 0;
+  for (const v of unrealizedByType.values()) totalUnr += v;
 
   const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 
@@ -2521,14 +2521,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
   text += sl("CciTrend", cciTrendStats, "cci-trend-directional");
   text += sl("AI", aiStats, "ai-directional");
-  const fundingOpenCnt = openCountByType.get("funding") ?? 0;
-  const fundingOpenStr = fundingOpenCnt > 0 ? ` (${fundingOpenCnt}o)` : "";
-  const fundingUnr = unrealizedByType.get("funding");
-  const fundingUnrStr = fundingUnr !== undefined && fundingUnr !== 0 ? ` | unr ${fmtUnr(fundingUnr)}` : "";
-  const fmtFunding = `${fundingPnl >= 0 ? "+" : "-"}$${Math.abs(fundingPnl).toFixed(1)}`;
-  text += `Funding: ${fmtFunding} ${funding.tradeCount}T${fundingOpenStr}${fundingUnrStr}\n`;
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
-  text += `Total: ${fmtTotal} ${totalTrades}T\n`;
+  const totalUnrStr = totalUnr !== 0 ? ` | unr ${fmtUnr(totalUnr)}` : "";
+  text += `Total: ${fmtTotal} ${totalTrades}T${totalUnrStr}\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
