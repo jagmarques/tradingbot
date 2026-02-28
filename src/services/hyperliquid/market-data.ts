@@ -1,6 +1,5 @@
 import { ensureConnected, getClient } from "./client.js";
-import type { FundingInfo, FundingOpportunity, LongShortRatio, OrderbookImbalance } from "./types.js";
-import { FUNDING_ARB_MIN_APR } from "../../config/constants.js";
+import type { FundingInfo, LongShortRatio, OrderbookImbalance } from "./types.js";
 
 const FUNDING_PERIODS_PER_YEAR = 24 * 365; // 1-hour funding periods (Hyperliquid)
 
@@ -63,104 +62,6 @@ export async function fetchOpenInterest(pair: string): Promise<number> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Hyperliquid] Failed to fetch open interest for ${pair}: ${msg}`);
     return 0;
-  }
-}
-
-export async function fetchAllFundingRates(): Promise<FundingInfo[]> {
-  try {
-    await ensureConnected();
-
-    type VenueData = { fundingRate: string; nextFundingTime: number; fundingIntervalHours: number };
-    const fundings = await getClient().info.perpetuals.getPredictedFundings(true);
-    const results: FundingInfo[] = [];
-
-    // SDK returns either array of tuples or object - handle both
-    let entries: [string, unknown][];
-    if (Array.isArray(fundings)) {
-      entries = fundings as [string, unknown][];
-    } else if (fundings && typeof fundings === "object") {
-      entries = Object.entries(fundings);
-    } else {
-      console.warn("[FundingArb] Unexpected fundings format:", typeof fundings);
-      return [];
-    }
-
-    for (const entry of entries) {
-      const pair = String(entry[0]);
-      const venueList = entry[1];
-      if (!Array.isArray(venueList)) continue;
-
-      // Each venue is either [name, data] tuple or {name: data} object
-      let hlData: VenueData | undefined;
-      for (const venue of venueList) {
-        if (Array.isArray(venue) && venue[0] === "HlPerp") {
-          hlData = venue[1] as VenueData;
-          break;
-        } else if (venue && typeof venue === "object" && "HlPerp" in venue) {
-          hlData = (venue as Record<string, VenueData>)["HlPerp"];
-          break;
-        }
-      }
-      if (!hlData) continue;
-
-      const currentRate = parseFloat(String(hlData.fundingRate ?? 0));
-      if (currentRate === 0) continue;
-
-      const intervalHours = hlData.fundingIntervalHours ?? 8;
-      const periodsPerYear = 8760 / intervalHours;
-      const annualizedRate = currentRate * periodsPerYear;
-      const nextFundingTime = Number(hlData.nextFundingTime);
-
-      results.push({ pair, currentRate, annualizedRate, nextFundingTime });
-    }
-
-    console.log(`[FundingArb] Scanned ${results.length} pairs for funding rates`);
-    return results;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[FundingArb] Failed to fetch all funding rates: ${msg}`);
-    return [];
-  }
-}
-
-export async function scanFundingOpportunities(): Promise<FundingOpportunity[]> {
-  try {
-    await ensureConnected();
-    const sdk = getClient();
-
-    const [allRates, midsRaw] = await Promise.all([
-      fetchAllFundingRates(),
-      sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-    ]);
-
-    const qualifying = allRates.filter((r) => Math.abs(r.annualizedRate) >= FUNDING_ARB_MIN_APR);
-
-    const opportunities: FundingOpportunity[] = [];
-    for (const rate of qualifying) {
-      const midStr = midsRaw[rate.pair];
-      if (!midStr) continue;
-
-      const markPrice = parseFloat(midStr);
-      if (isNaN(markPrice) || markPrice <= 0) continue;
-
-      const direction: "long" | "short" = rate.annualizedRate > 0 ? "short" : "long";
-
-      opportunities.push({
-        pair: rate.pair,
-        currentRate: rate.currentRate,
-        annualizedRate: rate.annualizedRate,
-        direction,
-        nextFundingTime: rate.nextFundingTime,
-        markPrice,
-      });
-    }
-
-    console.log(`[FundingArb] Found ${opportunities.length} funding opportunities above ${(FUNDING_ARB_MIN_APR * 100).toFixed(0)}% APR`);
-    return opportunities;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[FundingArb] Failed to scan funding opportunities: ${msg}`);
-    return [];
   }
 }
 

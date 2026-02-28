@@ -4,7 +4,6 @@ import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js"
 import { loadEnv, isPaperMode } from "../../config/env.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
-import { startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
 
@@ -36,7 +35,6 @@ export function initQuant(): number {
 
   seedDailyLossFromDb();
   startPositionMonitor();
-  startFundingArbMonitor();
   startQuantScheduler();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
@@ -46,7 +44,6 @@ export function initQuant(): number {
 
 export function stopQuant(): void {
   stopQuantScheduler();
-  stopFundingArbMonitor();
   stopPositionMonitor();
   console.log("[Quant] Stopped");
 }
@@ -81,9 +78,6 @@ export {
 
 // Position Monitor
 export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
-
-// Funding Rate Arbitrage
-export { runFundingArbCycle, startFundingArbMonitor, stopFundingArbMonitor } from "./funding-arb.js";
 
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
