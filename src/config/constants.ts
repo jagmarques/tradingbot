@@ -177,12 +177,12 @@ export const HMA_BASE_CONFIDENCE = 65;
 export const HMA_DAILY_LOOKBACK_DAYS = 150;
 
 // CCI Engine
-export const CCI_DAILY_SMA_PERIOD = 100;
-export const CCI_DAILY_ADX_MIN = 18;
-export const CCI_PERIOD = 20;
-export const CCI_THRESHOLD = 100;
-export const CCI_STOP_ATR_MULT = 4.0;
-export const CCI_REWARD_RISK = 3.5;
+export const CCI_DAILY_SMA_PERIOD = 50;
+export const CCI_DAILY_ADX_MIN = 10;
+export const CCI_PERIOD = 10;
+export const CCI_THRESHOLD = 120;
+export const CCI_STOP_ATR_MULT = 3.0;
+export const CCI_REWARD_RISK = 5.0;
 export const CCI_STAGNATION_BARS = 12;
 export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
