@@ -4,6 +4,7 @@ import { calculateQuantPositionSize } from "./kelly.js";
 import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
 import { runDemaCrossDecisionEngine } from "./dema-cross-engine.js";
 import { runHmaDecisionEngine } from "./hma-engine.js";
+import { runTemaDecisionEngine } from "./tema-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -40,6 +41,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
     const demaCrossDecisions = await runDemaCrossDecisionEngine(analyses);
     const hmaDecisions = await runHmaDecisionEngine(analyses);
+    const temaDecisions = await runTemaDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -59,6 +61,11 @@ export async function runDirectionalCycle(): Promise<void> {
     const hmaOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "hma-directional")
+        .map(p => p.pair),
+    );
+    const temaOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "tema-directional")
         .map(p => p.pair),
     );
 
@@ -227,8 +234,48 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let temaExecuted = 0;
+    for (const decision of temaDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (temaOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "tema-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        temaExecuted++;
+        temaOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] TEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

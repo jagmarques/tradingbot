@@ -2435,6 +2435,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
   const demaCrossStats = getQuantStats("dema-cross-directional");
   const hmaStats = getQuantStats("hma-directional");
+  const temaStats = getQuantStats("tema-directional");
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2461,7 +2462,8 @@ async function handleQuant(ctx: Context): Promise<void> {
       const typeTag =
         pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
         pos.tradeType === "dema-cross-directional" ? "[DX]" :
-        pos.tradeType === "hma-directional" ? "[HM]" : "[AI]";
+        pos.tradeType === "hma-directional" ? "[HM]" :
+        pos.tradeType === "tema-directional" ? "[TM]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2495,8 +2497,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + hmaStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + hmaStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + hmaStats.totalPnl + temaStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + hmaStats.totalTrades + temaStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2517,6 +2519,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
   text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
   text += sl("HMA", hmaStats, "hma-directional");
+  text += sl("TEMA", temaStats, "tema-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;

@@ -1,14 +1,15 @@
+import { EMA } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  HMA_CROSS_DAILY_SMA_PERIOD,
-  HMA_CROSS_DAILY_ADX_MIN,
-  HMA_CROSS_FAST,
-  HMA_CROSS_SLOW,
-  HMA_CROSS_STOP_ATR_MULT,
-  HMA_CROSS_REWARD_RISK,
-  HMA_CROSS_BASE_CONFIDENCE,
-  HMA_CROSS_DAILY_LOOKBACK_DAYS,
+  TEMA_CROSS_DAILY_SMA_PERIOD,
+  TEMA_CROSS_DAILY_ADX_MIN,
+  TEMA_CROSS_FAST,
+  TEMA_CROSS_SLOW,
+  TEMA_CROSS_STOP_ATR_MULT,
+  TEMA_CROSS_REWARD_RISK,
+  TEMA_CROSS_BASE_CONFIDENCE,
+  TEMA_CROSS_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -31,7 +32,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - HMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - TEMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -47,7 +48,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HmaEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[TemaEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -78,76 +79,49 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-function computeWMA(values: number[], period: number): (number | null)[] {
-  const n = values.length;
+// TEMA = 3*EMA1 - 3*EMA2 + EMA3 (triple EMA, less lag than DEMA)
+function computeTEMA(closes: number[], period: number): (number | null)[] {
+  const n = closes.length;
+  const ema1Raw = EMA.calculate({ values: closes, period });
+  const ema2Raw = EMA.calculate({ values: ema1Raw, period });
+  const ema3Raw = EMA.calculate({ values: ema2Raw, period });
   const result: (number | null)[] = new Array(n).fill(null);
-  const weightSum = (period * (period + 1)) / 2;
-  for (let i = period - 1; i < n; i++) {
-    let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += values[i - period + 1 + j] * (j + 1);
-    }
-    result[i] = sum / weightSum;
-  }
+  ema3Raw.forEach((e3, i) => {
+    const e2Idx = i + (period - 1);
+    const e1Idx = e2Idx + (period - 1);
+    const closesIdx = e1Idx + (period - 1);
+    if (closesIdx < n) result[closesIdx] = 3 * ema1Raw[e1Idx] - 3 * ema2Raw[e2Idx] + e3;
+  });
   return result;
 }
 
-function computeHMA(closes: number[], period: number): (number | null)[] {
-  const halfPeriod = Math.max(2, Math.floor(period / 2));
-  const sqrtPeriod = Math.max(2, Math.round(Math.sqrt(period)));
-
-  const wmaHalf = computeWMA(closes, halfPeriod);
-  const wmaFull = computeWMA(closes, period);
-
-  // 2*WMA(n/2) - WMA(n)
-  const diffStartIdx = period - 1;
-  const diff: number[] = [];
-  for (let i = diffStartIdx; i < closes.length; i++) {
-    const h = wmaHalf[i];
-    const f = wmaFull[i];
-    if (h === null || f === null) { diff.push(0); continue; }
-    diff.push(2 * h - f);
-  }
-
-  // WMA(sqrt(n)) on diff series
-  const hmaOnDiff = computeWMA(diff, sqrtPeriod);
-
-  // Map back to original index space
-  const result: (number | null)[] = new Array(closes.length).fill(null);
-  for (let i = 0; i < hmaOnDiff.length; i++) {
-    const origIdx = diffStartIdx + i;
-    if (origIdx < closes.length) result[origIdx] = hmaOnDiff[i];
-  }
-  return result;
-}
-
-export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+export async function evaluateTemaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < HMA_CROSS_SLOW * 2 + 2) return null;
+  if (!candles4h || candles4h.length < TEMA_CROSS_SLOW * 3 + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
   const n = closes4h.length;
-  const fastArr = computeHMA(closes4h, HMA_CROSS_FAST);
-  const slowArr = computeHMA(closes4h, HMA_CROSS_SLOW);
+  const fastArr = computeTEMA(closes4h, TEMA_CROSS_FAST);
+  const slowArr = computeTEMA(closes4h, TEMA_CROSS_SLOW);
 
   const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
   const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
   if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < HMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < TEMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, HMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, TEMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < HMA_CROSS_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < TEMA_CROSS_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
@@ -160,12 +134,12 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   if (direction === null) return null;
 
   const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
-  const stopDistance = atr * HMA_CROSS_STOP_ATR_MULT;
-  const tpDistance = stopDistance * HMA_CROSS_REWARD_RISK;
+  const stopDistance = atr * TEMA_CROSS_STOP_ATR_MULT;
+  const tpDistance = stopDistance * TEMA_CROSS_REWARD_RISK;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  let confidence = HMA_CROSS_BASE_CONFIDENCE;
+  let confidence = TEMA_CROSS_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -174,7 +148,7 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const reasoning = `HmaCross: HMA(${HMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} HMA(${HMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${HMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `TemaCross: TEMA(${TEMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} TEMA(${TEMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${TEMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
@@ -190,24 +164,24 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   };
 }
 
-export async function runHmaDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runTemaDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateHmaCrossPair(analysis);
+      const decision = await evaluateTemaCrossPair(analysis);
       if (decision) {
         console.log(
-          `[HmaEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[TemaEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[HmaEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[TemaEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[HmaEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[TemaEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }

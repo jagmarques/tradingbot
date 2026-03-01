@@ -97,6 +97,17 @@ export const DEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const DEMA_CROSS_BASE_CONFIDENCE = 65;
 export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
+// TEMA Cross Engine (optimal: +0.428%/day, Sharpe 5.78)
+export const TEMA_CROSS_DAILY_SMA_PERIOD = 100;
+export const TEMA_CROSS_DAILY_ADX_MIN = 18;
+export const TEMA_CROSS_FAST = 8;
+export const TEMA_CROSS_SLOW = 21;
+export const TEMA_CROSS_STOP_ATR_MULT = 2.5;
+export const TEMA_CROSS_REWARD_RISK = 3.5;
+export const TEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
+export const TEMA_CROSS_BASE_CONFIDENCE = 65;
+export const TEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
+
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   BTC: 0.02,   // 40x max

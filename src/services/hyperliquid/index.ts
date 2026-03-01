@@ -82,3 +82,6 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
+// TEMA Cross Engine
+export { runTemaDecisionEngine } from "./tema-engine.js";
+

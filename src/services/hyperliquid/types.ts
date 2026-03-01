@@ -89,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "ai-directional" | "funding" | "micro-directional" | "mtf-directional" | "bb-squeeze-directional" | "ichimoku-directional" | "dema-cross-directional" | "cci-trend-directional" | "hma-directional";
+export type TradeType = "directional" | "ai-directional" | "funding" | "micro-directional" | "mtf-directional" | "bb-squeeze-directional" | "ichimoku-directional" | "dema-cross-directional" | "cci-trend-directional" | "hma-directional" | "tema-directional";
 
 export interface FundingOpportunity {
   pair: string;
