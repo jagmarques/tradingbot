@@ -75,10 +75,10 @@ export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 
 // ZLEMA Cross Engine
 export const ZLEMA_DAILY_SMA_PERIOD = 100;
-export const ZLEMA_DAILY_ADX_MIN = 10;
-export const ZLEMA_FAST = 8;
+export const ZLEMA_DAILY_ADX_MIN = 18;
+export const ZLEMA_FAST = 10;
 export const ZLEMA_SLOW = 21;
-export const ZLEMA_STOP_ATR_MULT = 3.0;
+export const ZLEMA_STOP_ATR_MULT = 2.5;
 export const ZLEMA_REWARD_RISK = 5.0;
 export const ZLEMA_STAGNATION_BARS = 16;
 export const ZLEMA_BASE_CONFIDENCE = 65;
@@ -97,13 +97,13 @@ export const MACD_CROSS_BASE_CONFIDENCE = 65;
 export const MACD_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
 // TRIX Engine
-export const TRIX_PERIOD = 8;
-export const TRIX_SIGNAL = 3;
+export const TRIX_PERIOD = 7;
+export const TRIX_SIGNAL = 5;
 export const TRIX_DAILY_SMA_PERIOD = 100;
 export const TRIX_DAILY_ADX_MIN = 10;
-export const TRIX_STOP_ATR_MULT = 4.0;
-export const TRIX_REWARD_RISK = 5.0;
-export const TRIX_STAGNATION_BARS = 24;
+export const TRIX_STOP_ATR_MULT = 2.5;
+export const TRIX_REWARD_RISK = 3.5;
+export const TRIX_STAGNATION_BARS = 16;
 export const TRIX_BASE_CONFIDENCE = 65;
 export const TRIX_DAILY_LOOKBACK_DAYS = 150;
 
