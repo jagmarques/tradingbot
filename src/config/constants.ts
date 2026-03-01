@@ -145,10 +145,10 @@ export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 
 // TEMA Engine
 export const TEMA_DAILY_SMA_PERIOD = 100;
-export const TEMA_DAILY_ADX_MIN = 10;
-export const TEMA_FAST = 8;
+export const TEMA_DAILY_ADX_MIN = 14;
+export const TEMA_FAST = 10;
 export const TEMA_SLOW = 21;
-export const TEMA_STOP_ATR_MULT = 3.0;
+export const TEMA_STOP_ATR_MULT = 4.0;
 export const TEMA_REWARD_RISK = 5.0;
 export const TEMA_STAGNATION_BARS = 9;
 export const TEMA_BASE_CONFIDENCE = 65;
