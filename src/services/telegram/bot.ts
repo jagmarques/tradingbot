@@ -2440,6 +2440,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   const vortexStats = getQuantStats("vortex-directional");
   const schaffStats = getQuantStats("schaff-directional");
   const supertrendStats = getQuantStats("supertrend-directional");
+  const temaStats = getQuantStats("tema-directional");
+  const demaStats = getQuantStats("dema-directional");
+  const hmaStats = getQuantStats("hma-directional");
+  const cciStats = getQuantStats("cci-directional");
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2471,7 +2475,11 @@ async function handleQuant(ctx: Context): Promise<void> {
         pos.tradeType === "elder-impulse-directional" ? "[EI]" :
         pos.tradeType === "vortex-directional" ? "[VO]" :
         pos.tradeType === "schaff-directional" ? "[SC]" :
-        pos.tradeType === "supertrend-directional" ? "[ST]" : "[AI]";
+        pos.tradeType === "supertrend-directional" ? "[ST]" :
+        pos.tradeType === "tema-directional" ? "[TM]" :
+        pos.tradeType === "dema-directional" ? "[DE]" :
+        pos.tradeType === "hma-directional" ? "[HM]" :
+        pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2505,8 +2513,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + macdCrossStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl + vortexStats.totalPnl + schaffStats.totalPnl + supertrendStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + macdCrossStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades + vortexStats.totalTrades + schaffStats.totalTrades + supertrendStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + macdCrossStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl + vortexStats.totalPnl + schaffStats.totalPnl + supertrendStats.totalPnl + temaStats.totalPnl + demaStats.totalPnl + hmaStats.totalPnl + cciStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + macdCrossStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades + vortexStats.totalTrades + schaffStats.totalTrades + supertrendStats.totalTrades + temaStats.totalTrades + demaStats.totalTrades + hmaStats.totalTrades + cciStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2532,6 +2540,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("Vortex", vortexStats, "vortex-directional");
   text += sl("Schaff", schaffStats, "schaff-directional");
   text += sl("ST", supertrendStats, "supertrend-directional");
+  text += sl("TEMA", temaStats, "tema-directional");
+  text += sl("DEMA", demaStats, "dema-directional");
+  text += sl("HMA", hmaStats, "hma-directional");
+  text += sl("CCI", cciStats, "cci-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;

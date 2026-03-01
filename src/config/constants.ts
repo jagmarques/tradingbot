@@ -143,6 +143,50 @@ export const SCHAFF_STAGNATION_BARS = 12;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 
+// TEMA Engine
+export const TEMA_DAILY_SMA_PERIOD = 100;
+export const TEMA_DAILY_ADX_MIN = 10;
+export const TEMA_FAST = 8;
+export const TEMA_SLOW = 21;
+export const TEMA_STOP_ATR_MULT = 3.0;
+export const TEMA_REWARD_RISK = 5.0;
+export const TEMA_STAGNATION_BARS = 9;
+export const TEMA_BASE_CONFIDENCE = 65;
+export const TEMA_DAILY_LOOKBACK_DAYS = 150;
+
+// DEMA Engine
+export const DEMA_DAILY_SMA_PERIOD = 100;
+export const DEMA_DAILY_ADX_MIN = 18;
+export const DEMA_FAST = 5;
+export const DEMA_SLOW = 21;
+export const DEMA_STOP_ATR_MULT = 4.0;
+export const DEMA_REWARD_RISK = 5.0;
+export const DEMA_STAGNATION_BARS = 12;
+export const DEMA_BASE_CONFIDENCE = 65;
+export const DEMA_DAILY_LOOKBACK_DAYS = 150;
+
+// HMA Engine
+export const HMA_DAILY_SMA_PERIOD = 100;
+export const HMA_DAILY_ADX_MIN = 10;
+export const HMA_FAST = 8;
+export const HMA_SLOW = 34;
+export const HMA_STOP_ATR_MULT = 3.0;
+export const HMA_REWARD_RISK = 5.0;
+export const HMA_STAGNATION_BARS = 6;
+export const HMA_BASE_CONFIDENCE = 65;
+export const HMA_DAILY_LOOKBACK_DAYS = 150;
+
+// CCI Engine
+export const CCI_DAILY_SMA_PERIOD = 100;
+export const CCI_DAILY_ADX_MIN = 18;
+export const CCI_PERIOD = 20;
+export const CCI_THRESHOLD = 100;
+export const CCI_STOP_ATR_MULT = 4.0;
+export const CCI_REWARD_RISK = 3.5;
+export const CCI_STAGNATION_BARS = 12;
+export const CCI_BASE_CONFIDENCE = 65;
+export const CCI_DAILY_LOOKBACK_DAYS = 150;
+
 // Supertrend Engine
 export const SUPERTREND_DAILY_SMA_PERIOD = 100;
 export const SUPERTREND_DAILY_ADX_MIN = 10;

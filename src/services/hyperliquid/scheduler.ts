@@ -9,6 +9,10 @@ import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
 import { runSupertrendDecisionEngine } from "./supertrend-engine.js";
+import { runTEMADecisionEngine } from "./tema-engine.js";
+import { runDEMADecisionEngine } from "./dema-engine.js";
+import { runHMADecisionEngine } from "./hma-engine.js";
+import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -50,6 +54,10 @@ export async function runDirectionalCycle(): Promise<void> {
     const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
     const supertrendDecisions = await runSupertrendDecisionEngine(analyses);
+    const temaDecisions = await runTEMADecisionEngine(analyses);
+    const demaDecisions = await runDEMADecisionEngine(analyses);
+    const hmaDecisions = await runHMADecisionEngine(analyses);
+    const cciDecisions = await runCCIDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -94,6 +102,26 @@ export async function runDirectionalCycle(): Promise<void> {
     const supertrendOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "supertrend-directional")
+        .map(p => p.pair),
+    );
+    const temaOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "tema-directional")
+        .map(p => p.pair),
+    );
+    const demaOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "dema-directional")
+        .map(p => p.pair),
+    );
+    const hmaOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "hma-directional")
+        .map(p => p.pair),
+    );
+    const cciOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "cci-directional")
         .map(p => p.pair),
     );
 
@@ -462,8 +490,92 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let temaExecuted = 0;
+    for (const decision of temaDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+      if (temaOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "tema-directional", undefined, decision.entryPrice);
+      if (position) {
+        temaExecuted++;
+        temaOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(`[QuantScheduler] TEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+      }
+    }
+
+    let demaExecuted = 0;
+    for (const decision of demaDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+      if (demaOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice);
+      if (position) {
+        demaExecuted++;
+        demaOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(`[QuantScheduler] DEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+      }
+    }
+
+    let hmaExecuted = 0;
+    for (const decision of hmaDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+      if (hmaOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice);
+      if (position) {
+        hmaExecuted++;
+        hmaOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(`[QuantScheduler] HMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+      }
+    }
+
+    let cciExecuted = 0;
+    for (const decision of cciDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+      if (cciOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice);
+      if (position) {
+        cciExecuted++;
+        cciOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(`[QuantScheduler] CCI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, Supertrend ${supertrendExecuted}/${supertrendDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, Supertrend ${supertrendExecuted}/${supertrendDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

@@ -91,4 +91,8 @@ export { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 export { runVortexDecisionEngine } from "./vortex-engine.js";
 export { runSchaffDecisionEngine } from "./schaff-engine.js";
 export { runSupertrendDecisionEngine } from "./supertrend-engine.js";
+export { runTEMADecisionEngine } from "./tema-engine.js";
+export { runDEMADecisionEngine } from "./dema-engine.js";
+export { runHMADecisionEngine } from "./hma-engine.js";
+export { runCCIDecisionEngine } from "./cci-engine.js";
 
