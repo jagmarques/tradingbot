@@ -109,13 +109,13 @@ export const TRIX_DAILY_LOOKBACK_DAYS = 150;
 
 // Elder Impulse Engine
 export const ELDER_EMA_PERIOD = 21;
-export const ELDER_MACD_FAST = 8;
-export const ELDER_MACD_SLOW = 17;
+export const ELDER_MACD_FAST = 12;
+export const ELDER_MACD_SLOW = 26;
 export const ELDER_MACD_SIGNAL = 9;
-export const ELDER_DAILY_SMA_PERIOD = 100;
-export const ELDER_DAILY_ADX_MIN = 30;
-export const ELDER_STOP_ATR_MULT = 4.0;
-export const ELDER_REWARD_RISK = 5.0;
+export const ELDER_DAILY_SMA_PERIOD = 50;
+export const ELDER_DAILY_ADX_MIN = 10;
+export const ELDER_STOP_ATR_MULT = 2.5;
+export const ELDER_REWARD_RISK = 2.5;
 export const ELDER_STAGNATION_BARS = 12;
 export const ELDER_BASE_CONFIDENCE = 65;
 export const ELDER_DAILY_LOOKBACK_DAYS = 150;
