@@ -8,7 +8,6 @@ import { runTrixDecisionEngine } from "./trix-engine.js";
 import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
-import { runSupertrendDecisionEngine } from "./supertrend-engine.js";
 import { runTEMADecisionEngine } from "./tema-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
 import { runHMADecisionEngine } from "./hma-engine.js";
@@ -53,7 +52,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const elderDecisions = await runElderImpulseDecisionEngine(analyses);
     const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
-    const supertrendDecisions = await runSupertrendDecisionEngine(analyses);
     const temaDecisions = await runTEMADecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
     const hmaDecisions = await runHMADecisionEngine(analyses);
@@ -97,11 +95,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const schaffOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "schaff-directional")
-        .map(p => p.pair),
-    );
-    const supertrendOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "supertrend-directional")
         .map(p => p.pair),
     );
     const temaOpenPairs = new Set(
@@ -450,45 +443,6 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    let supertrendExecuted = 0;
-    for (const decision of supertrendDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Supertrend: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (supertrendOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Supertrend: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "supertrend-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        supertrendExecuted++;
-        supertrendOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] Supertrend: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
 
     let temaExecuted = 0;
     for (const decision of temaDecisions) {
@@ -575,7 +529,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, Supertrend ${supertrendExecuted}/${supertrendDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;
