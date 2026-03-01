@@ -92,7 +92,6 @@ function computeSupertrend(
   const n = closes.length;
   if (n < period + 1) return null;
 
-  // Compute ATR using simple rolling average of true range
   const trueRanges: number[] = [0];
   for (let i = 1; i < n; i++) {
     const tr = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
@@ -100,7 +99,6 @@ function computeSupertrend(
   }
 
   const atr: number[] = new Array(n).fill(0);
-  // Initial ATR as simple average for first period
   let sumTr = 0;
   for (let i = 1; i <= period; i++) sumTr += trueRanges[i];
   atr[period] = sumTr / period;
@@ -131,12 +129,9 @@ function computeSupertrend(
     finalUpperBand = basicUpper < prevFinalUpper || prevClose > prevFinalUpper ? basicUpper : prevFinalUpper;
     finalLowerBand = basicLower > prevFinalLower || prevClose < prevFinalLower ? basicLower : prevFinalLower;
 
-    // Direction: bullish if price above lower band, bearish if price below upper band
     if (directions[i - 1]) {
-      // Was bullish: stays bullish unless price falls below lower band
       directions[i] = closes[i] >= finalLowerBand;
     } else {
-      // Was bearish: turns bullish only if price rises above upper band
       directions[i] = closes[i] > finalUpperBand;
     }
   }
@@ -183,8 +178,6 @@ export async function evaluateSupertrendPair(analysis: PairAnalysis): Promise<Qu
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // Flip up: prev bearish AND curr bullish, with daily uptrend
-  // Flip down: prev bullish AND curr bearish, with daily downtrend
   let direction: "long" | "short" | null = null;
   if (dailyUptrend && !prevBullish && currBullish) direction = "long";
   if (dailyDowntrend && prevBullish && !currBullish) direction = "short";

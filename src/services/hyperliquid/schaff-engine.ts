@@ -99,13 +99,11 @@ function computeStc(closes: number[], fast: number, slow: number, cycle: number)
   const fastEma = computeEma(closes, fast);
   const slowEma = computeEma(closes, slow);
 
-  // Align EMAs: slowEma is shorter; fastEma needs trimming to match
   const offset = fastEma.length - slowEma.length;
   const macdLine = slowEma.map((v, i) => fastEma[offset + i] - v);
 
   if (macdLine.length < cycle) return [];
 
-  // First stochastic over cycle period
   const stoch1: number[] = [];
   for (let i = cycle - 1; i < macdLine.length; i++) {
     const window = macdLine.slice(i - cycle + 1, i + 1);
@@ -117,12 +115,10 @@ function computeStc(closes: number[], fast: number, slow: number, cycle: number)
 
   if (stoch1.length === 0) return [];
 
-  // Smooth stoch1 with EMA(cycle)
   const smoothed1 = computeEma(stoch1, cycle);
 
   if (smoothed1.length < cycle) return [];
 
-  // Second stochastic over cycle period on smoothed1
   const stoch2: number[] = [];
   for (let i = cycle - 1; i < smoothed1.length; i++) {
     const window = smoothed1.slice(i - cycle + 1, i + 1);
@@ -134,7 +130,6 @@ function computeStc(closes: number[], fast: number, slow: number, cycle: number)
 
   if (stoch2.length === 0) return [];
 
-  // Final STC: smooth stoch2 with EMA(cycle), clamp 0-100
   const stcRaw = computeEma(stoch2, cycle);
   return stcRaw.map((v) => Math.min(100, Math.max(0, v)));
 }
@@ -170,8 +165,6 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // STC crosses above threshold from below: bullish
-  // STC crosses below (100 - threshold) from above: bearish
   let direction: "long" | "short" | null = null;
   if (dailyUptrend && prevSTC <= SCHAFF_STC_THRESHOLD && currSTC > SCHAFF_STC_THRESHOLD) direction = "long";
   if (dailyDowntrend && prevSTC >= (100 - SCHAFF_STC_THRESHOLD) && currSTC < (100 - SCHAFF_STC_THRESHOLD)) direction = "short";

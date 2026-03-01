@@ -146,8 +146,6 @@ export async function evaluateVortexPair(analysis: PairAnalysis): Promise<QuantA
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // V+ crosses above V-: bullish crossover
-  // V- crosses above V+: bearish crossover
   let direction: "long" | "short" | null = null;
   if (dailyUptrend && prevVortex.vPlus <= prevVortex.vMinus && currVortex.vPlus > currVortex.vMinus) direction = "long";
   if (dailyDowntrend && prevVortex.vMinus <= prevVortex.vPlus && currVortex.vMinus > currVortex.vPlus) direction = "short";
