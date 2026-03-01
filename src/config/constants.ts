@@ -36,11 +36,11 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 30; // Max concurrent positions (8 engines x ~3-4 active pairs each)
+export const QUANT_MAX_POSITIONS = 15; // Max concurrent positions (3 engines x ~3-5 active pairs each)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
+export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "ATOM", "APT", "WIF"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -86,29 +86,6 @@ export const DEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
 export const DEMA_CROSS_BASE_CONFIDENCE = 65;
 export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
-// CCI Trend Engine (optimal: +0.416%/day, Sharpe 6.08)
-export const CCI_TREND_DAILY_SMA_PERIOD = 50;
-export const CCI_TREND_DAILY_ADX_MIN = 15;
-export const CCI_TREND_PERIOD = 20;
-export const CCI_TREND_THRESHOLD = 100;
-export const CCI_TREND_STOP_ATR_MULT = 3;
-export const CCI_TREND_REWARD_RISK = 3;
-export const CCI_TREND_STAGNATION_BARS = 12; // 12 x 4h = 48h
-export const CCI_TREND_BASE_CONFIDENCE = 65;
-export const CCI_TREND_DAILY_LOOKBACK_DAYS = 120;
-
-// MTF Engine (optimal: +0.271%/day, Sharpe 4.39)
-export const MTF_DAILY_SMA_PERIOD = 70;
-export const MTF_DAILY_ADX_MIN = 14;
-export const MTF_RSI_PULLBACK_LOW = 35;
-export const MTF_RSI_PULLBACK_HIGH = 52;
-export const MTF_RSI_TURN_DELTA = 2;
-export const MTF_STOP_ATR_MULT = 2.0;
-export const MTF_REWARD_RISK_RATIO = 3.0;
-export const MTF_STAGNATION_BARS = 12; // 12 x 4h = 48h
-export const MTF_BASE_CONFIDENCE = 65;
-export const MTF_DAILY_LOOKBACK_DAYS = 120;
-
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   BTC: 0.02,   // 40x max
@@ -123,7 +100,6 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   OP: 0.01,
   SUI: 0.01,
   INJ: 0.01,
-  NEAR: 0.01,
   ATOM: 0.01,
   APT: 0.01,
   WIF: 0.01,

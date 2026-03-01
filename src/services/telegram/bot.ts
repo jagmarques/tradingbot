@@ -2432,10 +2432,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
   const aiStats = getQuantStats("ai-directional");
-  const mtfStats = getQuantStats("mtf-directional");
   const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
   const demaCrossStats = getQuantStats("dema-cross-directional");
-  const cciTrendStats = getQuantStats("cci-trend-directional");
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2460,10 +2458,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     for (const pos of openPositions) {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
-        pos.tradeType === "mtf-directional" ? "[T]" :
         pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
-        pos.tradeType === "dema-cross-directional" ? "[DX]" :
-        pos.tradeType === "cci-trend-directional" ? "[CI]" : "[AI]";
+        pos.tradeType === "dema-cross-directional" ? "[DX]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2497,8 +2493,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + mtfStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + cciTrendStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + mtfStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + cciTrendStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2516,10 +2512,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   text += `\n`;
-  text += sl("MTF", mtfStats, "mtf-directional");
   text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
   text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
-  text += sl("CciTrend", cciTrendStats, "cci-trend-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;

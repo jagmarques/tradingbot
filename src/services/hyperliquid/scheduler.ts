@@ -1,10 +1,8 @@
 import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
-import { runMtfDecisionEngine } from "./mtf-engine.js";
 import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
 import { runDemaCrossDecisionEngine } from "./dema-cross-engine.js";
-import { runCciTrendDecisionEngine } from "./cci-trend-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -38,19 +36,12 @@ export async function runDirectionalCycle(): Promise<void> {
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
-    const mtfDecisions = await runMtfDecisionEngine(analyses);
     const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
     const demaCrossDecisions = await runDemaCrossDecisionEngine(analyses);
-    const cciTrendDecisions = await runCciTrendDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)
-        .map(p => p.pair),
-    );
-    const mtfOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "mtf-directional")
         .map(p => p.pair),
     );
     const bbSqueezeOpenPairs = new Set(
@@ -61,11 +52,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const demaCrossOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "dema-cross-directional")
-        .map(p => p.pair),
-    );
-    const cciTrendOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "cci-trend-directional")
         .map(p => p.pair),
     );
 
@@ -110,46 +96,6 @@ export async function runDirectionalCycle(): Promise<void> {
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let mtfExecuted = 0;
-    for (const decision of mtfDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] MTF: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (mtfOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] MTF: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "mtf-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        mtfExecuted++;
-        mtfOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] MTF: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -234,48 +180,8 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    let cciTrendExecuted = 0;
-    for (const decision of cciTrendDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] CciTrend: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (cciTrendOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] CciTrend: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "cci-trend-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        cciTrendExecuted++;
-        cciTrendOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] CciTrend: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, MTF ${mtfExecuted}/${mtfDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, CciTrend ${cciTrendExecuted}/${cciTrendDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}`,
     );
   } finally {
     cycleRunning = false;
