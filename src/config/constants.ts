@@ -36,7 +36,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 100; // $100 paper trading
-export const QUANT_MAX_POSITIONS = 15; // Max concurrent positions (3 engines x ~3-5 active pairs each)
+export const QUANT_MAX_POSITIONS = 20; // Max concurrent positions (4 engines x ~3-5 active pairs each)
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
@@ -74,6 +74,17 @@ export const BB_SQUEEZE_REWARD_RISK = 4.0;
 export const BB_SQUEEZE_STAGNATION_BARS = 12; // 12 x 4h = 48h (backtest optimal)
 export const BB_SQUEEZE_BASE_CONFIDENCE = 65;
 export const BB_SQUEEZE_DAILY_LOOKBACK_DAYS = 120;
+
+// HMA Cross Engine (optimal: +0.384%/day, Sharpe 5.96)
+export const HMA_CROSS_DAILY_SMA_PERIOD = 100;
+export const HMA_CROSS_DAILY_ADX_MIN = 18;
+export const HMA_CROSS_FAST = 8;
+export const HMA_CROSS_SLOW = 34;
+export const HMA_CROSS_STOP_ATR_MULT = 3.0;
+export const HMA_CROSS_REWARD_RISK = 4.0;
+export const HMA_CROSS_STAGNATION_BARS = 6; // 6 x 4h = 24h
+export const HMA_CROSS_BASE_CONFIDENCE = 65;
+export const HMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
 // DEMA Cross Engine (optimal: +0.415%/day, Sharpe 5.77)
 export const DEMA_CROSS_DAILY_SMA_PERIOD = 100;
