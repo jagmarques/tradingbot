@@ -2509,9 +2509,9 @@ async function handleQuant(ctx: Context): Promise<void> {
     const ret = `${s.totalPnl >= 0 ? "+" : "-"}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const openCnt = openCountByType.get(typeKey) ?? 0;
-    const openStr = openCnt > 0 ? ` (${openCnt}o)` : "";
-    const unr = unrealizedByType.get(typeKey);
-    const unrStr = unr !== undefined && unr !== 0 ? ` | unr ${fmtUnr(unr)}` : "";
+    const openStr = ` (${openCnt}o)`;
+    const unr = unrealizedByType.get(typeKey) ?? 0;
+    const unrStr = ` | unr ${fmtUnr(unr)}`;
     return `${label}: ${ret} ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
   };
 
@@ -2522,7 +2522,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("CciTrend", cciTrendStats, "cci-trend-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
-  const totalUnrStr = totalUnr !== 0 ? ` | unr ${fmtUnr(totalUnr)}` : "";
+  const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
   text += `Total: ${fmtTotal} ${totalTrades}T${totalUnrStr}\n`;
 
   const validation = getQuantValidationMetrics();
