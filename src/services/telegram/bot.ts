@@ -2432,10 +2432,11 @@ async function handleQuant(ctx: Context): Promise<void> {
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
   const aiStats = getQuantStats("ai-directional");
-  const bbSqueezeStats = getQuantStats("bb-squeeze-directional");
-  const demaCrossStats = getQuantStats("dema-cross-directional");
-  const hmaStats = getQuantStats("hma-directional");
-  const temaStats = getQuantStats("tema-directional");
+  const psarStats = getQuantStats("psar-directional");
+  const zlemaStats = getQuantStats("zlema-directional");
+  const macdCrossStats = getQuantStats("macd-cross-directional");
+  const trixStats = getQuantStats("trix-directional");
+  const elderStats = getQuantStats("elder-impulse-directional");
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2460,10 +2461,11 @@ async function handleQuant(ctx: Context): Promise<void> {
     for (const pos of openPositions) {
       const dir = pos.direction === "long" ? "L" : "S";
       const typeTag =
-        pos.tradeType === "bb-squeeze-directional" ? "[BS]" :
-        pos.tradeType === "dema-cross-directional" ? "[DX]" :
-        pos.tradeType === "hma-directional" ? "[HM]" :
-        pos.tradeType === "tema-directional" ? "[TM]" : "[AI]";
+        pos.tradeType === "psar-directional" ? "[PS]" :
+        pos.tradeType === "zlema-directional" ? "[ZL]" :
+        pos.tradeType === "macd-cross-directional" ? "[MC]" :
+        pos.tradeType === "trix-directional" ? "[TX]" :
+        pos.tradeType === "elder-impulse-directional" ? "[EI]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2497,8 +2499,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + bbSqueezeStats.totalPnl + demaCrossStats.totalPnl + hmaStats.totalPnl + temaStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + bbSqueezeStats.totalTrades + demaCrossStats.totalTrades + hmaStats.totalTrades + temaStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + macdCrossStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + macdCrossStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2516,10 +2518,11 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   text += `\n`;
-  text += sl("BBSqueeze", bbSqueezeStats, "bb-squeeze-directional");
-  text += sl("DemaCross", demaCrossStats, "dema-cross-directional");
-  text += sl("HMA", hmaStats, "hma-directional");
-  text += sl("TEMA", temaStats, "tema-directional");
+  text += sl("PSAR", psarStats, "psar-directional");
+  text += sl("ZLEMA", zlemaStats, "zlema-directional");
+  text += sl("MACDx", macdCrossStats, "macd-cross-directional");
+  text += sl("TRIX", trixStats, "trix-directional");
+  text += sl("Elder", elderStats, "elder-impulse-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;

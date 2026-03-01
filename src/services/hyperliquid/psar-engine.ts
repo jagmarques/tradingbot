@@ -1,17 +1,15 @@
-import { BollingerBands } from "technicalindicators";
+import { PSAR } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  BB_SQUEEZE_DAILY_SMA_PERIOD,
-  BB_SQUEEZE_DAILY_ADX_MIN,
-  BB_SQUEEZE_BB_PERIOD,
-  BB_SQUEEZE_BB_STDDEV,
-  BB_SQUEEZE_WINDOW,
-  BB_SQUEEZE_THRESH,
-  BB_SQUEEZE_STOP_ATR_MULT,
-  BB_SQUEEZE_REWARD_RISK,
-  BB_SQUEEZE_BASE_CONFIDENCE,
-  BB_SQUEEZE_DAILY_LOOKBACK_DAYS,
+  PSAR_DAILY_SMA_PERIOD,
+  PSAR_DAILY_ADX_MIN,
+  PSAR_STEP,
+  PSAR_MAX,
+  PSAR_STOP_ATR_MULT,
+  PSAR_REWARD_RISK,
+  PSAR_BASE_CONFIDENCE,
+  PSAR_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -34,7 +32,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - BB_SQUEEZE_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - PSAR_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -50,7 +48,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[BbSqueezeEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[PsarEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -81,61 +79,60 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-export async function evaluateBbSqueezePair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < BB_SQUEEZE_BB_PERIOD + BB_SQUEEZE_WINDOW + 5) return null;
+  if (!candles4h || candles4h.length < 30) return null;
 
+  const highs4h = candles4h.map((c) => c.high);
+  const lows4h = candles4h.map((c) => c.low);
   const closes4h = candles4h.map((c) => c.close);
+  const n = closes4h.length;
 
-  const bbResults = BollingerBands.calculate({ values: closes4h, period: BB_SQUEEZE_BB_PERIOD, stdDev: BB_SQUEEZE_BB_STDDEV });
-  if (bbResults.length < BB_SQUEEZE_WINDOW + 2) return null;
+  const psarValues = PSAR.calculate({ high: highs4h, low: lows4h, step: PSAR_STEP, max: PSAR_MAX });
+  const psarStartIdx = n - psarValues.length;
 
-  const recentBbs = bbResults.slice(-(BB_SQUEEZE_WINDOW + 1));
-  const widths = recentBbs.map((b) => (b.middle > 0 ? (b.upper - b.lower) / b.middle : 0));
+  const currIdx = n - 1;
+  const prevIdx = n - 2;
+  if (currIdx - psarStartIdx < 1 || prevIdx - psarStartIdx < 0) return null;
 
-  const prevWidth = widths[widths.length - 2];
-  const currBb = recentBbs[recentBbs.length - 1];
+  const currSar = psarValues[currIdx - psarStartIdx];
+  const prevSar = psarValues[prevIdx - psarStartIdx];
+  const currClose = closes4h[currIdx];
+  const prevClose = closes4h[prevIdx];
 
-  // Percentile squeeze threshold from last WINDOW bars (excluding current)
-  const histWidths = [...widths.slice(0, -1)].sort((a, b) => a - b);
-  const threshIdx = Math.floor(histWidths.length * BB_SQUEEZE_THRESH);
-  const squeezeThreshold = histWidths[threshIdx] ?? 0;
-
-  if (prevWidth > squeezeThreshold) return null;
-
-  const currClose = candles4h[candles4h.length - 1].close;
-  let direction: "long" | "short" | null = null;
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < BB_SQUEEZE_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < PSAR_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, BB_SQUEEZE_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, PSAR_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < BB_SQUEEZE_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < PSAR_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  if (dailyUptrend && currClose > currBb.upper) direction = "long";
-  if (dailyDowntrend && currClose < currBb.lower) direction = "short";
+  // SAR flip: prev bar SAR above prev close AND curr bar SAR below curr close -> long
+  let direction: "long" | "short" | null = null;
+  if (dailyUptrend && prevSar > prevClose && currSar < currClose) direction = "long";
+  if (dailyDowntrend && prevSar < prevClose && currSar > currClose) direction = "short";
 
   if (direction === null) return null;
 
   const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
-  const stopDistance = atr * BB_SQUEEZE_STOP_ATR_MULT;
-  const tpDistance = stopDistance * BB_SQUEEZE_REWARD_RISK;
+  const stopDistance = atr * PSAR_STOP_ATR_MULT;
+  const tpDistance = stopDistance * PSAR_REWARD_RISK;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  let confidence = BB_SQUEEZE_BASE_CONFIDENCE;
+  let confidence = PSAR_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -144,8 +141,9 @@ export async function evaluateBbSqueezePair(analysis: PairAnalysis): Promise<Qua
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const squeezeWidthPct = (prevWidth * 100).toFixed(2);
-  const reasoning = `BBSqueeze: volatility squeeze (width ${squeezeWidthPct}% < ${(squeezeThreshold * 100).toFixed(2)}%), price breaks ${direction === "long" ? "above" : "below"} band, daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${BB_SQUEEZE_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const sarPos = direction === "long" ? "below" : "above";
+  const trend = direction === "long" ? "uptrend" : "downtrend";
+  const reasoning = `Psar: SAR flipped ${sarPos} close, daily ${trend} (${smaDev}% vs SMA${PSAR_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
@@ -161,24 +159,24 @@ export async function evaluateBbSqueezePair(analysis: PairAnalysis): Promise<Qua
   };
 }
 
-export async function runBbSqueezeDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runPsarDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateBbSqueezePair(analysis);
+      const decision = await evaluatePsarPair(analysis);
       if (decision) {
         console.log(
-          `[BbSqueezeEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[PsarEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[BbSqueezeEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[PsarEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[BbSqueezeEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[PsarEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }

@@ -244,7 +244,7 @@ export async function notifyQuantTradeEntry(params: {
 }): Promise<void> {
   const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "bb-squeeze-directional" ? "BBSqueeze" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "dema-cross-directional" ? "DemaCross" : params.tradeType === "cci-trend-directional" ? "CciTrend" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "cci-trend-directional" ? "CciTrend" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "macd-cross-directional" ? "MACDx" : params.tradeType === "trix-directional" ? "TRIX" : params.tradeType === "elder-impulse-directional" ? "Elder" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -272,7 +272,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "bb-squeeze-directional" ? "BBSqueeze" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "dema-cross-directional" ? "DemaCross" : params.tradeType === "cci-trend-directional" ? "CciTrend" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "cci-trend-directional" ? "CciTrend" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "macd-cross-directional" ? "MACDx" : params.tradeType === "trix-directional" ? "TRIX" : params.tradeType === "elder-impulse-directional" ? "Elder" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +

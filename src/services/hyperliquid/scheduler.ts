@@ -1,10 +1,11 @@
 import { analyzeWithAI } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
-import { runBbSqueezeDecisionEngine } from "./bb-squeeze-engine.js";
-import { runDemaCrossDecisionEngine } from "./dema-cross-engine.js";
-import { runHmaDecisionEngine } from "./hma-engine.js";
-import { runTemaDecisionEngine } from "./tema-engine.js";
+import { runPsarDecisionEngine } from "./psar-engine.js";
+import { runZlemaDecisionEngine } from "./zlema-engine.js";
+import { runMacdCrossDecisionEngine } from "./macd-cross-engine.js";
+import { runTrixDecisionEngine } from "./trix-engine.js";
+import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -38,34 +39,40 @@ export async function runDirectionalCycle(): Promise<void> {
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
-    const bbSqueezeDecisions = await runBbSqueezeDecisionEngine(analyses);
-    const demaCrossDecisions = await runDemaCrossDecisionEngine(analyses);
-    const hmaDecisions = await runHmaDecisionEngine(analyses);
-    const temaDecisions = await runTemaDecisionEngine(analyses);
+    const psarDecisions = await runPsarDecisionEngine(analyses);
+    const zlemaDecisions = await runZlemaDecisionEngine(analyses);
+    const macdCrossDecisions = await runMacdCrossDecisionEngine(analyses);
+    const trixDecisions = await runTrixDecisionEngine(analyses);
+    const elderDecisions = await runElderImpulseDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "directional" || p.tradeType === "ai-directional" || !p.tradeType)
         .map(p => p.pair),
     );
-    const bbSqueezeOpenPairs = new Set(
+    const psarOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "bb-squeeze-directional")
+        .filter(p => p.tradeType === "psar-directional")
         .map(p => p.pair),
     );
-    const demaCrossOpenPairs = new Set(
+    const zlemaOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "dema-cross-directional")
+        .filter(p => p.tradeType === "zlema-directional")
         .map(p => p.pair),
     );
-    const hmaOpenPairs = new Set(
+    const macdCrossOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "hma-directional")
+        .filter(p => p.tradeType === "macd-cross-directional")
         .map(p => p.pair),
     );
-    const temaOpenPairs = new Set(
+    const trixOpenPairs = new Set(
       getOpenQuantPositions()
-        .filter(p => p.tradeType === "tema-directional")
+        .filter(p => p.tradeType === "trix-directional")
+        .map(p => p.pair),
+    );
+    const elderOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "elder-impulse-directional")
         .map(p => p.pair),
     );
 
@@ -114,18 +121,18 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    let bbSqueezeExecuted = 0;
-    for (const decision of bbSqueezeDecisions) {
+    let psarExecuted = 0;
+    for (const decision of psarDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
       if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] BBSqueeze: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
 
-      if (bbSqueezeOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] BBSqueeze: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (psarOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -139,33 +146,33 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "bb-squeeze-directional",
+        "psar-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        bbSqueezeExecuted++;
-        bbSqueezeOpenPairs.add(decision.pair);
+        psarExecuted++;
+        psarOpenPairs.add(decision.pair);
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
-          `[QuantScheduler] BBSqueeze: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] PSAR: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
-    let demaCrossExecuted = 0;
-    for (const decision of demaCrossDecisions) {
+    let zlemaExecuted = 0;
+    for (const decision of zlemaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
       if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] DemaCross: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
 
-      if (demaCrossOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] DemaCross: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (zlemaOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -179,33 +186,33 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "dema-cross-directional",
+        "zlema-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        demaCrossExecuted++;
-        demaCrossOpenPairs.add(decision.pair);
+        zlemaExecuted++;
+        zlemaOpenPairs.add(decision.pair);
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
-          `[QuantScheduler] DemaCross: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
-    let hmaExecuted = 0;
-    for (const decision of hmaDecisions) {
+    let macdCrossExecuted = 0;
+    for (const decision of macdCrossDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
       if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        console.log(`[QuantScheduler] MACDCross: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
 
-      if (hmaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (macdCrossOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] MACDCross: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -219,33 +226,33 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "hma-directional",
+        "macd-cross-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        hmaExecuted++;
-        hmaOpenPairs.add(decision.pair);
+        macdCrossExecuted++;
+        macdCrossOpenPairs.add(decision.pair);
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
-          `[QuantScheduler] HMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] MACDCross: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
-    let temaExecuted = 0;
-    for (const decision of temaDecisions) {
+    let trixExecuted = 0;
+    for (const decision of trixDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
       if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
 
-      if (temaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+      if (trixOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
 
@@ -259,23 +266,63 @@ export async function runDirectionalCycle(): Promise<void> {
         decision.regime,
         decision.confidence,
         decision.reasoning,
-        "tema-directional",
+        "trix-directional",
         undefined,
         decision.entryPrice,
       );
 
       if (position) {
-        temaExecuted++;
-        temaOpenPairs.add(decision.pair);
+        trixExecuted++;
+        trixOpenPairs.add(decision.pair);
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
-          `[QuantScheduler] TEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+          `[QuantScheduler] TRIX: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let elderExecuted = 0;
+    for (const decision of elderDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (elderOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "elder-impulse-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        elderExecuted++;
+        elderOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] Elder: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, BBSqueeze ${bbSqueezeExecuted}/${bbSqueezeDecisions.length}, DemaCross ${demaCrossExecuted}/${demaCrossDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

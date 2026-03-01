@@ -1,14 +1,15 @@
+import { EMA } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  HMA_CROSS_DAILY_SMA_PERIOD,
-  HMA_CROSS_DAILY_ADX_MIN,
-  HMA_CROSS_FAST,
-  HMA_CROSS_SLOW,
-  HMA_CROSS_STOP_ATR_MULT,
-  HMA_CROSS_REWARD_RISK,
-  HMA_CROSS_BASE_CONFIDENCE,
-  HMA_CROSS_DAILY_LOOKBACK_DAYS,
+  ZLEMA_DAILY_SMA_PERIOD,
+  ZLEMA_DAILY_ADX_MIN,
+  ZLEMA_FAST,
+  ZLEMA_SLOW,
+  ZLEMA_STOP_ATR_MULT,
+  ZLEMA_REWARD_RISK,
+  ZLEMA_BASE_CONFIDENCE,
+  ZLEMA_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -31,7 +32,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - HMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - ZLEMA_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -47,7 +48,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HmaEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[ZlemaEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -78,76 +79,52 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-function computeWMA(values: number[], period: number): (number | null)[] {
-  const n = values.length;
+// ZLEMA: lag-corrected EMA (reduces lag vs standard EMA)
+function computeZLEMA(closes: number[], period: number): (number | null)[] {
+  const n = closes.length;
+  const lagOffset = Math.floor((period - 1) / 2);
+  const corrected: number[] = [];
+  for (let i = lagOffset; i < n; i++) {
+    corrected.push(closes[i] + (closes[i] - closes[i - lagOffset]));
+  }
+  const emaValues = EMA.calculate({ values: corrected, period });
   const result: (number | null)[] = new Array(n).fill(null);
-  const weightSum = (period * (period + 1)) / 2;
-  for (let i = period - 1; i < n; i++) {
-    let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += values[i - period + 1 + j] * (j + 1);
-    }
-    result[i] = sum / weightSum;
+  // emaValues starts at index (period-1) within corrected, which maps to lagOffset + (period-1) in original
+  const emaStartOrigIdx = lagOffset + (period - 1);
+  for (let i = 0; i < emaValues.length; i++) {
+    const origIdx = emaStartOrigIdx + i;
+    if (origIdx < n) result[origIdx] = emaValues[i];
   }
   return result;
 }
 
-function computeHMA(closes: number[], period: number): (number | null)[] {
-  const halfPeriod = Math.max(2, Math.floor(period / 2));
-  const sqrtPeriod = Math.max(2, Math.round(Math.sqrt(period)));
-
-  const wmaHalf = computeWMA(closes, halfPeriod);
-  const wmaFull = computeWMA(closes, period);
-
-  // 2*WMA(n/2) - WMA(n)
-  const diffStartIdx = period - 1;
-  const diff: number[] = [];
-  for (let i = diffStartIdx; i < closes.length; i++) {
-    const h = wmaHalf[i];
-    const f = wmaFull[i];
-    if (h === null || f === null) { diff.push(0); continue; }
-    diff.push(2 * h - f);
-  }
-
-  // WMA(sqrt(n)) on diff series
-  const hmaOnDiff = computeWMA(diff, sqrtPeriod);
-
-  // Map back to original index space
-  const result: (number | null)[] = new Array(closes.length).fill(null);
-  for (let i = 0; i < hmaOnDiff.length; i++) {
-    const origIdx = diffStartIdx + i;
-    if (origIdx < closes.length) result[origIdx] = hmaOnDiff[i];
-  }
-  return result;
-}
-
-export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < HMA_CROSS_SLOW * 2 + 2) return null;
+  if (!candles4h || candles4h.length < ZLEMA_SLOW * 2 + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
   const n = closes4h.length;
-  const fastArr = computeHMA(closes4h, HMA_CROSS_FAST);
-  const slowArr = computeHMA(closes4h, HMA_CROSS_SLOW);
+  const fastArr = computeZLEMA(closes4h, ZLEMA_FAST);
+  const slowArr = computeZLEMA(closes4h, ZLEMA_SLOW);
 
   const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
   const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
   if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < HMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < ZLEMA_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, HMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, ZLEMA_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < HMA_CROSS_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < ZLEMA_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
@@ -160,12 +137,12 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   if (direction === null) return null;
 
   const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
-  const stopDistance = atr * HMA_CROSS_STOP_ATR_MULT;
-  const tpDistance = stopDistance * HMA_CROSS_REWARD_RISK;
+  const stopDistance = atr * ZLEMA_STOP_ATR_MULT;
+  const tpDistance = stopDistance * ZLEMA_REWARD_RISK;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  let confidence = HMA_CROSS_BASE_CONFIDENCE;
+  let confidence = ZLEMA_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -174,7 +151,9 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const reasoning = `HmaCross: HMA(${HMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} HMA(${HMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${HMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const crossDir = direction === "long" ? "above" : "below";
+  const trend = direction === "long" ? "uptrend" : "downtrend";
+  const reasoning = `ZlemaCross: ZLEMA(${ZLEMA_FAST}) crossed ${crossDir} ZLEMA(${ZLEMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${ZLEMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
@@ -190,24 +169,24 @@ export async function evaluateHmaCrossPair(analysis: PairAnalysis): Promise<Quan
   };
 }
 
-export async function runHmaDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runZlemaDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateHmaCrossPair(analysis);
+      const decision = await evaluateZlemaPair(analysis);
       if (decision) {
         console.log(
-          `[HmaEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[ZlemaEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[HmaEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[ZlemaEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[HmaEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[ZlemaEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }

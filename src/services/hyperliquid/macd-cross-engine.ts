@@ -1,15 +1,16 @@
-import { EMA } from "technicalindicators";
+import { MACD } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  TEMA_CROSS_DAILY_SMA_PERIOD,
-  TEMA_CROSS_DAILY_ADX_MIN,
-  TEMA_CROSS_FAST,
-  TEMA_CROSS_SLOW,
-  TEMA_CROSS_STOP_ATR_MULT,
-  TEMA_CROSS_REWARD_RISK,
-  TEMA_CROSS_BASE_CONFIDENCE,
-  TEMA_CROSS_DAILY_LOOKBACK_DAYS,
+  MACD_CROSS_FAST,
+  MACD_CROSS_SLOW,
+  MACD_CROSS_SIGNAL,
+  MACD_CROSS_DAILY_SMA_PERIOD,
+  MACD_CROSS_DAILY_ADX_MIN,
+  MACD_CROSS_STOP_ATR_MULT,
+  MACD_CROSS_REWARD_RISK,
+  MACD_CROSS_BASE_CONFIDENCE,
+  MACD_CROSS_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -32,7 +33,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - TEMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - MACD_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -48,7 +49,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[TemaEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[MacdCrossEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -79,67 +80,67 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-// TEMA = 3*EMA1 - 3*EMA2 + EMA3 (triple EMA, less lag than DEMA)
-function computeTEMA(closes: number[], period: number): (number | null)[] {
-  const n = closes.length;
-  const ema1Raw = EMA.calculate({ values: closes, period });
-  const ema2Raw = EMA.calculate({ values: ema1Raw, period });
-  const ema3Raw = EMA.calculate({ values: ema2Raw, period });
-  const result: (number | null)[] = new Array(n).fill(null);
-  ema3Raw.forEach((e3, i) => {
-    const e2Idx = i + (period - 1);
-    const e1Idx = e2Idx + (period - 1);
-    const closesIdx = e1Idx + (period - 1);
-    if (closesIdx < n) result[closesIdx] = 3 * ema1Raw[e1Idx] - 3 * ema2Raw[e2Idx] + e3;
-  });
-  return result;
-}
-
-export async function evaluateTemaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+export async function evaluateMacdCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < TEMA_CROSS_SLOW * 3 + 2) return null;
+  if (!candles4h || candles4h.length < MACD_CROSS_SLOW + MACD_CROSS_SIGNAL + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
   const n = closes4h.length;
-  const fastArr = computeTEMA(closes4h, TEMA_CROSS_FAST);
-  const slowArr = computeTEMA(closes4h, TEMA_CROSS_SLOW);
 
-  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
-  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
-  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
+  const macdResult = MACD.calculate({
+    values: closes4h,
+    fastPeriod: MACD_CROSS_FAST,
+    slowPeriod: MACD_CROSS_SLOW,
+    signalPeriod: MACD_CROSS_SIGNAL,
+    SimpleMAOscillator: false,
+    SimpleMASignal: false,
+  });
+
+  const macdStartIdx = n - macdResult.length;
+  const currMacdIdx = n - 1;
+  const prevMacdIdx = n - 2;
+  const cI = currMacdIdx - macdStartIdx;
+  const pI = prevMacdIdx - macdStartIdx;
+  if (cI < 0 || pI < 0) return null;
+
+  const currMacd = macdResult[cI].MACD;
+  const currSignal = macdResult[cI].signal;
+  const prevMacd = macdResult[pI].MACD;
+  const prevSignal = macdResult[pI].signal;
+  if (currMacd == null || currSignal == null || prevMacd == null || prevSignal == null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < TEMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < MACD_CROSS_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, TEMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, MACD_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < TEMA_CROSS_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < MACD_CROSS_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
+  if (dailyUptrend && prevMacd <= prevSignal && currMacd > currSignal) direction = "long";
+  if (dailyDowntrend && prevMacd >= prevSignal && currMacd < currSignal) direction = "short";
 
   if (direction === null) return null;
 
   const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
-  const stopDistance = atr * TEMA_CROSS_STOP_ATR_MULT;
-  const tpDistance = stopDistance * TEMA_CROSS_REWARD_RISK;
+  const stopDistance = atr * MACD_CROSS_STOP_ATR_MULT;
+  const tpDistance = stopDistance * MACD_CROSS_REWARD_RISK;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  let confidence = TEMA_CROSS_BASE_CONFIDENCE;
+  let confidence = MACD_CROSS_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -148,7 +149,9 @@ export async function evaluateTemaCrossPair(analysis: PairAnalysis): Promise<Qua
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const reasoning = `TemaCross: TEMA(${TEMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} TEMA(${TEMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${TEMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const crossDir = direction === "long" ? "above" : "below";
+  const trend = direction === "long" ? "uptrend" : "downtrend";
+  const reasoning = `MacdCross: MACD(${MACD_CROSS_FAST}/${MACD_CROSS_SLOW}) crossed ${crossDir} signal(${MACD_CROSS_SIGNAL}), daily ${trend} (${smaDev}% vs SMA${MACD_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
@@ -164,24 +167,24 @@ export async function evaluateTemaCrossPair(analysis: PairAnalysis): Promise<Qua
   };
 }
 
-export async function runTemaDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runMacdCrossDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateTemaCrossPair(analysis);
+      const decision = await evaluateMacdCrossPair(analysis);
       if (decision) {
         console.log(
-          `[TemaEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[MacdCrossEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[TemaEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[MacdCrossEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[TemaEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[MacdCrossEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }

@@ -2,14 +2,14 @@ import { EMA } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
 import {
-  DEMA_CROSS_DAILY_SMA_PERIOD,
-  DEMA_CROSS_DAILY_ADX_MIN,
-  DEMA_CROSS_FAST,
-  DEMA_CROSS_SLOW,
-  DEMA_CROSS_STOP_ATR_MULT,
-  DEMA_CROSS_REWARD_RISK,
-  DEMA_CROSS_BASE_CONFIDENCE,
-  DEMA_CROSS_DAILY_LOOKBACK_DAYS,
+  TRIX_PERIOD,
+  TRIX_SIGNAL,
+  TRIX_DAILY_SMA_PERIOD,
+  TRIX_DAILY_ADX_MIN,
+  TRIX_STOP_ATR_MULT,
+  TRIX_REWARD_RISK,
+  TRIX_BASE_CONFIDENCE,
+  TRIX_DAILY_LOOKBACK_DAYS,
 } from "../../config/constants.js";
 
 interface DailyCandle {
@@ -32,7 +32,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 
   const endTime = Date.now();
-  const startTime = endTime - DEMA_CROSS_DAILY_LOOKBACK_DAYS * 86400_000;
+  const startTime = endTime - TRIX_DAILY_LOOKBACK_DAYS * 86400_000;
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -48,7 +48,7 @@ async function fetchDailyCandles(pair: string): Promise<DailyCandle[]> {
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[DemaCrossEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
+    console.error(`[TrixEngine] Failed to fetch daily candles for ${pair}: ${msg}`);
     return cached?.candles ?? [];
   }
 }
@@ -79,64 +79,84 @@ function computeDailyAdx(candles: DailyCandle[], idx: number, period: number): n
   return (Math.abs(plusDi - minusDi) / diSum) * 100;
 }
 
-function computeDEMA(closes: number[], period: number): (number | null)[] {
+// TRIX: ROC% of triple-smoothed EMA, mapped back to original index space
+function computeTRIX(closes: number[], period: number): (number | null)[] {
   const n = closes.length;
-  const ema1Raw = EMA.calculate({ values: closes, period });
-  const ema2Raw = EMA.calculate({ values: ema1Raw, period });
+  const ema1 = EMA.calculate({ values: closes, period });
+  const ema2 = EMA.calculate({ values: ema1, period });
+  const ema3 = EMA.calculate({ values: ema2, period });
+
+  // ema3 starts at index (period-1)*3 in original closes space
+  const ema3StartIdx = (period - 1) * 3;
   const result: (number | null)[] = new Array(n).fill(null);
-  ema2Raw.forEach((e2, i) => {
-    const e1Idx = i + (period - 1);
-    const closesIdx = e1Idx + (period - 1);
-    if (closesIdx < n) result[closesIdx] = 2 * ema1Raw[e1Idx] - e2;
-  });
+  for (let i = 1; i < ema3.length; i++) {
+    const origIdx = ema3StartIdx + i;
+    if (origIdx < n && ema3[i - 1] !== 0) {
+      result[origIdx] = ((ema3[i] - ema3[i - 1]) / ema3[i - 1]) * 100;
+    }
+  }
   return result;
 }
 
-export async function evaluateDemaCrossPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+// Simple SMA of non-null TRIX values over a sliding window
+function computeTRIXSignal(trixValues: (number | null)[], signalPeriod: number): (number | null)[] {
+  const n = trixValues.length;
+  const result: (number | null)[] = new Array(n).fill(null);
+  for (let i = signalPeriod - 1; i < n; i++) {
+    const slice = trixValues.slice(i - signalPeriod + 1, i + 1);
+    const valid = slice.filter((v): v is number => v !== null);
+    if (valid.length === signalPeriod) {
+      result[i] = valid.reduce((s, v) => s + v, 0) / signalPeriod;
+    }
+  }
+  return result;
+}
+
+export async function evaluateTrixPair(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < DEMA_CROSS_SLOW * 2 + 2) return null;
+  if (!candles4h || candles4h.length < TRIX_PERIOD * 3 + TRIX_SIGNAL + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
   const n = closes4h.length;
-  const fastArr = computeDEMA(closes4h, DEMA_CROSS_FAST);
-  const slowArr = computeDEMA(closes4h, DEMA_CROSS_SLOW);
+  const trixArr = computeTRIX(closes4h, TRIX_PERIOD);
+  const signalArr = computeTRIXSignal(trixArr, TRIX_SIGNAL);
 
-  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
-  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
-  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
+  const currTrix = trixArr[n - 1], prevTrix = trixArr[n - 2];
+  const currSig = signalArr[n - 1], prevSig = signalArr[n - 2];
+  if (currTrix === null || prevTrix === null || currSig === null || prevSig === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair);
-  if (dailyCandles.length < DEMA_CROSS_DAILY_SMA_PERIOD + 2) return null;
+  if (dailyCandles.length < TRIX_DAILY_SMA_PERIOD + 2) return null;
 
   const dLen = dailyCandles.length;
   const dailyCloses = dailyCandles.map((c) => c.close);
   const lastDailyIdx = dLen - 1;
 
-  const dailySma = computeDailySma(dailyCloses, DEMA_CROSS_DAILY_SMA_PERIOD, lastDailyIdx);
+  const dailySma = computeDailySma(dailyCloses, TRIX_DAILY_SMA_PERIOD, lastDailyIdx);
   if (dailySma === null) return null;
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
-  if (dailyAdx === null || dailyAdx < DEMA_CROSS_DAILY_ADX_MIN) return null;
+  if (dailyAdx === null || dailyAdx < TRIX_DAILY_ADX_MIN) return null;
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
+  if (dailyUptrend && prevTrix <= prevSig && currTrix > currSig) direction = "long";
+  if (dailyDowntrend && prevTrix >= prevSig && currTrix < currSig) direction = "short";
 
   if (direction === null) return null;
 
   const atr = analysis.indicators["4h"].atr ?? markPrice * 0.02;
-  const stopDistance = atr * DEMA_CROSS_STOP_ATR_MULT;
-  const tpDistance = stopDistance * DEMA_CROSS_REWARD_RISK;
+  const stopDistance = atr * TRIX_STOP_ATR_MULT;
+  const tpDistance = stopDistance * TRIX_REWARD_RISK;
   const stopLoss = direction === "long" ? markPrice - stopDistance : markPrice + stopDistance;
   const takeProfit = direction === "long" ? markPrice + tpDistance : markPrice - tpDistance;
 
-  let confidence = DEMA_CROSS_BASE_CONFIDENCE;
+  let confidence = TRIX_BASE_CONFIDENCE;
   if (dailyAdx > 30) confidence += 10;
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
@@ -145,7 +165,9 @@ export async function evaluateDemaCrossPair(analysis: PairAnalysis): Promise<Qua
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const reasoning = `DemaCross: DEMA(${DEMA_CROSS_FAST}) crossed ${direction === "long" ? "above" : "below"} DEMA(${DEMA_CROSS_SLOW}), daily ${direction === "long" ? "uptrend" : "downtrend"} (${smaDev}% vs SMA${DEMA_CROSS_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const crossDir = direction === "long" ? "above" : "below";
+  const trend = direction === "long" ? "uptrend" : "downtrend";
+  const reasoning = `Trix: TRIX(${TRIX_PERIOD}) crossed ${crossDir} signal(${TRIX_SIGNAL}), daily ${trend} (${smaDev}% vs SMA${TRIX_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
@@ -161,24 +183,24 @@ export async function evaluateDemaCrossPair(analysis: PairAnalysis): Promise<Qua
   };
 }
 
-export async function runDemaCrossDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
+export async function runTrixDecisionEngine(analyses: PairAnalysis[]): Promise<QuantAIDecision[]> {
   const decisions: QuantAIDecision[] = [];
 
   for (const analysis of analyses) {
     try {
-      const decision = await evaluateDemaCrossPair(analysis);
+      const decision = await evaluateTrixPair(analysis);
       if (decision) {
         console.log(
-          `[DemaCrossEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
+          `[TrixEngine] ${analysis.pair}: direction=${decision.direction} confidence=${decision.confidence}% entry=${decision.entryPrice.toFixed(2)} stop=${decision.stopLoss.toFixed(2)} | ${decision.reasoning}`,
         );
         decisions.push(decision);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[DemaCrossEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
+      console.error(`[TrixEngine] Failed to evaluate ${analysis.pair}: ${msg}`);
     }
   }
 
-  console.log(`[DemaCrossEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
+  console.log(`[TrixEngine] Engine complete: ${decisions.length} actionable decisions from ${analyses.length} pairs`);
   return decisions;
 }

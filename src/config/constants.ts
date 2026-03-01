@@ -62,51 +62,63 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
-// BB Squeeze Engine
-export const BB_SQUEEZE_DAILY_SMA_PERIOD = 70;
-export const BB_SQUEEZE_DAILY_ADX_MIN = 15;
-export const BB_SQUEEZE_BB_PERIOD = 15;
-export const BB_SQUEEZE_BB_STDDEV = 1.5;
-export const BB_SQUEEZE_WINDOW = 50;
-export const BB_SQUEEZE_THRESH = 0.30;
-export const BB_SQUEEZE_STOP_ATR_MULT = 2.5;
-export const BB_SQUEEZE_REWARD_RISK = 4.0;
-export const BB_SQUEEZE_STAGNATION_BARS = 12; // 12 x 4h = 48h (backtest optimal)
-export const BB_SQUEEZE_BASE_CONFIDENCE = 65;
-export const BB_SQUEEZE_DAILY_LOOKBACK_DAYS = 120;
+// PSAR Engine
+export const PSAR_DAILY_SMA_PERIOD = 100;
+export const PSAR_DAILY_ADX_MIN = 10;
+export const PSAR_STEP = 0.04;
+export const PSAR_MAX = 0.15;
+export const PSAR_STOP_ATR_MULT = 4.0;
+export const PSAR_REWARD_RISK = 5.0;
+export const PSAR_STAGNATION_BARS = 16;
+export const PSAR_BASE_CONFIDENCE = 65;
+export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 
-// HMA Cross Engine (optimal: +0.384%/day, Sharpe 5.96)
-export const HMA_CROSS_DAILY_SMA_PERIOD = 100;
-export const HMA_CROSS_DAILY_ADX_MIN = 18;
-export const HMA_CROSS_FAST = 8;
-export const HMA_CROSS_SLOW = 34;
-export const HMA_CROSS_STOP_ATR_MULT = 3.0;
-export const HMA_CROSS_REWARD_RISK = 4.0;
-export const HMA_CROSS_STAGNATION_BARS = 6; // 6 x 4h = 24h
-export const HMA_CROSS_BASE_CONFIDENCE = 65;
-export const HMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
+// ZLEMA Cross Engine
+export const ZLEMA_DAILY_SMA_PERIOD = 100;
+export const ZLEMA_DAILY_ADX_MIN = 10;
+export const ZLEMA_FAST = 8;
+export const ZLEMA_SLOW = 21;
+export const ZLEMA_STOP_ATR_MULT = 3.0;
+export const ZLEMA_REWARD_RISK = 5.0;
+export const ZLEMA_STAGNATION_BARS = 16;
+export const ZLEMA_BASE_CONFIDENCE = 65;
+export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 
-// DEMA Cross Engine (optimal: +0.415%/day, Sharpe 5.77)
-export const DEMA_CROSS_DAILY_SMA_PERIOD = 100;
-export const DEMA_CROSS_DAILY_ADX_MIN = 18;
-export const DEMA_CROSS_FAST = 5;
-export const DEMA_CROSS_SLOW = 21;
-export const DEMA_CROSS_STOP_ATR_MULT = 2.5;
-export const DEMA_CROSS_REWARD_RISK = 2.5;
-export const DEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
-export const DEMA_CROSS_BASE_CONFIDENCE = 65;
-export const DEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
+// MACD Cross Engine
+export const MACD_CROSS_FAST = 5;
+export const MACD_CROSS_SLOW = 17;
+export const MACD_CROSS_SIGNAL = 9;
+export const MACD_CROSS_DAILY_SMA_PERIOD = 100;
+export const MACD_CROSS_DAILY_ADX_MIN = 10;
+export const MACD_CROSS_STOP_ATR_MULT = 3.0;
+export const MACD_CROSS_REWARD_RISK = 5.0;
+export const MACD_CROSS_STAGNATION_BARS = 9;
+export const MACD_CROSS_BASE_CONFIDENCE = 65;
+export const MACD_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
-// TEMA Cross Engine (optimal: +0.428%/day, Sharpe 5.78)
-export const TEMA_CROSS_DAILY_SMA_PERIOD = 100;
-export const TEMA_CROSS_DAILY_ADX_MIN = 18;
-export const TEMA_CROSS_FAST = 8;
-export const TEMA_CROSS_SLOW = 21;
-export const TEMA_CROSS_STOP_ATR_MULT = 2.5;
-export const TEMA_CROSS_REWARD_RISK = 3.5;
-export const TEMA_CROSS_STAGNATION_BARS = 12; // 12 x 4h = 48h
-export const TEMA_CROSS_BASE_CONFIDENCE = 65;
-export const TEMA_CROSS_DAILY_LOOKBACK_DAYS = 150;
+// TRIX Engine
+export const TRIX_PERIOD = 8;
+export const TRIX_SIGNAL = 3;
+export const TRIX_DAILY_SMA_PERIOD = 100;
+export const TRIX_DAILY_ADX_MIN = 10;
+export const TRIX_STOP_ATR_MULT = 4.0;
+export const TRIX_REWARD_RISK = 5.0;
+export const TRIX_STAGNATION_BARS = 24;
+export const TRIX_BASE_CONFIDENCE = 65;
+export const TRIX_DAILY_LOOKBACK_DAYS = 150;
+
+// Elder Impulse Engine
+export const ELDER_EMA_PERIOD = 21;
+export const ELDER_MACD_FAST = 12;
+export const ELDER_MACD_SLOW = 26;
+export const ELDER_MACD_SIGNAL = 9;
+export const ELDER_DAILY_SMA_PERIOD = 50;
+export const ELDER_DAILY_ADX_MIN = 10;
+export const ELDER_STOP_ATR_MULT = 2.5;
+export const ELDER_REWARD_RISK = 2.5;
+export const ELDER_STAGNATION_BARS = 12;
+export const ELDER_BASE_CONFIDENCE = 65;
+export const ELDER_DAILY_LOOKBACK_DAYS = 150;
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
