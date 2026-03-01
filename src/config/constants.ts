@@ -120,6 +120,40 @@ export const ELDER_STAGNATION_BARS = 12;
 export const ELDER_BASE_CONFIDENCE = 65;
 export const ELDER_DAILY_LOOKBACK_DAYS = 150;
 
+// Vortex Engine
+export const VORTEX_DAILY_SMA_PERIOD = 100;
+export const VORTEX_DAILY_ADX_MIN = 10;
+export const VORTEX_VORTEX_PERIOD = 7;
+export const VORTEX_STOP_ATR_MULT = 2.5;
+export const VORTEX_REWARD_RISK = 2.5;
+export const VORTEX_STAGNATION_BARS = 12;
+export const VORTEX_BASE_CONFIDENCE = 65;
+export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
+
+// Schaff Trend Cycle Engine
+export const SCHAFF_DAILY_SMA_PERIOD = 70;
+export const SCHAFF_DAILY_ADX_MIN = 10;
+export const SCHAFF_STC_FAST = 12;
+export const SCHAFF_STC_SLOW = 50;
+export const SCHAFF_STC_CYCLE = 10;
+export const SCHAFF_STC_THRESHOLD = 25;
+export const SCHAFF_STOP_ATR_MULT = 4.0;
+export const SCHAFF_REWARD_RISK = 2.5;
+export const SCHAFF_STAGNATION_BARS = 12;
+export const SCHAFF_BASE_CONFIDENCE = 65;
+export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
+
+// Supertrend Engine
+export const SUPERTREND_DAILY_SMA_PERIOD = 100;
+export const SUPERTREND_DAILY_ADX_MIN = 10;
+export const SUPERTREND_PERIOD = 20;
+export const SUPERTREND_MULT = 2.0;
+export const SUPERTREND_STOP_ATR_MULT = 4.0;
+export const SUPERTREND_REWARD_RISK = 2.5;
+export const SUPERTREND_STAGNATION_BARS = 12;
+export const SUPERTREND_BASE_CONFIDENCE = 65;
+export const SUPERTREND_DAILY_LOOKBACK_DAYS = 150;
+
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   BTC: 0.02,   // 40x max

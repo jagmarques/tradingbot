@@ -2437,6 +2437,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   const macdCrossStats = getQuantStats("macd-cross-directional");
   const trixStats = getQuantStats("trix-directional");
   const elderStats = getQuantStats("elder-impulse-directional");
+  const vortexStats = getQuantStats("vortex-directional");
+  const schaffStats = getQuantStats("schaff-directional");
+  const supertrendStats = getQuantStats("supertrend-directional");
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2465,7 +2468,10 @@ async function handleQuant(ctx: Context): Promise<void> {
         pos.tradeType === "zlema-directional" ? "[ZL]" :
         pos.tradeType === "macd-cross-directional" ? "[MC]" :
         pos.tradeType === "trix-directional" ? "[TX]" :
-        pos.tradeType === "elder-impulse-directional" ? "[EI]" : "[AI]";
+        pos.tradeType === "elder-impulse-directional" ? "[EI]" :
+        pos.tradeType === "vortex-directional" ? "[VO]" :
+        pos.tradeType === "schaff-directional" ? "[SC]" :
+        pos.tradeType === "supertrend-directional" ? "[ST]" : "[AI]";
       let upnlStr = "";
       const rawMid = mids[pos.pair];
       if (rawMid) {
@@ -2499,8 +2505,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + macdCrossStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + macdCrossStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + macdCrossStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl + vortexStats.totalPnl + schaffStats.totalPnl + supertrendStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + macdCrossStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades + vortexStats.totalTrades + schaffStats.totalTrades + supertrendStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2523,6 +2529,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("MACDx", macdCrossStats, "macd-cross-directional");
   text += sl("TRIX", trixStats, "trix-directional");
   text += sl("Elder", elderStats, "elder-impulse-directional");
+  text += sl("Vortex", vortexStats, "vortex-directional");
+  text += sl("Schaff", schaffStats, "schaff-directional");
+  text += sl("ST", supertrendStats, "supertrend-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;

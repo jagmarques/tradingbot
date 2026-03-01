@@ -6,6 +6,9 @@ import { runZlemaDecisionEngine } from "./zlema-engine.js";
 import { runMacdCrossDecisionEngine } from "./macd-cross-engine.js";
 import { runTrixDecisionEngine } from "./trix-engine.js";
 import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
+import { runVortexDecisionEngine } from "./vortex-engine.js";
+import { runSchaffDecisionEngine } from "./schaff-engine.js";
+import { runSupertrendDecisionEngine } from "./supertrend-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
@@ -44,6 +47,9 @@ export async function runDirectionalCycle(): Promise<void> {
     const macdCrossDecisions = await runMacdCrossDecisionEngine(analyses);
     const trixDecisions = await runTrixDecisionEngine(analyses);
     const elderDecisions = await runElderImpulseDecisionEngine(analyses);
+    const vortexDecisions = await runVortexDecisionEngine(analyses);
+    const schaffDecisions = await runSchaffDecisionEngine(analyses);
+    const supertrendDecisions = await runSupertrendDecisionEngine(analyses);
 
     const aiOpenPairs = new Set(
       getOpenQuantPositions()
@@ -73,6 +79,21 @@ export async function runDirectionalCycle(): Promise<void> {
     const elderOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "elder-impulse-directional")
+        .map(p => p.pair),
+    );
+    const vortexOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "vortex-directional")
+        .map(p => p.pair),
+    );
+    const schaffOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "schaff-directional")
+        .map(p => p.pair),
+    );
+    const supertrendOpenPairs = new Set(
+      getOpenQuantPositions()
+        .filter(p => p.tradeType === "supertrend-directional")
         .map(p => p.pair),
     );
 
@@ -321,8 +342,128 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    let vortexExecuted = 0;
+    for (const decision of vortexDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (vortexOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "vortex-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        vortexExecuted++;
+        vortexOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] Vortex: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let schaffExecuted = 0;
+    for (const decision of schaffDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (schaffOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "schaff-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        schaffExecuted++;
+        schaffOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] Schaff: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
+    let supertrendExecuted = 0;
+    for (const decision of supertrendDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+
+      const existingDir = globalPairDirections.get(decision.pair);
+      if (existingDir && existingDir !== decision.direction) {
+        console.log(`[QuantScheduler] Supertrend: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+        continue;
+      }
+
+      if (supertrendOpenPairs.has(decision.pair)) {
+        console.log(`[QuantScheduler] Supertrend: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      const position = await openPosition(
+        decision.pair,
+        decision.direction,
+        decision.suggestedSizeUsd,
+        10,
+        decision.stopLoss,
+        decision.takeProfit,
+        decision.regime,
+        decision.confidence,
+        decision.reasoning,
+        "supertrend-directional",
+        undefined,
+        decision.entryPrice,
+      );
+
+      if (position) {
+        supertrendExecuted++;
+        supertrendOpenPairs.add(decision.pair);
+        globalPairDirections.set(decision.pair, decision.direction);
+        console.log(
+          `[QuantScheduler] Supertrend: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
+        );
+      }
+    }
+
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, Supertrend ${supertrendExecuted}/${supertrendDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

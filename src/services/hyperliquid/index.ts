@@ -88,4 +88,7 @@ export { runZlemaDecisionEngine } from "./zlema-engine.js";
 export { runMacdCrossDecisionEngine } from "./macd-cross-engine.js";
 export { runTrixDecisionEngine } from "./trix-engine.js";
 export { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
+export { runVortexDecisionEngine } from "./vortex-engine.js";
+export { runSchaffDecisionEngine } from "./schaff-engine.js";
+export { runSupertrendDecisionEngine } from "./supertrend-engine.js";
 
