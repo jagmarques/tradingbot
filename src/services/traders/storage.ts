@@ -63,6 +63,11 @@ export function initInsiderTables(): void {
   try { db.exec("ALTER TABLE insider_gem_hits ADD COLUMN is_rugged INTEGER DEFAULT 0"); } catch { /* already exists */ }
   db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = pump_multiple WHERE (max_pump_multiple = 0 OR max_pump_multiple IS NULL) AND pump_multiple > 0").run();
 
+  // Cap corrupted pump_multiple values from GeckoTerminal data bugs
+  const maxPump = INSIDER_CONFIG.MAX_H24_CHANGE / 100 + 1; // 101x
+  db.prepare("UPDATE insider_gem_hits SET pump_multiple = ? WHERE pump_multiple > ?").run(maxPump, maxPump);
+  db.prepare("UPDATE insider_gem_hits SET max_pump_multiple = ? WHERE max_pump_multiple > ?").run(maxPump, maxPump);
+
   try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_gem_count INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_rate_pct REAL DEFAULT 0"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE insider_wallets ADD COLUMN rug_penalty_applied INTEGER DEFAULT 0"); } catch { /* already exists */ }

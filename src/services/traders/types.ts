@@ -199,6 +199,7 @@ export const INSIDER_CONFIG = {
   RUG_RATE_LOW_THRESHOLD: 0.1,  // rug rate above this applies -8 penalty
   RUG_RATE_MIN_SAMPLE: 5,       // minimum total gems before rug rate is computed
   RUG_RATE_MIN_RUGS: 2,         // minimum absolute rugged gems before any penalty applies
+  MAX_H24_CHANGE: 10000,        // max valid 24h price change % (10000% = 100x); beyond this = corrupted GeckoTerminal data
 };
 
 export const WATCHER_CONFIG = {
