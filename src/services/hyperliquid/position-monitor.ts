@@ -1,11 +1,25 @@
 import { getClient } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, TRIX_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { isPaperMode } from "../../config/env.js";
 import { saveQuantPosition } from "../database/quant.js";
+
+// Per-engine stagnation: bar count × 4h. Falls back for non-indicator types.
+const H4_MS = 4 * 60 * 60 * 1000;
+const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
+  "cci-directional": CCI_STAGNATION_BARS * H4_MS,
+  "psar-directional": PSAR_STAGNATION_BARS * H4_MS,
+  "zlema-directional": ZLEMA_STAGNATION_BARS * H4_MS,
+  "trix-directional": TRIX_STAGNATION_BARS * H4_MS,
+  "elder-impulse-directional": ELDER_STAGNATION_BARS * H4_MS,
+  "vortex-directional": VORTEX_STAGNATION_BARS * H4_MS,
+  "schaff-directional": SCHAFF_STAGNATION_BARS * H4_MS,
+  "dema-directional": DEMA_STAGNATION_BARS * H4_MS,
+  "hma-directional": HMA_STAGNATION_BARS * H4_MS,
+};
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -92,9 +106,10 @@ async function checkPositionStops(): Promise<void> {
       // Stagnation exit for directional positions (funding positions hold indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
-        if (holdMs >= STAGNATION_TIMEOUT_MS) {
+        const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""] ?? STAGNATION_TIMEOUT_MS;
+        if (holdMs >= stagnationMs) {
           console.log(
-            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h, P&L ${unrealizedPnlPct.toFixed(2)}%`,
+            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h (limit ${(stagnationMs / 3_600_000).toFixed(0)}h), P&L ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await closePosition(position.id, "stagnation");
           continue;

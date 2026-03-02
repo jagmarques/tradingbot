@@ -63,13 +63,13 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14;
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
 // PSAR Engine
-export const PSAR_DAILY_SMA_PERIOD = 100;
+export const PSAR_DAILY_SMA_PERIOD = 50;
 export const PSAR_DAILY_ADX_MIN = 10;
-export const PSAR_STEP = 0.03;
+export const PSAR_STEP = 0.01;
 export const PSAR_MAX = 0.2;
-export const PSAR_STOP_ATR_MULT = 5.0;
+export const PSAR_STOP_ATR_MULT = 4.0;
 export const PSAR_REWARD_RISK = 4.0;
-export const PSAR_STAGNATION_BARS = 10;
+export const PSAR_STAGNATION_BARS = 8;
 export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 
@@ -122,7 +122,7 @@ export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
 export const SCHAFF_DAILY_ADX_MIN = 10;
 export const SCHAFF_STC_FAST = 8;
-export const SCHAFF_STC_SLOW = 23;
+export const SCHAFF_STC_SLOW = 26;
 export const SCHAFF_STC_CYCLE = 12;
 export const SCHAFF_STC_THRESHOLD = 30;
 export const SCHAFF_STOP_ATR_MULT = 2.5;

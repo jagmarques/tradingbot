@@ -20,9 +20,9 @@ const PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
 const DAYS_4H = 730; // 2 years max, use whatever Hyperliquid returns
 const DAYS_DAILY = 750;
 
-// ─── Tuned params from grid search (post-quick-276) ──────────────────────────
+// ─── Tuned params (PSAR min-fold fix + avg-Sharpe best for others) ──────────
 
-const PSAR_STEP_ORIG = 0.03;
+const PSAR_STEP_ORIG = 0.01; // min-fold tuned (was 0.03, -0.30 fold fixed)
 const PSAR_MAX_ORIG = 0.2;
 
 const ZLEMA_FAST_ORIG = 10;
@@ -39,7 +39,7 @@ const ELDER_MACD_SIGNAL_ORIG = 7;
 const VORTEX_PERIOD_ORIG = 10;
 
 const SCHAFF_STC_FAST_ORIG = 8;
-const SCHAFF_STC_SLOW_ORIG = 23;
+const SCHAFF_STC_SLOW_ORIG = 26; // min-fold tuned (was 23, marginal improvement)
 const SCHAFF_STC_CYCLE_ORIG = 12;
 const SCHAFF_STC_THRESHOLD_ORIG = 30;
 
@@ -540,11 +540,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "psar",
-    smaPeriod: 100,
+    smaPeriod: 50,
     adxMin: 10,
-    stopAtrMult: 5.0,
+    stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 8, // min-fold tuned
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i], prevSar = psarValues[i - 1];
