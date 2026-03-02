@@ -346,10 +346,10 @@ function runBacktestEngine(
   preDaily: DailyPre,
   idxDailyAt: number[],
   params: EngineRunParams,
+  startIdx: number,
+  endIdx: number,
 ): BacktestResult {
-  const { h4, atr4h, trainEnd } = pairData;
-  const startIdx = trainEnd;
-  const endIdx = h4.length;
+  const { h4, atr4h } = pairData;
 
   let pnlTotal = 0;
   let peakPnl = 0;
@@ -433,6 +433,7 @@ interface RunAllResult {
 function runAllPairs(
   allPairData: Record<string, { pairData: PairData; preDaily: DailyPre; idxDailyAt: number[] }>,
   params: EngineRunParams,
+  window: "train" | "test",
 ): RunAllResult {
   let totalPnl = 0;
   let maxDays = 0;
@@ -442,7 +443,9 @@ function runAllPairs(
 
   for (const pair of pairs) {
     const { pairData, preDaily, idxDailyAt } = allPairData[pair];
-    const r = runBacktestEngine(pairData, preDaily, idxDailyAt, params);
+    const startIdx = window === "train" ? 0 : pairData.trainEnd;
+    const endIdx = window === "train" ? pairData.trainEnd : pairData.h4.length;
+    const r = runBacktestEngine(pairData, preDaily, idxDailyAt, params, startIdx, endIdx);
     totalPnl += r.totalReturn;
     totalTrades += r.trades;
     maxDays = Math.max(maxDays, r.days);
@@ -830,7 +833,7 @@ async function main() {
     const rrKey = Object.keys(tuner.currentParams).find((k) => k.endsWith("_REWARD_RISK")) ?? "";
     const stagKey = Object.keys(tuner.currentParams).find((k) => k.endsWith("_STAGNATION_BARS")) ?? "";
 
-    // Compute baseline using current params across all pairs
+    // Compute baseline using current params across all pairs (TRAIN window only)
     let baselineSharpe = 0;
     let baselinePctPerDay = 0;
     let baselineTrades = 0;
@@ -843,6 +846,8 @@ async function main() {
       for (const pair of loadedPairs) {
         const { pairData, preDaily, idxDailyAt } = allPairData[pair];
         const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
+        const startIdx = 0;
+        const endIdx = pairData.trainEnd;
         const r = runBacktestEngine(pairData, preDaily, idxDailyAt, {
           smaPeriod: p[smaPeriodKey] ?? 100,
           adxMin: p[adxMinKey] ?? 18,
@@ -850,7 +855,7 @@ async function main() {
           rewardRisk: p[rrKey] ?? 5.0,
           stagnationBars: p[stagKey] ?? 12,
           checkSignal,
-        });
+        }, startIdx, endIdx);
         totalPnl += r.totalReturn;
         totalTrades += r.trades;
         maxDays = Math.max(maxDays, r.days);
@@ -860,7 +865,7 @@ async function main() {
       baselineSharpe = sharpe(allPnlPcts);
       baselineTrades = totalTrades;
     }
-    console.log(`Baseline: ${baselinePctPerDay.toFixed(3)}%/day  Sharpe=${baselineSharpe.toFixed(2)}  Trades=${baselineTrades}`);
+    console.log(`Baseline [TRAIN]: ${baselinePctPerDay.toFixed(3)}%/day  Sharpe=${baselineSharpe.toFixed(2)}  Trades=${baselineTrades}`);
     console.log(`Current params: ${Object.entries(tuner.currentParams).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
     // Phase 1: Sweep signal params (use current risk params)
@@ -877,6 +882,9 @@ async function main() {
       for (const pair of loadedPairs) {
         const { pairData, preDaily, idxDailyAt } = allPairData[pair];
         const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
+        // TRAIN window only: bars 0..trainEnd
+        const startIdx = 0;
+        const endIdx = pairData.trainEnd;
         const r = runBacktestEngine(pairData, preDaily, idxDailyAt, {
           smaPeriod: p[smaPeriodKey] ?? 100,
           adxMin: p[adxMinKey] ?? 18,
@@ -884,7 +892,7 @@ async function main() {
           rewardRisk: p[rrKey] ?? 5.0,
           stagnationBars: p[stagKey] ?? 12,
           checkSignal,
-        });
+        }, startIdx, endIdx);
         totalPnl += r.totalReturn;
         totalTrades += r.trades;
         maxDays = Math.max(maxDays, r.days);
@@ -900,7 +908,7 @@ async function main() {
       top3Signal.push({ params: Object.fromEntries(Object.keys(tuner.phase1Grid).map((k) => [k, tuner.currentParams[k]])), sharpe: baselineSharpe, pctPerDay: baselinePctPerDay, trades: baselineTrades });
     }
     top3Signal.forEach((r, i) => {
-      console.log(`  Top${i + 1}: ${Object.entries(r.params).map(([k, v]) => `${k}=${v}`).join(", ")} -> Sharpe=${r.sharpe.toFixed(2)} ${r.pctPerDay.toFixed(3)}%/day T=${r.trades}`);
+      console.log(`  Top${i + 1} [TRAIN]: ${Object.entries(r.params).map(([k, v]) => `${k}=${v}`).join(", ")} -> Sharpe=${r.sharpe.toFixed(2)} ${r.pctPerDay.toFixed(3)}%/day T=${r.trades}`);
     });
 
     // Phase 2: For each top-3 signal combo, sweep risk params
@@ -925,7 +933,10 @@ async function main() {
         for (const pair of loadedPairs) {
           const { pairData, preDaily, idxDailyAt } = allPairData[pair];
           const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
-          const r = runBacktestEngine(pairData, preDaily, idxDailyAt, { smaPeriod, adxMin, stopAtrMult, rewardRisk, stagnationBars, checkSignal });
+          // TRAIN window only: bars 0..trainEnd
+          const startIdx = 0;
+          const endIdx = pairData.trainEnd;
+          const r = runBacktestEngine(pairData, preDaily, idxDailyAt, { smaPeriod, adxMin, stopAtrMult, rewardRisk, stagnationBars, checkSignal }, startIdx, endIdx);
           totalPnl += r.totalReturn;
           totalTrades += r.trades;
           maxDays = Math.max(maxDays, r.days);
@@ -946,16 +957,45 @@ async function main() {
     }
 
     const bestParams = { ...tuner.currentParams, ...bestOverall.params };
-    console.log(`\nBest found: Sharpe=${bestOverall.sharpe.toFixed(2)} ${bestOverall.pctPerDay.toFixed(3)}%/day T=${bestOverall.trades}`);
+    console.log(`\nBest [TRAIN]: Sharpe=${bestOverall.sharpe.toFixed(2)} ${bestOverall.pctPerDay.toFixed(3)}%/day T=${bestOverall.trades}`);
     console.log(`Best params: ${Object.entries(bestOverall.params).map(([k, v]) => `${k}=${v}`).join(", ")}`);
-    console.log(`Delta: Sharpe ${bestOverall.sharpe >= baselineSharpe ? "+" : ""}${(bestOverall.sharpe - baselineSharpe).toFixed(2)}  %/day ${bestOverall.pctPerDay >= baselinePctPerDay ? "+" : ""}${(bestOverall.pctPerDay - baselinePctPerDay).toFixed(3)}%`);
+    console.log(`Delta [TRAIN]: Sharpe ${bestOverall.sharpe >= baselineSharpe ? "+" : ""}${(bestOverall.sharpe - baselineSharpe).toFixed(2)}  %/day ${bestOverall.pctPerDay >= baselinePctPerDay ? "+" : ""}${(bestOverall.pctPerDay - baselinePctPerDay).toFixed(3)}%`);
 
-    // Build constants.ts update block
-    const enginePrefix = tuner.name.toUpperCase();
-    const constBlock = Object.entries(bestParams)
-      .map(([k, v]) => `export const ${k} = ${v};`)
-      .join("\n");
-    constantsUpdates.push(`// ${enginePrefix} Engine\n${constBlock}`);
+    // Evaluate best params on OOS (test) window -- bars trainEnd..end
+    {
+      let oosPnl = 0;
+      let oosMaxDays = 0;
+      let oosTrades = 0;
+      const oosPnlPcts: number[] = [];
+      const p = bestParams;
+      for (const pair of loadedPairs) {
+        const { pairData, preDaily, idxDailyAt } = allPairData[pair];
+        const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
+        const startIdx = pairData.trainEnd;
+        const endIdx = pairData.h4.length;
+        const r = runBacktestEngine(pairData, preDaily, idxDailyAt, {
+          smaPeriod: p[smaPeriodKey] ?? 100,
+          adxMin: p[adxMinKey] ?? 18,
+          stopAtrMult: p[stopAtrKey] ?? 3.0,
+          rewardRisk: p[rrKey] ?? 5.0,
+          stagnationBars: p[stagKey] ?? 12,
+          checkSignal,
+        }, startIdx, endIdx);
+        oosPnl += r.totalReturn;
+        oosTrades += r.trades;
+        oosMaxDays = Math.max(oosMaxDays, r.days);
+        oosPnlPcts.push(...r.tradePnlPcts);
+      }
+      const oosPctPerDay = oosMaxDays > 0 ? (oosPnl / (MARGIN_PER_TRADE * loadedPairs.length)) / oosMaxDays * 100 : 0;
+      const oosSharpe = sharpe(oosPnlPcts);
+      console.log(`OOS [TEST]:   Sharpe=${oosSharpe.toFixed(2)} ${oosPctPerDay.toFixed(3)}%/day T=${oosTrades} PnL=$${oosPnl.toFixed(2)}`);
+      // Store OOS metrics in constants comment
+      const enginePrefix = tuner.name.toUpperCase();
+      const constBlock = Object.entries(bestParams)
+        .map(([k, v]) => `export const ${k} = ${v};`)
+        .join("\n");
+      constantsUpdates.push(`// ${enginePrefix} Engine -- TRAIN Sharpe=${bestOverall.sharpe.toFixed(2)} OOS Sharpe=${oosSharpe.toFixed(2)} OOS %/day=${oosPctPerDay.toFixed(3)}\n${constBlock}`);
+    }
   }
 
   // Print full constants update block
