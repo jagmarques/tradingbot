@@ -320,6 +320,24 @@ export function getTotalRealizedPnl(): number {
   return row.total_pnl;
 }
 
+export function getTotalRealizedPnlByType(tradeType: TradeType): number {
+  const db = getDb();
+  let row: { total_pnl: number };
+  if (tradeType === "ai-directional") {
+    // Backward compat: old records stored as 'directional' or NULL were AI trades
+    row = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total_pnl
+      FROM quant_trades WHERE status = 'closed' AND (trade_type IN ('ai-directional', 'directional') OR trade_type IS NULL)
+    `).get() as { total_pnl: number };
+  } else {
+    row = db.prepare(`
+      SELECT COALESCE(SUM(pnl), 0) as total_pnl
+      FROM quant_trades WHERE status = 'closed' AND trade_type = ?
+    `).get(tradeType) as { total_pnl: number };
+  }
+  return row.total_pnl;
+}
+
 export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
   const db = getDb();
   const result = db

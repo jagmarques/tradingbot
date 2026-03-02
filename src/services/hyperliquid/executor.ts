@@ -81,6 +81,6 @@ export function getOpenQuantPositions(): QuantPosition[] {
   return getPaperPositions();
 }
 
-export function getVirtualBalance(): number {
-  return getPaperBalance();
+export function getVirtualBalance(tradeType?: TradeType): number {
+  return getPaperBalance(tradeType);
 }
