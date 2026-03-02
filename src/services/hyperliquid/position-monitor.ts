@@ -126,7 +126,7 @@ async function checkPositionStops(): Promise<void> {
       // Stop-loss takes priority over take-profit
       if (stopLossBreached) {
         console.log(
-          `[PositionMonitor] Stop-loss triggered for ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${position.stopLoss})`,
+          `[PositionMonitor] Stop-loss triggered for ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
         );
         await closePosition(position.id, "stop-loss");
       } else if (takeProfitBreached) {
