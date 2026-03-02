@@ -328,6 +328,8 @@ function sharpe(pnls: number[]): number {
 interface EngineRunParams {
   smaPeriod: number;
   adxMin: number;
+  adxNotDecl: boolean;
+  reverseExit: boolean; // if true, exit when indicator fires opposite direction
   stopAtrMult: number;
   rewardRisk: number;
   stagnationBars: number;
@@ -377,6 +379,10 @@ function runBacktestEngine(
       else if (slHit && tpHit) exitPrice = pos.sl;
       else if (slHit) exitPrice = pos.sl;
       else if (tpHit) exitPrice = pos.tp;
+      else if (params.reverseExit) {
+        const rev = params.checkSignal(i);
+        if ((pos.dir === "long" && rev === "short") || (pos.dir === "short" && rev === "long")) exitPrice = c.close;
+      }
       if (exitPrice !== null) {
         const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
         const grossPnl = pp * NOTIONAL;
@@ -399,6 +405,10 @@ function runBacktestEngine(
       const dailyClose = pairData.dailyCandles[dIdx].close;
       if (dailySma === null || dailyAdx === null) continue;
       if (dailyAdx < params.adxMin) continue;
+      if (params.adxNotDecl && dIdx >= 2) {
+        const adxPrev2 = preDaily.adx[dIdx - 2];
+        if (adxPrev2 !== null && dailyAdx < adxPrev2) continue;
+      }
       const dailyUptrend = dailyClose > dailySma;
       const dailyDowntrend = dailyClose < dailySma;
       const rawSignal = params.checkSignal(i);
@@ -503,9 +513,13 @@ function computeMinFoldScore(
     const { pairData, preDaily, idxDailyAt } = allPairData[pair];
     const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
     const trainHalf = Math.floor(pairData.trainEnd / 2);
+    const adxNotDeclKey = Object.keys(p).find((k) => k.endsWith("_ADX_NOT_DECL"));
+    const reverseExitKey = Object.keys(p).find((k) => k.endsWith("_REVERSE_EXIT"));
     const ep = {
       smaPeriod: p[smaPeriodKey] ?? 100,
       adxMin: p[adxMinKey] ?? 18,
+      adxNotDecl: adxNotDeclKey !== undefined ? p[adxNotDeclKey] === 1 : false,
+      reverseExit: reverseExitKey !== undefined ? p[reverseExitKey] === 1 : false,
       stopAtrMult: p[stopAtrKey] ?? 3.0,
       rewardRisk: p[rrKey] ?? 5.0,
       stagnationBars: p[stagKey] ?? 12,
@@ -547,6 +561,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       CCI_DAILY_SMA_PERIOD: [50, 75, 100],
       CCI_DAILY_ADX_MIN: [8, 10, 14],
+      CCI_ADX_NOT_DECL: [0, 1],
+      CCI_REVERSE_EXIT: [0, 1],
       CCI_STOP_ATR_MULT: [2.5, 3.0, 3.5],
       CCI_REWARD_RISK: [4.0, 5.0, 6.0],
       CCI_STAGNATION_BARS: [10, 12, 16],
@@ -576,6 +592,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       ELDER_DAILY_SMA_PERIOD: [50, 75, 100],
       ELDER_DAILY_ADX_MIN: [8, 10, 14],
+      ELDER_ADX_NOT_DECL: [0, 1],
+      ELDER_REVERSE_EXIT: [0, 1],
       ELDER_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       ELDER_REWARD_RISK: [2.5, 3.5, 5.0],
       ELDER_STAGNATION_BARS: [8, 12, 16],
@@ -609,6 +627,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       ZLEMA_DAILY_SMA_PERIOD: [50, 75, 100],
       ZLEMA_DAILY_ADX_MIN: [10, 14, 18, 22, 26],
+      ZLEMA_ADX_NOT_DECL: [0, 1],
+      ZLEMA_REVERSE_EXIT: [0, 1],
       ZLEMA_STOP_ATR_MULT: [2.5, 3.0, 3.5, 4.0],
       ZLEMA_REWARD_RISK: [3.0, 4.0, 5.0],
       ZLEMA_STAGNATION_BARS: [4, 6, 8, 10],
@@ -637,6 +657,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       VORTEX_DAILY_SMA_PERIOD: [50, 75, 100],
       VORTEX_DAILY_ADX_MIN: [14, 18, 22, 26, 30],
+      VORTEX_ADX_NOT_DECL: [0, 1],
+      VORTEX_REVERSE_EXIT: [0, 1],
       VORTEX_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       VORTEX_REWARD_RISK: [4.0, 5.0, 6.0],
       VORTEX_STAGNATION_BARS: [8, 10, 12, 16],
@@ -666,6 +688,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       SCHAFF_DAILY_SMA_PERIOD: [50, 75, 100],
       SCHAFF_DAILY_ADX_MIN: [10, 14, 18, 22],
+      SCHAFF_ADX_NOT_DECL: [0, 1],
+      SCHAFF_REVERSE_EXIT: [0, 1],
       SCHAFF_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       SCHAFF_REWARD_RISK: [4.0, 5.0, 6.0],
       SCHAFF_STAGNATION_BARS: [6, 9, 12],
@@ -694,6 +718,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       PSAR_DAILY_SMA_PERIOD: [50, 75, 100],
       PSAR_DAILY_ADX_MIN: [10, 14, 18, 22, 26],
+      PSAR_ADX_NOT_DECL: [0, 1],
+      PSAR_REVERSE_EXIT: [0, 1],
       PSAR_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       PSAR_REWARD_RISK: [4.0, 5.0, 6.0],
       PSAR_STAGNATION_BARS: [8, 10, 12, 16],
@@ -721,6 +747,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       HMA_DAILY_SMA_PERIOD: [50, 75, 100],
       HMA_DAILY_ADX_MIN: [8, 10, 14, 18],
+      HMA_ADX_NOT_DECL: [0, 1],
+      HMA_REVERSE_EXIT: [0, 1],
       HMA_STOP_ATR_MULT: [2.5, 3.0, 3.5, 4.0],
       HMA_REWARD_RISK: [4.0, 5.0, 6.0],
       HMA_STAGNATION_BARS: [4, 6, 8, 10],
@@ -750,6 +778,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       TRIX_DAILY_SMA_PERIOD: [50, 75, 100],
       TRIX_DAILY_ADX_MIN: [10, 14, 18, 22],
+      TRIX_ADX_NOT_DECL: [0, 1],
+      TRIX_REVERSE_EXIT: [0, 1],
       TRIX_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       TRIX_REWARD_RISK: [4.0, 5.0, 6.0],
       TRIX_STAGNATION_BARS: [10, 12, 16, 20],
@@ -779,6 +809,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
     phase2Grid: {
       DEMA_DAILY_SMA_PERIOD: [50, 75, 100],
       DEMA_DAILY_ADX_MIN: [10, 14, 18, 22],
+      DEMA_ADX_NOT_DECL: [0, 1],
+      DEMA_REVERSE_EXIT: [0, 1],
       DEMA_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       DEMA_REWARD_RISK: [4.0, 5.0, 6.0],
       DEMA_STAGNATION_BARS: [8, 10, 12, 16],
@@ -944,9 +976,13 @@ async function main() {
         const checkSignal = tuner.buildCheckSignal(pairData.h4, p);
         const startIdx = pairData.trainEnd;
         const endIdx = pairData.h4.length;
+        const adxNDKey = Object.keys(p).find((k) => k.endsWith("_ADX_NOT_DECL"));
+        const revExKey = Object.keys(p).find((k) => k.endsWith("_REVERSE_EXIT"));
         const r = runBacktestEngine(pairData, preDaily, idxDailyAt, {
           smaPeriod: p[smaPeriodKey] ?? 100,
           adxMin: p[adxMinKey] ?? 18,
+          adxNotDecl: adxNDKey !== undefined ? p[adxNDKey] === 1 : false,
+          reverseExit: revExKey !== undefined ? p[revExKey] === 1 : false,
           stopAtrMult: p[stopAtrKey] ?? 3.0,
           rewardRisk: p[rrKey] ?? 5.0,
           stagnationBars: p[stagKey] ?? 12,

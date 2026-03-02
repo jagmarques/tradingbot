@@ -22,8 +22,8 @@ const DAYS_DAILY = 750;
 
 // ─── Tuned params (PSAR min-fold fix + avg-Sharpe best for others) ──────────
 
-const PSAR_STEP_ORIG = 0.01; // min-fold tuned (was 0.03, -0.30 fold fixed)
-const PSAR_MAX_ORIG = 0.2;
+const PSAR_STEP_ORIG = 0.01;
+const PSAR_MAX_ORIG = 0.1;
 
 const ZLEMA_FAST_ORIG = 10;
 const ZLEMA_SLOW_ORIG = 34;
@@ -31,20 +31,20 @@ const ZLEMA_SLOW_ORIG = 34;
 const TRIX_PERIOD_ORIG = 9;
 const TRIX_SIGNAL_ORIG = 15;
 
-const ELDER_EMA_PERIOD_ORIG = 26;
+const ELDER_EMA_PERIOD_ORIG = 17;
 const ELDER_MACD_FAST_ORIG = 8;
 const ELDER_MACD_SLOW_ORIG = 21;
 const ELDER_MACD_SIGNAL_ORIG = 7;
 
 const VORTEX_PERIOD_ORIG = 25;
 
-const SCHAFF_STC_FAST_ORIG = 8;
-const SCHAFF_STC_SLOW_ORIG = 26; // min-fold tuned (was 23, marginal improvement)
-const SCHAFF_STC_CYCLE_ORIG = 12;
+const SCHAFF_STC_FAST_ORIG = 12;
+const SCHAFF_STC_SLOW_ORIG = 23;
+const SCHAFF_STC_CYCLE_ORIG = 10;
 const SCHAFF_STC_THRESHOLD_ORIG = 30;
 
-const DEMA_FAST_ORIG = 3;
-const DEMA_SLOW_ORIG = 17;
+const DEMA_FAST_ORIG = 8;
+const DEMA_SLOW_ORIG = 21;
 
 const HMA_FAST_ORIG = 6;
 const HMA_SLOW_ORIG = 40;
@@ -80,6 +80,7 @@ interface EngineConfig {
   rewardRisk: number;
   stagnationBars: number;
   adxNotDecl?: boolean;
+  reverseExit?: boolean;
   checkSignal: (i: number, ctx: SignalContext) => "long" | "short" | null;
 }
 
@@ -454,11 +455,11 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
 const ENGINES: EngineConfig[] = [
   {
     name: "cci",
-    smaPeriod: 50,
+    smaPeriod: 75,
     adxMin: 8,
-    stopAtrMult: 3.5,
+    stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 16,
     checkSignal(i, ctx) {
       const curr = ctx.cciValues[i], prev = ctx.cciValues[i - 1];
       if (curr === null || prev === null) return null;
@@ -469,11 +470,12 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "elder",
-    smaPeriod: 100,
+    smaPeriod: 75,
     adxMin: 8,
     stopAtrMult: 2.0,
     rewardRisk: 3.5,
-    stagnationBars: 8,
+    stagnationBars: 16,
+    reverseExit: true,
     checkSignal(i, ctx) {
       if (i < 3) return null;
       const { elderEma, elderHistogram } = ctx;
@@ -497,6 +499,7 @@ const ENGINES: EngineConfig[] = [
     stopAtrMult: 2.5,
     rewardRisk: 3.0,
     stagnationBars: 10,
+    reverseExit: true,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
       const cf = zlemaFast[i], pf = zlemaFast[i - 1];
@@ -531,7 +534,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 9,
+    stagnationBars: 9, // stc uses new fast=12/slow=23/cycle=10 via SCHAFF_STC_*_ORIG
     checkSignal(i, ctx) {
       const curr = ctx.stcValues[i], prev = ctx.stcValues[i - 1];
       if (curr === null || prev === null) return null;
@@ -546,7 +549,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 8, // min-fold tuned
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i], prevSar = psarValues[i - 1];
@@ -560,10 +563,11 @@ const ENGINES: EngineConfig[] = [
   {
     name: "hma",
     smaPeriod: 100,
-    adxMin: 14,
+    adxMin: 8,
     stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 4,
+    reverseExit: true,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -579,7 +583,7 @@ const ENGINES: EngineConfig[] = [
     smaPeriod: 50,
     adxMin: 10,
     stopAtrMult: 2.5,
-    rewardRisk: 4.0,
+    rewardRisk: 6.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {
       const { trixLine, trixSignal } = ctx;
@@ -593,11 +597,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "dema",
-    smaPeriod: 50,
+    smaPeriod: 100,
     adxMin: 10,
     stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 12,
     checkSignal(i, ctx) {
       const { demaFast, demaSlow } = ctx;
       const cf = demaFast[i], pf = demaFast[i - 1];
@@ -672,6 +676,9 @@ function runBacktest(
         exitPrice = pos.sl;
       } else if (tpHit) {
         exitPrice = pos.tp;
+      } else if (engine.reverseExit) {
+        const rev = engine.checkSignal(i, ctx);
+        if ((pos.dir === "long" && rev === "short") || (pos.dir === "short" && rev === "long")) exitPrice = c.close;
       }
 
       if (exitPrice !== null) {
