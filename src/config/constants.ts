@@ -109,14 +109,15 @@ export const ELDER_BASE_CONFIDENCE = 65;
 export const ELDER_DAILY_LOOKBACK_DAYS = 150;
 
 // Vortex Engine
-export const VORTEX_DAILY_SMA_PERIOD = 50;
+export const VORTEX_DAILY_SMA_PERIOD = 100;
 export const VORTEX_DAILY_ADX_MIN = 14;
-export const VORTEX_VORTEX_PERIOD = 10;
-export const VORTEX_STOP_ATR_MULT = 5.0;
+export const VORTEX_VORTEX_PERIOD = 25;
+export const VORTEX_STOP_ATR_MULT = 4.0;
 export const VORTEX_REWARD_RISK = 4.0;
-export const VORTEX_STAGNATION_BARS = 8;
+export const VORTEX_STAGNATION_BARS = 16;
 export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
+export const VORTEX_ADX_NOT_DECL = 1;
 
 // Schaff Trend Cycle Engine
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
@@ -146,8 +147,8 @@ export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const HMA_DAILY_SMA_PERIOD = 100;
 export const HMA_DAILY_ADX_MIN = 14;
 export const HMA_FAST = 6;
-export const HMA_SLOW = 26;
-export const HMA_STOP_ATR_MULT = 4.0;
+export const HMA_SLOW = 40;
+export const HMA_STOP_ATR_MULT = 2.5;
 export const HMA_REWARD_RISK = 4.0;
 export const HMA_STAGNATION_BARS = 10;
 export const HMA_BASE_CONFIDENCE = 65;

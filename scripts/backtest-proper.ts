@@ -36,7 +36,7 @@ const ELDER_MACD_FAST_ORIG = 8;
 const ELDER_MACD_SLOW_ORIG = 21;
 const ELDER_MACD_SIGNAL_ORIG = 7;
 
-const VORTEX_PERIOD_ORIG = 10;
+const VORTEX_PERIOD_ORIG = 25;
 
 const SCHAFF_STC_FAST_ORIG = 8;
 const SCHAFF_STC_SLOW_ORIG = 26; // min-fold tuned (was 23, marginal improvement)
@@ -47,7 +47,7 @@ const DEMA_FAST_ORIG = 3;
 const DEMA_SLOW_ORIG = 17;
 
 const HMA_FAST_ORIG = 6;
-const HMA_SLOW_ORIG = 26;
+const HMA_SLOW_ORIG = 40;
 
 const CCI_PERIOD_ORIG = 8;
 const CCI_THRESHOLD_ORIG = 100;
@@ -79,6 +79,7 @@ interface EngineConfig {
   stopAtrMult: number;
   rewardRisk: number;
   stagnationBars: number;
+  adxNotDecl?: boolean;
   checkSignal: (i: number, ctx: SignalContext) => "long" | "short" | null;
 }
 
@@ -508,11 +509,12 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "vortex",
-    smaPeriod: 50,
+    smaPeriod: 100,
     adxMin: 14,
-    stopAtrMult: 5.0,
+    stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 8,
+    stagnationBars: 16,
+    adxNotDecl: true,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -559,7 +561,7 @@ const ENGINES: EngineConfig[] = [
     name: "hma",
     smaPeriod: 100,
     adxMin: 14,
-    stopAtrMult: 4.0,
+    stopAtrMult: 2.5,
     rewardRisk: 4.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {
@@ -697,6 +699,10 @@ function runBacktest(
 
       if (dailySma === null || dailyAdx === null) continue;
       if (dailyAdx < engine.adxMin) continue;
+      if (engine.adxNotDecl && dIdx >= 2) {
+        const adxPrev2 = preDaily.adx[dIdx - 2];
+        if (adxPrev2 !== null && dailyAdx < adxPrev2) continue;
+      }
 
       const dailyUptrend = dailyClose > dailySma;
       const dailyDowntrend = dailyClose < dailySma;

@@ -8,6 +8,7 @@ import {
   VORTEX_REWARD_RISK,
   VORTEX_BASE_CONFIDENCE,
   VORTEX_DAILY_LOOKBACK_DAYS,
+  VORTEX_ADX_NOT_DECL,
 } from "../../config/constants.js";
 import {
   fetchDailyCandles,
@@ -79,6 +80,11 @@ export async function evaluateVortexPair(analysis: PairAnalysis): Promise<QuantA
 
   const dailyAdx = computeDailyAdx(dailyCandles, lastDailyIdx, 14);
   if (dailyAdx === null || dailyAdx < VORTEX_DAILY_ADX_MIN) return null;
+
+  if (VORTEX_ADX_NOT_DECL && lastDailyIdx >= 2) {
+    const adxPrev2 = computeDailyAdx(dailyCandles, lastDailyIdx - 2, 14);
+    if (adxPrev2 !== null && dailyAdx < adxPrev2) return null;
+  }
 
   const dailyClose = dailyCandles[lastDailyIdx].close;
   const dailyUptrend = dailyClose > dailySma;
