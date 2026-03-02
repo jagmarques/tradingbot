@@ -2,18 +2,20 @@ import { getVirtualBalance } from "./executor.js";
 import {
   QUANT_AI_KELLY_FRACTION,
   QUANT_AI_STOP_LOSS_MAX_PCT,
-  QUANT_MAX_POSITIONS,
 } from "../../config/constants.js";
+import type { TradeType } from "./types.js";
 
 const MIN_POSITION_USD = 1;
+const MAX_POSITIONS_PER_ENGINE = 5;
 
 export function calculateQuantPositionSize(
   confidence: number,
   entryPrice: number,
   stopLoss: number,
   isRuleBased = false,
+  tradeType?: TradeType,
 ): number {
-  const balance = getVirtualBalance();
+  const balance = getVirtualBalance(tradeType);
   if (balance <= 0) return 0;
 
   const winProb = confidence / 100;
@@ -36,7 +38,7 @@ export function calculateQuantPositionSize(
 
   const rawSize = balance * kellyFractional;
 
-  const maxSize = (balance * 0.95) / QUANT_MAX_POSITIONS;
+  const maxSize = (balance * 0.95) / MAX_POSITIONS_PER_ENGINE;
   const size = Math.min(rawSize, maxSize);
 
   if (size < MIN_POSITION_USD) {
@@ -71,7 +73,7 @@ export function calculateBacktestPositionSize(
   const kellyFull = (edge * 2) / effectiveStop;
   const kellyFractional = kellyFull * QUANT_AI_KELLY_FRACTION;
   const rawSize = balance * kellyFractional;
-  const maxSize = (balance * 0.95) / QUANT_MAX_POSITIONS;
+  const maxSize = (balance * 0.95) / MAX_POSITIONS_PER_ENGINE;
   const size = Math.min(rawSize, maxSize);
 
   if (size < 1) return 0;

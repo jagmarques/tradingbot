@@ -171,7 +171,7 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
 
-  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true);
+  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "elder-impulse-directional");
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);

@@ -232,6 +232,8 @@ export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
       decision.confidence,
       decision.entryPrice,
       decision.stopLoss,
+      false,
+      "ai-directional",
     );
 
     if (sizeUsd <= 0) continue;

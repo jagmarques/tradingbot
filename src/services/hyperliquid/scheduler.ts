@@ -40,7 +40,7 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const analysis of analyses) {
       const decision = await analyzeWithAI(analysis);
       if (!decision || decision.direction === "flat") continue;
-      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss);
+      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
       if (sizeUsd <= 0) continue;
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }

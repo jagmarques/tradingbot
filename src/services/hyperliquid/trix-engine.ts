@@ -161,7 +161,7 @@ export async function evaluateTrixPair(analysis: PairAnalysis): Promise<QuantAID
   else if (dailyAdx > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
 
-  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true);
+  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "trix-directional");
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
