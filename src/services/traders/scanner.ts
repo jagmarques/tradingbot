@@ -142,7 +142,7 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
       if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
 
       const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
-      if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue; // Skip corrupted GeckoTerminal data
+      if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue;
       const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
       const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
@@ -195,7 +195,7 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
           if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
 
           const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
-          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue; // Skip corrupted GeckoTerminal data
+          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue;
           const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
           const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
@@ -247,7 +247,7 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
           if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
 
           const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
-          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue; // Skip corrupted GeckoTerminal data
+          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue;
           const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
           const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
@@ -300,7 +300,7 @@ async function findPumpedTokens(chain: EvmChain): Promise<PumpedToken[]> {
           if (pumped.length >= INSIDER_CONFIG.MAX_TOKENS_PER_SCAN) break;
 
           const h24Change = parseFloat(pool.attributes.price_change_percentage.h24);
-          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue; // Skip corrupted GeckoTerminal data
+          if (h24Change > INSIDER_CONFIG.MAX_H24_CHANGE) continue;
           const volumeH24 = parseFloat(pool.attributes.volume_usd.h24);
           const liquidity = parseFloat(pool.attributes.reserve_in_usd);
 
@@ -793,7 +793,7 @@ export async function runInsiderScan(): Promise<InsiderScanResult> {
               tokenSymbol: stripEmoji(token.symbol),
               buyTxHash: "", // Not tracked individually
               buyTimestamp: token.discoveredAt,
-              pumpMultiple: Math.min(token.priceChangeH24, INSIDER_CONFIG.MAX_H24_CHANGE) / 100 + 1, // Convert % to multiple; cap corrupted values
+              pumpMultiple: Math.min(token.priceChangeH24, INSIDER_CONFIG.MAX_H24_CHANGE) / 100 + 1,
             };
             upsertGemHit(hit);
           }
