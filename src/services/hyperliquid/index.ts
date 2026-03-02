@@ -50,7 +50,7 @@ export function stopQuant(): void {
 
 // Re-export key functions for consumers
 export { openPosition, closePosition, getOpenQuantPositions, getVirtualBalance } from "./executor.js";
-export { getPaperBalance, getPaperPositions, clearPaperMemory } from "./paper.js";
+export { getPaperBalance, getPaperPositions, clearPaperMemory, getEngineBalance, ISOLATED_ENGINE_TYPES } from "./paper.js";
 export { getAccountState, getRecentFills } from "./account.js";
 
 // Market data pipeline
