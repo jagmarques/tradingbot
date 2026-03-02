@@ -63,46 +63,46 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14; // 2-week minimum paper trading p
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5; // 1.5% of position size as liquidation penalty fee
 
 // PSAR Engine
-export const PSAR_DAILY_SMA_PERIOD = 100;
+export const PSAR_DAILY_SMA_PERIOD = 50;
 export const PSAR_DAILY_ADX_MIN = 18;
-export const PSAR_STEP = 0.03;
+export const PSAR_STEP = 0.02;
 export const PSAR_MAX = 0.1;
-export const PSAR_STOP_ATR_MULT = 4.0;
-export const PSAR_REWARD_RISK = 5.0;
-export const PSAR_STAGNATION_BARS = 12;
+export const PSAR_STOP_ATR_MULT = 5.0;
+export const PSAR_REWARD_RISK = 6.0;
+export const PSAR_STAGNATION_BARS = 8;
 export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 
 // ZLEMA Cross Engine
-export const ZLEMA_DAILY_SMA_PERIOD = 100;
-export const ZLEMA_DAILY_ADX_MIN = 18;
+export const ZLEMA_DAILY_SMA_PERIOD = 75;
+export const ZLEMA_DAILY_ADX_MIN = 10;
 export const ZLEMA_FAST = 10;
 export const ZLEMA_SLOW = 34;
-export const ZLEMA_STOP_ATR_MULT = 3.0;
+export const ZLEMA_STOP_ATR_MULT = 4.0;
 export const ZLEMA_REWARD_RISK = 4.0;
-export const ZLEMA_STAGNATION_BARS = 6;
+export const ZLEMA_STAGNATION_BARS = 10;
 export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 
 
 // TRIX Engine
-export const TRIX_PERIOD = 5;
-export const TRIX_SIGNAL = 12;
-export const TRIX_DAILY_SMA_PERIOD = 100;
-export const TRIX_DAILY_ADX_MIN = 18;
+export const TRIX_PERIOD = 9;
+export const TRIX_SIGNAL = 15;
+export const TRIX_DAILY_SMA_PERIOD = 75;
+export const TRIX_DAILY_ADX_MIN = 10;
 export const TRIX_STOP_ATR_MULT = 2.5;
-export const TRIX_REWARD_RISK = 5.0;
-export const TRIX_STAGNATION_BARS = 16;
+export const TRIX_REWARD_RISK = 4.0;
+export const TRIX_STAGNATION_BARS = 20;
 export const TRIX_BASE_CONFIDENCE = 65;
 export const TRIX_DAILY_LOOKBACK_DAYS = 150;
 
 // Elder Impulse Engine
-export const ELDER_EMA_PERIOD = 21;
-export const ELDER_MACD_FAST = 12;
+export const ELDER_EMA_PERIOD = 17;
+export const ELDER_MACD_FAST = 16;
 export const ELDER_MACD_SLOW = 26;
 export const ELDER_MACD_SIGNAL = 9;
-export const ELDER_DAILY_SMA_PERIOD = 50;
-export const ELDER_DAILY_ADX_MIN = 10;
+export const ELDER_DAILY_SMA_PERIOD = 75;
+export const ELDER_DAILY_ADX_MIN = 8;
 export const ELDER_STOP_ATR_MULT = 2.5;
 export const ELDER_REWARD_RISK = 2.5;
 export const ELDER_STAGNATION_BARS = 12;
@@ -110,59 +110,59 @@ export const ELDER_BASE_CONFIDENCE = 65;
 export const ELDER_DAILY_LOOKBACK_DAYS = 150;
 
 // Vortex Engine
-export const VORTEX_DAILY_SMA_PERIOD = 100;
-export const VORTEX_DAILY_ADX_MIN = 22;
+export const VORTEX_DAILY_SMA_PERIOD = 75;
+export const VORTEX_DAILY_ADX_MIN = 14;
 export const VORTEX_VORTEX_PERIOD = 14;
-export const VORTEX_STOP_ATR_MULT = 4.0;
-export const VORTEX_REWARD_RISK = 5.0;
-export const VORTEX_STAGNATION_BARS = 12;
+export const VORTEX_STOP_ATR_MULT = 5.0;
+export const VORTEX_REWARD_RISK = 4.0;
+export const VORTEX_STAGNATION_BARS = 10;
 export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 
 // Schaff Trend Cycle Engine
-export const SCHAFF_DAILY_SMA_PERIOD = 100;
-export const SCHAFF_DAILY_ADX_MIN = 18;
-export const SCHAFF_STC_FAST = 8;
+export const SCHAFF_DAILY_SMA_PERIOD = 50;
+export const SCHAFF_DAILY_ADX_MIN = 22;
+export const SCHAFF_STC_FAST = 10;
 export const SCHAFF_STC_SLOW = 26;
 export const SCHAFF_STC_CYCLE = 10;
-export const SCHAFF_STC_THRESHOLD = 25;
-export const SCHAFF_STOP_ATR_MULT = 2.5;
-export const SCHAFF_REWARD_RISK = 5.0;
-export const SCHAFF_STAGNATION_BARS = 9;
+export const SCHAFF_STC_THRESHOLD = 30;
+export const SCHAFF_STOP_ATR_MULT = 3.0;
+export const SCHAFF_REWARD_RISK = 4.0;
+export const SCHAFF_STAGNATION_BARS = 12;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 
 
 // DEMA Engine
-export const DEMA_DAILY_SMA_PERIOD = 100;
-export const DEMA_DAILY_ADX_MIN = 18;
+export const DEMA_DAILY_SMA_PERIOD = 75;
+export const DEMA_DAILY_ADX_MIN = 10;
 export const DEMA_FAST = 5;
 export const DEMA_SLOW = 21;
-export const DEMA_STOP_ATR_MULT = 4.0;
-export const DEMA_REWARD_RISK = 5.0;
-export const DEMA_STAGNATION_BARS = 12;
+export const DEMA_STOP_ATR_MULT = 3.5;
+export const DEMA_REWARD_RISK = 4.0;
+export const DEMA_STAGNATION_BARS = 16;
 export const DEMA_BASE_CONFIDENCE = 65;
 export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 
 // HMA Engine
-export const HMA_DAILY_SMA_PERIOD = 100;
-export const HMA_DAILY_ADX_MIN = 10;
-export const HMA_FAST = 8;
+export const HMA_DAILY_SMA_PERIOD = 75;
+export const HMA_DAILY_ADX_MIN = 8;
+export const HMA_FAST = 12;
 export const HMA_SLOW = 34;
-export const HMA_STOP_ATR_MULT = 3.0;
-export const HMA_REWARD_RISK = 5.0;
-export const HMA_STAGNATION_BARS = 6;
+export const HMA_STOP_ATR_MULT = 4.0;
+export const HMA_REWARD_RISK = 4.0;
+export const HMA_STAGNATION_BARS = 10;
 export const HMA_BASE_CONFIDENCE = 65;
 export const HMA_DAILY_LOOKBACK_DAYS = 150;
 
 // CCI Engine
 export const CCI_DAILY_SMA_PERIOD = 50;
-export const CCI_DAILY_ADX_MIN = 10;
-export const CCI_PERIOD = 10;
-export const CCI_THRESHOLD = 120;
-export const CCI_STOP_ATR_MULT = 3.0;
-export const CCI_REWARD_RISK = 5.0;
-export const CCI_STAGNATION_BARS = 12;
+export const CCI_DAILY_ADX_MIN = 8;
+export const CCI_PERIOD = 14;
+export const CCI_THRESHOLD = 100;
+export const CCI_STOP_ATR_MULT = 3.5;
+export const CCI_REWARD_RISK = 4.0;
+export const CCI_STAGNATION_BARS = 10;
 export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 

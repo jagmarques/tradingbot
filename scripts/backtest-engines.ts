@@ -25,35 +25,35 @@ const DAYS_DAILY = 200;
 const TRAIN_BARS = 720; // 120d * 6 bars/day
 
 // Engine parameters (exact copies from constants.ts)
-const PSAR_STEP = 0.03;
+const PSAR_STEP = 0.02;
 const PSAR_MAX = 0.1;
 
 const ZLEMA_FAST = 10;
 const ZLEMA_SLOW = 34;
 
-const TRIX_PERIOD = 5;
-const TRIX_SIGNAL = 12;
+const TRIX_PERIOD = 9;
+const TRIX_SIGNAL = 15;
 
-const ELDER_EMA_PERIOD = 21;
-const ELDER_MACD_FAST = 12;
+const ELDER_EMA_PERIOD = 17;
+const ELDER_MACD_FAST = 16;
 const ELDER_MACD_SLOW = 26;
 const ELDER_MACD_SIGNAL = 9;
 
 const VORTEX_PERIOD = 14;
 
-const SCHAFF_STC_FAST = 8;
+const SCHAFF_STC_FAST = 10;
 const SCHAFF_STC_SLOW = 26;
 const SCHAFF_STC_CYCLE = 10;
-const SCHAFF_STC_THRESHOLD = 25;
+const SCHAFF_STC_THRESHOLD = 30;
 
 const DEMA_FAST = 5;
 const DEMA_SLOW = 21;
 
-const HMA_FAST = 8;
+const HMA_FAST = 12;
 const HMA_SLOW = 34;
 
-const CCI_PERIOD = 10;
-const CCI_THRESHOLD = 120;
+const CCI_PERIOD = 14;
+const CCI_THRESHOLD = 100;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -492,11 +492,11 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
 const ENGINES: EngineConfig[] = [
   {
     name: "psar",
-    smaPeriod: 100,
+    smaPeriod: 50,
     adxMin: 18,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    stopAtrMult: 5.0,
+    rewardRisk: 6.0,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i];
@@ -512,11 +512,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "zlema",
-    smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 3.0,
+    smaPeriod: 75,
+    adxMin: 10,
+    stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 6,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
       const cf = zlemaFast[i], pf = zlemaFast[i - 1];
@@ -529,11 +529,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "trix",
-    smaPeriod: 100,
-    adxMin: 18,
+    smaPeriod: 75,
+    adxMin: 10,
     stopAtrMult: 2.5,
-    rewardRisk: 5.0,
-    stagnationBars: 16,
+    rewardRisk: 4.0,
+    stagnationBars: 20,
     checkSignal(i, ctx) {
       const { trixLine, trixSignal } = ctx;
       const ct = trixLine[i], pt = trixLine[i - 1];
@@ -546,8 +546,8 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "elder",
-    smaPeriod: 50,
-    adxMin: 10,
+    smaPeriod: 75,
+    adxMin: 8,
     stopAtrMult: 2.5,
     rewardRisk: 2.5,
     stagnationBars: 12,
@@ -572,11 +572,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "vortex",
-    smaPeriod: 100,
-    adxMin: 22,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    smaPeriod: 75,
+    adxMin: 14,
+    stopAtrMult: 5.0,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -589,11 +589,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "schaff",
-    smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 2.5,
-    rewardRisk: 5.0,
-    stagnationBars: 9,
+    smaPeriod: 50,
+    adxMin: 22,
+    stopAtrMult: 3.0,
+    rewardRisk: 4.0,
+    stagnationBars: 12,
     checkSignal(i, ctx) {
       const { stcValues } = ctx;
       const curr = stcValues[i], prev = stcValues[i - 1];
@@ -605,11 +605,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "dema",
-    smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    smaPeriod: 75,
+    adxMin: 10,
+    stopAtrMult: 3.5,
+    rewardRisk: 4.0,
+    stagnationBars: 16,
     checkSignal(i, ctx) {
       const { demaFast, demaSlow } = ctx;
       const cf = demaFast[i], pf = demaFast[i - 1];
@@ -622,11 +622,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "hma",
-    smaPeriod: 100,
-    adxMin: 10,
-    stopAtrMult: 3.0,
-    rewardRisk: 5.0,
-    stagnationBars: 6,
+    smaPeriod: 75,
+    adxMin: 8,
+    stopAtrMult: 4.0,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -640,10 +640,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "cci",
     smaPeriod: 50,
-    adxMin: 10,
-    stopAtrMult: 3.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    adxMin: 8,
+    stopAtrMult: 3.5,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { cciValues } = ctx;
       const curr = cciValues[i], prev = cciValues[i - 1];
