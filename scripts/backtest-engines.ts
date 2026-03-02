@@ -813,9 +813,11 @@ async function main() {
   console.log(`=== backtest-engines.ts: 9 Engine Walk-Forward Backtest ===`);
   console.log(`Pairs: ${PAIRS.join(", ")}`);
   console.log(`Engines: ${enginesFiltered.map((e) => e.name).join(", ")}`);
-  console.log(`Walk-forward: train first ${TRAIN_BARS} 4h bars (~120d), test remainder (~60d)`);
+  console.log(`Walk-forward: train first ${TRAIN_BARS} 4h bars (~120d), test remainder (~150d)`);
   console.log(`Fee: ${(FEE_RATE * 100).toFixed(3)}% RT | Leverage: ${LEV}x | Margin: $${MARGIN_PER_TRADE}/trade`);
-  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)\n`);
+  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)`);
+  console.log(`NOTE: params were tuned on test window in quick-276 (data leakage). Re-tuning on train yields 0 trades.`);
+  console.log(`These results reflect overfit params -- treat Sharpe > 4 as inflated.\n`);
   console.log("Fetching candle data...");
 
   type PairData = {
