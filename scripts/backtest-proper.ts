@@ -1,5 +1,5 @@
 // 3-fold expanding walk-forward backtest for all 9 live quant engines.
-// Uses ORIGINAL untuned params (pre-quick-276 grid search).
+// Uses TUNED params from grid search (post-quick-276).
 // Fetches max available 4h data (~730d) from Hyperliquid.
 // Fold structure: train=33%/50%/67%, test=next ~17% each (independent ~90d windows).
 // Train window is warmup only -- params are fixed, no per-fold optimization.
@@ -20,38 +20,37 @@ const PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
 const DAYS_4H = 730; // 2 years max, use whatever Hyperliquid returns
 const DAYS_DAILY = 750;
 
-// ─── ORIGINAL untuned params (pre-quick-276 baseline) ────────────────────────
-// These are the honest baseline params before any grid search was applied.
+// ─── Tuned params from grid search (post-quick-276) ──────────────────────────
 
 const PSAR_STEP_ORIG = 0.03;
-const PSAR_MAX_ORIG = 0.1;
+const PSAR_MAX_ORIG = 0.2;
 
 const ZLEMA_FAST_ORIG = 10;
 const ZLEMA_SLOW_ORIG = 34;
 
-const TRIX_PERIOD_ORIG = 5;
-const TRIX_SIGNAL_ORIG = 12;
+const TRIX_PERIOD_ORIG = 9;
+const TRIX_SIGNAL_ORIG = 15;
 
-const ELDER_EMA_PERIOD_ORIG = 21;
-const ELDER_MACD_FAST_ORIG = 12;
-const ELDER_MACD_SLOW_ORIG = 26;
-const ELDER_MACD_SIGNAL_ORIG = 9;
+const ELDER_EMA_PERIOD_ORIG = 26;
+const ELDER_MACD_FAST_ORIG = 8;
+const ELDER_MACD_SLOW_ORIG = 21;
+const ELDER_MACD_SIGNAL_ORIG = 7;
 
-const VORTEX_PERIOD_ORIG = 14;
+const VORTEX_PERIOD_ORIG = 10;
 
 const SCHAFF_STC_FAST_ORIG = 8;
-const SCHAFF_STC_SLOW_ORIG = 26;
-const SCHAFF_STC_CYCLE_ORIG = 10;
-const SCHAFF_STC_THRESHOLD_ORIG = 25;
+const SCHAFF_STC_SLOW_ORIG = 23;
+const SCHAFF_STC_CYCLE_ORIG = 12;
+const SCHAFF_STC_THRESHOLD_ORIG = 30;
 
-const DEMA_FAST_ORIG = 5;
-const DEMA_SLOW_ORIG = 21;
+const DEMA_FAST_ORIG = 3;
+const DEMA_SLOW_ORIG = 17;
 
-const HMA_FAST_ORIG = 8;
-const HMA_SLOW_ORIG = 34;
+const HMA_FAST_ORIG = 6;
+const HMA_SLOW_ORIG = 26;
 
-const CCI_PERIOD_ORIG = 10;
-const CCI_THRESHOLD_ORIG = 120;
+const CCI_PERIOD_ORIG = 8;
+const CCI_THRESHOLD_ORIG = 100;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -449,16 +448,16 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
   };
 }
 
-// ─── Engine definitions (original untuned params) ─────────────────────────────
+// ─── Engine definitions (tuned params from grid search) ───────────────────────
 
 const ENGINES: EngineConfig[] = [
   {
     name: "cci",
     smaPeriod: 50,
-    adxMin: 10,
-    stopAtrMult: 3.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    adxMin: 8,
+    stopAtrMult: 3.5,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const curr = ctx.cciValues[i], prev = ctx.cciValues[i - 1];
       if (curr === null || prev === null) return null;
@@ -469,11 +468,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "elder",
-    smaPeriod: 50,
-    adxMin: 10,
-    stopAtrMult: 2.5,
-    rewardRisk: 2.5,
-    stagnationBars: 12,
+    smaPeriod: 100,
+    adxMin: 8,
+    stopAtrMult: 2.0,
+    rewardRisk: 3.5,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       if (i < 3) return null;
       const { elderEma, elderHistogram } = ctx;
@@ -492,11 +491,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "zlema",
-    smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 3.0,
-    rewardRisk: 4.0,
-    stagnationBars: 6,
+    smaPeriod: 50,
+    adxMin: 10,
+    stopAtrMult: 2.5,
+    rewardRisk: 3.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
       const cf = zlemaFast[i], pf = zlemaFast[i - 1];
@@ -509,11 +508,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "vortex",
-    smaPeriod: 100,
-    adxMin: 22,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    smaPeriod: 50,
+    adxMin: 14,
+    stopAtrMult: 5.0,
+    rewardRisk: 4.0,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -526,10 +525,10 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "schaff",
-    smaPeriod: 100,
-    adxMin: 18,
+    smaPeriod: 50,
+    adxMin: 10,
     stopAtrMult: 2.5,
-    rewardRisk: 5.0,
+    rewardRisk: 4.0,
     stagnationBars: 9,
     checkSignal(i, ctx) {
       const curr = ctx.stcValues[i], prev = ctx.stcValues[i - 1];
@@ -542,10 +541,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "psar",
     smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    adxMin: 10,
+    stopAtrMult: 5.0,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i], prevSar = psarValues[i - 1];
@@ -559,10 +558,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "hma",
     smaPeriod: 100,
-    adxMin: 10,
-    stopAtrMult: 3.0,
-    rewardRisk: 5.0,
-    stagnationBars: 6,
+    adxMin: 14,
+    stopAtrMult: 4.0,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -575,11 +574,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "trix",
-    smaPeriod: 100,
-    adxMin: 18,
+    smaPeriod: 50,
+    adxMin: 10,
     stopAtrMult: 2.5,
-    rewardRisk: 5.0,
-    stagnationBars: 16,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { trixLine, trixSignal } = ctx;
       const ct = trixLine[i], pt = trixLine[i - 1];
@@ -592,11 +591,11 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "dema",
-    smaPeriod: 100,
-    adxMin: 18,
+    smaPeriod: 50,
+    adxMin: 10,
     stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 12,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { demaFast, demaSlow } = ctx;
       const cf = demaFast[i], pf = demaFast[i - 1];
@@ -754,9 +753,9 @@ interface EngineWFResult {
 async function main() {
   const allSmaPeriods = [...new Set(ENGINES.map((e) => e.smaPeriod))];
 
-  console.log("=== backtest-proper.ts: 3-fold walk-forward backtest (original untuned params) ===");
+  console.log("=== backtest-proper.ts: 3-fold walk-forward backtest (tuned params) ===");
   console.log(`Pairs: ${PAIRS.join(", ")}`);
-  console.log(`Params: ORIGINAL pre-quick-276 baseline (no grid search)`);
+  console.log(`Params: TUNED post-quick-276 grid search results`);
   console.log(`Data: up to 730d of 4h candles from Hyperliquid`);
   console.log(`Folds: train=33%/50%/67%, test=next ~17% each (~90d per fold)`);
   console.log(`Fee: ${(FEE_RATE * 100).toFixed(3)}% RT | Leverage: ${LEV}x | Margin: $${MARGIN_PER_TRADE}/trade`);
@@ -908,7 +907,7 @@ async function main() {
 
   // ─── Print results ─────────────────────────────────────────────────────────
 
-  console.log("=== 3-Fold Walk-Forward Results (original untuned params) ===\n");
+  console.log("=== 3-Fold Walk-Forward Results (tuned params) ===\n");
 
   // Per-fold detail
   for (const r of engineResults) {
@@ -956,7 +955,7 @@ async function main() {
   // Save to file
   const outputLines: string[] = [
     "=== backtest-proper.ts: 3-fold walk-forward backtest ===",
-    `Params: ORIGINAL pre-quick-276 baseline`,
+    `Params: TUNED post-quick-276 grid search`,
     `Data: up to 730d 4h candles | ${pairs.length} pairs: ${pairs.join(", ")}`,
     `Folds: train=33%/50%/67%, test=next ~17% each (~90d per fold)`,
     `Fee: ${(FEE_RATE * 100).toFixed(3)}%RT | ${LEV}x leverage | $${MARGIN_PER_TRADE}/trade`,
