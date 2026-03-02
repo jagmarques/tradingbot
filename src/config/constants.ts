@@ -36,7 +36,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 600; // $50 per engine x 12 engines
-export const QUANT_MAX_POSITIONS = 20; // Max concurrent positions (4 engines x ~3-5 active pairs each)
+export const QUANT_MAX_POSITIONS = 60; // 12 engines x 5 positions each
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
