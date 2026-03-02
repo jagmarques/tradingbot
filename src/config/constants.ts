@@ -35,8 +35,8 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10; // Hard cap
-export const QUANT_DEFAULT_VIRTUAL_BALANCE = 600; // $50 per engine x 12 engines
-export const QUANT_MAX_POSITIONS = 60; // 12 engines x 5 positions each
+export const QUANT_DEFAULT_VIRTUAL_BALANCE = 500; // $50 per engine x 10 engines (9 directional + 1 AI)
+export const QUANT_MAX_POSITIONS = 50; // 10 engines x 5 positions each
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000; // 10s timeout for API calls
 
 // Quant Market Data Pipeline
@@ -84,17 +84,6 @@ export const ZLEMA_STAGNATION_BARS = 6;
 export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 
-// MACD Cross Engine
-export const MACD_CROSS_FAST = 5;
-export const MACD_CROSS_SLOW = 21;
-export const MACD_CROSS_SIGNAL = 5;
-export const MACD_CROSS_DAILY_SMA_PERIOD = 100;
-export const MACD_CROSS_DAILY_ADX_MIN = 18;
-export const MACD_CROSS_STOP_ATR_MULT = 2.5;
-export const MACD_CROSS_REWARD_RISK = 2.5;
-export const MACD_CROSS_STAGNATION_BARS = 12;
-export const MACD_CROSS_BASE_CONFIDENCE = 65;
-export const MACD_CROSS_DAILY_LOOKBACK_DAYS = 150;
 
 // TRIX Engine
 export const TRIX_PERIOD = 5;
@@ -143,16 +132,6 @@ export const SCHAFF_STAGNATION_BARS = 9;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 
-// TEMA Engine
-export const TEMA_DAILY_SMA_PERIOD = 100;
-export const TEMA_DAILY_ADX_MIN = 14;
-export const TEMA_FAST = 10;
-export const TEMA_SLOW = 21;
-export const TEMA_STOP_ATR_MULT = 4.0;
-export const TEMA_REWARD_RISK = 5.0;
-export const TEMA_STAGNATION_BARS = 9;
-export const TEMA_BASE_CONFIDENCE = 65;
-export const TEMA_DAILY_LOOKBACK_DAYS = 150;
 
 // DEMA Engine
 export const DEMA_DAILY_SMA_PERIOD = 100;
@@ -187,16 +166,6 @@ export const CCI_STAGNATION_BARS = 12;
 export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 
-// Supertrend Engine
-export const SUPERTREND_DAILY_SMA_PERIOD = 100;
-export const SUPERTREND_DAILY_ADX_MIN = 10;
-export const SUPERTREND_PERIOD = 20;
-export const SUPERTREND_MULT = 2.0;
-export const SUPERTREND_STOP_ATR_MULT = 4.0;
-export const SUPERTREND_REWARD_RISK = 2.5;
-export const SUPERTREND_STAGNATION_BARS = 12;
-export const SUPERTREND_BASE_CONFIDENCE = 65;
-export const SUPERTREND_DAILY_LOOKBACK_DAYS = 150;
 
 // Per-pair maintenance margin rates matching real Hyperliquid Tier 1
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {

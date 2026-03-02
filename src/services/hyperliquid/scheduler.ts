@@ -3,12 +3,10 @@ import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
 import { runZlemaDecisionEngine } from "./zlema-engine.js";
-import { runMacdCrossDecisionEngine } from "./macd-cross-engine.js";
 import { runTrixDecisionEngine } from "./trix-engine.js";
 import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
-import { runTEMADecisionEngine } from "./tema-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
 import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
@@ -47,12 +45,10 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
-    const macdCrossDecisions = await runMacdCrossDecisionEngine(analyses);
     const trixDecisions = await runTrixDecisionEngine(analyses);
     const elderDecisions = await runElderImpulseDecisionEngine(analyses);
     const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
-    const temaDecisions = await runTEMADecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
     const hmaDecisions = await runHMADecisionEngine(analyses);
     const cciDecisions = await runCCIDecisionEngine(analyses);
@@ -70,11 +66,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const zlemaOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "zlema-directional")
-        .map(p => p.pair),
-    );
-    const macdCrossOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "macd-cross-directional")
         .map(p => p.pair),
     );
     const trixOpenPairs = new Set(
@@ -95,11 +86,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const schaffOpenPairs = new Set(
       getOpenQuantPositions()
         .filter(p => p.tradeType === "schaff-directional")
-        .map(p => p.pair),
-    );
-    const temaOpenPairs = new Set(
-      getOpenQuantPositions()
-        .filter(p => p.tradeType === "tema-directional")
         .map(p => p.pair),
     );
     const demaOpenPairs = new Set(
@@ -239,46 +225,6 @@ export async function runDirectionalCycle(): Promise<void> {
         globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let macdCrossExecuted = 0;
-    for (const decision of macdCrossDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] MACDCross: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-
-      if (macdCrossOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] MACDCross: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "macd-cross-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        macdCrossExecuted++;
-        macdCrossOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(
-          `[QuantScheduler] MACDCross: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -444,27 +390,6 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
 
-    let temaExecuted = 0;
-    for (const decision of temaDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
-        continue;
-      }
-      if (temaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] TEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "tema-directional", undefined, decision.entryPrice);
-      if (position) {
-        temaExecuted++;
-        temaOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
-        console.log(`[QuantScheduler] TEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
-      }
-    }
-
     let demaExecuted = 0;
     for (const decision of demaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
@@ -529,7 +454,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, MACDCross ${macdCrossExecuted}/${macdCrossDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, TEMA ${temaExecuted}/${temaDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

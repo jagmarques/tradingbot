@@ -1,4 +1,4 @@
-// Unified backtest for all 12 live quant engines using exact production signal logic.
+// Unified backtest for all 9 live quant engines using exact production signal logic.
 // Walk-forward: train=120d (720 4h bars), test=~60d. 8 pairs.
 // Fee model: 0.09% round-trip, 10x leverage, $10 margin per trade.
 // Exit model: SL, TP, trailing stop (peak>5%, trail peak-2%), stagnation (per-engine bars).
@@ -31,10 +31,6 @@ const PSAR_MAX = 0.1;
 const ZLEMA_FAST = 10;
 const ZLEMA_SLOW = 34;
 
-const MACD_CROSS_FAST = 5;
-const MACD_CROSS_SLOW = 21;
-const MACD_CROSS_SIGNAL = 5;
-
 const TRIX_PERIOD = 5;
 const TRIX_SIGNAL = 12;
 
@@ -49,12 +45,6 @@ const SCHAFF_STC_FAST = 8;
 const SCHAFF_STC_SLOW = 26;
 const SCHAFF_STC_CYCLE = 10;
 const SCHAFF_STC_THRESHOLD = 25;
-
-const SUPERTREND_PERIOD = 20;
-const SUPERTREND_MULT = 2.0;
-
-const TEMA_FAST = 10;
-const TEMA_SLOW = 21;
 
 const DEMA_FAST = 5;
 const DEMA_SLOW = 21;
@@ -102,9 +92,6 @@ interface SignalContext {
   // ZLEMA
   zlemaFast: (number | null)[];
   zlemaSlow: (number | null)[];
-  // MACD Cross
-  macdLine: (number | null)[];
-  macdSignal: (number | null)[];
   // TRIX
   trixLine: (number | null)[];
   trixSignal: (number | null)[];
@@ -116,11 +103,6 @@ interface SignalContext {
   vortexMinus: (number | null)[];
   // Schaff
   stcValues: (number | null)[];
-  // Supertrend
-  stDirections: boolean[];
-  // TEMA
-  temaFast: (number | null)[];
-  temaSlow: (number | null)[];
   // DEMA
   demaFast: (number | null)[];
   demaSlow: (number | null)[];
@@ -368,79 +350,6 @@ function mapStcToOriginal(closes: number[], fast: number, slow: number, cycle: n
   return result;
 }
 
-// Supertrend (from supertrend-engine.ts)
-function computeSupertrendDirections(candles: Candle[], period: number, multiplier: number): boolean[] {
-  const n = candles.length;
-  const highs = candles.map((c) => c.high);
-  const lows = candles.map((c) => c.low);
-  const closes = candles.map((c) => c.close);
-
-  const trueRanges: number[] = [0];
-  for (let i = 1; i < n; i++) {
-    const tr = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
-    trueRanges.push(tr);
-  }
-
-  const atr: number[] = new Array(n).fill(0);
-  let sumTr = 0;
-  for (let i = 1; i <= period; i++) sumTr += trueRanges[i];
-  atr[period] = sumTr / period;
-  for (let i = period + 1; i < n; i++) {
-    atr[i] = (atr[i - 1] * (period - 1) + trueRanges[i]) / period;
-  }
-
-  const directions: boolean[] = new Array(n).fill(true);
-  let finalUpperBand = 0;
-  let finalLowerBand = 0;
-
-  for (let i = period; i < n; i++) {
-    const hl2 = (highs[i] + lows[i]) / 2;
-    const basicUpper = hl2 + multiplier * atr[i];
-    const basicLower = hl2 - multiplier * atr[i];
-
-    if (i === period) {
-      finalUpperBand = basicUpper;
-      finalLowerBand = basicLower;
-      directions[i] = closes[i] >= finalLowerBand;
-      continue;
-    }
-
-    const prevClose = closes[i - 1];
-    const prevFinalUpper = finalUpperBand;
-    const prevFinalLower = finalLowerBand;
-
-    finalUpperBand = basicUpper < prevFinalUpper || prevClose > prevFinalUpper ? basicUpper : prevFinalUpper;
-    finalLowerBand = basicLower > prevFinalLower || prevClose < prevFinalLower ? basicLower : prevFinalLower;
-
-    if (directions[i - 1]) {
-      directions[i] = closes[i] >= finalLowerBand;
-    } else {
-      directions[i] = closes[i] > finalUpperBand;
-    }
-  }
-
-  return directions;
-}
-
-// TEMA (from tema-engine.ts)
-function computeTEMA(closes: number[], period: number): (number | null)[] {
-  const n = closes.length;
-  const ema1 = EMA.calculate({ values: closes, period });
-  const ema2 = EMA.calculate({ values: ema1, period });
-  const ema3 = EMA.calculate({ values: ema2, period });
-  const result: (number | null)[] = new Array(n).fill(null);
-  const offset = (period - 1) * 3;
-  ema3.forEach((e3, i) => {
-    const idx = i + offset;
-    if (idx >= n) return;
-    const e2 = ema2[i + (period - 1)];
-    const e1 = ema1[i + (period - 1) * 2];
-    if (e2 === undefined || e1 === undefined) return;
-    result[idx] = 3 * e1 - 3 * e2 + e3;
-  });
-  return result;
-}
-
 // DEMA (from dema-engine.ts)
 function computeDEMA(closes: number[], period: number): (number | null)[] {
   const n = closes.length;
@@ -545,31 +454,6 @@ function precomputeElderIndicators(candles: Candle[]): { ema: (number | null)[];
   return { ema, histogram };
 }
 
-// MACD Cross line and signal mapped to original index space
-function precomputeMACDCross(candles: Candle[]): { macdLine: (number | null)[]; macdSignal: (number | null)[] } {
-  const n = candles.length;
-  const closes = candles.map((c) => c.close);
-
-  const macdRaw = MACD.calculate({
-    values: closes,
-    fastPeriod: MACD_CROSS_FAST,
-    slowPeriod: MACD_CROSS_SLOW,
-    signalPeriod: MACD_CROSS_SIGNAL,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false,
-  });
-
-  const startIdx = n - macdRaw.length;
-  const macdLine: (number | null)[] = new Array(n).fill(null);
-  const macdSignal: (number | null)[] = new Array(n).fill(null);
-  for (let i = 0; i < macdRaw.length; i++) {
-    macdLine[startIdx + i] = macdRaw[i].MACD ?? null;
-    macdSignal[startIdx + i] = macdRaw[i].signal ?? null;
-  }
-
-  return { macdLine, macdSignal };
-}
-
 // ─── Precompute all indicators for a pair ────────────────────────────────────
 
 function precomputeSignalContext(candles: Candle[]): SignalContext {
@@ -578,15 +462,11 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
   const psarValues = precomputePSAR(candles, PSAR_STEP, PSAR_MAX);
   const zlemaFast = computeZLEMA(closes, ZLEMA_FAST);
   const zlemaSlow = computeZLEMA(closes, ZLEMA_SLOW);
-  const { macdLine, macdSignal } = precomputeMACDCross(candles);
   const trixLine = computeTRIX(closes, TRIX_PERIOD);
   const trixSignal = computeTRIXSignal(trixLine, TRIX_SIGNAL);
   const { ema: elderEma, histogram: elderHistogram } = precomputeElderIndicators(candles);
   const { vPlus: vortexPlus, vMinus: vortexMinus } = precomputeVortex(candles, VORTEX_PERIOD);
   const stcValues = mapStcToOriginal(closes, SCHAFF_STC_FAST, SCHAFF_STC_SLOW, SCHAFF_STC_CYCLE);
-  const stDirections = computeSupertrendDirections(candles, SUPERTREND_PERIOD, SUPERTREND_MULT);
-  const temaFast = computeTEMA(closes, TEMA_FAST);
-  const temaSlow = computeTEMA(closes, TEMA_SLOW);
   const demaFast = computeDEMA(closes, DEMA_FAST);
   const demaSlow = computeDEMA(closes, DEMA_SLOW);
   const hmaFast = computeHMA(closes, HMA_FAST);
@@ -597,13 +477,10 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
     candles,
     psarValues,
     zlemaFast, zlemaSlow,
-    macdLine, macdSignal,
     trixLine, trixSignal,
     elderEma, elderHistogram,
     vortexPlus, vortexMinus,
     stcValues,
-    stDirections,
-    temaFast, temaSlow,
     demaFast, demaSlow,
     hmaFast, hmaSlow,
     cciValues,
@@ -647,23 +524,6 @@ const ENGINES: EngineConfig[] = [
       if (cf === null || pf === null || cs === null || ps === null) return null;
       if (pf <= ps && cf > cs) return "long";
       if (pf >= ps && cf < cs) return "short";
-      return null;
-    },
-  },
-  {
-    name: "macd-cross",
-    smaPeriod: 100,
-    adxMin: 18,
-    stopAtrMult: 2.5,
-    rewardRisk: 2.5,
-    stagnationBars: 12,
-    checkSignal(i, ctx) {
-      const { macdLine, macdSignal } = ctx;
-      const cm = macdLine[i], pm = macdLine[i - 1];
-      const cs = macdSignal[i], ps = macdSignal[i - 1];
-      if (cm === null || pm === null || cs === null || ps === null) return null;
-      if (pm <= ps && cm > cs) return "long";
-      if (pm >= ps && cm < cs) return "short";
       return null;
     },
   },
@@ -740,40 +600,6 @@ const ENGINES: EngineConfig[] = [
       if (curr === null || prev === null) return null;
       if (prev <= SCHAFF_STC_THRESHOLD && curr > SCHAFF_STC_THRESHOLD) return "long";
       if (prev >= (100 - SCHAFF_STC_THRESHOLD) && curr < (100 - SCHAFF_STC_THRESHOLD)) return "short";
-      return null;
-    },
-  },
-  {
-    name: "supertrend",
-    smaPeriod: 100,
-    adxMin: 10,
-    stopAtrMult: 4.0,
-    rewardRisk: 2.5,
-    stagnationBars: 12,
-    checkSignal(i, ctx) {
-      const { stDirections } = ctx;
-      if (i < SUPERTREND_PERIOD) return null;
-      const curr = stDirections[i];
-      const prev = stDirections[i - 1];
-      if (!prev && curr) return "long";
-      if (prev && !curr) return "short";
-      return null;
-    },
-  },
-  {
-    name: "tema",
-    smaPeriod: 100,
-    adxMin: 14,
-    stopAtrMult: 4.0,
-    rewardRisk: 5.0,
-    stagnationBars: 9,
-    checkSignal(i, ctx) {
-      const { temaFast, temaSlow } = ctx;
-      const cf = temaFast[i], pf = temaFast[i - 1];
-      const cs = temaSlow[i], ps = temaSlow[i - 1];
-      if (cf === null || pf === null || cs === null || ps === null) return null;
-      if (pf <= ps && cf > cs) return "long";
-      if (pf >= ps && cf < cs) return "short";
       return null;
     },
   },
@@ -984,7 +810,7 @@ async function main() {
 
   const allSmaPeriods = [...new Set(enginesFiltered.map((e) => e.smaPeriod))];
 
-  console.log(`=== backtest-engines.ts: 12 Engine Walk-Forward Backtest ===`);
+  console.log(`=== backtest-engines.ts: 9 Engine Walk-Forward Backtest ===`);
   console.log(`Pairs: ${PAIRS.join(", ")}`);
   console.log(`Engines: ${enginesFiltered.map((e) => e.name).join(", ")}`);
   console.log(`Walk-forward: train first ${TRAIN_BARS} 4h bars (~120d), test remainder (~60d)`);
@@ -1095,7 +921,7 @@ async function main() {
   const sep = "─".repeat(header.length);
 
   const fullLines: string[] = [
-    `=== backtest-engines.ts: Engine Backtest Results ===`,
+    `=== backtest-engines.ts: 9 Engine Backtest Results ===`,
     `Test window: ~${testDaysRef.toFixed(0)}d | ${pairs.length} pairs | fees=${(FEE_RATE * 100).toFixed(3)}%RT | leverage=${LEV}x | margin=$${MARGIN_PER_TRADE}`,
     `Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)`,
     "",
