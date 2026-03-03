@@ -2527,7 +2527,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     const deployedStr = deployed > 0 ? ` ($${deployed.toFixed(0)})` : "";
     const unr = unrealizedByType.get(typeKey) ?? 0;
     const unrStr = ` | unr ${fmtUnr(unr)}`;
-    return `${label}: ${ret}${wr} ${ops}ops${deployedStr}${unrStr}\n`;
+    return `${label}: ${ret}${wr} ${ops}T${deployedStr}${unrStr}\n`;
   };
 
   text += `\n`;
@@ -2545,7 +2545,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const totalOps = totalTrades + openPositions.length;
   const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)} deployed` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
-  text += `Total: ${fmtTotal} ${totalOps}ops${deployedTotal}${totalUnrStr}\n`;
+  text += `Total: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
