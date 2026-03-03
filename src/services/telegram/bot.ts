@@ -27,8 +27,7 @@ import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/ex
 import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
-import { getVirtualBalance, getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal, getEngineBalance } from "../hyperliquid/index.js";
-import type { TradeType } from "../hyperliquid/types.js";
+import { getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
 import { getQuantStats, getQuantValidationMetrics } from "../database/quant.js";
 
@@ -2426,7 +2425,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     return;
   }
 
-  const balance = getVirtualBalance();
   const openPositions = getOpenQuantPositions();
   const mode = isPaperMode() ? "PAPER" : "LIVE";
 
@@ -2447,7 +2445,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
-  text += `${$(balance)} bal | ${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
+  text += `${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
 
   let mids: Record<string, string> = {};
   if (openPositions.length > 0) {
@@ -2517,15 +2515,13 @@ async function handleQuant(ctx: Context): Promise<void> {
   const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 
   const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string): string => {
-    const bal = getEngineBalance(typeKey as TradeType);
-    const balStr = `$${bal.toFixed(1)}`;
     const ret = `${s.totalPnl >= 0 ? "+" : "-"}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const openCnt = openCountByType.get(typeKey) ?? 0;
     const openStr = ` (${openCnt}o)`;
     const unr = unrealizedByType.get(typeKey) ?? 0;
     const unrStr = ` | unr ${fmtUnr(unr)}`;
-    return `${label}: ${balStr} | ${ret} ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
+    return `${label}: ${ret} ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
   };
 
   text += `\n`;

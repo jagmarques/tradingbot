@@ -2,7 +2,6 @@ import { initHyperliquid, isHyperliquidInitialized } from "./client.js";
 import { initPaperEngine } from "./paper.js";
 import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
 import { loadEnv, isPaperMode } from "../../config/env.js";
-import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
@@ -26,10 +25,8 @@ export function initQuant(): number {
     );
   }
 
-  const startBalance = env.QUANT_VIRTUAL_BALANCE ?? QUANT_DEFAULT_VIRTUAL_BALANCE;
-
   if (isPaperMode()) {
-    initPaperEngine(startBalance);
+    initPaperEngine();
     setPaperStartDate(new Date().toISOString());
   }
 
@@ -50,7 +47,7 @@ export function stopQuant(): void {
 
 // Re-export key functions for consumers
 export { openPosition, closePosition, getOpenQuantPositions, getVirtualBalance } from "./executor.js";
-export { getPaperBalance, getPaperPositions, clearPaperMemory, getEngineBalance, ISOLATED_ENGINE_TYPES } from "./paper.js";
+export { getPaperBalance, getPaperPositions, clearPaperMemory, ISOLATED_ENGINE_TYPES } from "./paper.js";
 export { getAccountState, getRecentFills } from "./account.js";
 
 // Market data pipeline

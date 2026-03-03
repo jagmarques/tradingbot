@@ -5,7 +5,6 @@ import {
   saveQuantPosition,
   saveQuantTrade,
   loadOpenQuantPositions,
-  getTotalRealizedPnlByType,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
@@ -24,11 +23,6 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "cci-directional",
 ];
 
-const SHARED_ENGINE_KEY = "shared";
-
-// Per-engine balance map. Keys: each type in ISOLATED_ENGINE_TYPES, plus "shared" for everything else.
-const engineBalances = new Map<string, number>();
-
 const paperPositions = new Map<string, QuantPosition>();
 
 // Stores AI context and indicator snapshot per position, keyed by position ID
@@ -44,62 +38,20 @@ const lastFundingAccrual = new Map<string, number>();
 // Track accumulated funding income per position (for inclusion in close P&L record)
 const accumulatedFunding = new Map<string, number>();
 
-function engineKey(tradeType: TradeType | undefined): string {
-  if (tradeType && (ISOLATED_ENGINE_TYPES as string[]).includes(tradeType)) {
-    return tradeType;
-  }
-  return SHARED_ENGINE_KEY;
-}
-
-export function getEngineBalance(tradeType: TradeType): number {
-  return engineBalances.get(engineKey(tradeType)) ?? 0;
-}
-
-export function initPaperEngine(startingBalance: number): void {
+export function initPaperEngine(): void {
   paperPositions.clear();
-  engineBalances.clear();
 
   const openPositions = loadOpenQuantPositions();
   for (const pos of openPositions) {
     paperPositions.set(pos.id, pos);
   }
 
-  const perEngineStart = startingBalance / ISOLATED_ENGINE_TYPES.length;
-
-  for (const type of ISOLATED_ENGINE_TYPES) {
-    const realizedPnl = getTotalRealizedPnlByType(type);
-    const lockedCapital = openPositions
-      .filter((p) => p.tradeType === type)
-      .reduce((sum, p) => sum + p.size, 0);
-    const balance = perEngineStart + realizedPnl - lockedCapital;
-    engineBalances.set(type, balance);
-    console.log(
-      `[Quant Paper] Engine ${type}: $${balance.toFixed(2)} bal (start=$${perEngineStart.toFixed(2)}, pnl=$${realizedPnl.toFixed(2)}, locked=$${lockedCapital.toFixed(2)})`,
-    );
-  }
-
-  // Shared bucket for non-isolated types (funding, micro-directional, etc.)
-  const sharedRealizedPnl = getTotalRealizedPnlByType("funding");
-  const sharedLocked = openPositions
-    .filter((p) => !p.tradeType || !(ISOLATED_ENGINE_TYPES as string[]).includes(p.tradeType))
-    .reduce((sum, p) => sum + p.size, 0);
-  const sharedBalance = perEngineStart + sharedRealizedPnl - sharedLocked;
-  engineBalances.set(SHARED_ENGINE_KEY, sharedBalance);
-
-  const totalBalance = Array.from(engineBalances.values()).reduce((s, v) => s + v, 0);
-  console.log(
-    `[Quant Paper] Init: $${totalBalance.toFixed(2)} total balance (${openPositions.length} open, perEngine=$${perEngineStart.toFixed(2)})`,
-  );
+  console.log(`[Quant Paper] Init: ${openPositions.length} open positions restored`);
 }
 
 export function getPaperBalance(tradeType?: TradeType): number {
-  if (tradeType !== undefined) {
-    return engineBalances.get(engineKey(tradeType)) ?? 0;
-  }
-  // Sum all engine balances for total
-  let total = 0;
-  for (const v of engineBalances.values()) total += v;
-  return total;
+  const perEngine = QUANT_DEFAULT_VIRTUAL_BALANCE / ISOLATED_ENGINE_TYPES.length;
+  return tradeType !== undefined ? perEngine : QUANT_DEFAULT_VIRTUAL_BALANCE;
 }
 
 export function getPaperPositions(): QuantPosition[] {
@@ -162,8 +114,6 @@ export async function accrueFundingIncome(): Promise<void> {
         continue;
       }
 
-      const key = engineKey(position.tradeType);
-      engineBalances.set(key, (engineBalances.get(key) ?? 0) + accruedPayment);
       lastFundingAccrual.set(position.id, now);
 
       const prev = accumulatedFunding.get(position.id) ?? 0;
@@ -193,15 +143,6 @@ export async function paperOpenPosition(
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
 ): Promise<QuantPosition | null> {
-  const key = engineKey(tradeType);
-  const engineBal = engineBalances.get(key) ?? 0;
-
-  if (engineBal < sizeUsd) {
-    console.log(
-      `[Quant Paper] Low balance: ${tradeType} $${engineBal.toFixed(2)} < $${sizeUsd} - proceeding (paper unlimited)`,
-    );
-  }
-
   const price = await fetchMidPrice(pair);
   if (!price) {
     console.error(`[Quant Paper] Could not fetch price for ${pair}`);
@@ -243,7 +184,6 @@ export async function paperOpenPosition(
     tradeType,
   };
 
-  engineBalances.set(key, engineBal - sizeUsd);
   paperPositions.set(position.id, position);
   saveQuantPosition(position);
   positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
@@ -258,9 +198,8 @@ export async function paperOpenPosition(
     takeProfit: adjTP,
   });
 
-  console.log(
-    `[Quant Paper] OPEN ${direction} ${pair} $${sizeUsd} @ ${price} (${leverage}x) (${tradeType} bal: $${(engineBal - sizeUsd).toFixed(2)})`,
-  );
+  const openCount = Array.from(paperPositions.values()).filter(p => p.status === "open" && p.tradeType === tradeType).length;
+  console.log(`[Quant Paper] ${tradeType}: OPEN ${direction.toUpperCase()} ${pair} $${sizeUsd}x${leverage} — ${openCount} concurrent open`);
   return position;
 }
 
@@ -305,11 +244,6 @@ export async function paperClosePosition(
   }
 
   const pnl = rawPnl - fees + fundingPnl + spotPnl;
-
-  // Credit back to the engine-specific balance
-  const key = engineKey(position.tradeType);
-  const returnAmount = position.size + (rawPnl - fees) + spotPnl;
-  engineBalances.set(key, (engineBalances.get(key) ?? 0) + returnAmount);
 
   const now = new Date().toISOString();
   const closedPosition: QuantPosition = {
@@ -359,22 +293,18 @@ export async function paperClosePosition(
     tradeType: position.tradeType ?? "directional",
   });
 
-  const pnlStr =
-    pnl >= 0 ? `+$${pnl.toFixed(4)}` : `-$${Math.abs(pnl).toFixed(4)}`;
+  const realizedPnl = pnl;
   const fundingStr = fundingPnl !== 0
     ? ` (incl funding ${fundingPnl >= 0 ? "+" : ""}$${fundingPnl.toFixed(4)})`
     : "";
   console.log(
-    `[Quant Paper] CLOSE ${position.direction} ${position.pair} @ ${currentPrice} ${pnlStr}${fundingStr} (${reason})`,
+    `[Quant Paper] ${position.tradeType ?? "directional"}: CLOSE ${position.pair} pnl=${realizedPnl >= 0 ? "+" : ""}$${realizedPnl.toFixed(2)} (${reason})${fundingStr}`,
   );
 
   return { success: true, pnl };
 }
 
 export function deductLiquidationPenalty(positionId: string, penaltyUsd: number): void {
-  const position = paperPositions.get(positionId);
-  const key = engineKey(position?.tradeType);
-  engineBalances.set(key, (engineBalances.get(key) ?? 0) - penaltyUsd);
   console.log(`[Quant Paper] Liquidation penalty for ${positionId}: -$${penaltyUsd.toFixed(4)}`);
 }
 
@@ -383,9 +313,4 @@ export function clearPaperMemory(): void {
   positionContext.clear();
   lastFundingAccrual.clear();
   accumulatedFunding.clear();
-  const perEngineReset = QUANT_DEFAULT_VIRTUAL_BALANCE / ISOLATED_ENGINE_TYPES.length;
-  for (const type of ISOLATED_ENGINE_TYPES) {
-    engineBalances.set(type, perEngineReset);
-  }
-  engineBalances.set(SHARED_ENGINE_KEY, perEngineReset);
 }
