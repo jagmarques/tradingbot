@@ -11,8 +11,20 @@ import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
+import { getEngineBalance } from "./paper.js";
+import { isPaperMode } from "../../config/env.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
-import type { QuantAIDecision } from "./types.js";
+import type { QuantAIDecision, TradeType } from "./types.js";
+
+function hasCapital(tradeType: TradeType): boolean {
+  if (!isPaperMode()) return true;
+  const bal = getEngineBalance(tradeType);
+  if (bal <= 0) {
+    console.log(`[QuantScheduler] ${tradeType}: Out of capital ($${bal.toFixed(2)}), skipping`);
+    return false;
+  }
+  return true;
+}
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -112,6 +124,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("ai-directional")) break;
       if (aiOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -152,6 +165,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("psar-directional")) break;
       if (psarOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -192,6 +206,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("zlema-directional")) break;
       if (zlemaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -232,6 +247,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("trix-directional")) break;
       if (trixOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -272,6 +288,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("elder-impulse-directional")) break;
       if (elderOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -312,6 +329,7 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (!hasCapital("schaff-directional")) break;
       if (schaffOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -351,6 +369,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
+      if (!hasCapital("dema-directional")) break;
       if (demaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -372,6 +391,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
+      if (!hasCapital("hma-directional")) break;
       if (hmaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -393,6 +413,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
         continue;
       }
+      if (!hasCapital("cci-directional")) break;
       if (cciOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
