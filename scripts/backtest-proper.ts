@@ -13,8 +13,13 @@ import * as fs from "node:fs";
 
 const LEV = 10;
 const FEE_RATE = 0.0009; // 0.09% round-trip
+const FUNDING_RATE_PER_8H = 0.0001; // 0.01%/8h
+const MIN_PAIR_BARS = 1500; // ~250d min
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV; // $100 notional
+
+const LIQUID_PAIRS = new Set(["BTC","ETH","SOL","BNB","XRP","DOGE","AVAX","LINK","LTC","ADA","DOT","ATOM","NEAR"]);
+function getPairSlippage(pair: string): number { return LIQUID_PAIRS.has(pair) ? 0.0003 : 0.0007; } // 0.03% liquid, 0.07% alts
 
 const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "ATOM", "APT", "WIF", "kPEPE", "kBONK", "kFLOKI", "kSHIB", "NEAR", "RUNE", "FET", "LDO", "CRV", "HBAR", "LTC", "TIA", "SEI", "JUP", "PYTH", "TAO", "ADA", "DOT"];
 const DAYS_4H = 730; // 2 years max, use whatever Hyperliquid returns
@@ -22,8 +27,8 @@ const DAYS_DAILY = 750;
 
 // ─── Tuned params (PSAR min-fold fix + avg-Sharpe best for others) ──────────
 
-const PSAR_STEP_ORIG = 0.02;
-const PSAR_MAX_ORIG = 0.1;
+const PSAR_STEP_ORIG = 0.008;
+const PSAR_MAX_ORIG = 0.12;
 
 const ZLEMA_FAST_ORIG = 4;
 const ZLEMA_SLOW_ORIG = 40;
@@ -38,15 +43,15 @@ const ELDER_MACD_SIGNAL_ORIG = 6;
 
 
 const SCHAFF_STC_FAST_ORIG = 8;
-const SCHAFF_STC_SLOW_ORIG = 26;
+const SCHAFF_STC_SLOW_ORIG = 20;
 const SCHAFF_STC_CYCLE_ORIG = 12;
-const SCHAFF_STC_THRESHOLD_ORIG = 25;
+const SCHAFF_STC_THRESHOLD_ORIG = 40;
 
 const DEMA_FAST_ORIG = 5;
 const DEMA_SLOW_ORIG = 21;
 
-const HMA_FAST_ORIG = 6;
-const HMA_SLOW_ORIG = 34;
+const HMA_FAST_ORIG = 3;
+const HMA_SLOW_ORIG = 50;
 
 const CCI_PERIOD_ORIG = 20;
 const CCI_THRESHOLD_ORIG = 85;
@@ -523,13 +528,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "schaff",
     smaPeriod: 50,
-    adxMin: 10,
+    adxMin: 0,
     stopAtrMult: 3.5,
     rewardRisk: 4.0,
     stagnationBars: 9,
-    reverseExit: true,
-    trailActivation: 3,
-    trailDistance: 1,
+    reverseExit: false,
+    trailActivation: 5,
+    trailDistance: 2,
     checkSignal(i, ctx) {
       const curr = ctx.stcValues[i], prev = ctx.stcValues[i - 1];
       if (curr === null || prev === null) return null;
@@ -541,11 +546,11 @@ const ENGINES: EngineConfig[] = [
   {
     name: "psar",
     smaPeriod: 50,
-    adxMin: 10,
+    adxMin: 0,
     stopAtrMult: 3.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
-    trailActivation: 3,
+    stagnationBars: 16,
+    trailActivation: 8,
     trailDistance: 2,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
@@ -560,13 +565,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "hma",
     smaPeriod: 50,
-    adxMin: 10,
-    stopAtrMult: 2.5,
-    rewardRisk: 5.0,
-    stagnationBars: 4,
+    adxMin: 0,
+    stopAtrMult: 3.0,
+    rewardRisk: 6.0,
+    stagnationBars: 10,
     reverseExit: false,
-    trailActivation: 8,
-    trailDistance: 1,
+    trailActivation: 5,
+    trailDistance: 2,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -579,10 +584,10 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "trix",
-    smaPeriod: 100,
-    adxMin: 14,
-    stopAtrMult: 3.5,
-    rewardRisk: 4.0,
+    smaPeriod: 50,
+    adxMin: 10,
+    stopAtrMult: 2.5,
+    rewardRisk: 6.0,
     stagnationBars: 10,
     trailActivation: 8,
     trailDistance: 2,
@@ -620,13 +625,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "vortex",
     smaPeriod: 100,
-    adxMin: 0,
+    adxMin: 14,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
     stagnationBars: 16,
     adxNotDecl: true,
     reverseExit: false,
-    trailActivation: 8,
+    trailActivation: 5,
     trailDistance: 3,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
@@ -649,6 +654,13 @@ function sharpe(pnls: number[]): number {
   return std === 0 ? 0 : (mean / std) * Math.sqrt(pnls.length);
 }
 
+function annualizedSharpe(pnls: number[], days: number): number {
+  if (pnls.length < 2 || days <= 0) return 0;
+  const mean = pnls.reduce((s, v) => s + v, 0) / pnls.length;
+  const std = Math.sqrt(pnls.reduce((s, v) => s + (v - mean) ** 2, 0) / pnls.length);
+  return std === 0 ? 0 : (mean / std) * Math.sqrt((pnls.length / days) * 365);
+}
+
 function runBacktest(
   candles4h: Candle[],
   atr4h: (number | null)[],
@@ -659,6 +671,7 @@ function runBacktest(
   ctx: SignalContext,
   startIdx: number,
   endIdx: number,
+  slippage: number,
 ): BacktestResult {
   let pnlTotal = 0;
   let peakPnl = 0;
@@ -674,6 +687,7 @@ function runBacktest(
     sl: number;
     tp: number;
     peakPnlPct: number;
+    fundingPaid: number;
   };
   let pos: Pos | null = null;
 
@@ -681,6 +695,10 @@ function runBacktest(
     const c = candles4h[i];
 
     if (pos !== null) {
+      // funding every 8h
+      const barsHeld = i - pos.entryIdx;
+      if (barsHeld > 0 && barsHeld % 2 === 0) pos.fundingPaid += NOTIONAL * FUNDING_RATE_PER_8H;
+
       const pricePct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
@@ -689,31 +707,38 @@ function runBacktest(
       const trailDist = engine.trailDistance ?? 2;
       const trailingHit = pos.peakPnlPct > trailAct && unrealizedPct <= pos.peakPnlPct - trailDist;
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;
-      const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
-      const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
+      // gap-through stop
       let exitPrice: number | null = null;
+      if (pos.dir === "long" && c.open < pos.sl) {
+        exitPrice = c.open;
+      } else if (pos.dir === "short" && c.open > pos.sl) {
+        exitPrice = c.open;
+      } else {
+        const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
+        const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
-      if (trailingHit) {
-        exitPrice = c.close;
-      } else if (stagHit) {
-        exitPrice = c.close;
-      } else if (slHit && tpHit) {
-        exitPrice = pos.sl; // conservative: assume SL if both hit
-      } else if (slHit) {
-        exitPrice = pos.sl;
-      } else if (tpHit) {
-        exitPrice = pos.tp;
-      } else if (engine.reverseExit) {
-        const rev = engine.checkSignal(i, ctx);
-        if ((pos.dir === "long" && rev === "short") || (pos.dir === "short" && rev === "long")) exitPrice = c.close;
+        if (trailingHit) {
+          exitPrice = c.close;
+        } else if (stagHit) {
+          exitPrice = c.close;
+        } else if (slHit && tpHit) {
+          exitPrice = pos.sl;
+        } else if (slHit) {
+          exitPrice = pos.sl;
+        } else if (tpHit) {
+          exitPrice = pos.tp;
+        } else if (engine.reverseExit) {
+          const rev = engine.checkSignal(i, ctx);
+          if ((pos.dir === "long" && rev === "short") || (pos.dir === "short" && rev === "long")) exitPrice = c.close;
+        }
       }
 
       if (exitPrice !== null) {
         const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
         const grossPnl = pp * NOTIONAL;
-        const fees = NOTIONAL * FEE_RATE;
-        const net = grossPnl - fees;
+        const fees = NOTIONAL * FEE_RATE + 2 * NOTIONAL * slippage;
+        const net = grossPnl - fees - pos.fundingPaid;
         pnlTotal += net;
         peakPnl = Math.max(peakPnl, pnlTotal);
         maxDrawdown = Math.max(maxDrawdown, peakPnl - pnlTotal);
@@ -755,7 +780,7 @@ function runBacktest(
         const stopDist = atr * engine.stopAtrMult;
         const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
         const tp = dir === "long" ? entryPrice + stopDist * engine.rewardRisk : entryPrice - stopDist * engine.rewardRisk;
-        pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0 };
+        pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0, fundingPaid: 0 };
       }
     }
   }
@@ -785,6 +810,7 @@ function runEnsembleBacktest(
   startIdx: number,
   endIdx: number,
   minAgreement: number,
+  slippage: number,
 ): BacktestResult {
   let pnlTotal = 0;
   let peakPnl = 0;
@@ -793,32 +819,42 @@ function runEnsembleBacktest(
   let wins = 0;
   const tradePnlPcts: number[] = [];
 
-  type Pos = { dir: "long" | "short"; entry: number; entryIdx: number; sl: number; tp: number; peakPnlPct: number; trailAct: number; trailDist: number; stag: number };
+  type Pos = { dir: "long" | "short"; entry: number; entryIdx: number; sl: number; tp: number; peakPnlPct: number; trailAct: number; trailDist: number; stag: number; fundingPaid: number };
   let pos: Pos | null = null;
 
   for (let i = startIdx; i < endIdx; i++) {
     const c = candles4h[i];
 
     if (pos !== null) {
+      const barsHeld = i - pos.entryIdx;
+      if (barsHeld > 0 && barsHeld % 2 === 0) pos.fundingPaid += NOTIONAL * FUNDING_RATE_PER_8H;
+
       const pricePct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
 
       const trailingHit = pos.peakPnlPct > pos.trailAct && unrealizedPct <= pos.peakPnlPct - pos.trailDist;
       const stagHit = (i - pos.entryIdx) >= pos.stag;
-      const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
-      const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
       let exitPrice: number | null = null;
-      if (trailingHit) exitPrice = c.close;
-      else if (stagHit) exitPrice = c.close;
-      else if (slHit && tpHit) exitPrice = pos.sl;
-      else if (slHit) exitPrice = pos.sl;
-      else if (tpHit) exitPrice = pos.tp;
+      if (pos.dir === "long" && c.open < pos.sl) {
+        exitPrice = c.open;
+      } else if (pos.dir === "short" && c.open > pos.sl) {
+        exitPrice = c.open;
+      } else {
+        const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
+        const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
+        if (trailingHit) exitPrice = c.close;
+        else if (stagHit) exitPrice = c.close;
+        else if (slHit && tpHit) exitPrice = pos.sl;
+        else if (slHit) exitPrice = pos.sl;
+        else if (tpHit) exitPrice = pos.tp;
+      }
 
       if (exitPrice !== null) {
         const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
-        const net = pp * NOTIONAL - NOTIONAL * FEE_RATE;
+        const fees = NOTIONAL * FEE_RATE + 2 * NOTIONAL * slippage;
+        const net = pp * NOTIONAL - fees - pos.fundingPaid;
         pnlTotal += net;
         peakPnl = Math.max(peakPnl, pnlTotal);
         maxDrawdown = Math.max(maxDrawdown, peakPnl - pnlTotal);
@@ -868,7 +904,7 @@ function runEnsembleBacktest(
       const stopDist = atr * avgStop;
       const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
       const tp = dir === "long" ? entryPrice + stopDist * avgRR : entryPrice - stopDist * avgRR;
-      pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0, trailAct: avgTrailAct, trailDist: avgTrailDist, stag: maxStag };
+      pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0, trailAct: avgTrailAct, trailDist: avgTrailDist, stag: maxStag, fundingPaid: 0 };
     }
   }
 
@@ -889,8 +925,9 @@ interface FoldResult {
 
 interface EngineWFResult {
   name: string;
-  folds: { fold: number; trades: number; wins: number; pnl: number; sharpe: number; pctPerDay: number; days: number }[];
+  folds: { fold: number; trades: number; wins: number; pnl: number; sharpe: number; annSharpe: number; pctPerDay: number; days: number }[];
   avgSharpe: number;
+  avgAnnSharpe: number;
   avgPctPerDay: number;
   avgWR: number;
   totalTrades: number;
@@ -903,13 +940,11 @@ async function main() {
 
   const allSmaPeriods = [...new Set(ENGINES.map((e) => e.smaPeriod))];
 
-  console.log("=== backtest-proper.ts: 3-fold walk-forward backtest (tuned params) ===");
+  console.log("=== backtest-proper.ts: 3-fold OOS backtest (tuned params) ===");
   console.log(`Pairs: ${PAIRS.join(", ")}`);
-  console.log(`Params: TUNED post-quick-276 grid search results`);
-  console.log(`Data: up to 730d of 4h candles from Hyperliquid`);
-  console.log(`Folds: train=33%/50%/67%, test=next ~17% each (~90d per fold)`);
-  console.log(`Fee: ${(FEE_RATE * 100).toFixed(3)}% RT | Leverage: ${LEV}x | Margin: $${MARGIN_PER_TRADE}/trade`);
-  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)\n`);
+  console.log(`Data: up to 730d 4h candles | Fee: ${(FEE_RATE * 100).toFixed(3)}%RT | ${LEV}x leverage`);
+  console.log(`Costs: slippage(tiered) + funding(0.01%/8h) + gap-through stops`);
+  console.log(`Folds: 3 OOS windows post-training [67-78%, 78-89%, 89-100%]\n`);
   console.log("Fetching candle data...");
 
   type PairData = {
@@ -920,6 +955,7 @@ async function main() {
     preDaily: DailyPre;
     idxDailyAt: number[];
     totalBars: number;
+    slippage: number;
   };
 
   const candleMap: Record<string, PairData> = {};
@@ -944,13 +980,19 @@ async function main() {
       }
       if (!dailyCandles || dailyCandles.length === 0) throw new Error("daily fetch failed");
 
+      if (h4.length < MIN_PAIR_BARS) {
+        console.log(` SKIP (${h4.length} bars < ${MIN_PAIR_BARS})`);
+        continue;
+      }
+
       const atr4h = precomputeATR(h4);
       const ctx = precomputeSignalContext(h4);
       const preDaily = precomputeDaily(dailyCandles, allSmaPeriods);
       const idxDailyAt = buildDailyIndex(h4, dailyCandles);
+      const slippage = getPairSlippage(pair);
 
-      candleMap[pair] = { h4, atr4h, ctx, dailyCandles, preDaily, idxDailyAt, totalBars: h4.length };
-      console.log(` ${dailyCandles.length}daily. total4h=${h4.length}`);
+      candleMap[pair] = { h4, atr4h, ctx, dailyCandles, preDaily, idxDailyAt, totalBars: h4.length, slippage };
+      console.log(` ${dailyCandles.length}daily. total4h=${h4.length} slip=${(slippage * 100).toFixed(2)}%`);
     } catch (e) {
       console.warn(`  ${pair}: SKIP (${(e as Error).message})`);
     }
@@ -963,17 +1005,12 @@ async function main() {
   const minBars = Math.min(...pairs.map((p) => candleMap[p].totalBars));
   console.log(`\nLoaded ${pairs.length} pairs. Min bars across pairs: ${minBars} (~${(minBars / 6).toFixed(0)}d)`);
 
-  // 3-fold expanding walk-forward
-  // Each test slice is ~17% of total, placed consecutively
-  // Fold 1: train=[0, 33%), test=[33%, 50%)
-  // Fold 2: train=[0, 50%), test=[50%, 67%)
-  // Fold 3: train=[0, 67%), test=[67%, 84%)  -- leave last 16% unused (recent unanchored data)
-  const trainRatios = [0.33, 0.50, 0.67];
-  const testRatios  = [0.50, 0.67, 0.84];
+  // 3 OOS windows post-training (tuned on 0-67%, test 67-100%)
+  const foldBounds = [0.67, 0.78, 0.89, 1.00];
 
-  const foldDefs: FoldResult[] = trainRatios.map((tr, fi) => {
-    const testStart = Math.floor(minBars * tr);
-    const testEnd   = Math.floor(minBars * testRatios[fi]);
+  const foldDefs: FoldResult[] = foldBounds.slice(0, 3).map((startRatio, fi) => {
+    const testStart = Math.floor(minBars * startRatio);
+    const testEnd   = Math.min(Math.floor(minBars * foldBounds[fi + 1]), minBars);
     const samplePair = candleMap[pairs[0]];
     const testStartTs = samplePair.h4[testStart]?.timestamp ?? 0;
     const testEndTs   = samplePair.h4[testEnd - 1]?.timestamp ?? 0;
@@ -986,9 +1023,9 @@ async function main() {
     };
   });
 
-  console.log("\nFold definitions (based on min bars across pairs):");
+  console.log("\nFold definitions (all post-training, 67-100%):");
   for (const f of foldDefs) {
-    console.log(`  Fold ${f.fold}: train=[0,${f.testStartBar}) test=[${f.testStartBar},${f.testEndBar}) ~${f.testDays.toFixed(0)}d`);
+    console.log(`  Fold ${f.fold}: test=[${f.testStartBar},${f.testEndBar}) ~${f.testDays.toFixed(0)}d`);
   }
 
   if (isEnsemble) {
@@ -1001,7 +1038,7 @@ async function main() {
         const { h4, atr4h, ctx, dailyCandles, preDaily, idxDailyAt } = candleMap[pair];
         const testEnd = Math.min(fold.testEndBar, h4.length);
         if (fold.testStartBar >= testEnd) continue;
-        const r = runEnsembleBacktest(h4, atr4h, dailyCandles, preDaily, idxDailyAt, ENGINES, ctx, fold.testStartBar, testEnd, ensembleMin);
+        const r = runEnsembleBacktest(h4, atr4h, dailyCandles, preDaily, idxDailyAt, ENGINES, ctx, fold.testStartBar, testEnd, ensembleMin, candleMap[pair].slippage);
         totalPnl += r.totalReturn; totalTrades += r.trades; totalWins += r.wins;
         maxTestDays = Math.max(maxTestDays, r.days); allPnlPcts.push(...r.tradePnlPcts);
       }
@@ -1044,7 +1081,8 @@ async function main() {
         const r = runBacktest(
           h4, atr4h, dailyCandles, preDaily, idxDailyAt,
           engine, ctx,
-          fold.testStartBar, testEnd
+          fold.testStartBar, testEnd,
+          candleMap[pair].slippage
         );
         totalPnl += r.totalReturn;
         totalTrades += r.trades;
@@ -1057,6 +1095,7 @@ async function main() {
         ? (totalPnl / (MARGIN_PER_TRADE * pairs.length)) / maxTestDays * 100
         : 0;
       const sh = sharpe(allPnlPcts);
+      const annSh = annualizedSharpe(allPnlPcts, maxTestDays);
 
       foldAgg.push({
         fold: fold.fold,
@@ -1064,12 +1103,14 @@ async function main() {
         wins: totalWins,
         pnl: totalPnl,
         sharpe: sh,
+        annSharpe: annSh,
         pctPerDay,
         days: maxTestDays,
       });
     }
 
     const avgSharpe = foldAgg.reduce((s, f) => s + f.sharpe, 0) / foldAgg.length;
+    const avgAnnSharpe = foldAgg.reduce((s, f) => s + f.annSharpe, 0) / foldAgg.length;
     const avgPctPerDay = foldAgg.reduce((s, f) => s + f.pctPerDay, 0) / foldAgg.length;
     const totalWins = foldAgg.reduce((s, f) => s + f.wins, 0);
     const totalTrades = foldAgg.reduce((s, f) => s + f.trades, 0);
@@ -1079,6 +1120,7 @@ async function main() {
       name: engine.name,
       folds: foldAgg,
       avgSharpe,
+      avgAnnSharpe,
       avgPctPerDay,
       avgWR,
       totalTrades,
@@ -1091,7 +1133,7 @@ async function main() {
 
   // Per-fold detail
   for (const r of engineResults) {
-    const header2 = `  Fold | Trades | WinRate |   PnL($) | %/day  | Sharpe | Days`;
+    const header2 = `  Fold | Trades | WinRate |   PnL($) | %/day  | Sharpe | AnnSharpe | Days`;
     console.log(`\n[${r.name.toUpperCase()}]`);
     console.log(header2);
     console.log("  " + "-".repeat(header2.length - 2));
@@ -1100,37 +1142,34 @@ async function main() {
       const sign = f.pctPerDay >= 0 ? "+" : "";
       const pnlSign = f.pnl >= 0 ? "+" : "";
       console.log(
-        `  F${f.fold}   | ${String(f.trades).padStart(6)} | ${(wr.toFixed(1) + "%").padStart(7)} | ${(pnlSign + f.pnl.toFixed(2)).padStart(8)} | ${(sign + f.pctPerDay.toFixed(3) + "%").padStart(6)} | ${f.sharpe.toFixed(2).padStart(6)} | ${f.days.toFixed(0)}`
+        `  F${f.fold}   | ${String(f.trades).padStart(6)} | ${(wr.toFixed(1) + "%").padStart(7)} | ${(pnlSign + f.pnl.toFixed(2)).padStart(8)} | ${(sign + f.pctPerDay.toFixed(3) + "%").padStart(6)} | ${f.sharpe.toFixed(2).padStart(6)} | ${f.annSharpe.toFixed(2).padStart(9)} | ${f.days.toFixed(0)}`
       );
     }
     const sign = r.avgPctPerDay >= 0 ? "+" : "";
     console.log(
-      `  AVG  | ${String(r.totalTrades).padStart(6)} | ${(r.avgWR.toFixed(1) + "%").padStart(7)} |          | ${(sign + r.avgPctPerDay.toFixed(3) + "%").padStart(6)} | ${r.avgSharpe.toFixed(2).padStart(6)} |`
+      `  AVG  | ${String(r.totalTrades).padStart(6)} | ${(r.avgWR.toFixed(1) + "%").padStart(7)} |          | ${(sign + r.avgPctPerDay.toFixed(3) + "%").padStart(6)} | ${r.avgSharpe.toFixed(2).padStart(6)} | ${r.avgAnnSharpe.toFixed(2).padStart(9)} |`
     );
   }
 
   // Summary table
   console.log("\n\n=== SUMMARY TABLE ===\n");
-  const summaryHeader = `Engine   | F1 Sharpe | F2 Sharpe | F3 Sharpe | AVG Sharpe | AVG %/day | AVG WR | Total Trades`;
+  const summaryHeader = `Engine   | F1 Sharpe | F2 Sharpe | F3 Sharpe | AVG Sharpe | AVG AnnSh | AVG %/day | AVG WR | Total Trades`;
   const summarySep = "─".repeat(summaryHeader.length);
   console.log(summaryHeader);
   console.log(summarySep);
 
-  // Sort by avg sharpe descending
-  engineResults.sort((a, b) => b.avgSharpe - a.avgSharpe);
+  engineResults.sort((a, b) => b.avgAnnSharpe - a.avgAnnSharpe);
 
   const summaryLines: string[] = [summaryHeader, summarySep];
   for (const r of engineResults) {
     const f1 = r.folds[0], f2 = r.folds[1], f3 = r.folds[2];
     const sign = r.avgPctPerDay >= 0 ? "+" : "";
-    const line = `${r.name.padEnd(8)} | ${f1.sharpe.toFixed(2).padStart(9)} | ${f2.sharpe.toFixed(2).padStart(9)} | ${f3.sharpe.toFixed(2).padStart(9)} | ${r.avgSharpe.toFixed(2).padStart(10)} | ${(sign + r.avgPctPerDay.toFixed(3) + "%").padStart(9)} | ${(r.avgWR.toFixed(1) + "%").padStart(6)} | ${r.totalTrades}`;
+    const line = `${r.name.padEnd(8)} | ${f1.sharpe.toFixed(2).padStart(9)} | ${f2.sharpe.toFixed(2).padStart(9)} | ${f3.sharpe.toFixed(2).padStart(9)} | ${r.avgSharpe.toFixed(2).padStart(10)} | ${r.avgAnnSharpe.toFixed(2).padStart(9)} | ${(sign + r.avgPctPerDay.toFixed(3) + "%").padStart(9)} | ${(r.avgWR.toFixed(1) + "%").padStart(6)} | ${r.totalTrades}`;
     console.log(line);
     summaryLines.push(line);
   }
 
-  console.log(`\nData: ${minBars} bars (~${(minBars / 6).toFixed(0)}d) | ${pairs.length} pairs | fees=${(FEE_RATE * 100).toFixed(3)}%RT | ${LEV}x leverage`);
-  console.log("NOTE: Sharpe 0.5-2.5 and %/day 0.05-0.4% expected for honest working strategy.");
-  console.log("      Sharpe > 3.0 should be treated with suspicion (possible look-ahead or overfitting).");
+  console.log(`\nData: ${minBars} bars (~${(minBars / 6).toFixed(0)}d) | ${pairs.length} pairs | fees=${(FEE_RATE * 100).toFixed(3)}%RT+slip+funding | ${LEV}x leverage`);
 
   // Save to file
   const outputLines: string[] = [

@@ -159,12 +159,12 @@ function sharpe(pnls: number[]): number {
 const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "NEAR", "ATOM", "APT", "WIF"];
 const DAYS = 365, TRAIN_FRAC = 240 / 365;
 const DAILY_SMA_VALS = [50, 70, 100];
-const DAILY_ADX_VALS = [15, 18, 20];
+const DAILY_ADX_VALS = [10, 14, 18, 22];
 const DEMA_FAST_VALS = [5, 8, 13];
 const DEMA_SLOW_VALS = [21, 34, 55];
-const STOP_ATR_VALS = [1.5, 2.0, 2.5];
-const RR_VALS = [2.5, 3.0, 3.5, 4.0];
-const STAG_VALS = [6, 9, 12];
+const STOP_ATR_VALS = [0.5, 1.5, 2.0, 2.5, 3.0, 4.0];
+const RR_VALS = [2.5, 3.0, 3.5, 4.0, 5.0];
+const STAG_VALS = [6, 9, 12, 16, 24];
 
 const ALL_DEMA_PERIODS = [...new Set([...DEMA_FAST_VALS, ...DEMA_SLOW_VALS])];
 
@@ -238,10 +238,10 @@ async function main() {
         phase2.push({ params, trainReturn: total / pairs.length });
       }
 
-  const top5 = [...phase1, ...phase2].sort((a, b) => b.trainReturn - a.trainReturn).slice(0, 5);
-  console.log(`\nEvaluating top-5 on TEST set...`);
+  const top10 = [...phase1, ...phase2].sort((a, b) => b.trainReturn - a.trainReturn).slice(0, 10);
+  console.log(`\nEvaluating top-10 on TEST set...`);
   const results: WalkForwardResult[] = [];
-  for (const { params, trainReturn } of top5) {
+  for (const { params, trainReturn } of top10) {
     let testRet = 0, testTrades = 0, testWins = 0, testDD = 0, tDays = 0;
     const allPnls: number[] = [];
     for (const pair of pairs) {
@@ -253,7 +253,7 @@ async function main() {
     results.push({ params, trainReturn, testReturn: testRet / pairs.length, testDays: tDays, profitPerDay: tDays > 0 ? (testRet / pairs.length) / tDays : 0, testTrades, testWinRate: testTrades > 0 ? (testWins / testTrades) * 100 : 0, testMaxDrawdown: testDD, testSharpe: sharpe(allPnls) });
   }
 
-  results.sort((a, b) => b.profitPerDay - a.profitPerDay);
+  results.sort((a, b) => (b.profitPerDay / (b.testMaxDrawdown || 1)) - (a.profitPerDay / (a.testMaxDrawdown || 1)));
   console.log("\n=== RESULTS ===\n");
   console.log("Rk  %/day   TestRet  TrainRet  Trades  WR    MaxDD   Sharpe  Params");
   console.log("-".repeat(110));

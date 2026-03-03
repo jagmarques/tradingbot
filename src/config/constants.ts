@@ -125,7 +125,7 @@ export const ELDER_TRAIL_ACTIVATION = 8;
 export const ELDER_TRAIL_DISTANCE = 3;
 
 
-// Vortex Engine -- OOS Sharpe=3.18 0.612%/day (33-pair tune with trail params)
+// Vortex Engine -- OOS Sharpe=3.32 0.634%/day (3-fold avg Sharpe=2.34 0.614%/day)
 export const VORTEX_DAILY_SMA_PERIOD = 100;
 export const VORTEX_DAILY_ADX_MIN = 14;
 export const VORTEX_VORTEX_PERIOD = 25;
@@ -137,7 +137,7 @@ export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const VORTEX_ADX_NOT_DECL = 1;
 export const VORTEX_REVERSE_EXIT = 0;
 export const VORTEX_TRAIL_ACTIVATION = 5;
-export const VORTEX_TRAIL_DISTANCE = 1;
+export const VORTEX_TRAIL_DISTANCE = 3;
 
 // Schaff Trend Cycle Engine -- OOS Sharpe=5.84 1.193%/day
 export const SCHAFF_DAILY_SMA_PERIOD = 50;

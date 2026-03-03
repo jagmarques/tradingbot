@@ -662,13 +662,13 @@ const ENGINE_TUNERS: EngineTuner[] = [
   // ─── Vortex ───────────────────────────────────────────────────────────────
   {
     name: "vortex",
-    currentParams: { VORTEX_VORTEX_PERIOD: 14, VORTEX_DAILY_SMA_PERIOD: 100, VORTEX_DAILY_ADX_MIN: 22, VORTEX_STOP_ATR_MULT: 4.0, VORTEX_REWARD_RISK: 5.0, VORTEX_STAGNATION_BARS: 12 },
+    currentParams: { VORTEX_VORTEX_PERIOD: 25, VORTEX_DAILY_SMA_PERIOD: 100, VORTEX_DAILY_ADX_MIN: 14, VORTEX_STOP_ATR_MULT: 5.0, VORTEX_REWARD_RISK: 4.0, VORTEX_STAGNATION_BARS: 16 },
     phase1Grid: {
-      VORTEX_VORTEX_PERIOD: [7, 10, 14, 18, 21, 25],
+      VORTEX_VORTEX_PERIOD: [7, 10, 14, 18, 21, 25, 30, 35],
     },
     phase2Grid: {
       VORTEX_DAILY_SMA_PERIOD: [50, 75, 100],
-      VORTEX_DAILY_ADX_MIN: [14, 18, 22, 26, 30],
+      VORTEX_DAILY_ADX_MIN: [0, 5, 10, 14, 18, 22, 26, 30],
       VORTEX_ADX_NOT_DECL: [0, 1],
       VORTEX_REVERSE_EXIT: [0, 1],
       VORTEX_TRAIL_ACTIVATION: [3, 5, 8],
@@ -726,14 +726,14 @@ const ENGINE_TUNERS: EngineTuner[] = [
   // ─── PSAR ─────────────────────────────────────────────────────────────────
   {
     name: "psar",
-    currentParams: { PSAR_STEP: 0.03, PSAR_MAX: 0.1, PSAR_DAILY_SMA_PERIOD: 100, PSAR_DAILY_ADX_MIN: 18, PSAR_STOP_ATR_MULT: 4.0, PSAR_REWARD_RISK: 5.0, PSAR_STAGNATION_BARS: 12 },
+    currentParams: { PSAR_STEP: 0.008, PSAR_MAX: 0.12, PSAR_DAILY_SMA_PERIOD: 50, PSAR_DAILY_ADX_MIN: 0, PSAR_STOP_ATR_MULT: 3.0, PSAR_REWARD_RISK: 4.0, PSAR_STAGNATION_BARS: 16 },
     phase1Grid: {
-      PSAR_STEP: [0.01, 0.02, 0.025, 0.03, 0.04],
-      PSAR_MAX: [0.08, 0.1, 0.15, 0.2],
+      PSAR_STEP: [0.004, 0.006, 0.008, 0.01, 0.02, 0.025, 0.03, 0.04],
+      PSAR_MAX: [0.08, 0.1, 0.12, 0.15, 0.2],
     },
     phase2Grid: {
       PSAR_DAILY_SMA_PERIOD: [50, 75, 100],
-      PSAR_DAILY_ADX_MIN: [10, 14, 18, 22, 26],
+      PSAR_DAILY_ADX_MIN: [0, 5, 10, 14, 18, 22, 26],
       PSAR_ADX_NOT_DECL: [0, 1],
       PSAR_REVERSE_EXIT: [0, 1],
       PSAR_TRAIL_ACTIVATION: [3, 5, 8],
