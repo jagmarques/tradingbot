@@ -2543,7 +2543,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalOps = totalTrades + openPositions.length;
-  const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)} deployed` : "";
+  const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
   text += `Total: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
 
