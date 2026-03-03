@@ -40,6 +40,10 @@ export function clearAICacheForPair(pair: string): void {
   analysisCache.delete(pair);
 }
 
+export function getCachedAIDecision(pair: string): QuantAIDecision | null {
+  return getCached(pair);
+}
+
 // --- Response parser and validator ---
 
 function parseAIResponse(

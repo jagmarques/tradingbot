@@ -1,4 +1,4 @@
-import { analyzeWithAI } from "./ai-analyzer.js";
+import { analyzeWithAI, getCachedAIDecision } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
@@ -14,6 +14,16 @@ import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
+
+function aiAllows(pair: string, direction: "long" | "short"): boolean {
+  const ai = getCachedAIDecision(pair);
+  if (!ai || ai.direction === "flat") return true;
+  if (ai.direction !== direction) {
+    console.log(`[QuantScheduler] AI filter: skip ${pair} ${direction} (AI=${ai.direction})`);
+    return false;
+  }
+  return true;
+}
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -145,6 +155,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -178,6 +189,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -211,6 +223,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -244,6 +257,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -276,6 +290,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice);
       if (position) {
         vortexExecuted++;
@@ -292,6 +307,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -325,6 +341,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice);
       if (position) {
         demaExecuted++;
@@ -340,6 +357,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice);
       if (position) {
         hmaExecuted++;
@@ -355,6 +373,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (!aiAllows(decision.pair, decision.direction)) continue;
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice);
       if (position) {
         cciExecuted++;
