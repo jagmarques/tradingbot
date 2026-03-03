@@ -114,8 +114,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -154,8 +154,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -194,8 +194,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -234,8 +234,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -274,8 +274,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -313,8 +313,8 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const decision of vortexDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
       if (vortexOpenPairs.has(decision.pair)) {
@@ -335,8 +335,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
 
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
 
@@ -375,8 +375,8 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const decision of demaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
       if (demaOpenPairs.has(decision.pair)) {
@@ -396,8 +396,8 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const decision of hmaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
       if (hmaOpenPairs.has(decision.pair)) {
@@ -417,8 +417,8 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const decision of cciDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir && existingDir !== decision.direction) {
-        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: cross-engine conflict (${existingDir} open)`);
+      if (existingDir) {
+        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
         continue;
       }
       if (cciOpenPairs.has(decision.pair)) {
