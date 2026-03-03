@@ -142,6 +142,7 @@ export async function paperOpenPosition(
   aiReasoning?: string,
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
+  aiAgreed?: boolean | null,
 ): Promise<QuantPosition | null> {
   const price = await fetchMidPrice(pair);
   if (!price) {
@@ -182,6 +183,7 @@ export async function paperOpenPosition(
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType,
+    aiAgreed: aiAgreed !== undefined ? aiAgreed : null,
   };
 
   paperPositions.set(position.id, position);
@@ -278,6 +280,7 @@ export async function paperClosePosition(
     createdAt: position.openedAt,
     updatedAt: now,
     tradeType: position.tradeType ?? "directional",
+    aiAgreed: position.aiAgreed,
   });
   positionContext.delete(positionId);
   lastFundingAccrual.delete(positionId);
