@@ -2516,10 +2516,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   let totalDeployed = 0;
   for (const v of deployedByType.values()) totalDeployed += v;
 
-  const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
+  const fmtUnr = (v: number): string => `${v > 0 ? "+" : v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
 
   const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string): string => {
-    const ret = `${s.totalPnl >= 0 ? "+" : "-"}$${Math.abs(s.totalPnl).toFixed(1)}`;
+    const ret = `${s.totalPnl > 0 ? "+" : s.totalPnl < 0 ? "-" : ""}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const openCnt = openCountByType.get(typeKey) ?? 0;
     const ops = s.totalTrades + openCnt;
@@ -2541,7 +2541,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("HMA", hmaStats, "hma-directional");
   text += sl("CCI", cciStats, "cci-directional");
   text += sl("AI", aiStats, "ai-directional");
-  const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
+  const fmtTotal = `${totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : ""}$${Math.abs(totalPnl).toFixed(1)}`;
   const totalOps = totalTrades + openPositions.length;
   const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
