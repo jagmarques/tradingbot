@@ -50,7 +50,7 @@ const HMA_SLOW_ORIG = 34;
 
 const CCI_PERIOD_ORIG = 20;
 const CCI_THRESHOLD_ORIG = 85;
-const VORTEX_PERIOD_ORIG = 10;
+const VORTEX_PERIOD_ORIG = 25;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -619,13 +619,13 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "vortex",
-    smaPeriod: 50,
-    adxMin: 14,
+    smaPeriod: 100,
+    adxMin: 0,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
-    adxNotDecl: false,
-    reverseExit: true,
+    stagnationBars: 16,
+    adxNotDecl: true,
+    reverseExit: false,
     trailActivation: 8,
     trailDistance: 3,
     checkSignal(i, ctx) {

@@ -62,17 +62,19 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14;
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
-// PSAR Engine
+// PSAR Engine -- OOS Sharpe=4.06 0.870%/day
 export const PSAR_DAILY_SMA_PERIOD = 50;
-export const PSAR_DAILY_ADX_MIN = 10;
-export const PSAR_STEP = 0.02;
-export const PSAR_MAX = 0.1;
+export const PSAR_DAILY_ADX_MIN = 0;
+export const PSAR_STEP = 0.008;
+export const PSAR_MAX = 0.12;
 export const PSAR_STOP_ATR_MULT = 3.0;
 export const PSAR_REWARD_RISK = 4.0;
-export const PSAR_STAGNATION_BARS = 10;
+export const PSAR_STAGNATION_BARS = 16;
 export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
-export const PSAR_TRAIL_ACTIVATION = 3;
+export const PSAR_REVERSE_EXIT = 1;
+export const PSAR_ADX_NOT_DECL = 0;
+export const PSAR_TRAIL_ACTIVATION = 8;
 export const PSAR_TRAIL_DISTANCE = 2;
 
 // ZLEMA Cross Engine -- OOS Sharpe=4.99 OOS %/day=+1.476%
@@ -90,16 +92,18 @@ export const ZLEMA_REVERSE_EXIT = 0;
 export const ZLEMA_TRAIL_ACTIVATION = 3;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
-// TRIX Engine
+// TRIX Engine -- OOS Sharpe=4.32 2.594%/day
 export const TRIX_PERIOD = 9;
 export const TRIX_SIGNAL = 15;
-export const TRIX_DAILY_SMA_PERIOD = 100;
-export const TRIX_DAILY_ADX_MIN = 14;
-export const TRIX_STOP_ATR_MULT = 3.5;
-export const TRIX_REWARD_RISK = 4.0;
+export const TRIX_DAILY_SMA_PERIOD = 50;
+export const TRIX_DAILY_ADX_MIN = 10;
+export const TRIX_STOP_ATR_MULT = 2.5;
+export const TRIX_REWARD_RISK = 6.0;
 export const TRIX_STAGNATION_BARS = 10;
 export const TRIX_BASE_CONFIDENCE = 65;
 export const TRIX_DAILY_LOOKBACK_DAYS = 150;
+export const TRIX_ADX_NOT_DECL = 0;
+export const TRIX_REVERSE_EXIT = 0;
 export const TRIX_TRAIL_ACTIVATION = 8;
 export const TRIX_TRAIL_DISTANCE = 2;
 
@@ -121,35 +125,36 @@ export const ELDER_TRAIL_ACTIVATION = 8;
 export const ELDER_TRAIL_DISTANCE = 3;
 
 
-// Vortex Engine -- OOS Sharpe=1.69 1.250%/day
-export const VORTEX_DAILY_SMA_PERIOD = 50;
-export const VORTEX_DAILY_ADX_MIN = 14;
-export const VORTEX_VORTEX_PERIOD = 10;
+// Vortex Engine -- OOS Sharpe=3.32 0.634%/day (33-pair tune, 145K combos)
+export const VORTEX_DAILY_SMA_PERIOD = 100;
+export const VORTEX_DAILY_ADX_MIN = 0;
+export const VORTEX_VORTEX_PERIOD = 25;
 export const VORTEX_STOP_ATR_MULT = 5.0;
 export const VORTEX_REWARD_RISK = 4.0;
-export const VORTEX_STAGNATION_BARS = 10;
+export const VORTEX_STAGNATION_BARS = 16;
 export const VORTEX_BASE_CONFIDENCE = 65;
-export const VORTEX_DAILY_LOOKBACK_DAYS = 75;
-export const VORTEX_ADX_NOT_DECL = 0;
-export const VORTEX_REVERSE_EXIT = 1;
+export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
+export const VORTEX_ADX_NOT_DECL = 1;
+export const VORTEX_REVERSE_EXIT = 0;
 export const VORTEX_TRAIL_ACTIVATION = 8;
 export const VORTEX_TRAIL_DISTANCE = 3;
 
-// Schaff Trend Cycle Engine
+// Schaff Trend Cycle Engine -- OOS Sharpe=5.84 1.193%/day
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
-export const SCHAFF_DAILY_ADX_MIN = 10;
+export const SCHAFF_DAILY_ADX_MIN = 0;
 export const SCHAFF_STC_FAST = 8;
-export const SCHAFF_STC_SLOW = 26;
+export const SCHAFF_STC_SLOW = 20;
 export const SCHAFF_STC_CYCLE = 12;
-export const SCHAFF_STC_THRESHOLD = 25;
+export const SCHAFF_STC_THRESHOLD = 40;
 export const SCHAFF_STOP_ATR_MULT = 3.5;
 export const SCHAFF_REWARD_RISK = 4.0;
 export const SCHAFF_STAGNATION_BARS = 9;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
-export const SCHAFF_REVERSE_EXIT = 1;
-export const SCHAFF_TRAIL_ACTIVATION = 3;
-export const SCHAFF_TRAIL_DISTANCE = 1;
+export const SCHAFF_ADX_NOT_DECL = 0;
+export const SCHAFF_REVERSE_EXIT = 0;
+export const SCHAFF_TRAIL_ACTIVATION = 5;
+export const SCHAFF_TRAIL_DISTANCE = 2;
 
 // DEMA Engine -- TRAIN Sharpe=3.47 OOS Sharpe=6.89 OOS %/day=2.189
 export const DEMA_DAILY_SMA_PERIOD = 50;
@@ -166,17 +171,18 @@ export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 5;
 export const DEMA_TRAIL_DISTANCE = 2;
 
-// HMA Engine
-export const HMA_DAILY_SMA_PERIOD = 50;
-export const HMA_DAILY_ADX_MIN = 10;
+// HMA Engine -- OOS Sharpe=3.53 2.020%/day
+export const HMA_DAILY_SMA_PERIOD = 100;
+export const HMA_DAILY_ADX_MIN = 8;
 export const HMA_FAST = 6;
-export const HMA_SLOW = 34;
+export const HMA_SLOW = 40;
 export const HMA_STOP_ATR_MULT = 2.5;
-export const HMA_REWARD_RISK = 5.0;
+export const HMA_REWARD_RISK = 4.0;
 export const HMA_STAGNATION_BARS = 4;
 export const HMA_BASE_CONFIDENCE = 65;
 export const HMA_DAILY_LOOKBACK_DAYS = 150;
-export const HMA_REVERSE_EXIT = 0;
+export const HMA_ADX_NOT_DECL = 0;
+export const HMA_REVERSE_EXIT = 1;
 export const HMA_TRAIL_ACTIVATION = 8;
 export const HMA_TRAIL_DISTANCE = 1;
 
