@@ -198,9 +198,8 @@ export async function paperOpenPosition(
 
   if (engineBal < sizeUsd) {
     console.log(
-      `[Quant Paper] Insufficient balance: ${tradeType} bal $${engineBal.toFixed(2)} < $${sizeUsd}`,
+      `[Quant Paper] Low balance: ${tradeType} $${engineBal.toFixed(2)} < $${sizeUsd} - proceeding (paper unlimited)`,
     );
-    return null;
   }
 
   const price = await fetchMidPrice(pair);
