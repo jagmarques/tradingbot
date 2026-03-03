@@ -121,6 +121,20 @@ export const ELDER_TRAIL_ACTIVATION = 8;
 export const ELDER_TRAIL_DISTANCE = 3;
 
 
+// Vortex Engine -- 3-fold AVG Sharpe=2.34 0.614%/day
+export const VORTEX_DAILY_SMA_PERIOD = 100;
+export const VORTEX_DAILY_ADX_MIN = 0;
+export const VORTEX_VORTEX_PERIOD = 25;
+export const VORTEX_STOP_ATR_MULT = 5.0;
+export const VORTEX_REWARD_RISK = 4.0;
+export const VORTEX_STAGNATION_BARS = 16;
+export const VORTEX_BASE_CONFIDENCE = 65;
+export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
+export const VORTEX_ADX_NOT_DECL = 1;
+export const VORTEX_REVERSE_EXIT = 0;
+export const VORTEX_TRAIL_ACTIVATION = 8;
+export const VORTEX_TRAIL_DISTANCE = 3;
+
 // Schaff Trend Cycle Engine
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
 export const SCHAFF_DAILY_ADX_MIN = 10;

@@ -17,6 +17,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "zlema-directional",
   "trix-directional",
   "elder-impulse-directional",
+  "vortex-directional",
   "schaff-directional",
   "dema-directional",
   "hma-directional",
