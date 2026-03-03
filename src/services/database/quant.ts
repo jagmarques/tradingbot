@@ -12,8 +12,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      indicators_at_entry, trade_type, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      indicators_at_entry, trade_type, ai_agreed, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     trade.id,
     trade.pair,
@@ -31,6 +31,7 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.exitReason ?? null,
     trade.indicatorsAtEntry ?? null,
     trade.tradeType ?? "directional",
+    trade.aiAgreed !== undefined ? (trade.aiAgreed === null ? null : trade.aiAgreed ? 1 : 0) : null,
     trade.createdAt,
   );
 }
@@ -41,8 +42,8 @@ export function saveQuantPosition(position: QuantPosition): void {
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
       unrealized_pnl, mode, status, trade_type, opened_at, closed_at,
-      stop_loss, take_profit, max_unrealized_pnl_pct, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -59,6 +60,7 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.stopLoss ?? null,
     position.takeProfit ?? null,
     position.maxUnrealizedPnlPct ?? null,
+    position.aiAgreed !== undefined ? (position.aiAgreed === null ? null : position.aiAgreed ? 1 : 0) : null,
   );
 }
 

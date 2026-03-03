@@ -18,6 +18,7 @@ export interface QuantPosition {
   tradeType?: TradeType;
   spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
   maxUnrealizedPnlPct?: number; // High-water mark for trailing stop
+  aiAgreed?: boolean | null; // Whether the cached AI agreed with this trade direction at open time
 }
 
 export interface QuantTrade {
@@ -39,6 +40,7 @@ export interface QuantTrade {
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
   tradeType?: TradeType;
+  aiAgreed?: boolean | null; // Whether the cached AI agreed with this trade direction at open time
 }
 
 export interface QuantAccountState {

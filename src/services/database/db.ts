@@ -363,6 +363,18 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_positions: added max_unrealized_pnl_pct column");
   }
 
+  // Migration: Add ai_agreed column to quant_positions
+  if (!qpColNames.includes("ai_agreed")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN ai_agreed INTEGER`);
+    console.log("[Database] Migrated quant_positions: added ai_agreed column");
+  }
+
+  // Migration: Add ai_agreed column to quant_trades
+  if (!qtColNames.includes("ai_agreed")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN ai_agreed INTEGER`);
+    console.log("[Database] Migrated quant_trades: added ai_agreed column");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }
