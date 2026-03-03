@@ -1,4 +1,4 @@
-import { analyzeWithAI } from "./ai-analyzer.js";
+import { analyzeWithAI, getCachedAIDecision } from "./ai-analyzer.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
@@ -116,6 +116,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "ai-directional",
         undefined,
         decision.entryPrice,
+        null,
       );
 
       if (position) {
@@ -139,6 +140,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -152,6 +155,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "psar-directional",
         undefined,
         decision.entryPrice,
+        aiAgreed,
       );
 
       if (position) {
@@ -175,6 +179,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -188,6 +194,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "zlema-directional",
         undefined,
         decision.entryPrice,
+        aiAgreed,
       );
 
       if (position) {
@@ -211,6 +218,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -224,6 +233,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "trix-directional",
         undefined,
         decision.entryPrice,
+        aiAgreed,
       );
 
       if (position) {
@@ -247,6 +257,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -260,6 +272,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "elder-impulse-directional",
         undefined,
         decision.entryPrice,
+        aiAgreed,
       );
 
       if (position) {
@@ -281,7 +294,9 @@ export async function runDirectionalCycle(): Promise<void> {
       }
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice);
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         vortexExecuted++;
         vortexOpenPairs.add(decision.pair);
@@ -301,6 +316,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -314,6 +331,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "schaff-directional",
         undefined,
         decision.entryPrice,
+        aiAgreed,
       );
 
       if (position) {
@@ -336,7 +354,9 @@ export async function runDirectionalCycle(): Promise<void> {
       }
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice);
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         demaExecuted++;
         demaOpenPairs.add(decision.pair);
@@ -354,7 +374,9 @@ export async function runDirectionalCycle(): Promise<void> {
       }
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice);
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         hmaExecuted++;
         hmaOpenPairs.add(decision.pair);
@@ -372,7 +394,9 @@ export async function runDirectionalCycle(): Promise<void> {
       }
       if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
       if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice);
+      const cachedAI = getCachedAIDecision(decision.pair);
+      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         cciExecuted++;
         cciOpenPairs.add(decision.pair);
