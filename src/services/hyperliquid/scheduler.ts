@@ -104,20 +104,9 @@ export async function runDirectionalCycle(): Promise<void> {
         .map(p => p.pair),
     );
 
-    const globalPairDirections = new Map<string, "long" | "short">();
-    for (const p of getOpenQuantPositions()) {
-      globalPairDirections.set(p.pair, p.direction);
-    }
-
     let aiExecuted = 0;
     for (const decision of aiDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (aiOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -142,7 +131,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         aiExecuted++;
         aiOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -152,12 +140,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let psarExecuted = 0;
     for (const decision of psarDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (psarOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -182,7 +164,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         psarExecuted++;
         psarOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] PSAR: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -192,12 +173,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let zlemaExecuted = 0;
     for (const decision of zlemaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (zlemaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -222,7 +197,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         zlemaExecuted++;
         zlemaOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -232,12 +206,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let trixExecuted = 0;
     for (const decision of trixDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (trixOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -262,7 +230,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         trixExecuted++;
         trixOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] TRIX: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -272,12 +239,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let elderExecuted = 0;
     for (const decision of elderDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (elderOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -302,7 +263,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         elderExecuted++;
         elderOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] Elder: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -312,11 +272,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let vortexExecuted = 0;
     for (const decision of vortexDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
       if (vortexOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -325,7 +280,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         vortexExecuted++;
         vortexOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(`[QuantScheduler] Vortex: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -333,12 +287,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let schaffExecuted = 0;
     for (const decision of schaffDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
 
       if (schaffOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
@@ -363,7 +311,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         schaffExecuted++;
         schaffOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(
           `[QuantScheduler] Schaff: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -374,11 +321,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let demaExecuted = 0;
     for (const decision of demaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
       if (demaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -387,7 +329,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         demaExecuted++;
         demaOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(`[QuantScheduler] DEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -395,11 +336,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let hmaExecuted = 0;
     for (const decision of hmaDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
       if (hmaOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -408,7 +344,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         hmaExecuted++;
         hmaOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(`[QuantScheduler] HMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -416,11 +351,6 @@ export async function runDirectionalCycle(): Promise<void> {
     let cciExecuted = 0;
     for (const decision of cciDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      const existingDir = globalPairDirections.get(decision.pair);
-      if (existingDir) {
-        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open (${existingDir})`);
-        continue;
-      }
       if (cciOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
@@ -429,7 +359,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         cciExecuted++;
         cciOpenPairs.add(decision.pair);
-        globalPairDirections.set(decision.pair, decision.direction);
         console.log(`[QuantScheduler] CCI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
