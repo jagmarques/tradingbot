@@ -25,7 +25,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
 
 const paperPositions = new Map<string, QuantPosition>();
 
-// Stores AI context and indicator snapshot per position, keyed by position ID
+// AI context per position
 const positionContext = new Map<string, {
   aiConfidence?: number;
   aiReasoning?: string;
@@ -35,7 +35,7 @@ const positionContext = new Map<string, {
 // Track last funding accrual per position
 const lastFundingAccrual = new Map<string, number>();
 
-// Track accumulated funding income per position (for inclusion in close P&L record)
+// Accumulated funding income per position
 const accumulatedFunding = new Map<string, number>();
 
 export function initPaperEngine(): void {
@@ -75,7 +75,7 @@ async function fetchMidPrice(pair: string): Promise<number | null> {
   }
 }
 
-// Accrue funding income for open funding arb positions (settles every 1h on Hyperliquid)
+// Accrue funding income for arb positions (1h settle)
 export async function accrueFundingIncome(): Promise<void> {
   const openPositions = getPaperPositions();
   const fundingPositions = openPositions.filter(p => p.tradeType === "funding");
@@ -89,7 +89,7 @@ export async function accrueFundingIncome(): Promise<void> {
     const lastAccrual = lastFundingAccrual.get(position.id) ?? new Date(position.openedAt).getTime();
     const elapsed = now - lastAccrual;
 
-    // Only accrue if at least 1 hour has passed (avoid micro-accruals)
+    // Skip if < 1h elapsed
     if (elapsed < 60 * 60 * 1000) continue;
 
     try {
@@ -149,7 +149,7 @@ export async function paperOpenPosition(
     return null;
   }
 
-  // Rebase stop/TP from AI's entry price to actual fill price
+  // Rebase stop/TP to actual fill
   let adjStop = stopLoss;
   let adjTP = takeProfit;
   if (aiEntryPrice && aiEntryPrice > 0) {

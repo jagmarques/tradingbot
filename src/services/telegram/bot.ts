@@ -2490,7 +2490,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `\n${posLines.join("\n")}\n`;
   }
 
-  // Compute unrealized P&L, open count, and deployed capital per strategy from open positions
+  // Unrealized P&L, open count, deployed capital per strategy
   const unrealizedByType = new Map<string, number>();
   const openCountByType = new Map<string, number>();
   const deployedByType = new Map<string, number>();
