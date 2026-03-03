@@ -2490,12 +2490,14 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `\n${posLines.join("\n")}\n`;
   }
 
-  // Compute unrealized P&L and open count per strategy from open positions
+  // Compute unrealized P&L, open count, and deployed capital per strategy from open positions
   const unrealizedByType = new Map<string, number>();
   const openCountByType = new Map<string, number>();
+  const deployedByType = new Map<string, number>();
   for (const pos of openPositions) {
     const key = pos.tradeType ?? "ai-directional";
     openCountByType.set(key, (openCountByType.get(key) ?? 0) + 1);
+    deployedByType.set(key, (deployedByType.get(key) ?? 0) + pos.size);
     const rawMid = mids[pos.pair];
     if (!rawMid) continue;
     const currentPrice = parseFloat(rawMid);
@@ -2511,6 +2513,8 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
+  let totalDeployed = 0;
+  for (const v of deployedByType.values()) totalDeployed += v;
 
   const fmtUnr = (v: number): string => `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
 
@@ -2518,10 +2522,12 @@ async function handleQuant(ctx: Context): Promise<void> {
     const ret = `${s.totalPnl >= 0 ? "+" : "-"}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const openCnt = openCountByType.get(typeKey) ?? 0;
-    const openStr = ` (${openCnt}o)`;
+    const ops = s.totalTrades + openCnt;
+    const deployed = deployedByType.get(typeKey) ?? 0;
+    const deployedStr = deployed > 0 ? ` ($${deployed.toFixed(0)})` : "";
     const unr = unrealizedByType.get(typeKey) ?? 0;
     const unrStr = ` | unr ${fmtUnr(unr)}`;
-    return `${label}: ${ret} ${s.totalTrades}T${wr}${openStr}${unrStr}\n`;
+    return `${label}: ${ret}${wr} ${ops}ops${deployedStr}${unrStr}\n`;
   };
 
   text += `\n`;
@@ -2536,8 +2542,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("CCI", cciStats, "cci-directional");
   text += sl("AI", aiStats, "ai-directional");
   const fmtTotal = `${totalPnl >= 0 ? "+" : "-"}$${Math.abs(totalPnl).toFixed(1)}`;
+  const totalOps = totalTrades + openPositions.length;
+  const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)} deployed` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
-  text += `Total: ${fmtTotal} ${totalTrades}T${totalUnrStr}\n`;
+  text += `Total: ${fmtTotal} ${totalOps}ops${deployedTotal}${totalUnrStr}\n`;
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
