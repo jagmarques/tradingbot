@@ -13,7 +13,7 @@ const FEE_RATE = 0.0009;
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV;
 
-const PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
+const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "ATOM", "APT", "WIF", "kPEPE", "kBONK", "kFLOKI", "kSHIB", "NEAR", "RUNE", "FET", "LDO", "CRV", "HBAR", "LTC", "TIA", "SEI", "JUP", "PYTH", "TAO", "ADA", "DOT"];
 const DAYS_4H = 730;
 const DAYS_DAILY = 750;
 const TRAIN_BARS = 2935; // ~67% of 4381 bars (~490 days train, ~124d OOS test)
@@ -330,6 +330,8 @@ interface EngineRunParams {
   adxMin: number;
   adxNotDecl: boolean;
   reverseExit: boolean; // if true, exit when indicator fires opposite direction
+  trailActivation: number; // % peak gain needed to activate trailing stop
+  trailDistance: number;   // % below peak to trigger exit
   stopAtrMult: number;
   rewardRisk: number;
   stagnationBars: number;
@@ -369,7 +371,7 @@ function runBacktestEngine(
       const pricePct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
-      const trailingHit = pos.peakPnlPct > 5 && unrealizedPct <= pos.peakPnlPct - 2;
+      const trailingHit = pos.peakPnlPct > params.trailActivation && unrealizedPct <= pos.peakPnlPct - params.trailDistance;
       const stagHit = (i - pos.entryIdx) >= params.stagnationBars;
       const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
       const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
@@ -515,11 +517,15 @@ function computeMinFoldScore(
     const trainHalf = Math.floor(pairData.trainEnd / 2);
     const adxNotDeclKey = Object.keys(p).find((k) => k.endsWith("_ADX_NOT_DECL"));
     const reverseExitKey = Object.keys(p).find((k) => k.endsWith("_REVERSE_EXIT"));
+    const trailActKey = Object.keys(p).find((k) => k.endsWith("_TRAIL_ACTIVATION"));
+    const trailDistKey = Object.keys(p).find((k) => k.endsWith("_TRAIL_DISTANCE"));
     const ep = {
       smaPeriod: p[smaPeriodKey] ?? 100,
       adxMin: p[adxMinKey] ?? 18,
       adxNotDecl: adxNotDeclKey !== undefined ? p[adxNotDeclKey] === 1 : false,
       reverseExit: reverseExitKey !== undefined ? p[reverseExitKey] === 1 : false,
+      trailActivation: trailActKey !== undefined ? p[trailActKey] : 5,
+      trailDistance: trailDistKey !== undefined ? p[trailDistKey] : 2,
       stopAtrMult: p[stopAtrKey] ?? 3.0,
       rewardRisk: p[rrKey] ?? 5.0,
       stagnationBars: p[stagKey] ?? 12,
@@ -563,6 +569,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       CCI_DAILY_ADX_MIN: [8, 10, 14],
       CCI_ADX_NOT_DECL: [0, 1],
       CCI_REVERSE_EXIT: [0, 1],
+      CCI_TRAIL_ACTIVATION: [3, 5, 8],
+      CCI_TRAIL_DISTANCE: [1, 2, 3],
       CCI_STOP_ATR_MULT: [2.5, 3.0, 3.5],
       CCI_REWARD_RISK: [4.0, 5.0, 6.0],
       CCI_STAGNATION_BARS: [10, 12, 16],
@@ -594,6 +602,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       ELDER_DAILY_ADX_MIN: [8, 10, 14],
       ELDER_ADX_NOT_DECL: [0, 1],
       ELDER_REVERSE_EXIT: [0, 1],
+      ELDER_TRAIL_ACTIVATION: [3, 5, 8],
+      ELDER_TRAIL_DISTANCE: [1, 2, 3],
       ELDER_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       ELDER_REWARD_RISK: [2.5, 3.5, 5.0],
       ELDER_STAGNATION_BARS: [8, 12, 16],
@@ -629,6 +639,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       ZLEMA_DAILY_ADX_MIN: [10, 14, 18, 22, 26],
       ZLEMA_ADX_NOT_DECL: [0, 1],
       ZLEMA_REVERSE_EXIT: [0, 1],
+      ZLEMA_TRAIL_ACTIVATION: [3, 5, 8],
+      ZLEMA_TRAIL_DISTANCE: [1, 2, 3],
       ZLEMA_STOP_ATR_MULT: [2.5, 3.0, 3.5, 4.0],
       ZLEMA_REWARD_RISK: [3.0, 4.0, 5.0],
       ZLEMA_STAGNATION_BARS: [4, 6, 8, 10],
@@ -659,6 +671,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       VORTEX_DAILY_ADX_MIN: [14, 18, 22, 26, 30],
       VORTEX_ADX_NOT_DECL: [0, 1],
       VORTEX_REVERSE_EXIT: [0, 1],
+      VORTEX_TRAIL_ACTIVATION: [3, 5, 8],
+      VORTEX_TRAIL_DISTANCE: [1, 2, 3],
       VORTEX_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       VORTEX_REWARD_RISK: [4.0, 5.0, 6.0],
       VORTEX_STAGNATION_BARS: [8, 10, 12, 16],
@@ -690,6 +704,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       SCHAFF_DAILY_ADX_MIN: [10, 14, 18, 22],
       SCHAFF_ADX_NOT_DECL: [0, 1],
       SCHAFF_REVERSE_EXIT: [0, 1],
+      SCHAFF_TRAIL_ACTIVATION: [3, 5, 8],
+      SCHAFF_TRAIL_DISTANCE: [1, 2, 3],
       SCHAFF_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       SCHAFF_REWARD_RISK: [4.0, 5.0, 6.0],
       SCHAFF_STAGNATION_BARS: [6, 9, 12],
@@ -720,6 +736,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       PSAR_DAILY_ADX_MIN: [10, 14, 18, 22, 26],
       PSAR_ADX_NOT_DECL: [0, 1],
       PSAR_REVERSE_EXIT: [0, 1],
+      PSAR_TRAIL_ACTIVATION: [3, 5, 8],
+      PSAR_TRAIL_DISTANCE: [1, 2, 3],
       PSAR_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       PSAR_REWARD_RISK: [4.0, 5.0, 6.0],
       PSAR_STAGNATION_BARS: [8, 10, 12, 16],
@@ -749,6 +767,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       HMA_DAILY_ADX_MIN: [8, 10, 14, 18],
       HMA_ADX_NOT_DECL: [0, 1],
       HMA_REVERSE_EXIT: [0, 1],
+      HMA_TRAIL_ACTIVATION: [3, 5, 8],
+      HMA_TRAIL_DISTANCE: [1, 2, 3],
       HMA_STOP_ATR_MULT: [2.5, 3.0, 3.5, 4.0],
       HMA_REWARD_RISK: [4.0, 5.0, 6.0],
       HMA_STAGNATION_BARS: [4, 6, 8, 10],
@@ -780,6 +800,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       TRIX_DAILY_ADX_MIN: [10, 14, 18, 22],
       TRIX_ADX_NOT_DECL: [0, 1],
       TRIX_REVERSE_EXIT: [0, 1],
+      TRIX_TRAIL_ACTIVATION: [3, 5, 8],
+      TRIX_TRAIL_DISTANCE: [1, 2, 3],
       TRIX_STOP_ATR_MULT: [2.0, 2.5, 3.0, 3.5],
       TRIX_REWARD_RISK: [4.0, 5.0, 6.0],
       TRIX_STAGNATION_BARS: [10, 12, 16, 20],
@@ -811,6 +833,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
       DEMA_DAILY_ADX_MIN: [10, 14, 18, 22],
       DEMA_ADX_NOT_DECL: [0, 1],
       DEMA_REVERSE_EXIT: [0, 1],
+      DEMA_TRAIL_ACTIVATION: [3, 5, 8],
+      DEMA_TRAIL_DISTANCE: [1, 2, 3],
       DEMA_STOP_ATR_MULT: [3.0, 3.5, 4.0, 5.0],
       DEMA_REWARD_RISK: [4.0, 5.0, 6.0],
       DEMA_STAGNATION_BARS: [8, 10, 12, 16],
@@ -835,6 +859,8 @@ const ENGINE_TUNERS: EngineTuner[] = [
 
 async function main() {
   const filterArg = process.argv[2]?.toLowerCase() ?? "all";
+  const pairArg = process.argv.find((a) => a.startsWith("--pair="))?.split("=")[1]?.toUpperCase();
+
   const tunersFiltered = filterArg === "all"
     ? ENGINE_TUNERS
     : ENGINE_TUNERS.filter((e) => e.name === filterArg);
@@ -844,13 +870,16 @@ async function main() {
     process.exit(1);
   }
 
+  // If --pair=COIN specified, restrict to that single pair
+  const pairsToLoad = pairArg ? [pairArg] : PAIRS;
+
   // Compute all needed SMA periods upfront
   const allSmaPeriods = [...new Set(
     tunersFiltered.flatMap((t) => [...(t.phase1Grid["CCI_DAILY_SMA_PERIOD"] ?? []), ...(t.phase2Grid[Object.keys(t.phase2Grid).find((k) => k.endsWith("_DAILY_SMA_PERIOD")) ?? ""] ?? [50, 75, 100])])
   ), 50, 75, 100];
 
   console.log(`=== tune-grid-all.ts: 2-Phase Grid Search ===`);
-  console.log(`Pairs: ${PAIRS.join(", ")}`);
+  console.log(`Pairs: ${pairsToLoad.join(", ")}`);
   console.log(`Engines: ${tunersFiltered.map((e) => e.name).join(", ")}`);
   console.log(`Walk-forward: train=${TRAIN_BARS} 4h bars, test=remainder`);
   console.log(`\nFetching candle data...`);
@@ -858,9 +887,9 @@ async function main() {
   // Fetch all candle data
   const allPairData: Record<string, { pairData: PairData; preDaily: DailyPre; idxDailyAt: number[] }> = {};
 
-  for (let pi = 0; pi < PAIRS.length; pi++) {
-    const pair = PAIRS[pi];
-    if (pi > 0) await sleep(300);
+  for (let pi = 0; pi < pairsToLoad.length; pi++) {
+    const pair = pairsToLoad[pi];
+    if (pi > 0) await sleep(2000);
     try {
       process.stdout.write(`  ${pair} 4h...`);
       const h4 = await fetchCandles(pair, "4h", DAYS_4H);
@@ -978,11 +1007,15 @@ async function main() {
         const endIdx = pairData.h4.length;
         const adxNDKey = Object.keys(p).find((k) => k.endsWith("_ADX_NOT_DECL"));
         const revExKey = Object.keys(p).find((k) => k.endsWith("_REVERSE_EXIT"));
+        const tActKey = Object.keys(p).find((k) => k.endsWith("_TRAIL_ACTIVATION"));
+        const tDistKey = Object.keys(p).find((k) => k.endsWith("_TRAIL_DISTANCE"));
         const r = runBacktestEngine(pairData, preDaily, idxDailyAt, {
           smaPeriod: p[smaPeriodKey] ?? 100,
           adxMin: p[adxMinKey] ?? 18,
           adxNotDecl: adxNDKey !== undefined ? p[adxNDKey] === 1 : false,
           reverseExit: revExKey !== undefined ? p[revExKey] === 1 : false,
+          trailActivation: tActKey !== undefined ? p[tActKey] : 5,
+          trailDistance: tDistKey !== undefined ? p[tDistKey] : 2,
           stopAtrMult: p[stopAtrKey] ?? 3.0,
           rewardRisk: p[rrKey] ?? 5.0,
           stagnationBars: p[stagKey] ?? 12,

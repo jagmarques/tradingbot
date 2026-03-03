@@ -1,10 +1,11 @@
 // 3-fold expanding walk-forward backtest for all 9 live quant engines.
 // Uses TUNED params from grid search (post-quick-276).
-// Fetches max available 4h data (~730d) from Hyperliquid.
+// Fetches max available 1h data (~730d) from Hyperliquid.
 // Fold structure: train=33%/50%/67%, test=next ~17% each (independent ~90d windows).
 // Train window is warmup only -- params are fixed, no per-fold optimization.
+// Stagnation bars scaled x4 vs 4h version (1h bar = 1/4 of 4h bar).
 //
-// Run: npx tsx scripts/backtest-proper.ts
+// Run: npx tsx scripts/backtest-1h.ts
 
 import { ATR, ADX, MACD, EMA, PSAR } from "technicalindicators";
 import * as fs from "node:fs";
@@ -17,7 +18,7 @@ const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV; // $100 notional
 
 const PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "ATOM", "APT", "WIF", "kPEPE", "kBONK", "kFLOKI", "kSHIB", "NEAR", "RUNE", "FET", "LDO", "CRV", "HBAR", "LTC", "TIA", "SEI", "JUP", "PYTH", "TAO", "ADA", "DOT"];
-const DAYS_4H = 730; // 2 years max, use whatever Hyperliquid returns
+const DAYS_1H = 730; // 2 years max, use whatever Hyperliquid returns
 const DAYS_DAILY = 750;
 
 // ─── Tuned params (PSAR min-fold fix + avg-Sharpe best for others) ──────────
@@ -43,8 +44,8 @@ const SCHAFF_STC_SLOW_ORIG = 26;
 const SCHAFF_STC_CYCLE_ORIG = 12;
 const SCHAFF_STC_THRESHOLD_ORIG = 25;
 
-const DEMA_FAST_ORIG = 5;
-const DEMA_SLOW_ORIG = 21;
+const DEMA_FAST_ORIG = 3;
+const DEMA_SLOW_ORIG = 30;
 
 const HMA_FAST_ORIG = 6;
 const HMA_SLOW_ORIG = 34;
@@ -461,7 +462,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 8,
     stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 16,
+    stagnationBars: 64,
     reverseExit: true,
     trailActivation: 5,
     trailDistance: 1,
@@ -479,7 +480,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 14,
     stopAtrMult: 3.0,
     rewardRisk: 2.5,
-    stagnationBars: 12,
+    stagnationBars: 48,
     adxNotDecl: true,
     reverseExit: false,
     trailActivation: 3,
@@ -506,7 +507,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 2.5,
     rewardRisk: 3.0,
-    stagnationBars: 8,
+    stagnationBars: 32,
     reverseExit: true,
     trailActivation: 8,
     trailDistance: 2,
@@ -523,13 +524,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "vortex",
     smaPeriod: 100,
-    adxMin: 14,
+    adxMin: 30,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 16,
+    stagnationBars: 64,
     adxNotDecl: true,
-    trailActivation: 5,
-    trailDistance: 3,
+    trailActivation: 3,
+    trailDistance: 2,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -546,7 +547,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 3.5,
     rewardRisk: 4.0,
-    stagnationBars: 9,
+    stagnationBars: 36,
     reverseExit: true,
     trailActivation: 3,
     trailDistance: 1,
@@ -564,7 +565,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 3.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 40,
     trailActivation: 3,
     trailDistance: 2,
     checkSignal(i, ctx) {
@@ -583,7 +584,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 2.5,
     rewardRisk: 5.0,
-    stagnationBars: 4,
+    stagnationBars: 16,
     reverseExit: false,
     trailActivation: 8,
     trailDistance: 1,
@@ -603,7 +604,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 14,
     stopAtrMult: 3.5,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 40,
     trailActivation: 8,
     trailDistance: 2,
     checkSignal(i, ctx) {
@@ -619,14 +620,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "dema",
     smaPeriod: 50,
-    adxMin: 10,
-    stopAtrMult: 3.0,
+    adxMin: 18,
+    stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 16,
-    adxNotDecl: false,
-    reverseExit: false,
+    stagnationBars: 64,
+    adxNotDecl: true,
     trailActivation: 5,
-    trailDistance: 2,
+    trailDistance: 1,
     checkSignal(i, ctx) {
       const { demaFast, demaSlow } = ctx;
       const cf = demaFast[i], pf = demaFast[i - 1];
@@ -771,111 +771,6 @@ function runBacktest(
   };
 }
 
-// ─── Ensemble backtest ─────────────────────────────────────────────────────────
-
-function runEnsembleBacktest(
-  candles4h: Candle[],
-  atr4h: (number | null)[],
-  dailyCandles: Candle[],
-  preDaily: DailyPre,
-  idxDailyAt: number[],
-  engines: EngineConfig[],
-  ctx: SignalContext,
-  startIdx: number,
-  endIdx: number,
-  minAgreement: number,
-): BacktestResult {
-  let pnlTotal = 0;
-  let peakPnl = 0;
-  let maxDrawdown = 0;
-  let trades = 0;
-  let wins = 0;
-  const tradePnlPcts: number[] = [];
-
-  type Pos = { dir: "long" | "short"; entry: number; entryIdx: number; sl: number; tp: number; peakPnlPct: number; trailAct: number; trailDist: number; stag: number };
-  let pos: Pos | null = null;
-
-  for (let i = startIdx; i < endIdx; i++) {
-    const c = candles4h[i];
-
-    if (pos !== null) {
-      const pricePct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
-      const unrealizedPct = pricePct * LEV * 100;
-      pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
-
-      const trailingHit = pos.peakPnlPct > pos.trailAct && unrealizedPct <= pos.peakPnlPct - pos.trailDist;
-      const stagHit = (i - pos.entryIdx) >= pos.stag;
-      const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
-      const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
-
-      let exitPrice: number | null = null;
-      if (trailingHit) exitPrice = c.close;
-      else if (stagHit) exitPrice = c.close;
-      else if (slHit && tpHit) exitPrice = pos.sl;
-      else if (slHit) exitPrice = pos.sl;
-      else if (tpHit) exitPrice = pos.tp;
-
-      if (exitPrice !== null) {
-        const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
-        const net = pp * NOTIONAL - NOTIONAL * FEE_RATE;
-        pnlTotal += net;
-        peakPnl = Math.max(peakPnl, pnlTotal);
-        maxDrawdown = Math.max(maxDrawdown, peakPnl - pnlTotal);
-        trades++;
-        if (net > 0) wins++;
-        tradePnlPcts.push((net / MARGIN_PER_TRADE) * 100);
-        pos = null;
-      }
-    }
-
-    if (pos === null && i + 1 < endIdx) {
-      const dIdx = idxDailyAt[i];
-      if (dIdx < 0) continue;
-
-      const longVoters: EngineConfig[] = [];
-      const shortVoters: EngineConfig[] = [];
-
-      for (const engine of engines) {
-        const dailySma = preDaily.smaMap.get(engine.smaPeriod)?.[dIdx] ?? null;
-        const dailyAdx = preDaily.adx[dIdx];
-        const dailyClose = dailyCandles[dIdx].close;
-        if (dailySma === null || dailyAdx === null) continue;
-        if (dailyAdx < engine.adxMin) continue;
-        if (engine.adxNotDecl && dIdx >= 2) {
-          const adxPrev2 = preDaily.adx[dIdx - 2];
-          if (adxPrev2 !== null && dailyAdx < adxPrev2) continue;
-        }
-        const dailyUptrend = dailyClose > dailySma;
-        const dailyDowntrend = dailyClose < dailySma;
-        const sig = engine.checkSignal(i, ctx);
-        if (sig === "long" && dailyUptrend) longVoters.push(engine);
-        if (sig === "short" && dailyDowntrend) shortVoters.push(engine);
-      }
-
-      const voters = longVoters.length >= minAgreement ? longVoters : shortVoters.length >= minAgreement ? shortVoters : null;
-      if (!voters) continue;
-      const dir: "long" | "short" = longVoters.length >= minAgreement ? "long" : "short";
-
-      const entryPrice = candles4h[i + 1].open;
-      const atr = atr4h[i] ?? c.close * 0.02;
-      const avgStop = voters.reduce((s, e) => s + e.stopAtrMult, 0) / voters.length;
-      const avgRR = voters.reduce((s, e) => s + e.rewardRisk, 0) / voters.length;
-      const avgTrailAct = voters.reduce((s, e) => s + (e.trailActivation ?? 5), 0) / voters.length;
-      const avgTrailDist = voters.reduce((s, e) => s + (e.trailDistance ?? 2), 0) / voters.length;
-      const maxStag = Math.max(...voters.map((e) => e.stagnationBars));
-
-      const stopDist = atr * avgStop;
-      const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
-      const tp = dir === "long" ? entryPrice + stopDist * avgRR : entryPrice - stopDist * avgRR;
-      pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0, trailAct: avgTrailAct, trailDist: avgTrailDist, stag: maxStag };
-    }
-  }
-
-  const startTs = candles4h[startIdx]?.timestamp ?? 0;
-  const endTs = candles4h[endIdx - 1]?.timestamp ?? 0;
-  return { trades, wins, totalReturn: pnlTotal, maxDrawdown, tradePnlPcts, days: (endTs - startTs) / 86400_000 };
-}
-
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 interface FoldResult {
@@ -896,19 +791,15 @@ interface EngineWFResult {
 }
 
 async function main() {
-  const ensembleArg = process.argv.find((a) => a.startsWith("--ensemble="));
-  const ensembleMin = ensembleArg ? parseInt(ensembleArg.split("=")[1]) : 0;
-  const isEnsemble = ensembleMin >= 2;
-
   const allSmaPeriods = [...new Set(ENGINES.map((e) => e.smaPeriod))];
 
-  console.log("=== backtest-proper.ts: 3-fold walk-forward backtest (tuned params) ===");
+  console.log("=== backtest-1h.ts: 3-fold walk-forward backtest (1h timeframe) ===");
   console.log(`Pairs: ${PAIRS.join(", ")}`);
-  console.log(`Params: TUNED post-quick-276 grid search results`);
-  console.log(`Data: up to 730d of 4h candles from Hyperliquid`);
+  console.log(`Params: TUNED post-quick-276 grid search results (stagnation x4 for 1h)`);
+  console.log(`Data: up to 730d of 1h candles from Hyperliquid`);
   console.log(`Folds: train=33%/50%/67%, test=next ~17% each (~90d per fold)`);
   console.log(`Fee: ${(FEE_RATE * 100).toFixed(3)}% RT | Leverage: ${LEV}x | Margin: $${MARGIN_PER_TRADE}/trade`);
-  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)\n`);
+  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine, x4 scaled)\n`);
   console.log("Fetching candle data...");
 
   type PairData = {
@@ -927,8 +818,8 @@ async function main() {
     const pair = PAIRS[pi];
     if (pi > 0) await sleep(400);
     try {
-      process.stdout.write(`  ${pair} 4h...`);
-      const h4 = await fetchCandles(pair, "4h", DAYS_4H);
+      process.stdout.write(`  ${pair} 1h...`);
+      const h4 = await fetchCandles(pair, "1h", DAYS_1H);
       process.stdout.write(` ${h4.length}bars. daily...`);
 
       let dailyCandles: Candle[] | null = null;
@@ -988,36 +879,6 @@ async function main() {
   console.log("\nFold definitions (based on min bars across pairs):");
   for (const f of foldDefs) {
     console.log(`  Fold ${f.fold}: train=[0,${f.testStartBar}) test=[${f.testStartBar},${f.testEndBar}) ~${f.testDays.toFixed(0)}d`);
-  }
-
-  if (isEnsemble) {
-    console.log(`\n=== ENSEMBLE MODE (min ${ensembleMin} engines must agree) ===\n`);
-    const ensembleFoldAgg: EngineWFResult["folds"] = [];
-    for (const fold of foldDefs) {
-      let totalPnl = 0; let totalTrades = 0; let totalWins = 0; let maxTestDays = 0;
-      const allPnlPcts: number[] = [];
-      for (const pair of pairs) {
-        const { h4, atr4h, ctx, dailyCandles, preDaily, idxDailyAt } = candleMap[pair];
-        const testEnd = Math.min(fold.testEndBar, h4.length);
-        if (fold.testStartBar >= testEnd) continue;
-        const r = runEnsembleBacktest(h4, atr4h, dailyCandles, preDaily, idxDailyAt, ENGINES, ctx, fold.testStartBar, testEnd, ensembleMin);
-        totalPnl += r.totalReturn; totalTrades += r.trades; totalWins += r.wins;
-        maxTestDays = Math.max(maxTestDays, r.days); allPnlPcts.push(...r.tradePnlPcts);
-      }
-      const pctPerDay = maxTestDays > 0 ? (totalPnl / (MARGIN_PER_TRADE * pairs.length)) / maxTestDays * 100 : 0;
-      ensembleFoldAgg.push({ fold: fold.fold, trades: totalTrades, wins: totalWins, pnl: totalPnl, sharpe: sharpe(allPnlPcts), pctPerDay, days: maxTestDays });
-    }
-    console.log(`[ENSEMBLE-${ensembleMin}]`);
-    const header2 = `  Fold | Trades | WinRate |   PnL($) | %/day  | Sharpe | Days`;
-    console.log(header2);
-    for (const f of ensembleFoldAgg) {
-      const wr = f.trades > 0 ? (f.wins / f.trades) * 100 : 0;
-      console.log(`  F${f.fold}   | ${String(f.trades).padStart(6)} | ${(wr.toFixed(1) + "%").padStart(7)} | ${(f.pnl >= 0 ? "+" : "") + f.pnl.toFixed(2).padStart(7)} | ${(f.pctPerDay >= 0 ? "+" : "") + f.pctPerDay.toFixed(3) + "%"} | ${f.sharpe.toFixed(2).padStart(6)} | ${f.days.toFixed(0)}`);
-    }
-    const avg = { sharpe: ensembleFoldAgg.reduce((s, f) => s + f.sharpe, 0) / 3, pct: ensembleFoldAgg.reduce((s, f) => s + f.pctPerDay, 0) / 3, wr: ensembleFoldAgg.reduce((s, f) => s + (f.trades > 0 ? f.wins / f.trades : 0), 0) / 3 * 100 };
-    console.log(`  AVG  |        | ${(avg.wr.toFixed(1) + "%").padStart(7)} |          | ${(avg.pct >= 0 ? "+" : "") + avg.pct.toFixed(3) + "%"} | ${avg.sharpe.toFixed(2).padStart(6)} |`);
-    console.log(`\nData: ${minBars} bars (~${(minBars / 6).toFixed(0)}d) | ${pairs.length} pairs | fees=${(FEE_RATE * 100).toFixed(3)}%RT | ${LEV}x leverage`);
-    return;
   }
 
   console.log(`\nRunning ${ENGINES.length} engines x 3 folds x ${pairs.length} pairs...\n`);
@@ -1133,9 +994,9 @@ async function main() {
 
   // Save to file
   const outputLines: string[] = [
-    "=== backtest-proper.ts: 3-fold walk-forward backtest ===",
-    `Params: TUNED post-quick-276 grid search`,
-    `Data: up to 730d 4h candles | ${pairs.length} pairs: ${pairs.join(", ")}`,
+    "=== backtest-1h.ts: 3-fold walk-forward backtest (1h timeframe) ===",
+    `Params: TUNED post-quick-276 grid search (stagnation x4 for 1h)`,
+    `Data: up to 730d 1h candles | ${pairs.length} pairs: ${pairs.join(", ")}`,
     `Folds: train=33%/50%/67%, test=next ~17% each (~90d per fold)`,
     `Fee: ${(FEE_RATE * 100).toFixed(3)}%RT | ${LEV}x leverage | $${MARGIN_PER_TRADE}/trade`,
     "",
@@ -1155,8 +1016,8 @@ async function main() {
     outputLines.push(`  AVG: Sharpe=${r.avgSharpe.toFixed(2)}  %/d=${sign}${r.avgPctPerDay.toFixed(3)}%  WR=${r.avgWR.toFixed(1)}%  Trades=${r.totalTrades}`);
   }
 
-  fs.writeFileSync("/tmp/backtest-proper.txt", outputLines.join("\n") + "\n");
-  console.log("\nFull results saved to /tmp/backtest-proper.txt");
+  fs.writeFileSync("/tmp/backtest-1h.txt", outputLines.join("\n") + "\n");
+  console.log("\nFull results saved to /tmp/backtest-1h.txt");
 
   // Return summary lines for external use
   return { summaryLines, engineResults, minBars, pairs };
