@@ -50,6 +50,7 @@ const HMA_SLOW_ORIG = 34;
 
 const CCI_PERIOD_ORIG = 20;
 const CCI_THRESHOLD_ORIG = 85;
+const VORTEX_PERIOD_ORIG = 10;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,8 @@ interface SignalContext {
   hmaFast: (number | null)[];
   hmaSlow: (number | null)[];
   cciValues: (number | null)[];
+  vortexPlus: (number | null)[];
+  vortexMinus: (number | null)[];
 }
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
@@ -434,6 +437,7 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
   const hmaFast = computeHMA(closes, HMA_FAST_ORIG);
   const hmaSlow = computeHMA(closes, HMA_SLOW_ORIG);
   const cciValues = precomputeCCI(candles, CCI_PERIOD_ORIG);
+  const { vPlus: vortexPlus, vMinus: vortexMinus } = precomputeVortex(candles, VORTEX_PERIOD_ORIG);
 
   return {
     candles, psarValues,
@@ -444,6 +448,7 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
     demaFast, demaSlow,
     hmaFast, hmaSlow,
     cciValues,
+    vortexPlus, vortexMinus,
   };
 }
 
@@ -609,6 +614,27 @@ const ENGINES: EngineConfig[] = [
       if (cf === null || pf === null || cs === null || ps === null) return null;
       if (pf <= ps && cf > cs) return "long";
       if (pf >= ps && cf < cs) return "short";
+      return null;
+    },
+  },
+  {
+    name: "vortex",
+    smaPeriod: 50,
+    adxMin: 14,
+    stopAtrMult: 5.0,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
+    adxNotDecl: false,
+    reverseExit: true,
+    trailActivation: 8,
+    trailDistance: 3,
+    checkSignal(i, ctx) {
+      const { vortexPlus, vortexMinus } = ctx;
+      const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
+      const cvm = vortexMinus[i], pvm = vortexMinus[i - 1];
+      if (cvp === null || pvp === null || cvm === null || pvm === null) return null;
+      if (pvp <= pvm && cvp > cvm) return "long";
+      if (pvm <= pvp && cvm > cvp) return "short";
       return null;
     },
   },
