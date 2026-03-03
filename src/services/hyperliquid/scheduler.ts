@@ -15,8 +15,6 @@ import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
 
-const MAX_POSITIONS_PER_DIRECTION = 10;
-
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
@@ -56,8 +54,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const cciDecisions = await runCCIDecisionEngine(analyses);
 
     const openPositions = getOpenQuantPositions();
-    let openLongs = openPositions.filter(p => p.direction === "long").length;
-    let openShorts = openPositions.filter(p => p.direction === "short").length;
 
     const aiOpenPairs = new Set(
       openPositions
@@ -100,8 +96,6 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] AI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const position = await openPosition(
         decision.pair,
@@ -122,7 +116,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         aiExecuted++;
         aiOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -137,11 +130,13 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] PSAR: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -161,7 +156,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         psarExecuted++;
         psarOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] PSAR: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -176,11 +170,13 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] ZLEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -200,7 +196,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         zlemaExecuted++;
         zlemaOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -215,11 +210,13 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] TRIX: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -239,7 +236,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         trixExecuted++;
         trixOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] TRIX: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -254,11 +250,13 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] Elder: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -278,7 +276,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         elderExecuted++;
         elderOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] Elder: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -292,15 +289,16 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         vortexExecuted++;
         vortexOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(`[QuantScheduler] Vortex: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -313,11 +311,13 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
 
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] Schaff: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -337,7 +337,6 @@ export async function runDirectionalCycle(): Promise<void> {
       if (position) {
         schaffExecuted++;
         schaffOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(
           `[QuantScheduler] Schaff: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
@@ -352,15 +351,16 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         demaExecuted++;
         demaOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(`[QuantScheduler] DEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -372,15 +372,16 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         hmaExecuted++;
         hmaOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(`[QuantScheduler] HMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
@@ -392,15 +393,16 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
-      if (decision.direction === "long" && openLongs >= MAX_POSITIONS_PER_DIRECTION) continue;
-      if (decision.direction === "short" && openShorts >= MAX_POSITIONS_PER_DIRECTION) continue;
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      if (aiAgreed === false) {
+        console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
+        continue;
+      }
       const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice, aiAgreed);
       if (position) {
         cciExecuted++;
         cciOpenPairs.add(decision.pair);
-        if (decision.direction === "long") openLongs++; else openShorts++;
         console.log(`[QuantScheduler] CCI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
