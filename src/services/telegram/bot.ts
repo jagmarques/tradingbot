@@ -2437,7 +2437,6 @@ async function handleQuant(ctx: Context): Promise<void> {
   const zlemaStats = getQuantStats("zlema-directional");
   const trixStats = getQuantStats("trix-directional");
   const elderStats = getQuantStats("elder-impulse-directional");
-  const vortexStats = getQuantStats("vortex-directional");
   const schaffStats = getQuantStats("schaff-directional");
   const demaStats = getQuantStats("dema-directional");
   const hmaStats = getQuantStats("hma-directional");
@@ -2470,7 +2469,6 @@ async function handleQuant(ctx: Context): Promise<void> {
         pos.tradeType === "zlema-directional" ? "[ZL]" :
         pos.tradeType === "trix-directional" ? "[TX]" :
         pos.tradeType === "elder-impulse-directional" ? "[EI]" :
-        pos.tradeType === "vortex-directional" ? "[VO]" :
         pos.tradeType === "schaff-directional" ? "[SC]" :
         pos.tradeType === "dema-directional" ? "[DE]" :
         pos.tradeType === "hma-directional" ? "[HM]" :
@@ -2508,8 +2506,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
   }
 
-  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl + vortexStats.totalPnl + schaffStats.totalPnl + demaStats.totalPnl + hmaStats.totalPnl + cciStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades + vortexStats.totalTrades + schaffStats.totalTrades + demaStats.totalTrades + hmaStats.totalTrades + cciStats.totalTrades;
+  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + trixStats.totalPnl + elderStats.totalPnl + schaffStats.totalPnl + demaStats.totalPnl + hmaStats.totalPnl + cciStats.totalPnl;
+  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + trixStats.totalTrades + elderStats.totalTrades + schaffStats.totalTrades + demaStats.totalTrades + hmaStats.totalTrades + cciStats.totalTrades;
 
   let totalUnr = 0;
   for (const v of unrealizedByType.values()) totalUnr += v;
@@ -2533,7 +2531,6 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += sl("ZLEMA", zlemaStats, "zlema-directional");
   text += sl("TRIX", trixStats, "trix-directional");
   text += sl("Elder", elderStats, "elder-impulse-directional");
-  text += sl("Vortex", vortexStats, "vortex-directional");
   text += sl("Schaff", schaffStats, "schaff-directional");
   text += sl("DEMA", demaStats, "dema-directional");
   text += sl("HMA", hmaStats, "hma-directional");

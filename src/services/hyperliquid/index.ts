@@ -87,7 +87,6 @@ export { runPsarDecisionEngine } from "./psar-engine.js";
 export { runZlemaDecisionEngine } from "./zlema-engine.js";
 export { runTrixDecisionEngine } from "./trix-engine.js";
 export { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
-export { runVortexDecisionEngine } from "./vortex-engine.js";
 export { runSchaffDecisionEngine } from "./schaff-engine.js";
 export { runDEMADecisionEngine } from "./dema-engine.js";
 export { runHMADecisionEngine } from "./hma-engine.js";
