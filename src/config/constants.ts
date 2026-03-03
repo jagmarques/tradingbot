@@ -75,18 +75,19 @@ export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 export const PSAR_TRAIL_ACTIVATION = 3;
 export const PSAR_TRAIL_DISTANCE = 2;
 
-// ZLEMA Cross Engine
+// ZLEMA Cross Engine -- OOS Sharpe=4.99 OOS %/day=+1.476%
 export const ZLEMA_DAILY_SMA_PERIOD = 50;
-export const ZLEMA_DAILY_ADX_MIN = 10;
-export const ZLEMA_FAST = 8;
-export const ZLEMA_SLOW = 34;
+export const ZLEMA_DAILY_ADX_MIN = 0;
+export const ZLEMA_FAST = 4;
+export const ZLEMA_SLOW = 40;
 export const ZLEMA_STOP_ATR_MULT = 2.5;
-export const ZLEMA_REWARD_RISK = 3.0;
-export const ZLEMA_STAGNATION_BARS = 8;
+export const ZLEMA_REWARD_RISK = 4.0;
+export const ZLEMA_STAGNATION_BARS = 10;
 export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
-export const ZLEMA_REVERSE_EXIT = 1;
-export const ZLEMA_TRAIL_ACTIVATION = 8;
+export const ZLEMA_ADX_NOT_DECL = 0;
+export const ZLEMA_REVERSE_EXIT = 0;
+export const ZLEMA_TRAIL_ACTIVATION = 3;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
 // TRIX Engine
@@ -102,36 +103,23 @@ export const TRIX_DAILY_LOOKBACK_DAYS = 150;
 export const TRIX_TRAIL_ACTIVATION = 8;
 export const TRIX_TRAIL_DISTANCE = 2;
 
-// Elder Impulse Engine
-export const ELDER_EMA_PERIOD = 13;
-export const ELDER_MACD_FAST = 8;
-export const ELDER_MACD_SLOW = 21;
-export const ELDER_MACD_SIGNAL = 9;
+// Elder Impulse Engine -- OOS Sharpe=6.20 OOS %/day=+2.233%
+export const ELDER_EMA_PERIOD = 25;
+export const ELDER_MACD_FAST = 12;
+export const ELDER_MACD_SLOW = 30;
+export const ELDER_MACD_SIGNAL = 6;
 export const ELDER_DAILY_SMA_PERIOD = 100;
-export const ELDER_DAILY_ADX_MIN = 14;
+export const ELDER_DAILY_ADX_MIN = 0;
 export const ELDER_STOP_ATR_MULT = 3.0;
 export const ELDER_REWARD_RISK = 2.5;
-export const ELDER_STAGNATION_BARS = 12;
+export const ELDER_STAGNATION_BARS = 16;
 export const ELDER_BASE_CONFIDENCE = 65;
 export const ELDER_DAILY_LOOKBACK_DAYS = 150;
-export const ELDER_REVERSE_EXIT = 0;
-export const ELDER_ADX_NOT_DECL = 1;
-export const ELDER_TRAIL_ACTIVATION = 3;
-export const ELDER_TRAIL_DISTANCE = 2;
+export const ELDER_REVERSE_EXIT = 1;
+export const ELDER_ADX_NOT_DECL = 0;
+export const ELDER_TRAIL_ACTIVATION = 8;
+export const ELDER_TRAIL_DISTANCE = 3;
 
-// Vortex Engine
-export const VORTEX_DAILY_SMA_PERIOD = 100;
-export const VORTEX_DAILY_ADX_MIN = 14;
-export const VORTEX_VORTEX_PERIOD = 25;
-export const VORTEX_STOP_ATR_MULT = 5.0;
-export const VORTEX_REWARD_RISK = 4.0;
-export const VORTEX_STAGNATION_BARS = 16;
-export const VORTEX_BASE_CONFIDENCE = 65;
-export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
-export const VORTEX_ADX_NOT_DECL = 1;
-export const VORTEX_REVERSE_EXIT = 0;
-export const VORTEX_TRAIL_ACTIVATION = 5;
-export const VORTEX_TRAIL_DISTANCE = 3;
 
 // Schaff Trend Cycle Engine
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
@@ -178,20 +166,20 @@ export const HMA_REVERSE_EXIT = 0;
 export const HMA_TRAIL_ACTIVATION = 8;
 export const HMA_TRAIL_DISTANCE = 1;
 
-// CCI Engine
+// CCI Engine -- OOS Sharpe=7.74 OOS %/day=+2.265%
 export const CCI_DAILY_SMA_PERIOD = 50;
-export const CCI_DAILY_ADX_MIN = 8;
-export const CCI_PERIOD = 8;
-export const CCI_THRESHOLD = 100;
+export const CCI_DAILY_ADX_MIN = 0;
+export const CCI_PERIOD = 20;
+export const CCI_THRESHOLD = 85;
 export const CCI_STOP_ATR_MULT = 2.5;
 export const CCI_REWARD_RISK = 4.0;
-export const CCI_STAGNATION_BARS = 16;
+export const CCI_STAGNATION_BARS = 10;
 export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 5;
-export const CCI_TRAIL_DISTANCE = 1;
+export const CCI_TRAIL_ACTIVATION = 3;
+export const CCI_TRAIL_DISTANCE = 2;
 
 
 // Hyperliquid Tier 1 maintenance margin rates

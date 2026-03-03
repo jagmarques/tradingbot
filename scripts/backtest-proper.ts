@@ -25,18 +25,17 @@ const DAYS_DAILY = 750;
 const PSAR_STEP_ORIG = 0.02;
 const PSAR_MAX_ORIG = 0.1;
 
-const ZLEMA_FAST_ORIG = 8;
-const ZLEMA_SLOW_ORIG = 34;
+const ZLEMA_FAST_ORIG = 4;
+const ZLEMA_SLOW_ORIG = 40;
 
 const TRIX_PERIOD_ORIG = 9;
 const TRIX_SIGNAL_ORIG = 15;
 
-const ELDER_EMA_PERIOD_ORIG = 13;
-const ELDER_MACD_FAST_ORIG = 8;
-const ELDER_MACD_SLOW_ORIG = 21;
-const ELDER_MACD_SIGNAL_ORIG = 9;
+const ELDER_EMA_PERIOD_ORIG = 25;
+const ELDER_MACD_FAST_ORIG = 12;
+const ELDER_MACD_SLOW_ORIG = 30;
+const ELDER_MACD_SIGNAL_ORIG = 6;
 
-const VORTEX_PERIOD_ORIG = 25;
 
 const SCHAFF_STC_FAST_ORIG = 8;
 const SCHAFF_STC_SLOW_ORIG = 26;
@@ -49,8 +48,8 @@ const DEMA_SLOW_ORIG = 21;
 const HMA_FAST_ORIG = 6;
 const HMA_SLOW_ORIG = 34;
 
-const CCI_PERIOD_ORIG = 8;
-const CCI_THRESHOLD_ORIG = 100;
+const CCI_PERIOD_ORIG = 20;
+const CCI_THRESHOLD_ORIG = 85;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,8 +94,6 @@ interface SignalContext {
   trixSignal: (number | null)[];
   elderEma: (number | null)[];
   elderHistogram: (number | null)[];
-  vortexPlus: (number | null)[];
-  vortexMinus: (number | null)[];
   stcValues: (number | null)[];
   demaFast: (number | null)[];
   demaSlow: (number | null)[];
@@ -431,7 +428,6 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
   const { ema: elderEma, histogram: elderHistogram } = precomputeElderIndicators(
     candles, ELDER_EMA_PERIOD_ORIG, ELDER_MACD_FAST_ORIG, ELDER_MACD_SLOW_ORIG, ELDER_MACD_SIGNAL_ORIG
   );
-  const { vPlus: vortexPlus, vMinus: vortexMinus } = precomputeVortex(candles, VORTEX_PERIOD_ORIG);
   const stcValues = mapStcToOriginal(closes, SCHAFF_STC_FAST_ORIG, SCHAFF_STC_SLOW_ORIG, SCHAFF_STC_CYCLE_ORIG);
   const demaFast = computeDEMA(closes, DEMA_FAST_ORIG);
   const demaSlow = computeDEMA(closes, DEMA_SLOW_ORIG);
@@ -444,7 +440,6 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
     zlemaFast, zlemaSlow,
     trixLine, trixSignal,
     elderEma, elderHistogram,
-    vortexPlus, vortexMinus,
     stcValues,
     demaFast, demaSlow,
     hmaFast, hmaSlow,
@@ -458,13 +453,13 @@ const ENGINES: EngineConfig[] = [
   {
     name: "cci",
     smaPeriod: 50,
-    adxMin: 8,
+    adxMin: 0,
     stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 16,
+    stagnationBars: 10,
     reverseExit: true,
-    trailActivation: 5,
-    trailDistance: 1,
+    trailActivation: 3,
+    trailDistance: 2,
     checkSignal(i, ctx) {
       const curr = ctx.cciValues[i], prev = ctx.cciValues[i - 1];
       if (curr === null || prev === null) return null;
@@ -476,14 +471,14 @@ const ENGINES: EngineConfig[] = [
   {
     name: "elder",
     smaPeriod: 100,
-    adxMin: 14,
+    adxMin: 0,
     stopAtrMult: 3.0,
     rewardRisk: 2.5,
-    stagnationBars: 12,
-    adxNotDecl: true,
-    reverseExit: false,
-    trailActivation: 3,
-    trailDistance: 2,
+    stagnationBars: 16,
+    adxNotDecl: false,
+    reverseExit: true,
+    trailActivation: 8,
+    trailDistance: 3,
     checkSignal(i, ctx) {
       if (i < 3) return null;
       const { elderEma, elderHistogram } = ctx;
@@ -503,12 +498,12 @@ const ENGINES: EngineConfig[] = [
   {
     name: "zlema",
     smaPeriod: 50,
-    adxMin: 10,
+    adxMin: 0,
     stopAtrMult: 2.5,
-    rewardRisk: 3.0,
-    stagnationBars: 8,
-    reverseExit: true,
-    trailActivation: 8,
+    rewardRisk: 4.0,
+    stagnationBars: 10,
+    reverseExit: false,
+    trailActivation: 3,
     trailDistance: 2,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
@@ -517,26 +512,6 @@ const ENGINES: EngineConfig[] = [
       if (cf === null || pf === null || cs === null || ps === null) return null;
       if (pf <= ps && cf > cs) return "long";
       if (pf >= ps && cf < cs) return "short";
-      return null;
-    },
-  },
-  {
-    name: "vortex",
-    smaPeriod: 100,
-    adxMin: 14,
-    stopAtrMult: 5.0,
-    rewardRisk: 4.0,
-    stagnationBars: 16,
-    adxNotDecl: true,
-    trailActivation: 5,
-    trailDistance: 3,
-    checkSignal(i, ctx) {
-      const { vortexPlus, vortexMinus } = ctx;
-      const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
-      const cvm = vortexMinus[i], pvm = vortexMinus[i - 1];
-      if (cvp === null || pvp === null || cvm === null || pvm === null) return null;
-      if (pvp <= pvm && cvp > cvm) return "long";
-      if (pvm <= pvp && cvm > cvp) return "short";
       return null;
     },
   },
