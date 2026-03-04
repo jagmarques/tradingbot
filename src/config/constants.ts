@@ -93,21 +93,6 @@ export const ZLEMA_REVERSE_EXIT = 0;
 export const ZLEMA_TRAIL_ACTIVATION = 3;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
-// TRIX
-export const TRIX_PERIOD = 16;
-export const TRIX_SIGNAL = 12;
-export const TRIX_DAILY_SMA_PERIOD = 50;
-export const TRIX_DAILY_ADX_MIN = 0;
-export const TRIX_STOP_ATR_MULT = 2.5;
-export const TRIX_REWARD_RISK = 4.0;
-export const TRIX_STAGNATION_BARS = 20;
-export const TRIX_BASE_CONFIDENCE = 65;
-export const TRIX_DAILY_LOOKBACK_DAYS = 150;
-export const TRIX_ADX_NOT_DECL = 0;
-export const TRIX_REVERSE_EXIT = 1;
-export const TRIX_TRAIL_ACTIVATION = 8;
-export const TRIX_TRAIL_DISTANCE = 1;
-
 // Elder
 export const ELDER_EMA_PERIOD = 25;
 export const ELDER_MACD_FAST = 8;

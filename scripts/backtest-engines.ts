@@ -25,35 +25,35 @@ const DAYS_DAILY = 200;
 const TRAIN_BARS = 720; // 120d * 6 bars/day
 
 // Engine parameters (exact copies from constants.ts)
-const PSAR_STEP = 0.02;
+const PSAR_STEP = 0.008;
 const PSAR_MAX = 0.1;
 
-const ZLEMA_FAST = 10;
-const ZLEMA_SLOW = 34;
+const ZLEMA_FAST = 4;
+const ZLEMA_SLOW = 40;
 
-const TRIX_PERIOD = 9;
-const TRIX_SIGNAL = 15;
+const TRIX_PERIOD = 16;
+const TRIX_SIGNAL = 12;
 
-const ELDER_EMA_PERIOD = 17;
-const ELDER_MACD_FAST = 16;
-const ELDER_MACD_SLOW = 26;
+const ELDER_EMA_PERIOD = 25;
+const ELDER_MACD_FAST = 8;
+const ELDER_MACD_SLOW = 24;
 const ELDER_MACD_SIGNAL = 9;
 
-const VORTEX_PERIOD = 14;
+const VORTEX_PERIOD = 25;
 
-const SCHAFF_STC_FAST = 10;
-const SCHAFF_STC_SLOW = 26;
-const SCHAFF_STC_CYCLE = 10;
-const SCHAFF_STC_THRESHOLD = 30;
+const SCHAFF_STC_FAST = 8;
+const SCHAFF_STC_SLOW = 20;
+const SCHAFF_STC_CYCLE = 12;
+const SCHAFF_STC_THRESHOLD = 40;
 
 const DEMA_FAST = 5;
 const DEMA_SLOW = 21;
 
-const HMA_FAST = 12;
-const HMA_SLOW = 34;
+const HMA_FAST = 16;
+const HMA_SLOW = 42;
 
-const CCI_PERIOD = 14;
-const CCI_THRESHOLD = 100;
+const CCI_PERIOD = 20;
+const CCI_THRESHOLD = 85;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -493,10 +493,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "psar",
     smaPeriod: 50,
-    adxMin: 18,
-    stopAtrMult: 5.0,
-    rewardRisk: 6.0,
-    stagnationBars: 8,
+    adxMin: 0,
+    stopAtrMult: 3.0,
+    rewardRisk: 4.0,
+    stagnationBars: 16,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i];
@@ -513,9 +513,9 @@ const ENGINES: EngineConfig[] = [
   {
     name: "zlema",
     smaPeriod: 75,
-    adxMin: 10,
-    stopAtrMult: 4.0,
-    rewardRisk: 4.0,
+    adxMin: 0,
+    stopAtrMult: 2.5,
+    rewardRisk: 3.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
@@ -530,7 +530,7 @@ const ENGINES: EngineConfig[] = [
   {
     name: "trix",
     smaPeriod: 75,
-    adxMin: 10,
+    adxMin: 0,
     stopAtrMult: 2.5,
     rewardRisk: 4.0,
     stagnationBars: 20,
@@ -547,10 +547,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "elder",
     smaPeriod: 75,
-    adxMin: 8,
+    adxMin: 0,
     stopAtrMult: 2.5,
     rewardRisk: 2.5,
-    stagnationBars: 12,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       const { elderEma, elderHistogram } = ctx;
       // Need 4 bars: i-3, i-2, i-1, i (prev-prev-prev, prev-prev, prev, curr)
@@ -573,10 +573,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "vortex",
     smaPeriod: 75,
-    adxMin: 14,
+    adxMin: 0,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 16,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -590,10 +590,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "schaff",
     smaPeriod: 50,
-    adxMin: 22,
-    stopAtrMult: 3.0,
+    adxMin: 0,
+    stopAtrMult: 3.5,
     rewardRisk: 4.0,
-    stagnationBars: 12,
+    stagnationBars: 9,
     checkSignal(i, ctx) {
       const { stcValues } = ctx;
       const curr = stcValues[i], prev = stcValues[i - 1];
@@ -607,7 +607,7 @@ const ENGINES: EngineConfig[] = [
     name: "dema",
     smaPeriod: 75,
     adxMin: 10,
-    stopAtrMult: 3.5,
+    stopAtrMult: 3.0,
     rewardRisk: 4.0,
     stagnationBars: 16,
     checkSignal(i, ctx) {
@@ -623,10 +623,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "hma",
     smaPeriod: 75,
-    adxMin: 8,
-    stopAtrMult: 4.0,
+    adxMin: 0,
+    stopAtrMult: 2.5,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -640,8 +640,8 @@ const ENGINES: EngineConfig[] = [
   {
     name: "cci",
     smaPeriod: 50,
-    adxMin: 8,
-    stopAtrMult: 3.5,
+    adxMin: 0,
+    stopAtrMult: 2.5,
     rewardRisk: 4.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {

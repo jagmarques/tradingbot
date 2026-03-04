@@ -3,7 +3,6 @@ import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
 import { runZlemaDecisionEngine } from "./zlema-engine.js";
-import { runTrixDecisionEngine } from "./trix-engine.js";
 import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
@@ -65,7 +64,6 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
-    const trixDecisions = await runTrixDecisionEngine(analyses);
     const elderDecisions = await runElderImpulseDecisionEngine(analyses);
     const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
@@ -85,9 +83,6 @@ export async function runDirectionalCycle(): Promise<void> {
     );
     const zlemaOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "zlema-directional").map(p => p.pair),
-    );
-    const trixOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "trix-directional").map(p => p.pair),
     );
     const elderOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "elder-impulse-directional").map(p => p.pair),
@@ -239,54 +234,6 @@ export async function runDirectionalCycle(): Promise<void> {
         zlemaOpenPairs.add(decision.pair);
         console.log(
           `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let trixExecuted = 0;
-    for (const decision of trixDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      if (trixOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] TRIX: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] TRIX: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        decision.confidence,
-        decision.reasoning,
-        "trix-directional",
-        undefined,
-        decision.entryPrice,
-        aiAgreed,
-      );
-
-      if (position) {
-        trixExecuted++;
-        trixOpenPairs.add(decision.pair);
-        console.log(
-          `[QuantScheduler] TRIX: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -501,7 +448,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, TRIX ${trixExecuted}/${trixDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

@@ -1,6 +1,6 @@
 import { getClient } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, TRIX_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS } from "../../config/constants.js";
 import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
@@ -15,7 +15,6 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "cci-directional": CCI_STAGNATION_BARS * H4_MS,
   "psar-directional": PSAR_STAGNATION_BARS * H4_MS,
   "zlema-directional": ZLEMA_STAGNATION_BARS * H4_MS,
-  "trix-directional": TRIX_STAGNATION_BARS * H4_MS,
   "elder-impulse-directional": ELDER_STAGNATION_BARS * H4_MS,
   "vortex-directional": VORTEX_STAGNATION_BARS * H4_MS,
   "schaff-directional": SCHAFF_STAGNATION_BARS * H4_MS,
@@ -30,7 +29,6 @@ const aiFlipAlerted = new Set<string>();
 const ENGINE_TAG: Record<string, string> = {
   "psar-directional": "PSAR",
   "zlema-directional": "ZLEMA",
-  "trix-directional": "TRIX",
   "elder-impulse-directional": "Elder",
   "vortex-directional": "Vortex",
   "schaff-directional": "Schaff",
