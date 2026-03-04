@@ -43,9 +43,9 @@ export async function evaluateDEMAPair(analysis: PairAnalysis): Promise<QuantAID
   const fastArr = computeDEMA(closes4h, DEMA_FAST);
   const slowArr = computeDEMA(closes4h, DEMA_SLOW);
 
-  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
-  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
-  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
+  const currFast = fastArr[n - 1];
+  const currSlow = slowArr[n - 1];
+  if (currFast === null || currSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, DEMA_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < DEMA_DAILY_SMA_PERIOD + 2) return null;
@@ -65,8 +65,8 @@ export async function evaluateDEMAPair(analysis: PairAnalysis): Promise<QuantAID
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
+  if (dailyUptrend && currFast > currSlow) direction = "long";
+  if (dailyDowntrend && currFast < currSlow) direction = "short";
 
   if (direction === null) return null;
 
@@ -87,7 +87,7 @@ export async function evaluateDEMAPair(analysis: PairAnalysis): Promise<QuantAID
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
   const crossDir = direction === "long" ? "above" : "below";
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `DEMA: DEMA(${DEMA_FAST}) crossed ${crossDir} DEMA(${DEMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${DEMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `DEMA: DEMA(${DEMA_FAST}) ${crossDir} DEMA(${DEMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${DEMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,

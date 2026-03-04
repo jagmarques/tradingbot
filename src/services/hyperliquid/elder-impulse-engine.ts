@@ -23,7 +23,7 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
   const { pair, markPrice } = analysis;
 
   const candles4h = analysis.candles?.["4h"];
-  if (!candles4h || candles4h.length < ELDER_MACD_SLOW + ELDER_MACD_SIGNAL + 3) return null;
+  if (!candles4h || candles4h.length < ELDER_MACD_SLOW + ELDER_MACD_SIGNAL + 2) return null;
 
   const closes4h = candles4h.map((c) => c.close);
   const n = closes4h.length;
@@ -50,12 +50,11 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
     histogram[macdStartIdx + i] = h ?? null;
   }
 
-  // Need 3 bars: prevPrev, prev, curr to detect FIRST green/red bar
-  const cI = n - 1, pI = n - 2, ppI = n - 3;
-  const currEma = ema[cI], prevEma = ema[pI], ppEma = ema[ppI];
-  const currHist = histogram[cI], prevHist = histogram[pI], ppHist = histogram[ppI];
-  if (currEma == null || prevEma == null || ppEma == null) return null;
-  if (currHist == null || prevHist == null || ppHist == null) return null;
+  const cI = n - 1, pI = n - 2;
+  const currEma = ema[cI], prevEma = ema[pI];
+  const currHist = histogram[cI], prevHist = histogram[pI];
+  if (currEma == null || prevEma == null) return null;
+  if (currHist == null || prevHist == null) return null;
 
   // Green bar: EMA rising AND histogram rising
   const isGreen = (eNow: number, ePrev: number, hNow: number, hPrev: number): boolean =>
@@ -64,15 +63,8 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
   const isRed = (eNow: number, ePrev: number, hNow: number, hPrev: number): boolean =>
     eNow < ePrev && hNow < hPrev;
 
-  // We need ppI-1 for prev-prev bar's EMA/histogram check - guard that index exists
-  if (ppI - 1 < 0) return null;
-  const pppEma = ema[ppI - 1], pppHist = histogram[ppI - 1];
-  if (pppEma == null || pppHist == null) return null;
-
   const currBarGreen = isGreen(currEma, prevEma, currHist, prevHist);
-  const prevBarGreen = isGreen(prevEma, ppEma, prevHist, ppHist);
   const currBarRed = isRed(currEma, prevEma, currHist, prevHist);
-  const prevBarRed = isRed(prevEma, ppEma, prevHist, ppHist);
 
   const dailyCandles = await fetchDailyCandles(pair, ELDER_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < ELDER_DAILY_SMA_PERIOD + 2) return null;
@@ -91,10 +83,10 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // Signal: FIRST green bar (prev was NOT green) with uptrend, or FIRST red bar (prev was NOT red) with downtrend
+  // Signal: green bar with uptrend, or red bar with downtrend
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && currBarGreen && !prevBarGreen) direction = "long";
-  if (dailyDowntrend && currBarRed && !prevBarRed) direction = "short";
+  if (dailyUptrend && currBarGreen) direction = "long";
+  if (dailyDowntrend && currBarRed) direction = "short";
 
   if (direction === null) return null;
 
@@ -117,7 +109,7 @@ export async function evaluateElderImpulsePair(analysis: PairAnalysis): Promise<
   const emaDir = direction === "long" ? "rising" : "falling";
   const histDir = direction === "long" ? "rising" : "falling";
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `ElderImpulse: first ${barColor} bar (EMA ${emaDir} + histogram ${histDir}), daily ${trend} (${smaDev}% vs SMA${ELDER_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `ElderImpulse: ${barColor} bar (EMA ${emaDir} + histogram ${histDir}), daily ${trend} (${smaDev}% vs SMA${ELDER_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,

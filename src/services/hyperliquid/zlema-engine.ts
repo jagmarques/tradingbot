@@ -47,9 +47,9 @@ export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAI
   const fastArr = computeZLEMA(closes4h, ZLEMA_FAST);
   const slowArr = computeZLEMA(closes4h, ZLEMA_SLOW);
 
-  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
-  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
-  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
+  const currFast = fastArr[n - 1];
+  const currSlow = slowArr[n - 1];
+  if (currFast === null || currSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, ZLEMA_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < ZLEMA_DAILY_SMA_PERIOD + 2) return null;
@@ -69,8 +69,8 @@ export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAI
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
+  if (dailyUptrend && currFast > currSlow) direction = "long";
+  if (dailyDowntrend && currFast < currSlow) direction = "short";
 
   if (direction === null) return null;
 
@@ -91,7 +91,7 @@ export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAI
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
   const crossDir = direction === "long" ? "above" : "below";
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `ZlemaCross: ZLEMA(${ZLEMA_FAST}) crossed ${crossDir} ZLEMA(${ZLEMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${ZLEMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `ZlemaCross: ZLEMA(${ZLEMA_FAST}) ${crossDir} ZLEMA(${ZLEMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${ZLEMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,

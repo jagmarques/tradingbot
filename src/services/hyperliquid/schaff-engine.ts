@@ -84,7 +84,6 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   if (stcValues.length < 2) return null;
 
   const currSTC = stcValues[stcValues.length - 1];
-  const prevSTC = stcValues[stcValues.length - 2];
 
   const dailyCandles = await fetchDailyCandles(pair, SCHAFF_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < SCHAFF_DAILY_SMA_PERIOD + 2) return null;
@@ -104,8 +103,8 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevSTC <= SCHAFF_STC_THRESHOLD && currSTC > SCHAFF_STC_THRESHOLD) direction = "long";
-  if (dailyDowntrend && prevSTC >= (100 - SCHAFF_STC_THRESHOLD) && currSTC < (100 - SCHAFF_STC_THRESHOLD)) direction = "short";
+  if (dailyUptrend && currSTC > SCHAFF_STC_THRESHOLD) direction = "long";
+  if (dailyDowntrend && currSTC < (100 - SCHAFF_STC_THRESHOLD)) direction = "short";
 
   if (direction === null) return null;
 
@@ -124,7 +123,7 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const crossDir = direction === "long" ? `STC crossed above ${SCHAFF_STC_THRESHOLD}` : `STC crossed below ${100 - SCHAFF_STC_THRESHOLD}`;
+  const crossDir = direction === "long" ? `STC above ${SCHAFF_STC_THRESHOLD}` : `STC below ${100 - SCHAFF_STC_THRESHOLD}`;
   const trend = direction === "long" ? "uptrend" : "downtrend";
   const reasoning = `Schaff: ${crossDir} (STC ${currSTC.toFixed(1)}), daily ${trend} (${smaDev}% vs SMA${SCHAFF_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 

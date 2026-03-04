@@ -61,12 +61,10 @@ export async function evaluateVortexPair(analysis: PairAnalysis): Promise<QuantA
   const n = closes4h.length;
 
   const currIdx = n - 1;
-  const prevIdx = n - 2;
 
   const currVortex = computeVortex(highs4h, lows4h, closes4h, currIdx, VORTEX_VORTEX_PERIOD);
-  const prevVortex = computeVortex(highs4h, lows4h, closes4h, prevIdx, VORTEX_VORTEX_PERIOD);
 
-  if (!currVortex || !prevVortex) return null;
+  if (!currVortex) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, VORTEX_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < VORTEX_DAILY_SMA_PERIOD + 2) return null;
@@ -91,8 +89,8 @@ export async function evaluateVortexPair(analysis: PairAnalysis): Promise<QuantA
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevVortex.vPlus <= prevVortex.vMinus && currVortex.vPlus > currVortex.vMinus) direction = "long";
-  if (dailyDowntrend && prevVortex.vMinus <= prevVortex.vPlus && currVortex.vMinus > currVortex.vPlus) direction = "short";
+  if (dailyUptrend && currVortex.vPlus > currVortex.vMinus) direction = "long";
+  if (dailyDowntrend && currVortex.vMinus > currVortex.vPlus) direction = "short";
 
   if (direction === null) return null;
 
@@ -111,7 +109,7 @@ export async function evaluateVortexPair(analysis: PairAnalysis): Promise<QuantA
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
-  const crossDir = direction === "long" ? "V+ crossed above V-" : "V- crossed above V+";
+  const crossDir = direction === "long" ? "V+ above V-" : "V- above V+";
   const trend = direction === "long" ? "uptrend" : "downtrend";
   const reasoning = `Vortex: ${crossDir}, daily ${trend} (${smaDev}% vs SMA${VORTEX_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 

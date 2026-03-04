@@ -32,13 +32,10 @@ export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAID
   const psarStartIdx = n - psarValues.length;
 
   const currIdx = n - 1;
-  const prevIdx = n - 2;
-  if (currIdx - psarStartIdx < 1 || prevIdx - psarStartIdx < 0) return null;
+  if (currIdx - psarStartIdx < 0) return null;
 
   const currSar = psarValues[currIdx - psarStartIdx];
-  const prevSar = psarValues[prevIdx - psarStartIdx];
   const currClose = closes4h[currIdx];
-  const prevClose = closes4h[prevIdx];
 
   const dailyCandles = await fetchDailyCandles(pair, PSAR_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < PSAR_DAILY_SMA_PERIOD + 2) return null;
@@ -57,10 +54,10 @@ export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAID
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // SAR flip: prev bar SAR above prev close AND curr bar SAR below curr close -> long
+  // SAR below curr close -> long state, SAR above curr close -> short state
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevSar > prevClose && currSar < currClose) direction = "long";
-  if (dailyDowntrend && prevSar < prevClose && currSar > currClose) direction = "short";
+  if (dailyUptrend && currSar < currClose) direction = "long";
+  if (dailyDowntrend && currSar > currClose) direction = "short";
 
   if (direction === null) return null;
 
@@ -81,7 +78,7 @@ export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAID
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
   const sarPos = direction === "long" ? "below" : "above";
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `Psar: SAR flipped ${sarPos} close, daily ${trend} (${smaDev}% vs SMA${PSAR_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `Psar: SAR ${sarPos} close, daily ${trend} (${smaDev}% vs SMA${PSAR_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,

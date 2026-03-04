@@ -40,8 +40,7 @@ export async function evaluateCCIPair(analysis: PairAnalysis): Promise<QuantAIDe
 
   const n = candles4h.length;
   const currCCI = computeCCI(candles4h, CCI_PERIOD, n - 1);
-  const prevCCI = computeCCI(candles4h, CCI_PERIOD, n - 2);
-  if (currCCI === null || prevCCI === null) return null;
+  if (currCCI === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, CCI_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < CCI_DAILY_SMA_PERIOD + 2) return null;
@@ -61,8 +60,8 @@ export async function evaluateCCIPair(analysis: PairAnalysis): Promise<QuantAIDe
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevCCI <= CCI_THRESHOLD && currCCI > CCI_THRESHOLD) direction = "long";
-  if (dailyDowntrend && prevCCI >= -CCI_THRESHOLD && currCCI < -CCI_THRESHOLD) direction = "short";
+  if (dailyUptrend && currCCI > CCI_THRESHOLD) direction = "long";
+  if (dailyDowntrend && currCCI < -CCI_THRESHOLD) direction = "short";
 
   if (direction === null) return null;
 
@@ -83,7 +82,7 @@ export async function evaluateCCIPair(analysis: PairAnalysis): Promise<QuantAIDe
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
   const crossDir = direction === "long" ? `above +${CCI_THRESHOLD}` : `below -${CCI_THRESHOLD}`;
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `CCI: CCI(${CCI_PERIOD}) crossed ${crossDir}, daily ${trend} (${smaDev}% vs SMA${CCI_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `CCI: CCI(${CCI_PERIOD}) ${crossDir}, daily ${trend} (${smaDev}% vs SMA${CCI_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,

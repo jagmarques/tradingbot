@@ -62,9 +62,9 @@ export async function evaluateHMAPair(analysis: PairAnalysis): Promise<QuantAIDe
   const fastArr = computeHMA(closes4h, HMA_FAST);
   const slowArr = computeHMA(closes4h, HMA_SLOW);
 
-  const currFast = fastArr[n - 1], prevFast = fastArr[n - 2];
-  const currSlow = slowArr[n - 1], prevSlow = slowArr[n - 2];
-  if (currFast === null || prevFast === null || currSlow === null || prevSlow === null) return null;
+  const currFast = fastArr[n - 1];
+  const currSlow = slowArr[n - 1];
+  if (currFast === null || currSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, HMA_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < HMA_DAILY_SMA_PERIOD + 2) return null;
@@ -84,8 +84,8 @@ export async function evaluateHMAPair(analysis: PairAnalysis): Promise<QuantAIDe
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
+  if (dailyUptrend && currFast > currSlow) direction = "long";
+  if (dailyDowntrend && currFast < currSlow) direction = "short";
 
   if (direction === null) return null;
 
@@ -106,7 +106,7 @@ export async function evaluateHMAPair(analysis: PairAnalysis): Promise<QuantAIDe
   const smaDev = ((dailyClose - dailySma) / dailySma * 100).toFixed(1);
   const crossDir = direction === "long" ? "above" : "below";
   const trend = direction === "long" ? "uptrend" : "downtrend";
-  const reasoning = `HMA: HMA(${HMA_FAST}) crossed ${crossDir} HMA(${HMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${HMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
+  const reasoning = `HMA: HMA(${HMA_FAST}) ${crossDir} HMA(${HMA_SLOW}), daily ${trend} (${smaDev}% vs SMA${HMA_DAILY_SMA_PERIOD}, ADX ${dailyAdx.toFixed(0)})`;
 
   return {
     pair,
