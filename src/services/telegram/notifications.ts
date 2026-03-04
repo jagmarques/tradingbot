@@ -286,6 +286,21 @@ export async function notifyQuantTradeExit(params: {
   await sendMessage(message);
 }
 
+export async function notifyQuantAIFlip(params: {
+  pair: string;
+  direction: "long" | "short";
+  engineTag: string;
+  aiDirection: "long" | "short" | "flat";
+  aiConfidence: number;
+}): Promise<void> {
+  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
+  const message =
+    `${mode}<b>AI FLIP</b>\n\n` +
+    `${params.engineTag} ${dirLabel} ${escapeHtml(params.pair)} — AI now ${params.aiDirection} (${params.aiConfidence}%)`;
+  await sendMessage(message);
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
