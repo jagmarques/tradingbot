@@ -172,20 +172,20 @@ export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 5;
 export const DEMA_TRAIL_DISTANCE = 2;
 
-// HMA Engine -- OOS Sharpe=6.68 2.517%/day (3-fold avg Sharpe=3.91 1.926%/day)
+// HMA Engine -- OOS Sharpe=8.04 1.923%/day (3-fold avg Sharpe=4.70 1.924%/day)
 export const HMA_DAILY_SMA_PERIOD = 50;
 export const HMA_DAILY_ADX_MIN = 0;
-export const HMA_FAST = 3;
-export const HMA_SLOW = 50;
-export const HMA_STOP_ATR_MULT = 3.0;
-export const HMA_REWARD_RISK = 6.0;
-export const HMA_STAGNATION_BARS = 10;
+export const HMA_FAST = 16;
+export const HMA_SLOW = 42;
+export const HMA_STOP_ATR_MULT = 2.5;
+export const HMA_REWARD_RISK = 4.0;
+export const HMA_STAGNATION_BARS = 8;
 export const HMA_BASE_CONFIDENCE = 65;
 export const HMA_DAILY_LOOKBACK_DAYS = 150;
 export const HMA_ADX_NOT_DECL = 0;
 export const HMA_REVERSE_EXIT = 0;
-export const HMA_TRAIL_ACTIVATION = 5;
-export const HMA_TRAIL_DISTANCE = 2;
+export const HMA_TRAIL_ACTIVATION = 8;
+export const HMA_TRAIL_DISTANCE = 1;
 
 // CCI Engine -- OOS Sharpe=7.74 OOS %/day=+2.265%
 export const CCI_DAILY_SMA_PERIOD = 50;
