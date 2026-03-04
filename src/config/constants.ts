@@ -63,7 +63,7 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14;
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
-// PSAR Engine -- OOS Sharpe=3.43 0.739%/day
+// PSAR
 export const PSAR_DAILY_SMA_PERIOD = 50;
 export const PSAR_DAILY_ADX_MIN = 0;
 export const PSAR_STEP = 0.008;
@@ -78,7 +78,7 @@ export const PSAR_ADX_NOT_DECL = 0;
 export const PSAR_TRAIL_ACTIVATION = 8;
 export const PSAR_TRAIL_DISTANCE = 2;
 
-// ZLEMA Cross Engine -- OOS Sharpe=3.62 1.052%/day
+// ZLEMA
 export const ZLEMA_DAILY_SMA_PERIOD = 50;
 export const ZLEMA_DAILY_ADX_MIN = 0;
 export const ZLEMA_FAST = 4;
@@ -93,7 +93,7 @@ export const ZLEMA_REVERSE_EXIT = 0;
 export const ZLEMA_TRAIL_ACTIVATION = 3;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
-// TRIX Engine -- OOS Sharpe=4.32 2.594%/day
+// TRIX
 export const TRIX_PERIOD = 9;
 export const TRIX_SIGNAL = 15;
 export const TRIX_DAILY_SMA_PERIOD = 50;
@@ -108,7 +108,7 @@ export const TRIX_REVERSE_EXIT = 0;
 export const TRIX_TRAIL_ACTIVATION = 8;
 export const TRIX_TRAIL_DISTANCE = 2;
 
-// Elder Impulse Engine -- OOS Sharpe=3.55 1.010%/day
+// Elder
 export const ELDER_EMA_PERIOD = 25;
 export const ELDER_MACD_FAST = 8;
 export const ELDER_MACD_SLOW = 24;
@@ -126,7 +126,7 @@ export const ELDER_TRAIL_ACTIVATION = 3;
 export const ELDER_TRAIL_DISTANCE = 3;
 
 
-// Vortex Engine -- OOS Sharpe=2.81 0.536%/day
+// Vortex
 export const VORTEX_DAILY_SMA_PERIOD = 100;
 export const VORTEX_DAILY_ADX_MIN = 0;
 export const VORTEX_VORTEX_PERIOD = 25;
@@ -140,7 +140,7 @@ export const VORTEX_REVERSE_EXIT = 0;
 export const VORTEX_TRAIL_ACTIVATION = 8;
 export const VORTEX_TRAIL_DISTANCE = 3;
 
-// Schaff Trend Cycle Engine -- OOS Sharpe=5.84 1.193%/day
+// Schaff
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
 export const SCHAFF_DAILY_ADX_MIN = 0;
 export const SCHAFF_STC_FAST = 8;
@@ -157,7 +157,7 @@ export const SCHAFF_REVERSE_EXIT = 0;
 export const SCHAFF_TRAIL_ACTIVATION = 5;
 export const SCHAFF_TRAIL_DISTANCE = 2;
 
-// DEMA Engine -- TRAIN Sharpe=3.47 OOS Sharpe=6.89 OOS %/day=2.189
+// DEMA
 export const DEMA_DAILY_SMA_PERIOD = 50;
 export const DEMA_DAILY_ADX_MIN = 10;
 export const DEMA_FAST = 5;
@@ -172,7 +172,7 @@ export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 5;
 export const DEMA_TRAIL_DISTANCE = 2;
 
-// HMA Engine -- OOS Sharpe=8.04 1.923%/day (3-fold avg Sharpe=4.70 1.924%/day)
+// HMA
 export const HMA_DAILY_SMA_PERIOD = 50;
 export const HMA_DAILY_ADX_MIN = 0;
 export const HMA_FAST = 16;
@@ -187,7 +187,7 @@ export const HMA_REVERSE_EXIT = 0;
 export const HMA_TRAIL_ACTIVATION = 8;
 export const HMA_TRAIL_DISTANCE = 1;
 
-// CCI Engine -- OOS Sharpe=7.74 OOS %/day=+2.265%
+// CCI
 export const CCI_DAILY_SMA_PERIOD = 50;
 export const CCI_DAILY_ADX_MIN = 0;
 export const CCI_PERIOD = 20;
