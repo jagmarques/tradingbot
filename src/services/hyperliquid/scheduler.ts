@@ -132,7 +132,10 @@ export async function runDirectionalCycle(): Promise<void> {
       }
 
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] PSAR: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -172,7 +175,10 @@ export async function runDirectionalCycle(): Promise<void> {
       }
 
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] ZLEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -212,7 +218,10 @@ export async function runDirectionalCycle(): Promise<void> {
       }
 
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] TRIX: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -252,7 +261,10 @@ export async function runDirectionalCycle(): Promise<void> {
       }
 
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] Elder: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -290,7 +302,10 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -313,7 +328,10 @@ export async function runDirectionalCycle(): Promise<void> {
       }
 
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] Schaff: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -352,7 +370,10 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -373,7 +394,10 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;
@@ -394,7 +418,10 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
       const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed = cachedAI ? cachedAI.direction === decision.direction : null;
+      const aiAgreed =
+        cachedAI && cachedAI.direction !== "flat"
+          ? cachedAI.direction === decision.direction
+          : null;
       if (aiAgreed === false) {
         console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
         continue;

@@ -81,6 +81,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     opened_at: string;
     closed_at: string | null;
     trade_type: string | null;
+    ai_agreed: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -102,6 +103,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType: (row.trade_type ?? "directional") as TradeType,
+    aiAgreed: row.ai_agreed === null ? null : row.ai_agreed === 1,
   }));
 }
 
@@ -131,6 +133,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     created_at: string;
     updated_at: string;
     trade_type: string | null;
+    ai_agreed: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -152,6 +155,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     tradeType: (row.trade_type ?? "directional") as TradeType,
+    aiAgreed: row.ai_agreed === null ? null : row.ai_agreed === 1,
   }));
 }
 
