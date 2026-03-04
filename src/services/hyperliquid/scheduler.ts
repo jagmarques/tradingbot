@@ -19,6 +19,26 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
+const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+const stopLossCooldowns = new Map<string, number>(); // `${pair}:${direction}` -> timestamp
+
+export function recordStopLossCooldown(pair: string, direction: string): void {
+  const key = `${pair}:${direction}`;
+  stopLossCooldowns.set(key, Date.now());
+  console.log(`[QuantScheduler] Stop-loss cooldown set for ${pair} ${direction} (2h)`);
+}
+
+function isInStopLossCooldown(pair: string, direction: string): boolean {
+  const key = `${pair}:${direction}`;
+  const ts = stopLossCooldowns.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts > STOP_LOSS_COOLDOWN_MS) {
+    stopLossCooldowns.delete(key);
+    return false;
+  }
+  return true;
+}
+
 export async function runDirectionalCycle(): Promise<void> {
   if (cycleRunning) {
     console.log("[QuantScheduler] Previous cycle still running, skipping");
@@ -97,6 +117,11 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] AI: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
+
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -128,6 +153,11 @@ export async function runDirectionalCycle(): Promise<void> {
 
       if (psarOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] PSAR: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
 
@@ -174,6 +204,11 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] ZLEMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
+
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed =
         cachedAI && cachedAI.direction !== "flat"
@@ -214,6 +249,11 @@ export async function runDirectionalCycle(): Promise<void> {
 
       if (trixOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] TRIX: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] TRIX: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
 
@@ -260,6 +300,11 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] Elder: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
+
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed =
         cachedAI && cachedAI.direction !== "flat"
@@ -301,6 +346,10 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed =
         cachedAI && cachedAI.direction !== "flat"
@@ -324,6 +373,11 @@ export async function runDirectionalCycle(): Promise<void> {
 
       if (schaffOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] Schaff: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
 
@@ -369,6 +423,10 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed =
         cachedAI && cachedAI.direction !== "flat"
@@ -393,6 +451,10 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
         continue;
       }
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
+        continue;
+      }
       const cachedAI = getCachedAIDecision(decision.pair);
       const aiAgreed =
         cachedAI && cachedAI.direction !== "flat"
@@ -415,6 +477,10 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (cciOpenPairs.has(decision.pair)) {
         console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
+        continue;
+      }
+      if (isInStopLossCooldown(decision.pair, decision.direction)) {
+        console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
       const cachedAI = getCachedAIDecision(decision.pair);

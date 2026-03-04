@@ -9,6 +9,7 @@ import {
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 import { fetchFundingRate } from "./market-data.js";
+import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ai-directional",
@@ -285,6 +286,11 @@ export async function paperClosePosition(
   positionContext.delete(positionId);
   lastFundingAccrual.delete(positionId);
   accumulatedFunding.delete(positionId);
+
+  if (reason === "stop-loss") {
+    recordStopLossCooldown(position.pair, position.direction);
+  }
+
   void notifyQuantTradeExit({
     pair: position.pair,
     direction: position.direction,
