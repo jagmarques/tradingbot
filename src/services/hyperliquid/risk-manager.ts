@@ -8,13 +8,19 @@ import { getOpenQuantPositions } from "./executor.js";
 import { sumRecentQuantLosses } from "../database/quant.js";
 
 let quantKilled = false;
-let dailyLossAccumulator = 0;
-let lastLossTimestamp = 0;
+const dailyLossMap = new Map<string, number>();
+const lastLossTimestampMap = new Map<string, number>();
 
-function resetIfStale(): void {
-  if (lastLossTimestamp > 0 && Date.now() - lastLossTimestamp > 86_400_000) {
-    dailyLossAccumulator = 0;
-    lastLossTimestamp = 0;
+export function strategyFromTradeType(tradeType: string): string {
+  // "psar-directional" -> "psar", "ai-directional" -> "ai", "elder-impulse-directional" -> "elder"
+  return tradeType.replace(/-directional$/, "").replace("elder-impulse", "elder");
+}
+
+function resetIfStale(strategy: string): void {
+  const lastTs = lastLossTimestampMap.get(strategy) ?? 0;
+  if (lastTs > 0 && Date.now() - lastTs > 86_400_000) {
+    dailyLossMap.delete(strategy);
+    lastLossTimestampMap.delete(strategy);
   }
 }
 
@@ -29,37 +35,50 @@ export function setQuantKilled(killed: boolean): void {
   );
 }
 
-export function recordDailyLoss(loss: number): void {
-  resetIfStale();
-  dailyLossAccumulator += loss;
-  lastLossTimestamp = Date.now();
+export function recordDailyLoss(loss: number, strategy: string): void {
+  resetIfStale(strategy);
+  const prev = dailyLossMap.get(strategy) ?? 0;
+  dailyLossMap.set(strategy, prev + loss);
+  lastLossTimestampMap.set(strategy, Date.now());
   console.log(
-    `[RiskManager] Rolling 24h loss: $${dailyLossAccumulator.toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+    `[RiskManager] ${strategy} rolling 24h loss: $${(prev + loss).toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
   );
 }
 
 export function resetDailyDrawdown(): void {
-  dailyLossAccumulator = 0;
-  lastLossTimestamp = 0;
+  dailyLossMap.clear();
+  lastLossTimestampMap.clear();
   console.log(`[RiskManager] Rolling 24h drawdown manually reset`);
 }
 
 export function seedDailyLossFromDb(): void {
-  try {
-    const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000);
-    dailyLossAccumulator = totalLoss;
-    lastLossTimestamp = lastLossTs;
-    if (totalLoss > 0) {
-      console.log(`[RiskManager] Seeded rolling 24h loss from DB: $${totalLoss.toFixed(2)}`);
+  const strategies = ["ai", "psar", "zlema", "elder", "vortex", "schaff", "dema", "hma", "cci"];
+  for (const strategy of strategies) {
+    try {
+      const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000, strategy);
+      if (totalLoss > 0) {
+        dailyLossMap.set(strategy, totalLoss);
+        lastLossTimestampMap.set(strategy, lastLossTs);
+        console.log(`[RiskManager] Seeded rolling 24h loss from DB: ${strategy} $${totalLoss.toFixed(2)}`);
+      }
+    } catch {
+      console.log(`[RiskManager] No quant_trades table yet, starting with 0 loss for ${strategy}`);
     }
-  } catch {
-    console.log("[RiskManager] No quant_trades table yet, starting with 0 loss");
   }
 }
 
-export function getDailyLossTotal(): number {
-  resetIfStale();
-  return dailyLossAccumulator;
+export function getDailyLossTotal(strategy?: string): number {
+  if (strategy !== undefined) {
+    resetIfStale(strategy);
+    return dailyLossMap.get(strategy) ?? 0;
+  }
+  // No strategy given: return global sum across all strategies
+  let total = 0;
+  for (const [strat, loss] of dailyLossMap) {
+    resetIfStale(strat);
+    total += dailyLossMap.get(strat) ?? loss;
+  }
+  return total;
 }
 
 function checkLeverageCap(leverage: number): {
@@ -88,12 +107,13 @@ function checkStopLossPresent(stopLoss: number): {
   return { allowed: true, reason: "" };
 }
 
-function checkDailyDrawdown(): { allowed: boolean; reason: string } {
-  resetIfStale();
-  if (dailyLossAccumulator >= QUANT_DAILY_DRAWDOWN_LIMIT) {
+function checkDailyDrawdown(strategy: string): { allowed: boolean; reason: string } {
+  resetIfStale(strategy);
+  const loss = dailyLossMap.get(strategy) ?? 0;
+  if (loss >= QUANT_DAILY_DRAWDOWN_LIMIT) {
     return {
       allowed: false,
-      reason: `Rolling 24h loss $${dailyLossAccumulator.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+      reason: `Rolling 24h loss for ${strategy}: $${loss.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
     };
   }
   return { allowed: true, reason: "" };
@@ -127,8 +147,9 @@ export function validateRiskGates(params: {
   leverage: number;
   stopLoss: number;
   regime: MarketRegime;
+  strategy: string;
 }): { allowed: boolean; reason: string } {
-  const { leverage, stopLoss, regime } = params;
+  const { leverage, stopLoss, regime, strategy } = params;
 
   // 1. Kill switch
   if (isQuantKilled()) {
@@ -144,8 +165,8 @@ export function validateRiskGates(params: {
     return regimeCheck;
   }
 
-  // 3. Daily drawdown
-  const drawdownCheck = checkDailyDrawdown();
+  // 3. Daily drawdown (per-strategy)
+  const drawdownCheck = checkDailyDrawdown(strategy);
   if (!drawdownCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${drawdownCheck.reason}`);
     return drawdownCheck;

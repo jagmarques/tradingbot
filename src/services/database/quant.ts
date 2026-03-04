@@ -340,16 +340,50 @@ export function getAIAgreementStats(): {
   return { agreed, disagreed };
 }
 
-export function sumRecentQuantLosses(withinMs: number): { totalLoss: number; lastLossTs: number } {
+export function sumRecentQuantLosses(withinMs: number, strategy?: string): { totalLoss: number; lastLossTs: number } {
   const db = getDb();
   const cutoff = new Date(Date.now() - withinMs).toISOString();
-  const row = db.prepare(`
-    SELECT
-      COALESCE(SUM(ABS(pnl)), 0) as total_loss,
-      COALESCE(MAX(updated_at), '') as last_loss_at
-    FROM quant_trades
-    WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-  `).get(cutoff) as { total_loss: number; last_loss_at: string };
+
+  let row: { total_loss: number; last_loss_at: string };
+
+  if (strategy === undefined) {
+    row = db.prepare(`
+      SELECT
+        COALESCE(SUM(ABS(pnl)), 0) as total_loss,
+        COALESCE(MAX(updated_at), '') as last_loss_at
+      FROM quant_trades
+      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
+    `).get(cutoff) as typeof row;
+  } else if (strategy === "ai") {
+    // Backward compat: old records have trade_type="directional" which were AI trades
+    row = db.prepare(`
+      SELECT
+        COALESCE(SUM(ABS(pnl)), 0) as total_loss,
+        COALESCE(MAX(updated_at), '') as last_loss_at
+      FROM quant_trades
+      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
+        AND trade_type IN ('ai-directional', 'directional')
+    `).get(cutoff) as typeof row;
+  } else if (strategy === "elder") {
+    row = db.prepare(`
+      SELECT
+        COALESCE(SUM(ABS(pnl)), 0) as total_loss,
+        COALESCE(MAX(updated_at), '') as last_loss_at
+      FROM quant_trades
+      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
+        AND trade_type = 'elder-impulse-directional'
+    `).get(cutoff) as typeof row;
+  } else {
+    row = db.prepare(`
+      SELECT
+        COALESCE(SUM(ABS(pnl)), 0) as total_loss,
+        COALESCE(MAX(updated_at), '') as last_loss_at
+      FROM quant_trades
+      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
+        AND trade_type = '${strategy}-directional'
+    `).get(cutoff) as typeof row;
+  }
+
   const lastLossTs = row.last_loss_at ? new Date(row.last_loss_at).getTime() : 0;
   return { totalLoss: row.total_loss, lastLossTs };
 }
