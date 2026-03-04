@@ -48,6 +48,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 export const QUANT_AI_CACHE_TTL_MS = 30 * 60 * 1000;
 export const QUANT_AI_STOP_LOSS_MAX_PCT = 2;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
+export const QUANT_FIXED_POSITION_SIZE_USD = 5;
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;

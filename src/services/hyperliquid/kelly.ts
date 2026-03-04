@@ -2,6 +2,7 @@ import { getVirtualBalance } from "./executor.js";
 import {
   QUANT_AI_KELLY_FRACTION,
   QUANT_AI_STOP_LOSS_MAX_PCT,
+  QUANT_FIXED_POSITION_SIZE_USD,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
 
@@ -46,7 +47,7 @@ export function calculateQuantPositionSize(
     return 0;
   }
 
-  return Math.floor(size * 100) / 100;
+  return QUANT_FIXED_POSITION_SIZE_USD;
 }
 
 export function calculateBacktestPositionSize(
