@@ -299,6 +299,43 @@ export function getQuantValidationMetrics(): {
   };
 }
 
+export function getAIAgreementStats(): {
+  agreed: { trades: number; winRate: number; totalPnl: number };
+  disagreed: { trades: number; winRate: number; totalPnl: number };
+} {
+  const db = getDb();
+  const query = `
+    SELECT
+      ai_agreed,
+      COUNT(*) as total,
+      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+      COALESCE(SUM(pnl), 0) as total_pnl
+    FROM quant_trades
+    WHERE status = 'closed'
+      AND trade_type NOT IN ('ai-directional', 'directional', 'funding')
+      AND ai_agreed IS NOT NULL
+    GROUP BY ai_agreed
+  `;
+  const rows = db.prepare(query).all() as Array<{
+    ai_agreed: number;
+    total: number;
+    wins: number;
+    total_pnl: number;
+  }>;
+
+  const agreed = { trades: 0, winRate: 0, totalPnl: 0 };
+  const disagreed = { trades: 0, winRate: 0, totalPnl: 0 };
+
+  for (const row of rows) {
+    const bucket = row.ai_agreed === 1 ? agreed : disagreed;
+    bucket.trades = row.total;
+    bucket.winRate = row.total > 0 ? (row.wins / row.total) * 100 : 0;
+    bucket.totalPnl = row.total_pnl;
+  }
+
+  return { agreed, disagreed };
+}
+
 export function sumRecentQuantLosses(withinMs: number): { totalLoss: number; lastLossTs: number } {
   const db = getDb();
   const cutoff = new Date(Date.now() - withinMs).toISOString();

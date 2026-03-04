@@ -29,7 +29,7 @@ import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison 
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { getQuantStats, getQuantValidationMetrics } from "../database/quant.js";
+import { getQuantStats, getQuantValidationMetrics, getAIAgreementStats } from "../database/quant.js";
 
 const MENU_MSG_ID_PATH = process.env.DB_PATH
   ? process.env.DB_PATH.replace("trades.db", "menu_msg_id.txt")
@@ -2546,6 +2546,15 @@ async function handleQuant(ctx: Context): Promise<void> {
   const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
   text += `Total: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
+
+  const aiFilter = getAIAgreementStats();
+  if (aiFilter.agreed.trades + aiFilter.disagreed.trades > 0) {
+    const fmtAg = `${aiFilter.agreed.totalPnl >= 0 ? "+" : "-"}$${Math.abs(aiFilter.agreed.totalPnl).toFixed(1)}`;
+    const fmtDis = `${aiFilter.disagreed.totalPnl >= 0 ? "+" : "-"}$${Math.abs(aiFilter.disagreed.totalPnl).toFixed(1)}`;
+    const agWr = aiFilter.agreed.trades > 0 ? ` ${aiFilter.agreed.winRate.toFixed(0)}%WR` : "";
+    const disWr = aiFilter.disagreed.trades > 0 ? ` ${aiFilter.disagreed.winRate.toFixed(0)}%WR` : "";
+    text += `AI filter: agreed ${aiFilter.agreed.trades}T${agWr} ${fmtAg} | blocked ${aiFilter.disagreed.trades}T${disWr} ${fmtDis}\n`;
+  }
 
   const validation = getQuantValidationMetrics();
   const daysElapsed = Math.floor(validation.paperDaysElapsed);
