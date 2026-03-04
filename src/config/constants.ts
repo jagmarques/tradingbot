@@ -98,7 +98,7 @@ export const ELDER_EMA_PERIOD = 17;
 export const ELDER_MACD_FAST = 16;
 export const ELDER_MACD_SLOW = 26;
 export const ELDER_MACD_SIGNAL = 9;
-export const ELDER_DAILY_SMA_PERIOD = 75;
+export const ELDER_DAILY_SMA_PERIOD = 50;
 export const ELDER_DAILY_ADX_MIN = 8;
 export const ELDER_STOP_ATR_MULT = 2.5;
 export const ELDER_REWARD_RISK = 2.5;
@@ -112,7 +112,7 @@ export const ELDER_TRAIL_DISTANCE = 2.5;
 
 
 // Vortex
-export const VORTEX_DAILY_SMA_PERIOD = 100;
+export const VORTEX_DAILY_SMA_PERIOD = 50;
 export const VORTEX_DAILY_ADX_MIN = 14;
 export const VORTEX_VORTEX_PERIOD = 14;
 export const VORTEX_STOP_ATR_MULT = 5.0;

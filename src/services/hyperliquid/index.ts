@@ -71,6 +71,7 @@ export {
   resetDailyDrawdown,
   getDailyLossTotal,
   seedDailyLossFromDb,
+  strategyFromTradeType,
 } from "./risk-manager.js";
 
 // Position Monitor

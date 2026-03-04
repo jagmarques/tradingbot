@@ -5,7 +5,7 @@ import {
   getPaperBalance,
   getPaperPositions,
 } from "./paper.js";
-import { validateRiskGates, recordDailyLoss } from "./risk-manager.js";
+import { validateRiskGates, recordDailyLoss, strategyFromTradeType } from "./risk-manager.js";
 import { clearAICacheForPair } from "./ai-analyzer.js";
 import { getPaperStartDate } from "../database/quant.js";
 import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
@@ -28,7 +28,8 @@ export async function openPosition(
 ): Promise<QuantPosition | null> {
   // Funding positions bypass volatile regime check (they're regime-agnostic)
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime });
+  const strategy = strategyFromTradeType(tradeType);
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;
@@ -64,7 +65,8 @@ export async function closePosition(
   if (isPaperMode()) {
     const result = await paperClosePosition(positionId, reason);
     if (result.success && result.pnl < 0) {
-      recordDailyLoss(Math.abs(result.pnl));
+      const strategy = strategyFromTradeType(pos?.tradeType ?? "ai-directional");
+      recordDailyLoss(Math.abs(result.pnl), strategy);
     }
     return result;
   }
