@@ -12,7 +12,7 @@ import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_AI_MAX_TRADES_PER_CYCLE } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -157,10 +157,6 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(
           `[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
-        if (aiExecuted >= QUANT_AI_MAX_TRADES_PER_CYCLE) {
-          console.log(`[QuantScheduler] AI: Trade cap reached (${QUANT_AI_MAX_TRADES_PER_CYCLE}/cycle), skipping remaining`);
-          break;
-        }
       }
     }
 
