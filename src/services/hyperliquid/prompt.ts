@@ -157,7 +157,7 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 === INSTRUCTIONS ===
-Stop-loss MUST be within 2% of entry price. Stops beyond 2% will be capped automatically.
+Stop-loss MUST be within 4% of entry price. Stops beyond 4% will be capped automatically.
 
 Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
 
@@ -165,7 +165,7 @@ OUTPUT JSON ONLY (no markdown, no extra text):
 {
   "direction": "long" | "short" | "flat",
   "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - within 2% of entry>,
+  "stopLoss": <number - within 4% of entry>,
   "takeProfit": <number - take-profit price>,
   "confidence": <number 0-100 - how confident in this trade>,
   "reasoning": "<2-3 sentences explaining the trade thesis based on the data>"
