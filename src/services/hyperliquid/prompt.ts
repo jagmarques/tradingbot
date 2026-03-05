@@ -114,7 +114,36 @@ function getRegimeInstruction(regime: MarketRegime): string {
   }
 }
 
-export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }): string {
+export interface DailyTrend {
+  direction: "bullish" | "bearish" | "neutral";
+  price: number;
+  sma50: number;
+}
+
+function formatDailyTrend(trend: DailyTrend): string {
+  const pct = (((trend.price - trend.sma50) / trend.sma50) * 100).toFixed(2);
+  const aboveBelow = trend.price >= trend.sma50 ? "above" : "below";
+  const aboveBelowAbs = Math.abs(parseFloat(pct));
+  let bias: string;
+  if (trend.direction === "bearish") {
+    bias =
+      "Price is below the daily SMA50. The macro trend is DOWN. Favor short setups and be skeptical of long entries -- they are counter-trend and need stronger confirmation.";
+  } else if (trend.direction === "bullish") {
+    bias =
+      "Price is above the daily SMA50. The macro trend is UP. Favor long setups and be skeptical of short entries -- they are counter-trend and need stronger confirmation.";
+  } else {
+    bias = "Price is near the daily SMA50. No clear macro trend bias.";
+  }
+  return [
+    `=== DAILY TREND ===`,
+    `Daily SMA50: ${trend.sma50.toFixed(2)}`,
+    `Current Price vs SMA50: ${trend.price.toFixed(2)} is ${aboveBelow} SMA50 (${aboveBelowAbs.toFixed(2)}% ${aboveBelow})`,
+    `Daily Trend: ${trend.direction.toUpperCase()}`,
+    bias,
+  ].join("\n");
+}
+
+export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }, dailyTrend?: DailyTrend | null): string {
   const intervals: CandleInterval[] = ["15m", "1h", "4h"];
   const fundingPct = (analysis.fundingRate * 100).toFixed(4);
 
@@ -156,7 +185,7 @@ ${formatMicrostructure(analysis.microstructure)}
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
-=== INSTRUCTIONS ===
+${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
 Stop-loss MUST be within 4% of entry price. Stops beyond 4% will be capped automatically.
 
 Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.

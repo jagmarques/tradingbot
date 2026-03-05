@@ -1,4 +1,4 @@
-import { buildQuantPrompt } from "./prompt.js";
+import { buildQuantPrompt, type DailyTrend } from "./prompt.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
@@ -182,7 +182,7 @@ function parseAIResponse(
 
 // --- Main analyzer function ---
 
-export async function analyzeWithAI(analysis: PairAnalysis): Promise<QuantAIDecision | null> {
+export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null): Promise<QuantAIDecision | null> {
   const { pair } = analysis;
 
   const cached = getCached(pair);
@@ -191,7 +191,7 @@ export async function analyzeWithAI(analysis: PairAnalysis): Promise<QuantAIDeci
     return cached;
   }
 
-  const prompt = buildQuantPrompt(analysis);
+  const prompt = buildQuantPrompt(analysis, dailyTrend);
 
   let raw: string;
   try {

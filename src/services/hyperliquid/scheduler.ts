@@ -1,4 +1,5 @@
 import { analyzeWithAI, getCachedAIDecision } from "./ai-analyzer.js";
+import { fetchDailyCandles, computeDailySma } from "./daily-indicators.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
@@ -55,7 +56,24 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const aiDecisions: QuantAIDecision[] = [];
     for (const analysis of analyses) {
-      const decision = await analyzeWithAI(analysis);
+      const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
+      const closes = dailyCandles.map((c) => c.close);
+      const sma50 = computeDailySma(closes, 50, closes.length - 1);
+      const markPrice = analysis.markPrice;
+      let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
+      if (sma50 !== null) {
+        let direction: "bullish" | "bearish" | "neutral";
+        if (markPrice > sma50 * 1.01) {
+          direction = "bullish";
+        } else if (markPrice < sma50 * 0.99) {
+          direction = "bearish";
+        } else {
+          direction = "neutral";
+        }
+        dailyTrend = { direction, price: markPrice, sma50 };
+        console.log(`[QuantScheduler] AI: ${analysis.pair} daily trend: ${direction} (price=${markPrice.toFixed(2)}, sma50=${sma50.toFixed(2)})`);
+      }
+      const decision = await analyzeWithAI(analysis, dailyTrend);
       if (!decision || decision.direction === "flat") continue;
       const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
       if (sizeUsd <= 0) continue;
