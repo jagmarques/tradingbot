@@ -1,4 +1,4 @@
-import { analyzeWithAI, getCachedAIDecision } from "./ai-analyzer.js";
+import { analyzeWithAI } from "./ai-analyzer.js";
 import { fetchDailyCandles, computeDailySma } from "./daily-indicators.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
@@ -174,15 +174,6 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] PSAR: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -196,7 +187,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "psar-directional",
         undefined,
         decision.entryPrice,
-        aiAgreed,
+        null,
       );
 
       if (position) {
@@ -222,15 +213,6 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] ZLEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -244,7 +226,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "zlema-directional",
         undefined,
         decision.entryPrice,
-        aiAgreed,
+        null,
       );
 
       if (position) {
@@ -270,15 +252,6 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] Elder: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -292,7 +265,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "elder-impulse-directional",
         undefined,
         decision.entryPrice,
-        aiAgreed,
+        null,
       );
 
       if (position) {
@@ -315,16 +288,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice, aiAgreed);
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "vortex-directional", undefined, decision.entryPrice, null);
       if (position) {
         vortexExecuted++;
         vortexOpenPairs.add(decision.pair);
@@ -346,15 +310,6 @@ export async function runDirectionalCycle(): Promise<void> {
         continue;
       }
 
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] Schaff: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
       const position = await openPosition(
         decision.pair,
         decision.direction,
@@ -368,7 +323,7 @@ export async function runDirectionalCycle(): Promise<void> {
         "schaff-directional",
         undefined,
         decision.entryPrice,
-        aiAgreed,
+        null,
       );
 
       if (position) {
@@ -392,16 +347,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice, aiAgreed);
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "dema-directional", undefined, decision.entryPrice, null);
       if (position) {
         demaExecuted++;
         demaOpenPairs.add(decision.pair);
@@ -420,16 +366,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice, aiAgreed);
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "hma-directional", undefined, decision.entryPrice, null);
       if (position) {
         hmaExecuted++;
         hmaOpenPairs.add(decision.pair);
@@ -448,16 +385,7 @@ export async function runDirectionalCycle(): Promise<void> {
         console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
         continue;
       }
-      const cachedAI = getCachedAIDecision(decision.pair);
-      const aiAgreed =
-        cachedAI && cachedAI.direction !== "flat"
-          ? cachedAI.direction === decision.direction
-          : null;
-      if (aiAgreed === false) {
-        console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: AI disagrees`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice, aiAgreed);
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, decision.confidence, decision.reasoning, "cci-directional", undefined, decision.entryPrice, null);
       if (position) {
         cciExecuted++;
         cciOpenPairs.add(decision.pair);
