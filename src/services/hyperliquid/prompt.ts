@@ -192,7 +192,7 @@ Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 ${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
-Use 2-3x the 4h ATR for stop-loss distance. This adapts to each pair's volatility. Stops beyond 5% of entry will be capped automatically. Tighter stops get stopped out by noise; wider stops risk too much per trade. ATR-based stops are optimal.
+The 4h ATR is ${formatNum(analysis.indicators["4h"].atr, 4)}. Use 2-3x ATR for stop-loss distance (${formatNum((analysis.indicators["4h"].atr ?? 0) * 2, 4)} to ${formatNum((analysis.indicators["4h"].atr ?? 0) * 3, 4)} from entry). Stops beyond 5% of entry will be capped automatically.
 
 Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
 
