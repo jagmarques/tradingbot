@@ -181,22 +181,35 @@ ${timeframeSections}
 === MARKET MICROSTRUCTURE ===
 ${formatMicrostructure(analysis.microstructure)}
 
+=== FUNDING RATE INTERPRETATION ===
+Positive funding (${fundingPct}% > 0): Longs pay shorts. Market is crowded long -- contrarian short signal.
+Negative funding (${fundingPct}% < 0): Shorts pay longs. Market is crowded short -- contrarian long signal.
+Extreme rates (|rate| > 0.01%): Strong contrarian signal -- crowded positioning often precedes reversals.
+Use funding as confirmation, not primary signal. High funding also erodes edge on longer holds.
+
 === REGIME ===
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
 ${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
-Stop-loss MUST be within 4% of entry price. Stops beyond 4% will be capped automatically.
+Use 2-3x the 4h ATR for stop-loss distance. This adapts to each pair's volatility. Stops beyond 5% of entry will be capped automatically. Tighter stops get stopped out by noise; wider stops risk too much per trade. ATR-based stops are optimal.
 
 Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
 
+IMPORTANT: Before deciding direction, you MUST reason through BOTH sides:
+- Write a bull case (why price goes up)
+- Write a bear case (why price goes down)
+- Only then decide direction based on which case is stronger
+
 OUTPUT JSON ONLY (no markdown, no extra text):
 {
+  "bullCase": "<1-2 sentences: strongest argument for price going UP>",
+  "bearCase": "<1-2 sentences: strongest argument for price going DOWN>",
   "direction": "long" | "short" | "flat",
   "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - within 4% of entry>,
+  "stopLoss": <number - use 2-3x ATR for stop distance, max 5% from entry>,
   "takeProfit": <number - take-profit price>,
   "confidence": <number 0-100 - how confident in this trade>,
-  "reasoning": "<2-3 sentences explaining the trade thesis based on the data>"
+  "reasoning": "<2-3 sentences explaining why the chosen direction wins over the other>"
 }`;
 }
