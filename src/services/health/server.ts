@@ -1,7 +1,7 @@
 import http from "http";
 import { getRiskStatus, canTrade } from "../risk/manager.js";
 import { isDbInitialized } from "../database/db.js";
-import { isPaperMode } from "../../config/env.js";
+import { getTradingMode } from "../../config/env.js";
 import { isQuantKilled } from "../hyperliquid/risk-manager.js";
 
 export interface HealthStatus {
@@ -10,7 +10,7 @@ export interface HealthStatus {
   timestamp: string;
   timestampUTC: string;
   version: string;
-  mode: "paper" | "live";
+  mode: "paper" | "hybrid" | "live";
   checks: {
     database: boolean;
     trading: boolean;
@@ -44,7 +44,7 @@ export function getHealthStatus(): HealthStatus {
     timestamp: new Date().toLocaleString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
     timestampUTC: new Date().toISOString(),
     version: "1.0.0",
-    mode: isPaperMode() ? "paper" : "live",
+    mode: getTradingMode(),
     checks: {
       database: dbHealthy,
       trading: tradingEnabled,
@@ -82,7 +82,7 @@ export async function getHealthStatusAsync(): Promise<HealthStatus> {
     timestamp: new Date().toLocaleString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
     timestampUTC: new Date().toISOString(),
     version: "1.0.0",
-    mode: isPaperMode() ? "paper" : "live",
+    mode: getTradingMode(),
     checks: {
       database: dbHealthy,
       trading: tradingEnabled,

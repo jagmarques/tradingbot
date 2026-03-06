@@ -19,41 +19,41 @@ const FEE_RATE = 0.0009; // 0.09% round-trip
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV; // $100 notional
 
-const PAIRS = ["BTC", "ETH", "SOL", "DOGE", "AVAX", "LINK", "ARB", "OP"];
-const DAYS_4H = 270; // ~180d data + warmup headroom for 120d train + 60d test
-const DAYS_DAILY = 200;
-const TRAIN_BARS = 720; // 120d * 6 bars/day
+const PAIRS = ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT"];
+const DAYS_4H = 780; // 730d + warmup buffer
+const DAYS_DAILY = 780;
+const TRAIN_BARS = 2935; // ~67% of 4381 bars (730d)
 
 // Engine parameters (exact copies from constants.ts)
-const PSAR_STEP = 0.008;
+const PSAR_STEP = 0.02;
 const PSAR_MAX = 0.1;
 
-const ZLEMA_FAST = 4;
-const ZLEMA_SLOW = 40;
+const ZLEMA_FAST = 10;
+const ZLEMA_SLOW = 34;
 
-const TRIX_PERIOD = 16;
-const TRIX_SIGNAL = 12;
+const TRIX_PERIOD = 9;
+const TRIX_SIGNAL = 15;
 
-const ELDER_EMA_PERIOD = 25;
-const ELDER_MACD_FAST = 8;
-const ELDER_MACD_SLOW = 24;
+const ELDER_EMA_PERIOD = 17;
+const ELDER_MACD_FAST = 16;
+const ELDER_MACD_SLOW = 26;
 const ELDER_MACD_SIGNAL = 9;
 
-const VORTEX_PERIOD = 25;
+const VORTEX_PERIOD = 14;
 
-const SCHAFF_STC_FAST = 8;
-const SCHAFF_STC_SLOW = 20;
-const SCHAFF_STC_CYCLE = 12;
-const SCHAFF_STC_THRESHOLD = 40;
+const SCHAFF_STC_FAST = 10;
+const SCHAFF_STC_SLOW = 26;
+const SCHAFF_STC_CYCLE = 10;
+const SCHAFF_STC_THRESHOLD = 30;
 
 const DEMA_FAST = 5;
 const DEMA_SLOW = 21;
 
-const HMA_FAST = 16;
-const HMA_SLOW = 42;
+const HMA_FAST = 12;
+const HMA_SLOW = 34;
 
-const CCI_PERIOD = 20;
-const CCI_THRESHOLD = 85;
+const CCI_PERIOD = 14;
+const CCI_THRESHOLD = 100;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -493,10 +493,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "psar",
     smaPeriod: 50,
-    adxMin: 0,
-    stopAtrMult: 3.0,
-    rewardRisk: 4.0,
-    stagnationBars: 16,
+    adxMin: 18,
+    stopAtrMult: 5.0,
+    rewardRisk: 6.0,
+    stagnationBars: 8,
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i];
@@ -513,9 +513,9 @@ const ENGINES: EngineConfig[] = [
   {
     name: "zlema",
     smaPeriod: 75,
-    adxMin: 0,
-    stopAtrMult: 2.5,
-    rewardRisk: 3.0,
+    adxMin: 10,
+    stopAtrMult: 4.0,
+    rewardRisk: 4.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
@@ -528,29 +528,12 @@ const ENGINES: EngineConfig[] = [
     },
   },
   {
-    name: "trix",
-    smaPeriod: 75,
-    adxMin: 0,
-    stopAtrMult: 2.5,
-    rewardRisk: 4.0,
-    stagnationBars: 20,
-    checkSignal(i, ctx) {
-      const { trixLine, trixSignal } = ctx;
-      const ct = trixLine[i], pt = trixLine[i - 1];
-      const cs = trixSignal[i], ps = trixSignal[i - 1];
-      if (ct === null || pt === null || cs === null || ps === null) return null;
-      if (pt <= ps && ct > cs) return "long";
-      if (pt >= ps && ct < cs) return "short";
-      return null;
-    },
-  },
-  {
     name: "elder",
     smaPeriod: 75,
-    adxMin: 0,
+    adxMin: 8,
     stopAtrMult: 2.5,
     rewardRisk: 2.5,
-    stagnationBars: 8,
+    stagnationBars: 12,
     checkSignal(i, ctx) {
       const { elderEma, elderHistogram } = ctx;
       // Need 4 bars: i-3, i-2, i-1, i (prev-prev-prev, prev-prev, prev, curr)
@@ -573,10 +556,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "vortex",
     smaPeriod: 75,
-    adxMin: 0,
+    adxMin: 14,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 16,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -590,10 +573,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "schaff",
     smaPeriod: 50,
-    adxMin: 0,
-    stopAtrMult: 3.5,
+    adxMin: 22,
+    stopAtrMult: 3.0,
     rewardRisk: 4.0,
-    stagnationBars: 9,
+    stagnationBars: 12,
     checkSignal(i, ctx) {
       const { stcValues } = ctx;
       const curr = stcValues[i], prev = stcValues[i - 1];
@@ -607,7 +590,7 @@ const ENGINES: EngineConfig[] = [
     name: "dema",
     smaPeriod: 75,
     adxMin: 10,
-    stopAtrMult: 3.0,
+    stopAtrMult: 3.5,
     rewardRisk: 4.0,
     stagnationBars: 16,
     checkSignal(i, ctx) {
@@ -623,10 +606,10 @@ const ENGINES: EngineConfig[] = [
   {
     name: "hma",
     smaPeriod: 75,
-    adxMin: 0,
-    stopAtrMult: 2.5,
+    adxMin: 8,
+    stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 8,
+    stagnationBars: 10,
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -640,8 +623,8 @@ const ENGINES: EngineConfig[] = [
   {
     name: "cci",
     smaPeriod: 50,
-    adxMin: 0,
-    stopAtrMult: 2.5,
+    adxMin: 8,
+    stopAtrMult: 3.5,
     rewardRisk: 4.0,
     stagnationBars: 10,
     checkSignal(i, ctx) {
@@ -982,6 +965,26 @@ async function main() {
     const sign = pctPerDay >= 0 ? "+" : "";
     console.log(`${rank + 1}. ${r.name.padEnd(12)} ${sign}${pctPerDay.toFixed(3)}%/d  ${r.trades}T  ${winRate.toFixed(0)}%wr  Sharpe=${sh.toFixed(2)}`);
   });
+
+  // Gross profit/loss breakdown
+  console.log("\n=== Gross Profit / Loss / Max Single Loss ===");
+  console.log(`${"Engine".padEnd(12)} | Wins  Losses  GrossProfit   GrossLoss  MaxSingleLoss  TotalPnL`);
+  console.log("─".repeat(82));
+  for (const r of engineResults) {
+    const grossProfit = r.allPnlPcts.filter(p => p > 0).reduce((s, p) => s + p * MARGIN_PER_TRADE / 100, 0);
+    const grossLoss = r.allPnlPcts.filter(p => p < 0).reduce((s, p) => s + Math.abs(p) * MARGIN_PER_TRADE / 100, 0);
+    const maxSingleLoss = r.allPnlPcts.length > 0 ? Math.min(...r.allPnlPcts) * MARGIN_PER_TRADE / 100 : 0;
+    const losses = r.trades - r.wins;
+    const pnlSign = r.totalPnl >= 0 ? "+" : "";
+    console.log(
+      `${r.name.padEnd(12)} | ` +
+      `${String(r.wins).padStart(4)}  ${String(losses).padStart(6)}  ` +
+      `+$${grossProfit.toFixed(2).padStart(10)}  ` +
+      `-$${grossLoss.toFixed(2).padStart(10)}  ` +
+      `${maxSingleLoss.toFixed(2).padStart(13)}  ` +
+      `${pnlSign}$${r.totalPnl.toFixed(2)}`
+    );
+  }
 
   // Save full results
   fs.writeFileSync("/tmp/backtest-engines.txt", fullLines.join("\n") + "\n");

@@ -1,14 +1,17 @@
-import { isPaperMode } from "../../config/env.js";
+import { getTradingMode } from "../../config/env.js";
 import {
   paperOpenPosition,
   paperClosePosition,
   getPaperBalance,
   getPaperPositions,
 } from "./paper.js";
+import {
+  liveOpenPosition,
+  liveClosePosition,
+  getLivePositions,
+} from "./live-executor.js";
 import { validateRiskGates, recordDailyLoss, strategyFromTradeType } from "./risk-manager.js";
 import { clearAICacheForPair } from "./ai-analyzer.js";
-import { getPaperStartDate } from "../database/quant.js";
-import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
 import type { QuantPosition, MarketRegime, TradeType } from "./types.js";
 
 export async function openPosition(
@@ -35,23 +38,17 @@ export async function openPosition(
     return null;
   }
 
-  if (isPaperMode()) {
-    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
+  const mode = getTradingMode();
+  // hybrid: only AI goes live. live: everything goes live.
+  const useLive =
+    mode === "live" ||
+    (mode === "hybrid" && tradeType === "ai-directional");
+
+  if (useLive) {
+    return liveOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
   }
 
-  // Live mode: validate paper period complete before allowing real trades
-  const startDate = getPaperStartDate();
-  if (!startDate) {
-    console.warn(`[Quant Executor] Live mode blocked: no paper trading history. Run paper mode first.`);
-    return null;
-  }
-  const daysElapsed = (Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysElapsed < QUANT_PAPER_VALIDATION_DAYS) {
-    console.warn(`[Quant Executor] Live mode blocked: paper validation incomplete (${daysElapsed.toFixed(1)}/${QUANT_PAPER_VALIDATION_DAYS} days)`);
-    return null;
-  }
-  console.warn(`[Quant Executor] Live order placement not implemented.`);
-  return null;
+  return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
 }
 
 export async function closePosition(
@@ -59,31 +56,32 @@ export async function closePosition(
   reason: string,
 ): Promise<{ success: boolean; pnl: number }> {
   // Invalidate AI cache so next cycle gets fresh analysis
-  const pos = getPaperPositions().find(p => p.id === positionId);
+  const positions = getOpenQuantPositions();
+  const pos = positions.find(p => p.id === positionId);
   if (pos) clearAICacheForPair(pos.pair);
 
-  if (isPaperMode()) {
-    const result = await paperClosePosition(positionId, reason);
-    if (result.success && result.pnl < 0) {
-      const strategy = strategyFromTradeType(pos?.tradeType ?? "ai-directional");
-      recordDailyLoss(Math.abs(result.pnl), strategy);
-    }
-    return result;
-  }
+  // Route close by position mode, not global mode
+  const isLivePosition = pos?.mode === "live";
+  const result = isLivePosition
+    ? await liveClosePosition(positionId, reason)
+    : await paperClosePosition(positionId, reason);
 
-  // Live mode: position close not yet wired to real exchange
-  console.warn(`[Quant Executor] Live position close not yet wired. Position ${positionId} requires manual close on Hyperliquid.`);
-  return { success: false, pnl: 0 };
+  if (result.success && result.pnl < 0) {
+    const strategy = strategyFromTradeType(pos?.tradeType ?? "ai-directional");
+    recordDailyLoss(Math.abs(result.pnl), strategy);
+  }
+  return result;
 }
 
 export function getOpenQuantPositions(): QuantPosition[] {
-  if (isPaperMode()) {
-    return getPaperPositions();
-  }
-  // Live positions returned from paper engine until live executor is built
-  return getPaperPositions();
+  // Always include live positions so monitor can protect them even after mode switch
+  const live = getLivePositions();
+  const paper = getPaperPositions();
+  return live.length > 0 ? [...live, ...paper] : paper;
 }
 
 export function getVirtualBalance(tradeType?: TradeType): number {
+  // Both modes return same notional balance for Kelly gate math.
+  // Actual sizing uses QUANT_FIXED_POSITION_SIZE_USD, not this value.
   return getPaperBalance(tradeType);
 }

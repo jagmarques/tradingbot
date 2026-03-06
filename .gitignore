@@ -39,6 +39,9 @@ coverage/
 *.sqlite
 *.sqlite3
 
+# Test scripts
+scripts/test-*.ts
+
 # Prompt spec (internal)
 PROMPT.md
 LOGS.md

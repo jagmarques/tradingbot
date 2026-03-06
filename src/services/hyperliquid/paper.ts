@@ -41,12 +41,17 @@ const accumulatedFunding = new Map<string, number>();
 export function initPaperEngine(): void {
   paperPositions.clear();
 
-  const openPositions = loadOpenQuantPositions();
-  for (const pos of openPositions) {
+  const allOpen = loadOpenQuantPositions();
+  const paperOnly = allOpen.filter(p => p.mode !== "live");
+  for (const pos of paperOnly) {
     paperPositions.set(pos.id, pos);
   }
 
-  console.log(`[Quant Paper] Init: ${openPositions.length} open positions restored`);
+  const skipped = allOpen.length - paperOnly.length;
+  if (skipped > 0) {
+    console.log(`[Quant Paper] Skipped ${skipped} live positions from DB`);
+  }
+  console.log(`[Quant Paper] Init: ${paperOnly.length} paper positions restored`);
 }
 
 export function getPaperBalance(tradeType?: TradeType): number {
@@ -198,6 +203,7 @@ export async function paperOpenPosition(
     tradeType,
     stopLoss: adjStop,
     takeProfit: adjTP,
+    positionMode: "paper",
   });
 
   const openCount = Array.from(paperPositions.values()).filter(p => p.status === "open" && p.tradeType === tradeType).length;
@@ -299,6 +305,7 @@ export async function paperClosePosition(
     pnl,
     exitReason: reason,
     tradeType: position.tradeType ?? "directional",
+    positionMode: "paper",
   });
 
   const realizedPnl = pnl;

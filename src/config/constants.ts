@@ -37,6 +37,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 export const HYPERLIQUID_MAX_LEVERAGE = 10;
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 1000; // $100/engine x 10 engines
 export const QUANT_MAX_POSITIONS = 50;
+export const QUANT_MAX_LIVE_POSITIONS = 5;
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000;
 
 // Quant Market Data Pipeline
@@ -48,7 +49,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 export const QUANT_AI_CACHE_TTL_MS = 30 * 60 * 1000;
 export const QUANT_AI_STOP_LOSS_MAX_PCT = 5;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
-export const QUANT_FIXED_POSITION_SIZE_USD = 5;
+export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;

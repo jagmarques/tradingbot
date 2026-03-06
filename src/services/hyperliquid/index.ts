@@ -1,7 +1,8 @@
-import { initHyperliquid, isHyperliquidInitialized } from "./client.js";
+import { initHyperliquid, isHyperliquidInitialized, ensureConnected, getClient } from "./client.js";
 import { initPaperEngine } from "./paper.js";
+import { initLiveEngine } from "./live-executor.js";
 import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
-import { loadEnv, isPaperMode } from "../../config/env.js";
+import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
@@ -25,9 +26,14 @@ export function initQuant(): number {
     );
   }
 
-  if (isPaperMode()) {
-    initPaperEngine();
-    setPaperStartDate(new Date().toISOString());
+  // Always init paper engine (technical engines use it in both modes)
+  initPaperEngine();
+  setPaperStartDate(new Date().toISOString());
+
+  // Always init live engine so crash recovery loads live positions from DB
+  initLiveEngine();
+  if (!isPaperMode()) {
+    void verifyLiveConnection();
   }
 
   seedDailyLossFromDb();
@@ -35,8 +41,22 @@ export function initQuant(): number {
   startQuantScheduler();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
-  console.log(`[Quant] Initialized (${isPaperMode() ? "paper" : "live"} mode), ${count} open positions`);
+  console.log(`[Quant] Initialized (${getTradingMode()} mode), ${count} open positions`);
   return count;
+}
+
+async function verifyLiveConnection(): Promise<void> {
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const mids = await sdk.info.getAllMids(true) as Record<string, string>;
+    const pairCount = Object.keys(mids).length;
+    console.log(`[Quant] Health check passed: ${pairCount} pairs available`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Quant] HEALTH CHECK FAILED: ${msg}`);
+    console.error("[Quant] Live trading may not work - check API key and wallet address");
+  }
 }
 
 export function stopQuant(): void {
@@ -59,7 +79,7 @@ export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
 
 // AI Decision Engine
 export { buildQuantPrompt } from "./prompt.js";
-export { analyzeWithAI, runAIDecisionEngine, clearAICache } from "./ai-analyzer.js";
+export { analyzeWithAI, clearAICache } from "./ai-analyzer.js";
 export { calculateQuantPositionSize } from "./kelly.js";
 
 // Risk Management

@@ -10,7 +10,7 @@ const numericStringMax1 = (defaultVal: string) =>
 
 const envSchema = z.object({
   // Mode
-  TRADING_MODE: z.enum(["paper", "live"]).default("paper"),
+  TRADING_MODE: z.enum(["paper", "hybrid", "live"]).default("paper"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
   // Polygon / Polymarket
@@ -74,7 +74,7 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 let cachedEnv: Env | null = null;
-let tradingModeOverride: "paper" | "live" | null = null;
+let tradingModeOverride: "paper" | "hybrid" | "live" | null = null;
 
 export function loadEnv(): Env {
   if (cachedEnv) return cachedEnv;
@@ -92,17 +92,26 @@ export function loadEnv(): Env {
   return cachedEnv;
 }
 
-export function setTradingMode(mode: "paper" | "live"): void {
+export type TradingMode = "paper" | "hybrid" | "live";
+
+export function setTradingMode(mode: TradingMode): void {
   tradingModeOverride = mode;
   console.log(`[Env] Trading mode set to ${mode.toUpperCase()} (runtime override)`);
 }
 
-export function getTradingMode(): "paper" | "live" {
+export function getTradingMode(): TradingMode {
   if (tradingModeOverride !== null) return tradingModeOverride;
   return loadEnv().TRADING_MODE;
 }
 
 export function isPaperMode(): boolean {
-  if (tradingModeOverride !== null) return tradingModeOverride === "paper";
-  return loadEnv().TRADING_MODE === "paper";
+  return getTradingMode() === "paper";
+}
+
+export function isHybridMode(): boolean {
+  return getTradingMode() === "hybrid";
+}
+
+export function isLiveMode(): boolean {
+  return getTradingMode() === "live";
 }

@@ -31,6 +31,11 @@ export function isHyperliquidInitialized(): boolean {
   return sdk !== null;
 }
 
+export function resetConnection(): void {
+  connected = false;
+  console.log("[Hyperliquid] Connection reset, will reconnect on next call");
+}
+
 export async function ensureConnected(): Promise<void> {
   if (!sdk) {
     throw new Error(

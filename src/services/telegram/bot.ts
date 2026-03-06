@@ -658,9 +658,11 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
       }
       const validation = getQuantValidationMetrics();
       if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
-        setTradingMode("live");
+        setTradingMode("hybrid");
+        const { initLiveEngine } = await import("../hyperliquid/live-executor.js");
+        initLiveEngine();
         await sendDataMessage(
-          "Quant trading switched to LIVE mode with $10 capital. Use /stop to halt if needed.",
+          "Quant trading switched to HYBRID mode (AI live, technical paper). Use /stop to halt if needed.",
           [[{ text: "Back", callback_data: "quant" }]],
         );
       } else {
@@ -956,7 +958,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     const $fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     const status = await getRiskStatus();
-    const modeTag = status.isPaperMode ? "Paper" : "Live";
+    const tm = getTradingMode();
+    const modeTag = tm === "paper" ? "Paper" : tm === "hybrid" ? "Hybrid" : "Live";
     const killTag = status.killSwitchActive ? " | Kill" : "";
 
     let message = `<b>Status</b> | ${modeTag}${killTag} | All-Time\n`;
@@ -992,6 +995,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const env = loadEnv();
     const quantPositions = getOpenQuantPositions();
     let quantUnrealized = 0;
+    let quantLiveUnrealized = 0;
     if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY && quantPositions.length > 0) {
       try {
         const sdk = getClient();
@@ -1001,9 +1005,11 @@ async function handlePnl(ctx: Context): Promise<void> {
           if (rawMid) {
             const currentPrice = parseFloat(rawMid);
             if (!isNaN(currentPrice)) {
-              quantUnrealized += pos.direction === "long"
+              const posUnr = pos.direction === "long"
                 ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
                 : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+              quantUnrealized += posUnr;
+              if (pos.mode === "live") quantLiveUnrealized += posUnr;
             }
           }
         }
@@ -1025,7 +1031,16 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     const rugStats = getRugStats();
     const total = data.totalPnl + totalUnrealized;
-    message += `<b>Total: ${pnl(total)}</b>`;
+
+    if (tm === "hybrid") {
+      const db = (await import("../database/db.js")).getDb();
+      const liveRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live'`).get() as { total: number }).total;
+      const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
+      message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
+      message += `\n<b>Live: ${pnl(liveRealizedQ)} | unr ${pnl(quantLiveUnrealized)}</b>`;
+    } else {
+      message += `<b>Total: ${pnl(total)}</b>`;
+    }
 
     // Realized
     message += `\n-------------------\n`;
@@ -1055,9 +1070,9 @@ async function handlePnl(ctx: Context): Promise<void> {
     if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
     unrealizedLines.push(insiderLine);
 
+    const quantKillStr = isQuantKilled() ? " HALTED" : "";
     const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
     const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
-    const quantKillStr = isQuantKilled() ? " HALTED" : "";
     unrealizedLines.push(`Quant: ${quantPositions.length} | in:${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
 
     message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
@@ -1832,9 +1847,10 @@ async function handleReset(ctx: Context): Promise<void> {
     return;
   }
 
-  if (!isPaperMode()) {
+  const tradingMode = getTradingMode();
+  if (tradingMode === "live") {
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Reset is only available in paper mode.", backButton);
+    await sendDataMessage("Reset is not available in full live mode.", backButton);
     return;
   }
 
@@ -1846,8 +1862,8 @@ async function handleReset(ctx: Context): Promise<void> {
   const db = (await import("../database/db.js")).getDb();
   const insiderWalletCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt;
   const insiderCopyCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt;
-  const quantTradeCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_trades").get() as { cnt: number }).cnt;
-  const quantPosCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_positions").get() as { cnt: number }).cnt;
+  const quantTradeCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_trades WHERE mode != 'live'").get() as { cnt: number }).cnt;
+  const quantPosCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_positions WHERE mode != 'live'").get() as { cnt: number }).cnt;
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
@@ -1870,12 +1886,6 @@ async function handleReset(ctx: Context): Promise<void> {
 
 async function handleResetConfirm(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
-
-  if (!isPaperMode()) {
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Reset is only available in paper mode.", backButton);
-    return;
-  }
 
   try {
     const db = (await import("../database/db.js")).getDb();
@@ -1923,9 +1933,9 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 13. Whale trades
     const whaleResult = db.prepare("DELETE FROM whale_trades").run();
 
-    // 14. Quant trades + positions + config
-    const quantTradesResult = db.prepare("DELETE FROM quant_trades").run();
-    const quantPosResult = db.prepare("DELETE FROM quant_positions").run();
+    // 14. Quant trades + positions - only paper, preserve live
+    const quantTradesResult = db.prepare("DELETE FROM quant_trades WHERE mode != 'live'").run();
+    const quantPosResult = db.prepare("DELETE FROM quant_positions WHERE mode != 'live'").run();
     const quantConfigResult = db.prepare("DELETE FROM quant_config").run();
 
     // 16. Clear all in-memory caches
@@ -1985,8 +1995,9 @@ async function handleMode(ctx: Context): Promise<void> {
 
     const buttons: { text: string; callback_data: string }[][] = [];
 
-    if (getTradingMode() === "paper") {
-      buttons.push([{ text: "Switch to LIVE", callback_data: "mode_switch_live" }]);
+    const mode = getTradingMode();
+    if (mode === "paper") {
+      buttons.push([{ text: "Switch to HYBRID (quant AI live)", callback_data: "mode_switch_live" }]);
     } else {
       buttons.push([{ text: "Switch to PAPER", callback_data: "mode_switch_paper" }]);
     }
@@ -2004,14 +2015,15 @@ async function handleMode(ctx: Context): Promise<void> {
 async function handleModeSwitchLive(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  let message = `<b>Switch to LIVE Mode</b>\n\n`;
-  message += `WARNING: This will:\n`;
+  let message = `<b>Switch to HYBRID Mode</b>\n\n`;
+  message += `This will:\n`;
   message += `- Delete ALL paper trade data\n`;
-  message += `- Start trading with REAL money\n\n`;
+  message += `- Quant AI trades with REAL money\n`;
+  message += `- Technical engines stay paper\n\n`;
   message += `<b>Are you sure?</b>`;
 
   const buttons = [
-    [{ text: "Confirm - Switch to LIVE", callback_data: "mode_confirm_live" }],
+    [{ text: "Confirm - Switch to HYBRID", callback_data: "mode_confirm_live" }],
     [{ text: "Cancel", callback_data: "mode" }],
   ];
 
@@ -2044,9 +2056,9 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     db.prepare("DELETE FROM calibration_scores").run();
     db.prepare("DELETE FROM calibration_log").run();
     db.prepare("DELETE FROM whale_trades").run();
-    db.prepare("DELETE FROM quant_trades").run();
-    db.prepare("DELETE FROM quant_positions").run();
-    db.prepare("DELETE FROM quant_config").run();
+    // Only clear paper quant data, preserve live trades/positions
+    db.prepare("DELETE FROM quant_trades WHERE mode != 'live'").run();
+    db.prepare("DELETE FROM quant_positions WHERE mode != 'live'").run();
 
     // Clear all in-memory caches
     const { clearCryptoCopyMemory } = await import("../copy/executor.js");
@@ -2060,9 +2072,10 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     clearQuantAICache();
     resetDailyDrawdown();
 
-    // Switch to live mode
-    setTradingMode("live");
-    console.log("[Telegram] Switched to LIVE mode, all paper data deleted");
+    setTradingMode("hybrid");
+    const { initLiveEngine: initLive } = await import("../hyperliquid/live-executor.js");
+    initLive();
+    console.log("[Telegram] Switched to HYBRID mode, paper data cleared");
 
     await handleMode(ctx);
   } catch (err) {
@@ -2075,7 +2088,12 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
 async function handleModeSwitchPaper(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  // No confirmation needed for switching to paper (safe)
+  const liveCount = getOpenQuantPositions().filter(p => p.mode === "live").length;
+  if (liveCount > 0) {
+    await sendDataMessage(`Cannot switch to paper: ${liveCount} live position(s) still open. Close them first.`);
+    return;
+  }
+
   setTradingMode("paper");
   console.log("[Telegram] Switched to PAPER mode");
 
@@ -2426,7 +2444,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   const openPositions = getOpenQuantPositions();
-  const mode = isPaperMode() ? "PAPER" : "LIVE";
+  const tradingMode = getTradingMode();
+  const mode = tradingMode === "paper" ? "PAPER" : tradingMode === "hybrid" ? "HYBRID" : "LIVE";
 
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
@@ -2443,7 +2462,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
-  let text = `<b>Quant</b> | ${mode === "PAPER" ? "Paper" : "Live"} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
+  let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
 
   let mids: Record<string, string> = {};
@@ -2458,34 +2477,50 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   if (activeOpId !== myOpId) return;
 
-  if (openPositions.length > 0) {
-    const posLines: string[] = [];
-    for (const pos of openPositions) {
-      const dir = pos.direction === "long" ? "L" : "S";
-      const typeTag =
-        pos.tradeType === "psar-directional" ? "[PS]" :
-        pos.tradeType === "zlema-directional" ? "[ZL]" :
-        pos.tradeType === "elder-impulse-directional" ? "[EI]" :
-        pos.tradeType === "vortex-directional" ? "[VO]" :
-        pos.tradeType === "schaff-directional" ? "[SC]" :
-        pos.tradeType === "dema-directional" ? "[DE]" :
-        pos.tradeType === "hma-directional" ? "[HM]" :
-        pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
-      let upnlStr = "";
-      const rawMid = mids[pos.pair];
-      if (rawMid) {
-        const currentPrice = parseFloat(rawMid);
-        if (!isNaN(currentPrice)) {
-          const unrealizedPnl =
-            pos.direction === "long"
-              ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-              : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-          upnlStr = ` ${pnl(unrealizedPnl)}`;
-        }
+  const formatPosLine = (pos: typeof openPositions[0]): string => {
+    const dir = pos.direction === "long" ? "L" : "S";
+    const typeTag =
+      pos.tradeType === "psar-directional" ? "[PS]" :
+      pos.tradeType === "zlema-directional" ? "[ZL]" :
+      pos.tradeType === "elder-impulse-directional" ? "[EI]" :
+      pos.tradeType === "vortex-directional" ? "[VO]" :
+      pos.tradeType === "schaff-directional" ? "[SC]" :
+      pos.tradeType === "dema-directional" ? "[DE]" :
+      pos.tradeType === "hma-directional" ? "[HM]" :
+      pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
+    let upnlStr = "";
+    const rawMid = mids[pos.pair];
+    if (rawMid) {
+      const currentPrice = parseFloat(rawMid);
+      if (!isNaN(currentPrice)) {
+        const unrealizedPnl =
+          pos.direction === "long"
+            ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+            : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+        upnlStr = ` ${pnl(unrealizedPnl)}`;
       }
-      posLines.push(`${typeTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`);
     }
-    text += `\n${posLines.join("\n")}\n`;
+    return `${typeTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`;
+  };
+
+  if (openPositions.length > 0) {
+    const isHybridOrLive = tradingMode === "hybrid" || tradingMode === "live";
+    const livePositions = openPositions.filter(p => p.mode === "live");
+    const paperPositions = openPositions.filter(p => p.mode !== "live");
+
+    if (paperPositions.length > 0) {
+      if (isHybridOrLive) {
+        text += `\n<b>Paper (${paperPositions.length})</b>\n`;
+      } else {
+        text += `\n`;
+      }
+      text += paperPositions.map(formatPosLine).join("\n") + "\n";
+    }
+
+    if (isHybridOrLive && livePositions.length > 0) {
+      text += `\n<b>LIVE (${livePositions.length})</b>\n`;
+      text += livePositions.map(formatPosLine).join("\n") + "\n";
+    }
   }
 
   // Unrealized P&L, open count, deployed capital per strategy
@@ -2542,7 +2577,33 @@ async function handleQuant(ctx: Context): Promise<void> {
   const totalOps = totalTrades + openPositions.length;
   const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
   const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
-  text += `Total: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
+  text += `\nTotal: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
+
+  if (tradingMode === "hybrid") {
+    const db = (await import("../database/db.js")).getDb();
+    const liveReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live'`).get() as { total: number }).total;
+    const paperReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
+    let liveUnr = 0;
+    let paperUnr = 0;
+    for (const pos of openPositions) {
+      const rawMid = mids[pos.pair];
+      if (!rawMid) continue;
+      const cp = parseFloat(rawMid);
+      if (isNaN(cp)) continue;
+      const u = pos.direction === "long"
+        ? ((cp - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+        : ((pos.entryPrice - cp) / pos.entryPrice) * pos.size * pos.leverage;
+      if (pos.mode === "live") liveUnr += u; else paperUnr += u;
+    }
+    const liveDep = openPositions.filter(p => p.mode === "live").reduce((s, p) => s + p.size, 0);
+    const paperDep = openPositions.filter(p => p.mode !== "live").reduce((s, p) => s + p.size, 0);
+    const liveDepStr = liveDep > 0 ? ` ($${liveDep.toFixed(0)})` : "";
+    const paperDepStr = paperDep > 0 ? ` ($${paperDep.toFixed(0)})` : "";
+    const liveCnt = openPositions.filter(p => p.mode === "live").length;
+    const paperCnt = openPositions.filter(p => p.mode !== "live").length;
+    text += `Paper: ${pnl(paperReal)} ${paperCnt}T${paperDepStr} | unr ${fmtUnr(paperUnr)}\n`;
+    text += `<b>Live: ${pnl(liveReal)} ${liveCnt}T${liveDepStr} | unr ${fmtUnr(liveUnr)}</b>\n`;
+  }
 
   const aiFilter = getAIAgreementStats();
   if (aiFilter.agreed.trades + aiFilter.disagreed.trades > 0) {
@@ -2553,19 +2614,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `AI filter: agreed ${aiFilter.agreed.trades}T${agWr} ${fmtAg} | blocked ${aiFilter.disagreed.trades}T${disWr} ${fmtDis}\n`;
   }
 
-  const validation = getQuantValidationMetrics();
-  const daysElapsed = Math.floor(validation.paperDaysElapsed);
-
-  if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS) {
-    text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} — ready for live\n`;
-  } else {
-    text += `Day ${daysElapsed}/${QUANT_PAPER_VALIDATION_DAYS} paper validation\n`;
-  }
-
   const buttons: { text: string; callback_data: string }[][] = [];
-  if (validation.paperDaysElapsed >= QUANT_PAPER_VALIDATION_DAYS && isPaperMode()) {
-    buttons.push([{ text: "Go Live", callback_data: "quant_go_live" }]);
-  }
   buttons.push([{ text: "Back", callback_data: "main_menu" }]);
 
   if (activeOpId !== myOpId) return;

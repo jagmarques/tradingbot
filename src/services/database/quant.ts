@@ -380,8 +380,8 @@ export function sumRecentQuantLosses(withinMs: number, strategy?: string): { tot
         COALESCE(MAX(updated_at), '') as last_loss_at
       FROM quant_trades
       WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-        AND trade_type = '${strategy}-directional'
-    `).get(cutoff) as typeof row;
+        AND trade_type = ?
+    `).get(cutoff, `${strategy}-directional`) as typeof row;
   }
 
   const lastLossTs = row.last_loss_at ? new Date(row.last_loss_at).getTime() : 0;

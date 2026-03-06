@@ -71,15 +71,39 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 ### Hyperliquid Quant Trading
 
-AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliquid perpetual futures.
+Directional trades on 15 perpetual futures pairs via Hyperliquid.
 
-- Four decision engines: AI (DeepSeek), Rule (RSI+MACD+BB), Micro (orderbook imbalance, L/S optional, OI optional), VWAP (mean reversion on volume-weighted average price deviation)
-- Multi-timeframe data (15m/1h/4h candles, indicators, regime classification)
-- Kelly criterion position sizing (half Kelly, stop-distance-adjusted)
-- Trailing stop + stagnation exit (4h) + stop-loss (1% max)
-- Funding rate arbitrage (delta-neutral, short when funding > 12% APR)
-- 3x leverage (AI/Rule/VWAP), 5x leverage (Micro), 15 concurrent positions, $25 rolling 24h drawdown limit
-- 3-minute cycle, 10s monitor, 14-day paper validation before live
+**Pairs:** BTC, ETH, SOL, XRP, DOGE, AVAX, LINK, ARB, BNB, OP, SUI, INJ, ATOM, APT, WIF
+
+**9 decision engines:**
+- Technical (8): PSAR, ZLEMA, Elder Impulse, Vortex, Schaff, DEMA, HMA, CCI
+- AI (1): DeepSeek V3 with multi-timeframe candles, indicators, microstructure, funding, regime
+
+**Execution:**
+- $10 fixed margin per trade, 10x leverage ($100 notional)
+- 50 max paper positions, 5 max live positions
+- $25 rolling 24h drawdown limit per strategy
+- 15-minute cycle, 10s position monitor
+- Trailing stop (2% absolute trail from peak after 5%+), stagnation exit (engine-specific, 8-24h), stop-loss (ATR-based, 5% max)
+- Software stop-loss via polling (no exchange-side TP/SL)
+- Bidirectional reconciliation: orphan close + phantom detection
+- 14-day paper validation before live
+
+## Trading Modes
+
+| | Paper | Hybrid | Live |
+|---|-------|--------|------|
+| Description | All strategies paper | AI quant live, technical engines paper | All live |
+| AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
+| Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
+| Quant technical engines | Paper | Paper | Live |
+| Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
+
+**Paper simulation:**
+- Virtual $1000 quant bankroll ($100/engine x 10 engines)
+- Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
+- Simulated funding: accrued hourly from live predicted rates
+- Simulated liquidation: per-pair maintenance margin rates
 
 ## Telegram
 
@@ -92,7 +116,7 @@ AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliqui
 | `/trades` | Open positions and recent trades |
 | `/insiders` | Insider wallets and holdings (2 tabs + chain filter) |
 | `/stop` / `/resume` | Kill switch |
-| `/mode` | Switch paper/live |
+| `/mode` | Switch paper/hybrid/live |
 | `/resetpaper` | Wipe paper data (preserves scoring history) |
 | `/clearcopies` | Clear copied positions |
 | `/ai <question>` | Query DeepSeek |
@@ -100,32 +124,18 @@ AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliqui
 
 **Menu buttons:** Status, Balance, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
 
+- **Status** - P&L summary (live/paper split in hybrid mode)
 - **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
 - **Bettors** - Tracked Polymarket bettors by ROI
-- **Quant** - Hyperliquid quant positions, P&L, paper validation status
+- **Quant** - Hyperliquid quant positions, engine stats, live/paper P&L split in hybrid
 - **Settings** - Copy trading and AI betting configuration
 - **Manage** - Close all positions, clear copies
-
-## Paper vs Live
-
-| | Paper | Live |
-|---|-------|------|
-| AI Betting bankroll | Virtual $100 (persists P&L across restarts) | Real USDC |
-| Quant bankroll | Virtual $100 (tracks balance, fees, funding) | Real Hyperliquid balance |
-| Position limits | Same as live (5 AI bets, 16 quant, $200 copy exposure) | Same |
-| AI Betting pricing | Public orderbook bid/ask, midpoint fallback | Real orderbook (CLOB FOK) |
-| AI Betting fees | 0.15%/side CLOB + 0.5% slippage + gas | Real CLOB fees |
-| Copy trading fees | 3-15% dynamic (liquidity-based) + AMM price impact | Real DEX swap (1inch) |
-| Quant fees | 0.045%/side taker (matches Hyperliquid Tier 0) | Real Hyperliquid fees |
-| Quant funding | Accrued hourly from live predicted rates | Real funding settlement |
-| Quant liquidation | Per-pair rates (BTC 2%, ETH 1.25%, SOL 1% of notional) | Real Hyperliquid margin |
-| Set via | `TRADING_MODE=paper` | `TRADING_MODE=live` |
 
 ## Config
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRADING_MODE` | `paper` | paper or live |
+| `TRADING_MODE` | `paper` | paper, hybrid, or live |
 | `AIBETTING_ENABLED` | `false` | Enable AI betting |
 | `AIBETTING_MAX_BET` | `$10` | Max per position |
 | `AIBETTING_MAX_EXPOSURE` | `$50` | Total open exposure |
@@ -137,7 +147,7 @@ AI-driven directional trades on BTC/ETH/SOL/DOGE/AVAX/LINK/ARB/OP via Hyperliqui
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$100` | Quant paper trading balance |
+| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($100/engine) |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`

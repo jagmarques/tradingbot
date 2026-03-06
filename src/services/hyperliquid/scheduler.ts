@@ -80,6 +80,7 @@ export async function runDirectionalCycle(): Promise<void> {
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
+    // Technical engines always run (routed to paper in executor.ts)
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
     const elderDecisions = await runElderImpulseDecisionEngine(analyses);

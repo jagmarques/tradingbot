@@ -1,6 +1,6 @@
 import { sendMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
-import { isPaperMode, loadEnv } from "../../config/env.js";
+import { isPaperMode, getTradingMode, loadEnv } from "../../config/env.js";
 import type { TradeType } from "../hyperliquid/types.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
@@ -42,7 +42,8 @@ export async function notifyCriticalError(error: string, context?: string): Prom
 }
 
 export async function notifyBotStarted(): Promise<void> {
-  const mode = isPaperMode() ? "Paper" : "Live";
+  const tm = getTradingMode();
+  const mode = tm === "paper" ? "Paper" : tm === "hybrid" ? "Hybrid" : "Live";
   const timezone = loadEnv().TIMEZONE;
   const message = `✅ <b>Bot Started</b>\n\nMode: ${mode}\nTimezone: ${timezone}\nTime: ${formatDate()}`;
   await sendMessage(message);
@@ -241,10 +242,13 @@ export async function notifyQuantTradeEntry(params: {
   tradeType: TradeType;
   stopLoss: number;
   takeProfit: number;
+  positionMode?: "paper" | "live";
 }): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const tradingMode = getTradingMode();
+  if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
+  const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "cci-trend-directional" ? "CciTrend" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -267,12 +271,15 @@ export async function notifyQuantTradeExit(params: {
   pnl: number;
   exitReason: string;
   tradeType: TradeType;
+  positionMode?: "paper" | "live";
 }): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const tradingMode = getTradingMode();
+  if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
+  const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "micro-directional" ? "Micro" : params.tradeType === "mtf-directional" ? "MTF" : params.tradeType === "ichimoku-directional" ? "Ichimoku" : params.tradeType === "cci-trend-directional" ? "CciTrend" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -292,8 +299,11 @@ export async function notifyQuantAIFlip(params: {
   engineTag: string;
   aiDirection: "long" | "short" | "flat";
   aiConfidence: number;
+  positionMode?: "paper" | "live";
 }): Promise<void> {
-  const mode = isPaperMode() ? "[PAPER] " : "[LIVE] ";
+  const tradingMode = getTradingMode();
+  if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
+  const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const message =
     `${mode}<b>AI FLIP</b>\n\n` +

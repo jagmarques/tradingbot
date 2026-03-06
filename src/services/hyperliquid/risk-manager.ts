@@ -1,6 +1,7 @@
 import {
   HYPERLIQUID_MAX_LEVERAGE,
   QUANT_MAX_POSITIONS,
+  QUANT_MAX_LIVE_POSITIONS,
   QUANT_DAILY_DRAWDOWN_LIMIT,
 } from "../../config/constants.js";
 import type { MarketRegime } from "./types.js";
@@ -119,7 +120,7 @@ function checkDailyDrawdown(strategy: string): { allowed: boolean; reason: strin
   return { allowed: true, reason: "" };
 }
 
-function checkMaxPositions(): { allowed: boolean; reason: string } {
+function checkMaxPositions(strategy: string): { allowed: boolean; reason: string } {
   const positions = getOpenQuantPositions();
   const count = positions.length;
   if (count >= QUANT_MAX_POSITIONS) {
@@ -127,6 +128,16 @@ function checkMaxPositions(): { allowed: boolean; reason: string } {
       allowed: false,
       reason: `Open positions ${count} at max ${QUANT_MAX_POSITIONS}`,
     };
+  }
+  // Separate cap for live positions (AI in hybrid mode)
+  if (strategy === "ai") {
+    const liveCount = positions.filter(p => p.mode === "live").length;
+    if (liveCount >= QUANT_MAX_LIVE_POSITIONS) {
+      return {
+        allowed: false,
+        reason: `Live positions ${liveCount} at max ${QUANT_MAX_LIVE_POSITIONS}`,
+      };
+    }
   }
   return { allowed: true, reason: "" };
 }
@@ -173,7 +184,7 @@ export function validateRiskGates(params: {
   }
 
   // 4. Max positions
-  const positionsCheck = checkMaxPositions();
+  const positionsCheck = checkMaxPositions(strategy);
   if (!positionsCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${positionsCheck.reason}`);
     return positionsCheck;

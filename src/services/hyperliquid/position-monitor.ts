@@ -1,13 +1,11 @@
-import { getClient } from "./client.js";
+import { getClient, resetConnection } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS } from "../../config/constants.js";
-import { isQuantKilled } from "./risk-manager.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
-import { isPaperMode } from "../../config/env.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { getCachedAIDecision } from "./ai-analyzer.js";
-import { notifyQuantAIFlip } from "../telegram/notifications.js";
+import { notifyQuantAIFlip, notifyCriticalError } from "../telegram/notifications.js";
 
 // Per-engine stagnation: bar count × 4h. Falls back for non-indicator types.
 const H4_MS = 4 * 60 * 60 * 1000;
@@ -23,8 +21,19 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
+let monitorRunning = false;
 
 const aiFlipAlerted = new Set<string>();
+const closeFailCounts = new Map<string, number>();
+let lastCriticalAlertMs = 0;
+const CRITICAL_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+
+function throttledCriticalAlert(msg: string, context: string): void {
+  const now = Date.now();
+  if (now - lastCriticalAlertMs < CRITICAL_ALERT_COOLDOWN_MS) return;
+  lastCriticalAlertMs = now;
+  void notifyCriticalError(msg, context);
+}
 
 const ENGINE_TAG: Record<string, string> = {
   "psar-directional": "PSAR",
@@ -37,7 +46,26 @@ const ENGINE_TAG: Record<string, string> = {
   "cci-directional": "CCI",
 };
 
+async function tryClose(position: QuantPosition, reason: string): Promise<void> {
+  const result = await closePosition(position.id, reason);
+  if (result.success) {
+    closeFailCounts.delete(position.id);
+    return;
+  }
+  if (position.mode !== "live") return;
+  const fails = (closeFailCounts.get(position.id) ?? 0) + 1;
+  closeFailCounts.set(position.id, fails);
+  if (fails >= 3) {
+    throttledCriticalAlert(
+      `CLOSE FAILED ${fails}x: ${position.pair} ${position.direction} (${reason})`,
+      "PositionMonitor",
+    );
+  }
+}
+
 async function checkPositionStops(): Promise<void> {
+  if (monitorRunning) return;
+  monitorRunning = true;
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
@@ -45,12 +73,12 @@ async function checkPositionStops(): Promise<void> {
       return;
     }
 
-    if (isQuantKilled()) {
-      // Positions frozen when killed - do not auto-close, let user decide
-      return;
-    }
+    // Kill switch blocks new opens (via risk gates), but we keep monitoring
+    // stops to protect existing positions.
 
-    if (isPaperMode()) {
+    // Accrue funding for paper positions (even in live mode, technical engines are paper)
+    const hasPaperPositions = positions.some(p => p.mode === "paper");
+    if (hasPaperPositions) {
       await accrueFundingIncome();
     }
 
@@ -90,12 +118,14 @@ async function checkPositionStops(): Promise<void> {
               engineTag: tag,
               aiDirection: aiDecision.direction,
               aiConfidence: aiDecision.confidence,
+              positionMode: position.mode,
             });
           }
         }
       }
 
-      if (isPaperMode()) {
+      // Paper liquidation check (live positions are liquidated by exchange)
+      if (position.mode === "paper") {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;
@@ -109,7 +139,7 @@ async function checkPositionStops(): Promise<void> {
           console.log(
             `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} equity $${equity.toFixed(2)} <= maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
           );
-          await closePosition(position.id, `liquidation (equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)})`);
+          await tryClose(position, `liquidation (equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
           continue;
@@ -135,7 +165,7 @@ async function checkPositionStops(): Promise<void> {
           console.log(
             `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (trail trigger: ${trailTrigger.toFixed(2)}%)`,
           );
-          await closePosition(position.id, "trailing-stop");
+          await tryClose(position, "trailing-stop");
           continue;
         }
       }
@@ -148,7 +178,7 @@ async function checkPositionStops(): Promise<void> {
           console.log(
             `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h (limit ${(stagnationMs / 3_600_000).toFixed(0)}h), P&L ${unrealizedPnlPct.toFixed(2)}%`,
           );
-          await closePosition(position.id, "stagnation");
+          await tryClose(position, "stagnation");
           continue;
         }
       }
@@ -180,23 +210,36 @@ async function checkPositionStops(): Promise<void> {
         console.log(
           `[PositionMonitor] Stop-loss triggered for ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
         );
-        await closePosition(position.id, "stop-loss");
+        await tryClose(position, "stop-loss");
       } else if (takeProfitBreached) {
         console.log(
           `[PositionMonitor] Take-profit triggered for ${position.pair} ${position.direction} @ ${currentPrice} (target: ${position.takeProfit})`,
         );
-        await closePosition(position.id, "take-profit");
+        await tryClose(position, "take-profit");
       }
     }
 
-    // Prune stale aiFlipAlerted entries for closed positions
+    // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
     for (const id of aiFlipAlerted) {
       if (!openIds.has(id)) aiFlipAlerted.delete(id);
     }
+    for (const id of closeFailCounts.keys()) {
+      if (!openIds.has(id)) closeFailCounts.delete(id);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[PositionMonitor] Error checking positions: ${msg}`);
+    if (msg.includes("timed out") || msg.includes("ECONNR") || msg.includes("fetch failed")) {
+      resetConnection();
+    }
+    // Alert if live positions exist but monitor can't check them
+    const liveCount = getOpenQuantPositions().filter(p => p.mode === "live").length;
+    if (liveCount > 0) {
+      throttledCriticalAlert(`Monitor failed: ${liveCount} live position(s) unprotected: ${msg}`, "PositionMonitor");
+    }
+  } finally {
+    monitorRunning = false;
   }
 }
 
