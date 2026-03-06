@@ -16,7 +16,7 @@ import {
 } from "./executor.js";
 import { logCalibrationEntry, getClosedPositionsTotalPnl } from "../database/aibetting.js";
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
 import cron from "node-cron";

@@ -3,7 +3,7 @@
 
 import { notifyTopTraderCopy, notifyTopTraderCopyClose } from "../telegram/notifications.js";
 import { placeFokOrder } from "../polygon/polymarket.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { getDb } from "../database/db.js";
 import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, GAMMA_API_URL, DATA_API_URL } from "../../config/constants.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";

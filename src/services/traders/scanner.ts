@@ -744,7 +744,7 @@ async function updateHeldGemPrices(): Promise<void> {
       if (fdvUsd > 10_000_000) continue;
       let newMultiple: number;
       if (token.launchPrice > 0 && priceUsd > 0) {
-        newMultiple = priceUsd / token.launchPrice;
+        newMultiple = Math.min(priceUsd / token.launchPrice, INSIDER_CONFIG.MAX_H24_CHANGE / 100 + 1);
       } else {
         newMultiple = 1.0;
       }

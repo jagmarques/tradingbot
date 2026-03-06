@@ -1,6 +1,6 @@
 // Bot settings storage
 import { getDb } from "../database/db.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 
 export interface BotSettings {
   autoCopyEnabled: boolean;

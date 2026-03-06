@@ -5,7 +5,7 @@ import { canTrade } from "../risk/manager.js";
 import { execute1inchSwap, execute1inchSell, isChainSupported } from "../evm/oneinch.js";
 import { getChatId, sendMessage } from "../telegram/bot.js";
 import { getDb } from "../database/db.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import {
   ESTIMATED_GAS_FEE_EVM,
   ESTIMATED_SLIPPAGE_DEX,

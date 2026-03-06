@@ -1,5 +1,5 @@
 import { getDb } from "./db.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 
 export interface TradeRecord {
   id: string;

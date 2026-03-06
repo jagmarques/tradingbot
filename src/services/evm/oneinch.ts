@@ -1,7 +1,7 @@
 // 1inch DEX aggregator for EVM swaps
 import { ethers, JsonRpcProvider, Wallet } from "ethers";
 import type { Chain } from "../traders/types.js";
-import { loadEnv, isPaperMode } from "../../config/env.js";
+import { loadEnv, isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 

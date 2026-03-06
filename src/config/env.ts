@@ -108,6 +108,12 @@ export function isPaperMode(): boolean {
   return getTradingMode() === "paper";
 }
 
+/** Returns true if Polymarket (AI bets + copy trading) should run in paper mode */
+export function isPolymarketPaperMode(): boolean {
+  const mode = getTradingMode();
+  return mode === "paper" || mode === "hybrid";
+}
+
 export function isHybridMode(): boolean {
   return getTradingMode() === "hybrid";
 }

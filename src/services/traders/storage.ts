@@ -279,6 +279,8 @@ export function upsertGemHit(hit: GemHit): void {
   const wa = normalizeAddr(hit.walletAddress);
   const ta = normalizeAddr(hit.tokenAddress);
   const id = `${wa}_${ta}_${hit.chain}`;
+  const maxPump = INSIDER_CONFIG.MAX_H24_CHANGE / 100 + 1;
+  const cappedPump = Math.min(hit.pumpMultiple, maxPump);
 
   db.prepare(`
     INSERT OR IGNORE INTO insider_gem_hits (
@@ -293,8 +295,8 @@ export function upsertGemHit(hit: GemHit): void {
     hit.tokenSymbol,
     hit.buyTxHash,
     hit.buyTimestamp,
-    hit.pumpMultiple,
-    hit.pumpMultiple,
+    cappedPump,
+    cappedPump,
     hit.launchPriceUsd || 0
   );
 }
@@ -449,12 +451,13 @@ export function getAllHeldGemHits(chain?: string): GemHit[] {
 
 export function updateGemHitPumpMultiple(tokenAddress: string, chain: string, pumpMultiple: number): void {
   const db = getDb();
+  const capped = Math.min(pumpMultiple, INSIDER_CONFIG.MAX_H24_CHANGE / 100 + 1);
   db.prepare(
     `UPDATE insider_gem_hits
      SET pump_multiple = ?,
          max_pump_multiple = MAX(COALESCE(max_pump_multiple, 0), ?)
      WHERE token_address = ? AND chain = ?`
-  ).run(pumpMultiple, pumpMultiple, normalizeAddr(tokenAddress), chain);
+  ).run(capped, capped, normalizeAddr(tokenAddress), chain);
 }
 
 export function setLaunchPrice(tokenAddress: string, chain: string, launchPriceUsd: number): void {

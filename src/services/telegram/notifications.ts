@@ -1,6 +1,6 @@
 import { sendMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
-import { isPaperMode, getTradingMode, loadEnv } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode, getTradingMode, loadEnv } from "../../config/env.js";
 import type { TradeType } from "../hyperliquid/types.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";

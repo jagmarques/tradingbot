@@ -4,7 +4,7 @@ import type {
   AIBettingPosition,
 } from "./types.js";
 import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
 import { ESTIMATED_GAS_FEE_MATIC, ESTIMATED_SLIPPAGE_POLYMARKET, CLOB_API_URL, POLYMARKET_TAKER_FEE_PCT } from "../../config/constants.js";
