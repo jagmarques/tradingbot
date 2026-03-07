@@ -1058,6 +1058,30 @@ async function handlePnl(ctx: Context): Promise<void> {
       const ltOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange === "lighter");
       const hlDep = hlOpen.reduce((s: number, p: any) => s + p.size, 0);
       const ltDep = ltOpen.reduce((s: number, p: any) => s + p.size, 0);
+      // Fetch margin info from exchanges
+      let hlMarginLine = "";
+      let ltMarginLine = "";
+      try {
+        const sdk = getClient();
+        const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+        if (wallet) {
+          const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+          const hlUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
+          const hlEq = parseFloat(state.marginSummary.accountValue) || 0;
+          hlMarginLine = `HL: $${hlUsed.toFixed(0)} locked | $${(hlEq - hlUsed).toFixed(0)} free`;
+        }
+      } catch { /* non-fatal */ }
+      try {
+        const { getLighterAccountInfo, isLighterInitialized: ltInit } = await import("../lighter/client.js");
+        if (ltInit()) {
+          const ltAcc = await getLighterAccountInfo();
+          ltMarginLine = `LT: $${ltAcc.marginUsed.toFixed(0)} locked | $${(ltAcc.equity - ltAcc.marginUsed).toFixed(0)} free`;
+        }
+      } catch { /* non-fatal */ }
+
+      if (hlMarginLine) message += hlMarginLine;
+      if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
+      if (hlMarginLine || ltMarginLine) message += "\n";
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
       message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
@@ -1082,21 +1106,25 @@ async function handlePnl(ctx: Context): Promise<void> {
     const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
     const schedulerStatus = getAIBettingStatus();
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
-    unrealizedLines.push(`AI Bets: ${openBets.length} | in:${$fmt(aiInvested)}${aiPnlStr}${logOnly}`);
+    const aiDepStr = aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : "";
+    unrealizedLines.push(`AI Bets: ${openBets.length}${aiDepStr}${aiPnlStr}${logOnly}`);
 
     const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
     const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    unrealizedLines.push(`Poly Copy: ${copyPositions.length} | in:${$fmt(copyInvested)}${copyPnlStr}`);
+    const copyDepStr = copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : "";
+    unrealizedLines.push(`Poly Copy: ${copyPositions.length}${copyDepStr}${copyPnlStr}`);
 
     const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
-    let insiderLine = `Insider: ${openInsider.length} | in:${$fmt(insiderInvested)}`;
+    const insiderDepStr = insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : "";
+    let insiderLine = `Insider: ${openInsider.length}${insiderDepStr}`;
     if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
     unrealizedLines.push(insiderLine);
 
     const quantKillStr = isQuantKilled() ? " HALTED" : "";
     const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
     const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
-    unrealizedLines.push(`Quant: ${quantPositions.length} | in:${$fmt(quantInvested)}${quantPnlStr}${quantKillStr}`);
+    const quantDepStr = quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : "";
+    unrealizedLines.push(`Quant: ${quantPositions.length}${quantDepStr}${quantPnlStr}${quantKillStr}`);
 
     message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
 
@@ -2472,15 +2500,7 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const killed = isQuantKilled();
   const dailyLoss = getDailyLossTotal();
-  const aiStats = getQuantStats("ai-directional");
-  const psarStats = getQuantStats("psar-directional");
-  const zlemaStats = getQuantStats("zlema-directional");
-  const elderStats = getQuantStats("elder-impulse-directional");
-  const vortexStats = getQuantStats("vortex-directional");
-  const schaffStats = getQuantStats("schaff-directional");
-  const demaStats = getQuantStats("dema-directional");
-  const hmaStats = getQuantStats("hma-directional");
-  const cciStats = getQuantStats("cci-directional");
+  // Stats fetched per engine inline below
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
@@ -2490,27 +2510,55 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
+  // Exchange unrealized P&L
+  let hlExchangeUpnl: Record<string, number> = {};
+  let ltExchangeUpnl: Record<string, number> = {};
   if (openPositions.length > 0) {
     try {
       const sdk = getClient();
       mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+      const env = (await import("../../config/env.js")).loadEnv();
+      const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+      if (wallet) {
+        const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+        for (const ap of state.assetPositions) {
+          if (parseFloat(ap.position.szi) !== 0) {
+            hlExchangeUpnl[ap.position.coin] = parseFloat(ap.position.unrealizedPnl ?? "0");
+          }
+        }
+      }
     } catch {
-      // Prices unavailable - show positions without unrealized P&L
+      // Prices unavailable
     }
 
-    // Lighter prices for Lighter positions
+    // Lighter prices + unrealized
     const lighterPairs = [...new Set(openPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
     if (lighterPairs.length > 0) {
       try {
-        const { getLighterAllMids, isLighterInitialized } = await import("../lighter/client.js");
+        const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
         if (isLighterInitialized()) {
           lighterMids = await getLighterAllMids(lighterPairs);
+          ltExchangeUpnl = await getLighterUnrealizedPnl();
         }
-      } catch { /* Lighter prices unavailable */ }
+      } catch { /* Lighter unavailable */ }
     }
   }
 
   if (activeOpId !== myOpId) return;
+
+  // Prevent double-counting when multiple engines share same pair
+  const livePairCount = new Map<string, number>();
+  for (const pos of openPositions) {
+    if (pos.mode === "live") {
+      const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
+      livePairCount.set(k, (livePairCount.get(k) ?? 0) + 1);
+    }
+  }
+  const canUseExchangeUpnl = (pos: typeof openPositions[0]): boolean => {
+    if (pos.mode !== "live") return false;
+    const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
+    return (livePairCount.get(k) ?? 0) === 1;
+  };
 
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
@@ -2525,16 +2573,24 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
-    const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
-    const rawMid = priceSource[pos.pair];
-    if (rawMid) {
-      const currentPrice = parseFloat(rawMid);
-      if (!isNaN(currentPrice)) {
-        const unrealizedPnl =
-          pos.direction === "long"
-            ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-            : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-        upnlStr = ` ${pnl(unrealizedPnl)}`;
+    // Exchange unrealized (single pos per pair only)
+    const exchangeUpnl = canUseExchangeUpnl(pos)
+      ? (pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair])
+      : undefined;
+    if (exchangeUpnl !== undefined) {
+      upnlStr = ` ${pnl(exchangeUpnl)}`;
+    } else {
+      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
+      const rawMid = priceSource[pos.pair];
+      if (rawMid) {
+        const currentPrice = parseFloat(rawMid);
+        if (!isNaN(currentPrice)) {
+          const unrealizedPnl =
+            pos.direction === "long"
+              ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+              : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+          upnlStr = ` ${pnl(unrealizedPnl)}`;
+        }
       }
     }
     return `${typeTag}${exchTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`;
@@ -2568,96 +2624,117 @@ async function handleQuant(ctx: Context): Promise<void> {
     }
   }
 
-  // Unrealized P&L, open count, deployed capital per strategy
-  const unrealizedByType = new Map<string, number>();
-  const openCountByType = new Map<string, number>();
-  const deployedByType = new Map<string, number>();
+  // Aggregate stats per strategy+mode
+  const makeKey = (type: string, mode: string) => `${type}:${mode}`;
+  const unrealizedByKey = new Map<string, number>();
+  const openCountByKey = new Map<string, number>();
+  const deployedByKey = new Map<string, number>();
   for (const pos of openPositions) {
-    const key = pos.tradeType ?? "ai-directional";
-    openCountByType.set(key, (openCountByType.get(key) ?? 0) + 1);
-    deployedByType.set(key, (deployedByType.get(key) ?? 0) + pos.size);
-    const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
-    const rawMid = priceSource[pos.pair];
-    if (!rawMid) continue;
-    const currentPrice = parseFloat(rawMid);
-    if (isNaN(currentPrice)) continue;
-    const upnl = pos.direction === "long"
-      ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-      : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-    unrealizedByType.set(key, (unrealizedByType.get(key) ?? 0) + upnl);
+    const type = pos.tradeType ?? "ai-directional";
+    const m = pos.mode === "live" ? "live" : "paper";
+    const key = makeKey(type, m);
+    openCountByKey.set(key, (openCountByKey.get(key) ?? 0) + 1);
+    deployedByKey.set(key, (deployedByKey.get(key) ?? 0) + pos.size);
+    let upnl: number | undefined;
+    if (canUseExchangeUpnl(pos)) {
+      const exUpnl = pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair];
+      if (exUpnl !== undefined) upnl = exUpnl;
+    }
+    if (upnl === undefined) {
+      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
+      const rawMid = priceSource[pos.pair];
+      if (!rawMid) continue;
+      const currentPrice = parseFloat(rawMid);
+      if (isNaN(currentPrice)) continue;
+      upnl = pos.direction === "long"
+        ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+        : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
+    }
+    unrealizedByKey.set(key, (unrealizedByKey.get(key) ?? 0) + upnl);
   }
-
-  const totalPnl = aiStats.totalPnl + psarStats.totalPnl + zlemaStats.totalPnl + elderStats.totalPnl + vortexStats.totalPnl + schaffStats.totalPnl + demaStats.totalPnl + hmaStats.totalPnl + cciStats.totalPnl;
-  const totalTrades = aiStats.totalTrades + psarStats.totalTrades + zlemaStats.totalTrades + elderStats.totalTrades + vortexStats.totalTrades + schaffStats.totalTrades + demaStats.totalTrades + hmaStats.totalTrades + cciStats.totalTrades;
-
-  let totalUnr = 0;
-  for (const v of unrealizedByType.values()) totalUnr += v;
-  let totalDeployed = 0;
-  for (const v of deployedByType.values()) totalDeployed += v;
 
   const fmtUnr = (v: number): string => `${v > 0 ? "+" : v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
 
-  const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string): string => {
+  const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string, mode: string): string => {
     const ret = `${s.totalPnl > 0 ? "+" : s.totalPnl < 0 ? "-" : ""}$${Math.abs(s.totalPnl).toFixed(1)}`;
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
-    const openCnt = openCountByType.get(typeKey) ?? 0;
+    const k = makeKey(typeKey, mode);
+    const openCnt = openCountByKey.get(k) ?? 0;
     const ops = s.totalTrades + openCnt;
-    const deployed = deployedByType.get(typeKey) ?? 0;
+    if (ops === 0) return "";
+    const deployed = deployedByKey.get(k) ?? 0;
     const deployedStr = deployed > 0 ? ` ($${deployed.toFixed(0)})` : "";
-    const unr = unrealizedByType.get(typeKey) ?? 0;
+    const unr = unrealizedByKey.get(k) ?? 0;
     const unrStr = ` | unr ${fmtUnr(unr)}`;
     return `${label}: ${ret}${wr} ${ops}T${deployedStr}${unrStr}\n`;
   };
 
-  text += `\n`;
-  text += sl("PSAR", psarStats, "psar-directional");
-  text += sl("ZLEMA", zlemaStats, "zlema-directional");
-  text += sl("Elder", elderStats, "elder-impulse-directional");
-  text += sl("Vortex", vortexStats, "vortex-directional");
-  text += sl("Schaff", schaffStats, "schaff-directional");
-  text += sl("DEMA", demaStats, "dema-directional");
-  text += sl("HMA", hmaStats, "hma-directional");
-  text += sl("CCI", cciStats, "cci-directional");
-  text += sl("AI", aiStats, "ai-directional");
-  const fmtTotal = `${totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : ""}$${Math.abs(totalPnl).toFixed(1)}`;
-  const totalOps = totalTrades + openPositions.length;
-  const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
-  const totalUnrStr = ` | unr ${fmtUnr(totalUnr)}`;
-  text += `\nTotal: ${fmtTotal} ${totalOps}T${deployedTotal}${totalUnrStr}\n`;
+  const engines: [string, string][] = [
+    ["PSAR", "psar-directional"], ["ZLEMA", "zlema-directional"],
+    ["Elder", "elder-impulse-directional"], ["Vortex", "vortex-directional"],
+    ["Schaff", "schaff-directional"], ["DEMA", "dema-directional"],
+    ["HMA", "hma-directional"], ["CCI", "cci-directional"],
+    ["AI", "ai-directional"],
+  ];
 
-  if (tradingMode === "hybrid") {
-    const db = (await import("../database/db.js")).getDb();
-    const hlReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number }).total;
-    const ltReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number }).total;
-    const paperReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
-    let paperUnr = 0, hlUnr = 0, ltUnr = 0;
-    for (const pos of openPositions) {
-      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
-      const rawMid = priceSource[pos.pair];
-      if (!rawMid) continue;
-      const cp = parseFloat(rawMid);
-      if (isNaN(cp)) continue;
-      const u = pos.direction === "long"
-        ? ((cp - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-        : ((pos.entryPrice - cp) / pos.entryPrice) * pos.size * pos.leverage;
-      if (pos.mode !== "live") paperUnr += u;
-      else if (pos.exchange === "lighter") ltUnr += u;
-      else hlUnr += u;
+  const hasLive = openPositions.some(p => p.mode === "live");
+  const hasPaper = openPositions.some(p => p.mode !== "live");
+  const isHybrid = tradingMode === "hybrid" || (hasLive && hasPaper);
+
+  if (isHybrid) {
+    let liveBlock = "";
+    let paperBlock = "";
+    let livePnlTotal = 0, paperPnlTotal = 0;
+    let liveTrades = 0, paperTrades = 0;
+    let liveUnrTotal = 0, paperUnrTotal = 0;
+    let liveDepTotal = 0, paperDepTotal = 0;
+    let liveOpenTotal = 0, paperOpenTotal = 0;
+
+    for (const [label, typeKey] of engines) {
+      const liveStats = getQuantStats(typeKey, "live");
+      const paperStats = getQuantStats(typeKey, "paper");
+      liveBlock += sl(label, liveStats, typeKey, "live");
+      paperBlock += sl(label, paperStats, typeKey, "paper");
+      livePnlTotal += liveStats.totalPnl; paperPnlTotal += paperStats.totalPnl;
+      liveTrades += liveStats.totalTrades; paperTrades += paperStats.totalTrades;
+      const lk = makeKey(typeKey, "live"), pk = makeKey(typeKey, "paper");
+      liveUnrTotal += unrealizedByKey.get(lk) ?? 0;
+      paperUnrTotal += unrealizedByKey.get(pk) ?? 0;
+      liveDepTotal += deployedByKey.get(lk) ?? 0;
+      paperDepTotal += deployedByKey.get(pk) ?? 0;
+      liveOpenTotal += openCountByKey.get(lk) ?? 0;
+      paperOpenTotal += openCountByKey.get(pk) ?? 0;
     }
-    const paperDep = openPositions.filter(p => p.mode !== "live").reduce((s, p) => s + p.size, 0);
-    const paperDepStr = paperDep > 0 ? ` ($${paperDep.toFixed(0)})` : "";
-    const paperCnt = openPositions.filter(p => p.mode !== "live").length;
-    text += `Paper: ${pnl(paperReal)} ${paperCnt}T${paperDepStr} | unr ${fmtUnr(paperUnr)}\n`;
-    const liveHLPos = openPositions.filter(p => p.mode === "live" && p.exchange !== "lighter");
-    const liveLTPos = openPositions.filter(p => p.mode === "live" && p.exchange === "lighter");
-    const hlDep = liveHLPos.reduce((s, p) => s + p.size, 0);
-    const hlDepStr = hlDep > 0 ? ` ($${hlDep.toFixed(0)})` : "";
-    text += `<b>Live HL: ${pnl(hlReal)} ${liveHLPos.length}T${hlDepStr} | unr ${fmtUnr(hlUnr)}</b>\n`;
-    const ltDep = liveLTPos.reduce((s, p) => s + p.size, 0);
-    const ltDepStr = ltDep > 0 ? ` ($${ltDep.toFixed(0)})` : "";
-    text += `<b>Live LT: ${pnl(ltReal)} ${liveLTPos.length}T${ltDepStr} | unr ${fmtUnr(ltUnr)}</b>\n`;
-  }
 
+    if (liveBlock) {
+      text += `\n<b>-- Live --</b>\n`;
+      text += liveBlock;
+      const fmt = `${livePnlTotal > 0 ? "+" : livePnlTotal < 0 ? "-" : ""}$${Math.abs(livePnlTotal).toFixed(1)}`;
+      const dep = liveDepTotal > 0 ? ` | $${liveDepTotal.toFixed(0)}` : "";
+      text += `Total: ${fmt} ${liveTrades + liveOpenTotal}T${dep} | unr ${fmtUnr(liveUnrTotal)}\n`;
+    }
+    if (paperBlock) {
+      text += `\n<b>-- Paper --</b>\n`;
+      text += paperBlock;
+      const fmt = `${paperPnlTotal > 0 ? "+" : paperPnlTotal < 0 ? "-" : ""}$${Math.abs(paperPnlTotal).toFixed(1)}`;
+      const dep = paperDepTotal > 0 ? ` | $${paperDepTotal.toFixed(0)}` : "";
+      text += `Total: ${fmt} ${paperTrades + paperOpenTotal}T${dep} | unr ${fmtUnr(paperUnrTotal)}\n`;
+    }
+  } else {
+    text += `\n`;
+    for (const [label, typeKey] of engines) {
+      const stats = getQuantStats(typeKey);
+      text += sl(label, stats, typeKey, tradingMode === "paper" ? "paper" : "live");
+    }
+    const totalPnl = engines.reduce((s, [, t]) => s + getQuantStats(t).totalPnl, 0);
+    let totalUnr = 0, totalDeployed = 0;
+    for (const v of unrealizedByKey.values()) totalUnr += v;
+    for (const v of deployedByKey.values()) totalDeployed += v;
+    const fmtTotal = `${totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : ""}$${Math.abs(totalPnl).toFixed(1)}`;
+    const totalOps = engines.reduce((s, [, t]) => s + getQuantStats(t).totalTrades, 0) + openPositions.length;
+    const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
+    text += `\nTotal: ${fmtTotal} ${totalOps}T${deployedTotal} | unr ${fmtUnr(totalUnr)}\n`;
+  }
 
   const buttons: { text: string; callback_data: string }[][] = [];
   buttons.push([{ text: "Back", callback_data: "main_menu" }]);

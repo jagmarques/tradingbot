@@ -9,7 +9,7 @@ import {
 } from "../database/quant.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from "../telegram/notifications.js";
 import { recordStopLossCooldown } from "./scheduler.js";
-import { withTimeout } from "../../utils/timeout.js";
+import { withTimeout, TimeoutError } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
 
 const MAX_SLIPPAGE = 0.005;
@@ -95,37 +95,49 @@ async function reconcileWithExchange(): Promise<void> {
       }
     }
 
-    // Phantoms: tracked in DB but not on exchange — mark closed
+    // Phantoms: in DB but not on exchange (double-check before marking)
     const trackedLive = getLivePositions();
-    if (exchangeCoins.size === 0 && trackedLive.length > 1) {
-      console.error(`[Quant Live] API returned 0 positions but tracking ${trackedLive.length} — skipping phantom check`);
-      void notifyCriticalError(`HL API returned empty positions — ${trackedLive.length} tracked. Skipping reconciliation.`, "Reconciliation");
-      return;
-    }
     for (const pos of trackedLive) {
-      if (!exchangeCoins.has(pos.pair) && !closingSet.has(pos.id)) {
-        console.error(`[Quant Live] PHANTOM: ${pos.pair} in DB but not on exchange, marking closed`);
-        const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
-        const exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
-        const notional = pos.size * pos.leverage;
-        const rawPnl = pos.direction === "long"
-          ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
-          : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
-        const fees = notional * 0.00045 * 2;
-        const pnl = rawPnl - fees;
+      if (exchangeCoins.has(pos.pair) || closingSet.has(pos.id)) continue;
+      // Recheck before marking phantom
+      await new Promise(r => setTimeout(r, 2000));
+      const recheck = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+      const recheckCoins = new Set(recheck.assetPositions.filter((ap: any) => parseFloat(ap.position.szi) !== 0).map((ap: any) => ap.position.coin as string));
+      if (recheckCoins.has(pos.pair)) continue;
 
-        const closedPosition: QuantPosition = {
-          ...pos,
-          status: "closed",
-          closedAt: new Date().toISOString(),
-          exitPrice,
-          realizedPnl: pnl,
-          exitReason: "reconciliation",
-        };
-        livePositions.set(pos.id, closedPosition);
-        saveQuantPosition(closedPosition);
-        void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} was in DB but not on exchange. Estimated P&L: $${pnl.toFixed(2)}`, "Reconciliation");
-      }
+      console.error(`[Quant Live] PHANTOM: ${pos.pair} in DB but not on exchange, marking closed`);
+      const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+      const exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
+      const notional = pos.size * pos.leverage;
+      const rawPnl = pos.direction === "long"
+        ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
+        : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
+      const fees = notional * 0.00045 * 2;
+      const pnl = rawPnl - fees;
+      const now = new Date().toISOString();
+
+      const closedPosition: QuantPosition = {
+        ...pos,
+        status: "closed",
+        closedAt: now,
+        exitPrice,
+        realizedPnl: pnl,
+        exitReason: "reconciliation",
+      };
+      livePositions.set(pos.id, closedPosition);
+      saveQuantPosition(closedPosition);
+      const ctx = positionContext.get(pos.id);
+      saveQuantTrade({
+        id: pos.id, pair: pos.pair, direction: pos.direction,
+        entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
+        pnl, fees, mode: "live", status: "closed",
+        aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
+        exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+        createdAt: pos.openedAt, updatedAt: now,
+        tradeType: pos.tradeType ?? "ai-directional", aiAgreed: pos.aiAgreed,
+      });
+      positionContext.delete(pos.id);
+      void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "Reconciliation");
     }
 
     if (exchangeCoins.size > 0 || trackedPairs.size > 0) {
@@ -248,8 +260,12 @@ export async function liveOpenPosition(
     }
 
     if (!status.filled) {
-      console.error(`[Quant Live] Order rejected for ${pair}: ${JSON.stringify(status)}`);
-      void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${JSON.stringify(status)}`, "liveOpenPosition");
+      const statusStr = JSON.stringify(status);
+      const isMarginError = statusStr.includes("Insufficient margin");
+      console.error(`[Quant Live] Order rejected for ${pair}: ${statusStr}`);
+      if (!isMarginError) {
+        void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${statusStr}`, "liveOpenPosition");
+      }
       return null;
     }
 
@@ -482,6 +498,67 @@ export async function liveClosePosition(
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Quant Live] Close failed for ${position.pair}: ${msg}`);
     resetConnection();
+
+    // Check if close succeeded despite timeout
+    if (err instanceof TimeoutError) {
+      try {
+        await ensureConnected();
+        const sdk2 = getClient();
+        const env2 = loadEnv();
+        const wallet2 = env2.HYPERLIQUID_WALLET_ADDRESS;
+        if (wallet2) {
+          const state2 = await sdk2.info.perpetuals.getClearinghouseState(wallet2, true);
+          const stillOpen = state2.assetPositions.find(
+            (ap: any) => ap.position.coin === position.pair && parseFloat(ap.position.szi) !== 0,
+          );
+          if (!stillOpen) {
+            console.log(`[Quant Live] ${position.pair} closed on exchange despite timeout`);
+            const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
+            const reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
+            const notional = position.size * position.leverage;
+            const rawPnl = position.direction === "long"
+              ? ((reconPrice - position.entryPrice) / position.entryPrice) * notional
+              : ((position.entryPrice - reconPrice) / position.entryPrice) * notional;
+            const fees = notional * 0.00045 * 2;
+            const estPnl = rawPnl - fees;
+            const now = new Date().toISOString();
+            const exitReason = `${reason} (timeout-reconciled)`;
+            const reconciled: QuantPosition = {
+              ...position, status: "closed", closedAt: now,
+              exitPrice: reconPrice, realizedPnl: estPnl, exitReason,
+            };
+            livePositions.set(positionId, reconciled);
+            saveQuantPosition(reconciled);
+            const ctx = positionContext.get(positionId);
+            saveQuantTrade({
+              id: position.id, pair: position.pair, direction: position.direction,
+              entryPrice: position.entryPrice, exitPrice: reconPrice,
+              size: position.size, leverage: position.leverage,
+              pnl: estPnl, fees, mode: "live", status: "closed",
+              aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
+              exitReason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
+              createdAt: position.openedAt, updatedAt: now,
+              tradeType: position.tradeType ?? "ai-directional", aiAgreed: position.aiAgreed,
+            });
+            positionContext.delete(positionId);
+            if (reason === "stop-loss") {
+              recordStopLossCooldown(position.pair, position.direction);
+            }
+            void notifyQuantTradeExit({
+              pair: position.pair, direction: position.direction,
+              entryPrice: position.entryPrice, exitPrice: reconPrice, size: position.size,
+              pnl: estPnl, exitReason, tradeType: position.tradeType ?? "ai-directional",
+              positionMode: "live",
+            });
+            console.log(`[Quant Live] CLOSE ${position.pair} pnl=${estPnl >= 0 ? "+" : ""}$${estPnl.toFixed(2)} (${exitReason}) @ ${reconPrice}`);
+            return { success: true, pnl: estPnl };
+          }
+        }
+      } catch (reconErr) {
+        console.error(`[Quant Live] Timeout reconciliation failed: ${reconErr instanceof Error ? reconErr.message : reconErr}`);
+      }
+    }
+
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

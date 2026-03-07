@@ -247,3 +247,35 @@ export async function getLighterOpenPositions(): Promise<{ marketId: number; sym
       side: (p.sign === 1 ? "long" : "short") as "long" | "short",
     }));
 }
+
+// Account equity and margin used
+export async function getLighterAccountInfo(): Promise<{ equity: number; marginUsed: number }> {
+  const api = getAccountApi();
+  const resp = await withTimeout(
+    api.account("index" as any, storedAccountIndex.toString()),
+    API_PRICE_TIMEOUT_MS, "Lighter account info",
+  );
+  const account = (resp.data as any).accounts?.[0];
+  if (!account) return { equity: 0, marginUsed: 0 };
+  const equity = parseFloat(account.portfolio_value ?? account.account_value ?? account.equity ?? "0");
+  const marginUsed = parseFloat(account.total_margin ?? account.margin_used ?? account.initial_margin ?? "0");
+  return { equity, marginUsed };
+}
+
+// Unrealized P&L per pair
+export async function getLighterUnrealizedPnl(): Promise<Record<string, number>> {
+  const api = getAccountApi();
+  const resp = await withTimeout(
+    api.account("index" as any, storedAccountIndex.toString()),
+    API_PRICE_TIMEOUT_MS, "Lighter unrealized PnL",
+  );
+  const account = (resp.data as any).accounts?.[0];
+  if (!account?.positions) return {};
+  const result: Record<string, number> = {};
+  for (const p of account.positions) {
+    if (parseFloat(p.position) === 0) continue;
+    const symbol = p.symbol?.split("_")[0] ?? "";
+    result[symbol] = parseFloat(p.unrealized_pnl ?? "0");
+  }
+  return result;
+}

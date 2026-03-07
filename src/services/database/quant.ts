@@ -163,7 +163,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
   }));
 }
 
-export function getQuantStats(tradeType?: TradeType): {
+export function getQuantStats(tradeType?: TradeType | string, mode?: "live" | "paper"): {
   totalTrades: number;
   wins: number;
   losses: number;
@@ -171,21 +171,21 @@ export function getQuantStats(tradeType?: TradeType): {
   winRate: number;
 } {
   const db = getDb();
+  const modeClause = mode === "live" ? " AND mode = 'live'" : mode === "paper" ? " AND mode != 'live'" : "";
 
   let stats: { total: number; wins: number; losses: number; total_pnl: number | null };
 
   if (!tradeType) {
     stats = db.prepare(
-      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'`,
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'${modeClause}`,
     ).get() as typeof stats;
   } else if (tradeType === "ai-directional") {
-    // Backward compat: old records have trade_type="directional" which were AI trades
     stats = db.prepare(
-      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type IN ('ai-directional', 'directional')`,
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type IN ('ai-directional', 'directional')${modeClause}`,
     ).get() as typeof stats;
   } else {
     stats = db.prepare(
-      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?`,
+      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?${modeClause}`,
     ).get(tradeType) as typeof stats;
   }
 
