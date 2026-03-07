@@ -275,7 +275,9 @@ export async function getLighterUnrealizedPnl(): Promise<Record<string, number>>
   for (const p of account.positions) {
     if (parseFloat(p.position) === 0) continue;
     const symbol = p.symbol?.split("_")[0] ?? "";
+    if (!symbol) continue;
     result[symbol] = parseFloat(p.unrealized_pnl ?? "0");
   }
+  console.log(`[Lighter] Unrealized P&L for ${Object.keys(result).length}/${account.positions.length} positions: ${Object.entries(result).map(([k, v]) => `${k}=${v.toFixed(3)}`).join(", ")}`);
   return result;
 }

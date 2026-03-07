@@ -1003,28 +1003,66 @@ async function handlePnl(ctx: Context): Promise<void> {
         const sdk = getClient();
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
         let ltMids: Record<string, string> = {};
+        // Exchange unrealized P&L
+        let hlExUpnl: Record<string, number> = {};
+        let ltExUpnl: Record<string, number> = {};
+        const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+        if (wallet) {
+          try {
+            const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+            for (const ap of state.assetPositions) {
+              if (parseFloat(ap.position.szi) !== 0) {
+                hlExUpnl[ap.position.coin] = parseFloat(ap.position.unrealizedPnl ?? "0");
+              }
+            }
+          } catch { /* HL state unavailable */ }
+        }
         const ltPairs = [...new Set(quantPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
         if (ltPairs.length > 0) {
           try {
-            const { getLighterAllMids, isLighterInitialized } = await import("../lighter/client.js");
-            if (isLighterInitialized()) ltMids = await getLighterAllMids(ltPairs);
+            const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
+            if (isLighterInitialized()) {
+              ltMids = await getLighterAllMids(ltPairs);
+              ltExUpnl = await getLighterUnrealizedPnl();
+            }
           } catch { /* Lighter unavailable */ }
         }
+        // Double-counting guard
+        const livePairCnt = new Map<string, number>();
         for (const pos of quantPositions) {
-          const priceSource = pos.exchange === "lighter" ? ltMids : mids;
-          const rawMid = priceSource[pos.pair];
-          if (rawMid) {
-            const currentPrice = parseFloat(rawMid);
-            if (!isNaN(currentPrice)) {
-              const posUnr = pos.direction === "long"
-                ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
-                : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
-              quantUnrealized += posUnr;
-              if (pos.mode === "live") {
-                quantLiveUnrealized += posUnr;
-                if (pos.exchange === "lighter") ltUnrealized += posUnr;
-                else hlUnrealized += posUnr;
+          if (pos.mode === "live") {
+            const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
+            livePairCnt.set(k, (livePairCnt.get(k) ?? 0) + 1);
+          }
+        }
+        for (const pos of quantPositions) {
+          let posUnr: number | undefined;
+          if (pos.mode === "live") {
+            // Live: use exchange unrealized directly
+            const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
+            if ((livePairCnt.get(k) ?? 0) === 1) {
+              const exVal = pos.exchange === "lighter" ? ltExUpnl[pos.pair] : hlExUpnl[pos.pair];
+              if (exVal !== undefined) posUnr = exVal;
+            }
+          } else {
+            // Paper: mid-price calc (no exchange data)
+            const priceSource = pos.exchange === "lighter" ? ltMids : mids;
+            const rawMid = priceSource[pos.pair];
+            if (rawMid) {
+              const cp = parseFloat(rawMid);
+              if (!isNaN(cp)) {
+                posUnr = pos.direction === "long"
+                  ? ((cp - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
+                  : ((pos.entryPrice - cp) / pos.entryPrice) * pos.size * pos.leverage;
               }
+            }
+          }
+          if (posUnr !== undefined) {
+            quantUnrealized += posUnr;
+            if (pos.mode === "live") {
+              quantLiveUnrealized += posUnr;
+              if (pos.exchange === "lighter") ltUnrealized += posUnr;
+              else hlUnrealized += posUnr;
             }
           }
         }
