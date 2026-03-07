@@ -1,4 +1,5 @@
 import { getTradingMode } from "../../config/env.js";
+import { getEngineExchange } from "../../config/constants.js";
 import {
   paperOpenPosition,
   paperClosePosition,
@@ -10,6 +11,11 @@ import {
   liveClosePosition,
   getLivePositions,
 } from "./live-executor.js";
+import {
+  lighterOpenPosition,
+  lighterClosePosition,
+  getLighterLivePositions,
+} from "../lighter/executor.js";
 import { validateRiskGates, recordDailyLoss, strategyFromTradeType } from "./risk-manager.js";
 import { clearAICacheForPair } from "./ai-analyzer.js";
 import type { QuantPosition, MarketRegime, TradeType } from "./types.js";
@@ -39,10 +45,18 @@ export async function openPosition(
   }
 
   const mode = getTradingMode();
-  // hybrid: only AI goes live. live: everything goes live.
+  const exchange = getEngineExchange(tradeType);
+  // hybrid: AI + Lighter engines go live
   const useLive =
     mode === "live" ||
-    (mode === "hybrid" && tradeType === "ai-directional");
+    (mode === "hybrid" && (tradeType === "ai-directional" || exchange === "lighter"));
+
+  if (exchange === "lighter") {
+    if (useLive) {
+      return lighterOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
+    }
+    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed, "lighter");
+  }
 
   if (useLive) {
     return liveOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
@@ -60,11 +74,14 @@ export async function closePosition(
   const pos = positions.find(p => p.id === positionId);
   if (pos) clearAICacheForPair(pos.pair);
 
-  // Route close by position mode, not global mode
-  const isLivePosition = pos?.mode === "live";
-  const result = isLivePosition
-    ? await liveClosePosition(positionId, reason)
-    : await paperClosePosition(positionId, reason);
+  // Route close by position exchange and mode
+  const isLighterLive = pos?.exchange === "lighter" && pos?.mode === "live";
+  const isHLLive = pos?.mode === "live" && pos?.exchange !== "lighter";
+  const result = isLighterLive
+    ? await lighterClosePosition(positionId, reason)
+    : isHLLive
+      ? await liveClosePosition(positionId, reason)
+      : await paperClosePosition(positionId, reason);
 
   if (result.success && result.pnl < 0) {
     const strategy = strategyFromTradeType(pos?.tradeType ?? "ai-directional");
@@ -76,8 +93,16 @@ export async function closePosition(
 export function getOpenQuantPositions(): QuantPosition[] {
   // Always include live positions so monitor can protect them even after mode switch
   const live = getLivePositions();
+  const lighterLive = getLighterLivePositions();
   const paper = getPaperPositions();
-  return live.length > 0 ? [...live, ...paper] : paper;
+  const all = [...live, ...lighterLive, ...paper];
+  // Dedup by id (shouldn't happen, but be safe)
+  const seen = new Set<string>();
+  return all.filter(p => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
 }
 
 export function getVirtualBalance(tradeType?: TradeType): number {

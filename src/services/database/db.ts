@@ -375,6 +375,18 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added ai_agreed column");
   }
 
+  // Migration: Add exchange column to quant_positions and quant_trades
+  const qpColsFresh = (db.pragma("table_info(quant_positions)") as Array<{ name: string }>).map(c => c.name);
+  if (!qpColsFresh.includes("exchange")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN exchange TEXT DEFAULT 'hyperliquid'`);
+    console.log("[Database] Migrated quant_positions: added exchange column");
+  }
+  const qtColsFresh = (db.pragma("table_info(quant_trades)") as Array<{ name: string }>).map(c => c.name);
+  if (!qtColsFresh.includes("exchange")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN exchange TEXT DEFAULT 'hyperliquid'`);
+    console.log("[Database] Migrated quant_trades: added exchange column");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }

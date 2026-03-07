@@ -36,9 +36,9 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10;
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 1000; // $100/engine x 10 engines
-export const QUANT_MAX_POSITIONS = 50;
-export const QUANT_MAX_LIVE_POSITIONS = 5;
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000;
+export const API_PRICE_TIMEOUT_MS = 10_000;
+export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
 export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "INJ", "ATOM", "APT", "WIF"];
@@ -188,6 +188,21 @@ export const CCI_REVERSE_EXIT = 1;
 export const CCI_TRAIL_ACTIVATION = 3;
 export const CCI_TRAIL_DISTANCE = 2.5;
 
+
+// Exchange routing per engine
+export type QuantExchange = "hyperliquid" | "lighter";
+
+export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
+  "psar-directional": "lighter",
+  "zlema-directional": "lighter",
+  "schaff-directional": "lighter",
+};
+
+export function getEngineExchange(tradeType: string): QuantExchange {
+  return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";
+}
+
+export const LIGHTER_TAKER_FEE_PCT = 0;
 
 // Hyperliquid Tier 1 maintenance margin rates
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {

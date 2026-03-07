@@ -1,6 +1,8 @@
 import { getClient, resetConnection } from "./client.js";
+import { getLighterAllMids, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
@@ -82,11 +84,36 @@ async function checkPositionStops(): Promise<void> {
       await accrueFundingIncome();
     }
 
-    const sdk = getClient();
-    const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+    let mids: Record<string, string> = {};
+    try {
+      const sdk = getClient();
+      mids = await withTimeout(
+        sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+        API_PRICE_TIMEOUT_MS, "HL getAllMids",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
+    }
+
+    let lighterMids: Record<string, string> = {};
+    const lighterPositions = positions.filter(p => p.exchange === "lighter");
+    if (lighterPositions.length > 0 && isLighterInitialized()) {
+      const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
+      try {
+        lighterMids = await withTimeout(
+          getLighterAllMids(lighterPairs),
+          API_PRICE_TIMEOUT_MS, "Lighter getAllMids",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[PositionMonitor] Lighter price fetch failed: ${msg}`);
+      }
+    }
 
     for (const position of positions) {
-      const rawPrice = mids[position.pair];
+      const priceSource = position.exchange === "lighter" ? lighterMids : mids;
+      const rawPrice = priceSource[position.pair];
 
       if (rawPrice === undefined) {
         console.log(`[PositionMonitor] No price data for ${position.pair}, skipping`);
@@ -130,6 +157,7 @@ async function checkPositionStops(): Promise<void> {
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;
         const unrealizedPnl = (priceDiff / position.entryPrice) * position.size * position.leverage;
+        // TODO: Use Lighter-specific maintenance margin rates when available
         const maintRate = HYPERLIQUID_MAINTENANCE_MARGIN_RATE[position.pair] ?? 0.02;
         const notional = position.size * position.leverage;
         const maintenanceMargin = maintRate * notional;

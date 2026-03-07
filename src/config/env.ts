@@ -66,6 +66,11 @@ const envSchema = z.object({
   QUANT_VIRTUAL_BALANCE: numericString("100"),
   ALCHEMY_API_KEY: z.string().min(1).optional(),
 
+  // Lighter DEX
+  LIGHTER_PRIVATE_KEY: z.string().min(1).optional(),
+  LIGHTER_API_KEY_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
+  LIGHTER_ACCOUNT_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
+
   // Explorer API keys (optional, improves rate limits)
   ETHERSCAN_API_KEY: z.string().min(1).optional(),
   SNOWTRACE_API_KEY: z.string().min(1).optional(),

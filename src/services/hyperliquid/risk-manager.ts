@@ -1,11 +1,8 @@
 import {
   HYPERLIQUID_MAX_LEVERAGE,
-  QUANT_MAX_POSITIONS,
-  QUANT_MAX_LIVE_POSITIONS,
   QUANT_DAILY_DRAWDOWN_LIMIT,
 } from "../../config/constants.js";
 import type { MarketRegime } from "./types.js";
-import { getOpenQuantPositions } from "./executor.js";
 import { sumRecentQuantLosses } from "../database/quant.js";
 
 let quantKilled = false;
@@ -120,27 +117,6 @@ function checkDailyDrawdown(strategy: string): { allowed: boolean; reason: strin
   return { allowed: true, reason: "" };
 }
 
-function checkMaxPositions(strategy: string): { allowed: boolean; reason: string } {
-  const positions = getOpenQuantPositions();
-  const count = positions.length;
-  if (count >= QUANT_MAX_POSITIONS) {
-    return {
-      allowed: false,
-      reason: `Open positions ${count} at max ${QUANT_MAX_POSITIONS}`,
-    };
-  }
-  // Separate cap for live positions (AI in hybrid mode)
-  if (strategy === "ai") {
-    const liveCount = positions.filter(p => p.mode === "live").length;
-    if (liveCount >= QUANT_MAX_LIVE_POSITIONS) {
-      return {
-        allowed: false,
-        reason: `Live positions ${liveCount} at max ${QUANT_MAX_LIVE_POSITIONS}`,
-      };
-    }
-  }
-  return { allowed: true, reason: "" };
-}
 
 function checkRegimeAllowed(regime: MarketRegime): {
   allowed: boolean;
@@ -183,14 +159,7 @@ export function validateRiskGates(params: {
     return drawdownCheck;
   }
 
-  // 4. Max positions
-  const positionsCheck = checkMaxPositions(strategy);
-  if (!positionsCheck.allowed) {
-    console.log(`[RiskManager] Gate check: BLOCKED ${positionsCheck.reason}`);
-    return positionsCheck;
-  }
-
-  // 5. Leverage cap
+  // 4. Leverage cap
   const leverageCheck = checkLeverageCap(leverage);
   if (!leverageCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${leverageCheck.reason}`);

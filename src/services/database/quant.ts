@@ -12,8 +12,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      indicators_at_entry, trade_type, ai_agreed, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      indicators_at_entry, trade_type, ai_agreed, exchange, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     trade.id,
     trade.pair,
@@ -32,6 +32,7 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.indicatorsAtEntry ?? null,
     trade.tradeType ?? "directional",
     trade.aiAgreed !== undefined ? (trade.aiAgreed === null ? null : trade.aiAgreed ? 1 : 0) : null,
+    trade.exchange ?? "hyperliquid",
     trade.createdAt,
   );
 }
@@ -42,8 +43,8 @@ export function saveQuantPosition(position: QuantPosition): void {
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
       unrealized_pnl, mode, status, trade_type, opened_at, closed_at,
-      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, exchange, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -61,6 +62,7 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.takeProfit ?? null,
     position.maxUnrealizedPnlPct ?? null,
     position.aiAgreed !== undefined ? (position.aiAgreed === null ? null : position.aiAgreed ? 1 : 0) : null,
+    position.exchange ?? "hyperliquid",
   );
 }
 
@@ -96,6 +98,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     maxUnrealizedPnlPct: (row as Record<string, unknown>).max_unrealized_pnl_pct as number | undefined ?? undefined,
     unrealizedPnl: row.unrealized_pnl,
     mode: row.mode as "paper" | "live",
+    exchange: ((row as Record<string, unknown>).exchange as string | null) === "lighter" ? "lighter" as const : "hyperliquid" as const,
     status: row.status as "open" | "closed",
     openedAt: row.opened_at,
     closedAt: row.closed_at ?? undefined,
@@ -156,6 +159,7 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     updatedAt: row.updated_at,
     tradeType: (row.trade_type ?? "directional") as TradeType,
     aiAgreed: row.ai_agreed === null ? null : row.ai_agreed === 1,
+    exchange: ((row as Record<string, unknown>).exchange as string | null) === "lighter" ? "lighter" as const : "hyperliquid" as const,
   }));
 }
 
@@ -301,43 +305,6 @@ export function getQuantValidationMetrics(): {
     totalPnl: stats.totalPnl,
     paperDaysElapsed,
   };
-}
-
-export function getAIAgreementStats(): {
-  agreed: { trades: number; winRate: number; totalPnl: number };
-  disagreed: { trades: number; winRate: number; totalPnl: number };
-} {
-  const db = getDb();
-  const query = `
-    SELECT
-      ai_agreed,
-      COUNT(*) as total,
-      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
-      COALESCE(SUM(pnl), 0) as total_pnl
-    FROM quant_trades
-    WHERE status = 'closed'
-      AND trade_type NOT IN ('ai-directional', 'directional', 'funding')
-      AND ai_agreed IS NOT NULL
-    GROUP BY ai_agreed
-  `;
-  const rows = db.prepare(query).all() as Array<{
-    ai_agreed: number;
-    total: number;
-    wins: number;
-    total_pnl: number;
-  }>;
-
-  const agreed = { trades: 0, winRate: 0, totalPnl: 0 };
-  const disagreed = { trades: 0, winRate: 0, totalPnl: 0 };
-
-  for (const row of rows) {
-    const bucket = row.ai_agreed === 1 ? agreed : disagreed;
-    bucket.trades = row.total;
-    bucket.winRate = row.total > 0 ? (row.wins / row.total) * 100 : 0;
-    bucket.totalPnl = row.total_pnl;
-  }
-
-  return { agreed, disagreed };
 }
 
 export function sumRecentQuantLosses(withinMs: number, strategy?: string): { totalLoss: number; lastLossTs: number } {

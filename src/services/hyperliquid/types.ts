@@ -9,6 +9,7 @@ export interface QuantPosition {
   takeProfit?: number; // AI-suggested take-profit price
   unrealizedPnl: number;
   mode: "paper" | "live";
+  exchange?: "hyperliquid" | "lighter";
   openedAt: string; // ISO date
   closedAt: string | undefined;
   exitPrice: number | undefined;
@@ -32,6 +33,7 @@ export interface QuantTrade {
   pnl: number;
   fees: number;
   mode: "paper" | "live";
+  exchange?: "hyperliquid" | "lighter";
   status: "open" | "closed" | "failed";
   aiConfidence: number | undefined;
   aiReasoning: string | undefined;

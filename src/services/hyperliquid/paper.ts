@@ -1,4 +1,5 @@
 import { getClient } from "./client.js";
+import { getLighterMidPrice } from "../lighter/client.js";
 import type { QuantPosition, TradeType } from "./types.js";
 import {
   generateQuantId,
@@ -80,6 +81,13 @@ async function fetchMidPrice(pair: string): Promise<number | null> {
   }
 }
 
+async function fetchMidPriceForExchange(pair: string, exchange: "hyperliquid" | "lighter" = "hyperliquid"): Promise<number | null> {
+  if (exchange === "lighter") {
+    return getLighterMidPrice(pair);
+  }
+  return fetchMidPrice(pair);
+}
+
 // Accrue funding income for arb positions (1h settle)
 export async function accrueFundingIncome(): Promise<void> {
   const openPositions = getPaperPositions();
@@ -148,8 +156,9 @@ export async function paperOpenPosition(
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
   aiAgreed?: boolean | null,
+  exchange?: "hyperliquid" | "lighter",
 ): Promise<QuantPosition | null> {
-  const price = await fetchMidPrice(pair);
+  const price = await fetchMidPriceForExchange(pair, exchange);
   if (!price) {
     console.error(`[Quant Paper] Could not fetch price for ${pair}`);
     return null;
@@ -181,6 +190,7 @@ export async function paperOpenPosition(
     takeProfit: adjTP,
     unrealizedPnl: 0,
     mode: "paper",
+    exchange: exchange ?? "hyperliquid",
     status: "open",
     openedAt: new Date().toISOString(),
     closedAt: undefined,
@@ -220,7 +230,8 @@ export async function paperClosePosition(
     return { success: false, pnl: 0 };
   }
 
-  const currentPrice = await fetchMidPrice(position.pair);
+  const posExchange = position.exchange ?? "hyperliquid";
+  const currentPrice = await fetchMidPriceForExchange(position.pair, posExchange);
   if (!currentPrice) {
     console.error(`[Quant Paper] Could not fetch price for ${position.pair}`);
     return { success: false, pnl: 0 };
@@ -235,8 +246,8 @@ export async function paperClosePosition(
         position.size *
         position.leverage;
 
-  // Tier 0 taker 0.045% on entry + exit (notional = size * leverage)
-  const fees = position.size * position.leverage * 0.00045 * 2;
+  // Lighter has zero fees; Hyperliquid Tier 0 taker 0.045% on entry + exit
+  const fees = posExchange === "lighter" ? 0 : position.size * position.leverage * 0.00045 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
 
   let spotPnl = 0;
@@ -287,6 +298,7 @@ export async function paperClosePosition(
     updatedAt: now,
     tradeType: position.tradeType ?? "directional",
     aiAgreed: position.aiAgreed,
+    exchange: position.exchange,
   });
   positionContext.delete(positionId);
   lastFundingAccrual.delete(positionId);

@@ -29,7 +29,7 @@ import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison 
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
 import { getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
-import { getQuantStats, getQuantValidationMetrics, getAIAgreementStats } from "../database/quant.js";
+import { getQuantStats, getQuantValidationMetrics } from "../database/quant.js";
 
 const MENU_MSG_ID_PATH = process.env.DB_PATH
   ? process.env.DB_PATH.replace("trades.db", "menu_msg_id.txt")
@@ -1000,8 +1000,17 @@ async function handlePnl(ctx: Context): Promise<void> {
       try {
         const sdk = getClient();
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+        let ltMids: Record<string, string> = {};
+        const ltPairs = [...new Set(quantPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
+        if (ltPairs.length > 0) {
+          try {
+            const { getLighterAllMids, isLighterInitialized } = await import("../lighter/client.js");
+            if (isLighterInitialized()) ltMids = await getLighterAllMids(ltPairs);
+          } catch { /* Lighter unavailable */ }
+        }
         for (const pos of quantPositions) {
-          const rawMid = mids[pos.pair];
+          const priceSource = pos.exchange === "lighter" ? ltMids : mids;
+          const rawMid = priceSource[pos.pair];
           if (rawMid) {
             const currentPrice = parseFloat(rawMid);
             if (!isNaN(currentPrice)) {
@@ -1034,10 +1043,11 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     if (tm === "hybrid") {
       const db = (await import("../database/db.js")).getDb();
-      const liveRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live'`).get() as { total: number }).total;
+      const hlRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number }).total;
+      const ltRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number }).total;
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-      message += `\n<b>Live: ${pnl(liveRealizedQ)} | unr ${pnl(quantLiveUnrealized)}</b>`;
+      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} | Live LT: ${pnl(ltRealizedQ)} | unr ${pnl(quantLiveUnrealized)}</b>`;
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
@@ -2466,12 +2476,24 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += `${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
 
   let mids: Record<string, string> = {};
+  let lighterMids: Record<string, string> = {};
   if (openPositions.length > 0) {
     try {
       const sdk = getClient();
       mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
     } catch {
       // Prices unavailable - show positions without unrealized P&L
+    }
+
+    // Lighter prices for Lighter positions
+    const lighterPairs = [...new Set(openPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
+    if (lighterPairs.length > 0) {
+      try {
+        const { getLighterAllMids, isLighterInitialized } = await import("../lighter/client.js");
+        if (isLighterInitialized()) {
+          lighterMids = await getLighterAllMids(lighterPairs);
+        }
+      } catch { /* Lighter prices unavailable */ }
     }
   }
 
@@ -2488,8 +2510,10 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "dema-directional" ? "[DE]" :
       pos.tradeType === "hma-directional" ? "[HM]" :
       pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
+    const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
-    const rawMid = mids[pos.pair];
+    const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
+    const rawMid = priceSource[pos.pair];
     if (rawMid) {
       const currentPrice = parseFloat(rawMid);
       if (!isNaN(currentPrice)) {
@@ -2500,7 +2524,7 @@ async function handleQuant(ctx: Context): Promise<void> {
         upnlStr = ` ${pnl(unrealizedPnl)}`;
       }
     }
-    return `${typeTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`;
+    return `${typeTag}${exchTag} ${dir} ${pos.pair} ${$(pos.size)} @${pos.entryPrice.toFixed(2)} ${pos.leverage}x${upnlStr}`;
   };
 
   if (openPositions.length > 0) {
@@ -2518,8 +2542,16 @@ async function handleQuant(ctx: Context): Promise<void> {
     }
 
     if (isHybridOrLive && livePositions.length > 0) {
-      text += `\n<b>LIVE (${livePositions.length})</b>\n`;
-      text += livePositions.map(formatPosLine).join("\n") + "\n";
+      const liveHL = livePositions.filter(p => p.exchange !== "lighter");
+      const liveLT = livePositions.filter(p => p.exchange === "lighter");
+      if (liveHL.length > 0) {
+        text += `\n<b>LIVE HL (${liveHL.length})</b>\n`;
+        text += liveHL.map(formatPosLine).join("\n") + "\n";
+      }
+      if (liveLT.length > 0) {
+        text += `\n<b>LIVE LT (${liveLT.length})</b>\n`;
+        text += liveLT.map(formatPosLine).join("\n") + "\n";
+      }
     }
   }
 
@@ -2531,7 +2563,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     const key = pos.tradeType ?? "ai-directional";
     openCountByType.set(key, (openCountByType.get(key) ?? 0) + 1);
     deployedByType.set(key, (deployedByType.get(key) ?? 0) + pos.size);
-    const rawMid = mids[pos.pair];
+    const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
+    const rawMid = priceSource[pos.pair];
     if (!rawMid) continue;
     const currentPrice = parseFloat(rawMid);
     if (isNaN(currentPrice)) continue;
@@ -2581,38 +2614,41 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   if (tradingMode === "hybrid") {
     const db = (await import("../database/db.js")).getDb();
-    const liveReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live'`).get() as { total: number }).total;
+    const hlReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number }).total;
+    const ltReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number }).total;
     const paperReal = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
-    let liveUnr = 0;
-    let paperUnr = 0;
+    let paperUnr = 0, hlUnr = 0, ltUnr = 0;
     for (const pos of openPositions) {
-      const rawMid = mids[pos.pair];
+      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
+      const rawMid = priceSource[pos.pair];
       if (!rawMid) continue;
       const cp = parseFloat(rawMid);
       if (isNaN(cp)) continue;
       const u = pos.direction === "long"
         ? ((cp - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
         : ((pos.entryPrice - cp) / pos.entryPrice) * pos.size * pos.leverage;
-      if (pos.mode === "live") liveUnr += u; else paperUnr += u;
+      if (pos.mode !== "live") paperUnr += u;
+      else if (pos.exchange === "lighter") ltUnr += u;
+      else hlUnr += u;
     }
-    const liveDep = openPositions.filter(p => p.mode === "live").reduce((s, p) => s + p.size, 0);
     const paperDep = openPositions.filter(p => p.mode !== "live").reduce((s, p) => s + p.size, 0);
-    const liveDepStr = liveDep > 0 ? ` ($${liveDep.toFixed(0)})` : "";
     const paperDepStr = paperDep > 0 ? ` ($${paperDep.toFixed(0)})` : "";
-    const liveCnt = openPositions.filter(p => p.mode === "live").length;
     const paperCnt = openPositions.filter(p => p.mode !== "live").length;
     text += `Paper: ${pnl(paperReal)} ${paperCnt}T${paperDepStr} | unr ${fmtUnr(paperUnr)}\n`;
-    text += `<b>Live: ${pnl(liveReal)} ${liveCnt}T${liveDepStr} | unr ${fmtUnr(liveUnr)}</b>\n`;
+    const liveHLPos = openPositions.filter(p => p.mode === "live" && p.exchange !== "lighter");
+    const liveLTPos = openPositions.filter(p => p.mode === "live" && p.exchange === "lighter");
+    if (liveHLPos.length > 0) {
+      const hlDep = liveHLPos.reduce((s, p) => s + p.size, 0);
+      const hlDepStr = hlDep > 0 ? ` ($${hlDep.toFixed(0)})` : "";
+      text += `<b>Live HL: ${pnl(hlReal)} ${liveHLPos.length}T${hlDepStr} | unr ${fmtUnr(hlUnr)}</b>\n`;
+    }
+    if (liveLTPos.length > 0) {
+      const ltDep = liveLTPos.reduce((s, p) => s + p.size, 0);
+      const ltDepStr = ltDep > 0 ? ` ($${ltDep.toFixed(0)})` : "";
+      text += `<b>Live LT: ${pnl(ltReal)} ${liveLTPos.length}T${ltDepStr} | unr ${fmtUnr(ltUnr)}</b>\n`;
+    }
   }
 
-  const aiFilter = getAIAgreementStats();
-  if (aiFilter.agreed.trades + aiFilter.disagreed.trades > 0) {
-    const fmtAg = `${aiFilter.agreed.totalPnl >= 0 ? "+" : "-"}$${Math.abs(aiFilter.agreed.totalPnl).toFixed(1)}`;
-    const fmtDis = `${aiFilter.disagreed.totalPnl >= 0 ? "+" : "-"}$${Math.abs(aiFilter.disagreed.totalPnl).toFixed(1)}`;
-    const agWr = aiFilter.agreed.trades > 0 ? ` ${aiFilter.agreed.winRate.toFixed(0)}%WR` : "";
-    const disWr = aiFilter.disagreed.trades > 0 ? ` ${aiFilter.disagreed.winRate.toFixed(0)}%WR` : "";
-    text += `AI filter: agreed ${aiFilter.agreed.trades}T${agWr} ${fmtAg} | blocked ${aiFilter.disagreed.trades}T${disWr} ${fmtDis}\n`;
-  }
 
   const buttons: { text: string; callback_data: string }[][] = [];
   buttons.push([{ text: "Back", callback_data: "main_menu" }]);

@@ -9,6 +9,8 @@ import {
 } from "../database/quant.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from "../telegram/notifications.js";
 import { recordStopLossCooldown } from "./scheduler.js";
+import { withTimeout } from "../../utils/timeout.js";
+import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
 
 const MAX_SLIPPAGE = 0.005;
 
@@ -137,7 +139,10 @@ async function setLeverage(pair: string, leverage: number): Promise<boolean> {
   try {
     await ensureConnected();
     const sdk = getClient();
-    await sdk.exchange.updateLeverage(`${pair}-PERP`, "isolated", leverage);
+    await withTimeout(
+      sdk.exchange.updateLeverage(`${pair}-PERP`, "isolated", leverage),
+      API_ORDER_TIMEOUT_MS, "HL updateLeverage",
+    );
     console.log(`[Quant Live] Set ${pair} leverage to ${leverage}x isolated`);
     return true;
   } catch (err) {
@@ -170,7 +175,7 @@ export async function liveOpenPosition(
     await ensureConnected();
     const sdk = getClient();
 
-    // Balance is checked by the exchange on order submit (unified mode reports $0 in perps sub-account)
+    // Balance checked by exchange on submit
 
     const levOk = await setLeverage(pair, leverage);
     if (!levOk) {
@@ -178,7 +183,10 @@ export async function liveOpenPosition(
       return null;
     }
 
-    const mids = await sdk.info.getAllMids(true) as Record<string, string>;
+    const mids = await withTimeout(
+      sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+      API_PRICE_TIMEOUT_MS, "HL getAllMids",
+    );
     const rawPrice = mids[pair];
     if (!rawPrice) {
       console.error(`[Quant Live] No price for ${pair}`);
@@ -208,12 +216,16 @@ export async function liveOpenPosition(
     const isBuy = direction === "long";
     console.log(`[Quant Live] Placing ${direction} ${pair}: ${sizeInCoins} coins ($${sizeUsd}x${leverage})`);
 
-    const result = await sdk.custom.marketOpen(pair, isBuy, sizeInCoins, undefined, MAX_SLIPPAGE);
+    const result = await withTimeout(
+      sdk.custom.marketOpen(pair, isBuy, sizeInCoins, undefined, MAX_SLIPPAGE),
+      API_ORDER_TIMEOUT_MS, "HL marketOpen",
+    );
 
     const statuses = result?.response?.data?.statuses;
     if (!statuses || statuses.length === 0) {
       console.error(`[Quant Live] Order failed for ${pair}: no statuses`);
       console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
+      void notifyCriticalError(`HL order failed: ${pair} ${direction} $${sizeUsd} — no statuses`, "liveOpenPosition");
       return null;
     }
 
@@ -231,6 +243,7 @@ export async function liveOpenPosition(
 
     if (!status.filled) {
       console.error(`[Quant Live] Order rejected for ${pair}: ${JSON.stringify(status)}`);
+      void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${JSON.stringify(status)}`, "liveOpenPosition");
       return null;
     }
 
@@ -304,8 +317,7 @@ export async function liveOpenPosition(
     console.error(`[Quant Live] Open failed for ${pair}: ${msg}`);
     resetConnection();
 
-    // Check if order went through despite error — auto-close orphan
-    // Only if we had no tracked position on this pair before this attempt
+    // Orphan check
     const hadTrackedPosition = getLivePositions().some(p => p.pair === pair);
     if (!hadTrackedPosition) {
       try {
@@ -366,8 +378,11 @@ export async function liveClosePosition(
 
     console.log(`[Quant Live] Closing ${position.pair} ${position.direction} (${reason})`);
 
-    // Pass undefined to close entire exchange position (safest for single-position-per-pair)
-    const result = await sdk.custom.marketClose(position.pair, undefined, undefined, MAX_SLIPPAGE);
+    // Close entire position
+    const result = await withTimeout(
+      sdk.custom.marketClose(position.pair, undefined, undefined, MAX_SLIPPAGE),
+      API_ORDER_TIMEOUT_MS, "HL marketClose",
+    );
 
     const statuses = result?.response?.data?.statuses;
     if (!statuses || statuses.length === 0) {
