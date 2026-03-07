@@ -257,9 +257,9 @@ export async function getLighterAccountInfo(): Promise<{ equity: number; marginU
   );
   const account = (resp.data as any).accounts?.[0];
   if (!account) return { equity: 0, marginUsed: 0 };
-  const equity = parseFloat(account.portfolio_value ?? account.account_value ?? account.equity ?? "0");
-  const marginUsed = parseFloat(account.total_margin ?? account.margin_used ?? account.initial_margin ?? "0");
-  return { equity, marginUsed };
+  const equity = parseFloat(account.total_asset_value ?? "0");
+  const free = parseFloat(account.available_balance ?? "0");
+  return { equity, marginUsed: equity - free };
 }
 
 // Unrealized P&L per pair

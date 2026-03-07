@@ -1079,12 +1079,12 @@ async function handlePnl(ctx: Context): Promise<void> {
         }
       } catch { /* non-fatal */ }
 
-      if (hlMarginLine) message += hlMarginLine;
-      if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
-      if (hlMarginLine || ltMarginLine) message += "\n";
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
       message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
+      if (hlMarginLine || ltMarginLine) message += "\n";
+      if (hlMarginLine) message += hlMarginLine;
+      if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
