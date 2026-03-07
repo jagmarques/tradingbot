@@ -108,6 +108,10 @@ async function checkPositionStops(): Promise<void> {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[PositionMonitor] Lighter price fetch failed: ${msg}`);
+        const liveLighter = lighterPositions.filter(p => p.mode === "live").length;
+        if (liveLighter > 0) {
+          throttledCriticalAlert(`Lighter prices failed: ${liveLighter} live position(s) unprotected: ${msg}`, "PositionMonitor");
+        }
       }
     }
 

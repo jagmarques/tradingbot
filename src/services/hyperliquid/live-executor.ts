@@ -51,7 +51,7 @@ export function initLiveEngine(): void {
   livePositions.clear();
   szDecimalsMap = null;
   const allOpen = loadOpenQuantPositions();
-  const liveOnly = allOpen.filter(p => p.mode === "live");
+  const liveOnly = allOpen.filter(p => p.mode === "live" && p.exchange !== "lighter");
   const paperSkipped = allOpen.length - liveOnly.length;
   for (const pos of liveOnly) {
     livePositions.set(pos.id, pos);
@@ -96,7 +96,13 @@ async function reconcileWithExchange(): Promise<void> {
     }
 
     // Phantoms: tracked in DB but not on exchange — mark closed
-    for (const pos of getLivePositions()) {
+    const trackedLive = getLivePositions();
+    if (exchangeCoins.size === 0 && trackedLive.length > 1) {
+      console.error(`[Quant Live] API returned 0 positions but tracking ${trackedLive.length} — skipping phantom check`);
+      void notifyCriticalError(`HL API returned empty positions — ${trackedLive.length} tracked. Skipping reconciliation.`, "Reconciliation");
+      return;
+    }
+    for (const pos of trackedLive) {
       if (!exchangeCoins.has(pos.pair) && !closingSet.has(pos.id)) {
         console.error(`[Quant Live] PHANTOM: ${pos.pair} in DB but not on exchange, marking closed`);
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;

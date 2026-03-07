@@ -74,6 +74,14 @@ export async function lighterOpenPosition(
     console.log(`[Lighter Executor] Open already in progress for ${pair}`);
     return null;
   }
+
+  // Block if pair already open on Lighter
+  const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
+  if (existingLighter) {
+    console.log(`[Lighter Executor] ${pair} already open on Lighter, skipping`);
+    return null;
+  }
+
   openingPairs.add(pair);
 
   try {
@@ -94,7 +102,11 @@ export async function lighterOpenPosition(
     const notional = sizeUsd * leverage;
     const sizeInCoins = notional / currentPrice;
     const baseAmount = toBaseUnits(sizeInCoins, sizeDecimals);
-    const priceBaseUnits = toPriceUnits(currentPrice, priceDecimals);
+
+    // 5% slippage tolerance
+    const isBuy = direction === "long";
+    const slippagePrice = isBuy ? currentPrice * 1.05 : currentPrice * 0.95;
+    const priceBaseUnits = toPriceUnits(slippagePrice, priceDecimals);
 
     if (baseAmount <= 0) {
       console.error(`[Lighter Executor] Size rounds to 0 for ${pair}`);
@@ -114,11 +126,11 @@ export async function lighterOpenPosition(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Lighter Executor] Leverage failed for ${pair}: ${msg}`);
+      if (err instanceof TimeoutError) resetNonce();
       return null;
     }
 
     // Place market order
-    const isBuy = direction === "long";
     console.log(`[Lighter Executor] Placing ${direction} ${pair} $${sizeUsd}x${leverage}`);
 
     const nonce = await getNextNonce();
@@ -139,6 +151,26 @@ export async function lighterOpenPosition(
     if (orderErr) {
       console.error(`[Lighter Executor] Order failed for ${pair}: ${orderErr}`);
       void notifyCriticalError(`Lighter order failed: ${pair} ${direction} $${sizeUsd} — ${orderErr}`, "LighterExecutor");
+      return null;
+    }
+
+    // Verify fill (Lighter silently cancels unfilled orders)
+    let filled = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const exchangePositions = await getLighterOpenPositions();
+        if (exchangePositions.find(p => p.symbol === pair)) {
+          filled = true;
+          break;
+        }
+      } catch (checkErr) {
+        console.error(`[Lighter Executor] Fill check failed for ${pair}: ${checkErr instanceof Error ? checkErr.message : checkErr}`);
+      }
+    }
+    if (!filled) {
+      console.error(`[Lighter Executor] Order not filled for ${pair} — cancelled by exchange`);
+      void notifyCriticalError(`Lighter fill unverified: ${pair} ${direction} — check exchange for orphan`, "LighterExecutor");
       return null;
     }
 
@@ -181,6 +213,23 @@ export async function lighterOpenPosition(
     } catch (dbErr) {
       const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       console.error(`[Lighter Executor] DB WRITE FAILED for ${pair}: ${dbMsg}`);
+      // Try to close the orphan on exchange
+      try {
+        const closeNonce = await getNextNonce();
+        await withTimeout(
+          client.create_market_order(
+            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
+            isBuy, true, closeNonce,
+          ),
+          API_ORDER_TIMEOUT_MS, "Lighter autoClose",
+        );
+        console.log(`[Lighter Executor] Auto-closed orphan ${pair} after DB failure`);
+      } catch (closeErr) {
+        if (closeErr instanceof TimeoutError) resetNonce();
+        void notifyCriticalError(`Lighter DB write failed + auto-close failed: ${pair} — ORPHAN on exchange. Manual close required.`, "LighterExecutor");
+      }
+      return null;
     }
     lighterPositions.set(position.id, position);
     positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
@@ -254,10 +303,46 @@ export async function lighterClosePosition(
     const notional = position.size * position.leverage;
     const sizeInCoins = notional / position.entryPrice;
     const baseAmount = toBaseUnits(sizeInCoins, sizeDecimals);
-    const exitPriceBase = toPriceUnits(exitPrice, priceDecimals);
+
+    // 5% slippage tolerance
+    const isAsk = position.direction === "long";
+    const slippageExitPrice = isAsk ? exitPrice * 0.95 : exitPrice * 1.05;
+    const exitPriceBase = toPriceUnits(slippageExitPrice, priceDecimals);
 
     const client = getSignerClient();
-    const isAsk = position.direction === "long";
+
+    // Verify position exists on exchange before closing
+    try {
+      const preClosePositions = await getLighterOpenPositions();
+      const trackedCount = getLighterLivePositions().length;
+      const existsOnExchange = preClosePositions.find(p => p.symbol === position.pair);
+      if (!existsOnExchange && preClosePositions.length === 0 && trackedCount > 1) {
+        console.error(`[Lighter Executor] API returned 0 positions but tracking ${trackedCount} — skipping close`);
+        void notifyCriticalError(`Lighter API returned empty positions — ${trackedCount} tracked. Skipping close for ${position.pair}`, "LighterExecutor");
+        return { success: false, pnl: 0 };
+      } else if (!existsOnExchange) {
+        console.error(`[Lighter Executor] ${position.pair} not found on exchange — phantom position`);
+        const now = new Date().toISOString();
+        const phantom: QuantPosition = { ...position, status: "closed", closedAt: now, realizedPnl: 0, exitReason: "phantom-not-on-exchange" };
+        lighterPositions.set(positionId, phantom);
+        saveQuantPosition(phantom);
+        const ctx = positionContext.get(positionId);
+        saveQuantTrade({
+          id: position.id, pair: position.pair, direction: position.direction,
+          entryPrice: position.entryPrice, exitPrice: position.entryPrice,
+          size: position.size, leverage: position.leverage, pnl: 0, fees: 0,
+          mode: "live", exchange: "lighter", status: "closed",
+          aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
+          exitReason: "phantom-not-on-exchange", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+          createdAt: position.openedAt, updatedAt: now,
+          tradeType: position.tradeType ?? "ai-directional", aiAgreed: position.aiAgreed,
+        });
+        positionContext.delete(positionId);
+        return { success: true, pnl: 0 };
+      }
+    } catch (checkErr) {
+      console.error(`[Lighter Executor] Pre-close check failed: ${checkErr instanceof Error ? checkErr.message : checkErr}`);
+    }
 
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
 
@@ -282,7 +367,25 @@ export async function lighterClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    // Zero fees on Lighter
+    // Verify close filled (3x retry)
+    let closeFilled = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const postClosePositions = await getLighterOpenPositions();
+        if (!postClosePositions.find(p => p.symbol === position.pair)) {
+          closeFilled = true;
+          break;
+        }
+      } catch (verifyErr) {
+        console.error(`[Lighter Executor] Close verify failed: ${verifyErr instanceof Error ? verifyErr.message : verifyErr}`);
+      }
+    }
+    if (!closeFilled) {
+      console.error(`[Lighter Executor] Close not filled for ${position.pair} — still open on exchange`);
+      void notifyCriticalError(`Lighter close not filled: ${position.pair} still open`, "LighterExecutor");
+      return { success: false, pnl: 0 };
+    }
     const rawPnl =
       position.direction === "long"
         ? ((exitPrice - position.entryPrice) / position.entryPrice) * notional
@@ -354,12 +457,17 @@ export async function lighterClosePosition(
           console.log(`[Lighter Executor] ${position.pair} closed on exchange despite timeout`);
           const now = new Date().toISOString();
           const exitReason = `${reason} (timeout-reconciled)`;
+          const reconPrice = await getLighterMidPrice(position.pair).catch(() => null) ?? position.entryPrice;
+          const notional = position.size * position.leverage;
+          const estPnl = position.direction === "long"
+            ? ((reconPrice - position.entryPrice) / position.entryPrice) * notional
+            : ((position.entryPrice - reconPrice) / position.entryPrice) * notional;
           const reconciled: QuantPosition = {
             ...position,
             status: "closed",
             closedAt: now,
-            exitPrice: position.entryPrice,
-            realizedPnl: 0,
+            exitPrice: reconPrice,
+            realizedPnl: estPnl,
             exitReason,
           };
           lighterPositions.set(positionId, reconciled);
@@ -370,10 +478,10 @@ export async function lighterClosePosition(
             pair: position.pair,
             direction: position.direction,
             entryPrice: position.entryPrice,
-            exitPrice: position.entryPrice,
+            exitPrice: reconPrice,
             size: position.size,
             leverage: position.leverage,
-            pnl: 0,
+            pnl: estPnl,
             fees: 0,
             mode: "live",
             exchange: "lighter",
@@ -388,8 +496,8 @@ export async function lighterClosePosition(
             aiAgreed: position.aiAgreed,
           });
           positionContext.delete(positionId);
-          void notifyCriticalError(`Lighter close timeout reconciled: ${position.pair} — P&L unknown`, "LighterExecutor");
-          return { success: true, pnl: 0 };
+          void notifyCriticalError(`Lighter close timeout reconciled: ${position.pair} — est P&L $${estPnl.toFixed(2)}`, "LighterExecutor");
+          return { success: true, pnl: estPnl };
         }
       } catch (checkErr) {
         const checkMsg = checkErr instanceof Error ? checkErr.message : String(checkErr);

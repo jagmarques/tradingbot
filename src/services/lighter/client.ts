@@ -124,19 +124,23 @@ async function refreshMarketIndex(): Promise<void> {
         const resp = await withTimeout(api.orderBooks(undefined, OrderBooksFilterEnum.Perp), API_PRICE_TIMEOUT_MS, "Lighter orderBooks");
         const books: OrderBook[] = resp.data.order_books;
 
-        marketIndexMap = new Map();
-        marketSizeDecimals = new Map();
-        marketPriceDecimals = new Map();
+        const newIndexMap = new Map<string, number>();
+        const newSizeDecimals = new Map<number, number>();
+        const newPriceDecimals = new Map<number, number>();
 
         for (const book of books) {
           const base = book.symbol.split("_")[0];
           if (base) {
-            marketIndexMap.set(base, book.market_id);
-            marketSizeDecimals.set(book.market_id, book.supported_size_decimals);
-            marketPriceDecimals.set(book.market_id, book.supported_price_decimals);
+            newIndexMap.set(base, book.market_id);
+            newSizeDecimals.set(book.market_id, book.supported_size_decimals);
+            newPriceDecimals.set(book.market_id, book.supported_price_decimals);
           }
         }
 
+        // Atomic swap — never leave maps empty on failure
+        marketIndexMap = newIndexMap;
+        marketSizeDecimals = newSizeDecimals;
+        marketPriceDecimals = newPriceDecimals;
         marketIndexFetchedAt = Date.now();
         console.log(`[Lighter] Discovered ${marketIndexMap.size} perp markets`);
       } finally {

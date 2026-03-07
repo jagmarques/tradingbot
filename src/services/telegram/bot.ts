@@ -996,6 +996,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     const quantPositions = getOpenQuantPositions();
     let quantUnrealized = 0;
     let quantLiveUnrealized = 0;
+    let hlUnrealized = 0;
+    let ltUnrealized = 0;
     if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY && quantPositions.length > 0) {
       try {
         const sdk = getClient();
@@ -1018,7 +1020,11 @@ async function handlePnl(ctx: Context): Promise<void> {
                 ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * pos.size * pos.leverage
                 : ((pos.entryPrice - currentPrice) / pos.entryPrice) * pos.size * pos.leverage;
               quantUnrealized += posUnr;
-              if (pos.mode === "live") quantLiveUnrealized += posUnr;
+              if (pos.mode === "live") {
+                quantLiveUnrealized += posUnr;
+                if (pos.exchange === "lighter") ltUnrealized += posUnr;
+                else hlUnrealized += posUnr;
+              }
             }
           }
         }
@@ -1046,8 +1052,15 @@ async function handlePnl(ctx: Context): Promise<void> {
       const hlRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number }).total;
       const ltRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number }).total;
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
+      const { getOpenQuantPositions: getQPos } = await import("../hyperliquid/executor.js");
+      const qOpen = getQPos();
+      const hlOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange !== "lighter");
+      const ltOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange === "lighter");
+      const hlDep = hlOpen.reduce((s: number, p: any) => s + p.size, 0);
+      const ltDep = ltOpen.reduce((s: number, p: any) => s + p.size, 0);
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} | Live LT: ${pnl(ltRealizedQ)} | unr ${pnl(quantLiveUnrealized)}</b>`;
+      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
+      message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
@@ -2637,16 +2650,12 @@ async function handleQuant(ctx: Context): Promise<void> {
     text += `Paper: ${pnl(paperReal)} ${paperCnt}T${paperDepStr} | unr ${fmtUnr(paperUnr)}\n`;
     const liveHLPos = openPositions.filter(p => p.mode === "live" && p.exchange !== "lighter");
     const liveLTPos = openPositions.filter(p => p.mode === "live" && p.exchange === "lighter");
-    if (liveHLPos.length > 0) {
-      const hlDep = liveHLPos.reduce((s, p) => s + p.size, 0);
-      const hlDepStr = hlDep > 0 ? ` ($${hlDep.toFixed(0)})` : "";
-      text += `<b>Live HL: ${pnl(hlReal)} ${liveHLPos.length}T${hlDepStr} | unr ${fmtUnr(hlUnr)}</b>\n`;
-    }
-    if (liveLTPos.length > 0) {
-      const ltDep = liveLTPos.reduce((s, p) => s + p.size, 0);
-      const ltDepStr = ltDep > 0 ? ` ($${ltDep.toFixed(0)})` : "";
-      text += `<b>Live LT: ${pnl(ltReal)} ${liveLTPos.length}T${ltDepStr} | unr ${fmtUnr(ltUnr)}</b>\n`;
-    }
+    const hlDep = liveHLPos.reduce((s, p) => s + p.size, 0);
+    const hlDepStr = hlDep > 0 ? ` ($${hlDep.toFixed(0)})` : "";
+    text += `<b>Live HL: ${pnl(hlReal)} ${liveHLPos.length}T${hlDepStr} | unr ${fmtUnr(hlUnr)}</b>\n`;
+    const ltDep = liveLTPos.reduce((s, p) => s + p.size, 0);
+    const ltDepStr = ltDep > 0 ? ` ($${ltDep.toFixed(0)})` : "";
+    text += `<b>Live LT: ${pnl(ltReal)} ${liveLTPos.length}T${ltDepStr} | unr ${fmtUnr(ltUnr)}</b>\n`;
   }
 
 
