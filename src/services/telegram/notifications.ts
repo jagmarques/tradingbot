@@ -103,6 +103,7 @@ export async function notifyAIBetPlaced(params: {
   edge: number;
   reasoning: string;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const mode = isPaperMode() ? "[PAPER] " : "";
   const message =
     `${mode}🤖 <b>AI BET PLACED</b>\n\n` +
@@ -123,6 +124,7 @@ export async function notifyAIBetClosed(params: {
   pnlPercentage: number;
   exitReason: string;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const mode = isPaperMode() ? "[PAPER] " : "";
   const emoji = params.pnl >= 0 ? "🟢" : "🔴";
   const message =
@@ -142,6 +144,7 @@ export async function notifyTopTraderCopy(params: {
   entryPrice: number;
   isPaper: boolean;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
   const message =
     `${modeTag} <b>COPIED BET</b>\n\n` +
@@ -160,6 +163,7 @@ export async function notifyTopTraderCopyClose(params: {
   pnlPct: number;
   isPaper: boolean;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const modeTag = params.isPaper ? "[PAPER]" : "[LIVE]";
   const pnlEmoji = params.pnl > 0 ? "+" : "";
   const message =
@@ -178,6 +182,7 @@ export async function notifyInsiderBuyDetected(params: {
   chain: string;
   action: string;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const message =
     `👀 <b>INSIDER BUY DETECTED</b>\n\n` +
     `Wallet: ${escapeHtml(params.walletAddress.slice(0, 8))}...\n` +
@@ -201,6 +206,7 @@ export async function notifyCopyTrade(params: {
   skipReason: string | null;
   pnlPct?: number;
 }): Promise<void> {
+  if (getTradingMode() === "hybrid") return;
   const isBuy = params.side === "buy";
   const header = isBuy ? "COPY BUY" : "COPY SELL";
 
