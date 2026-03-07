@@ -344,6 +344,13 @@ export async function lighterClosePosition(
         });
         positionContext.delete(positionId);
         void notifyCriticalError(`PHANTOM: ${position.pair} ${position.direction} not on Lighter exchange`, "LighterExecutor");
+        void notifyQuantTradeExit({
+          pair: position.pair, direction: position.direction,
+          entryPrice: position.entryPrice, exitPrice: position.entryPrice, size: position.size,
+          pnl: 0, exitReason: "phantom-not-on-exchange", tradeType: position.tradeType ?? "ai-directional",
+          positionMode: "live",
+        });
+        console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=$0.00 (phantom-not-on-exchange) @ ${position.entryPrice}`);
         return { success: true, pnl: 0 };
       }
     } catch (checkErr) {

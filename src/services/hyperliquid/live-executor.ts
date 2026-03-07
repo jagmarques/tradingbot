@@ -138,6 +138,13 @@ async function reconcileWithExchange(): Promise<void> {
       });
       positionContext.delete(pos.id);
       void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "Reconciliation");
+      void notifyQuantTradeExit({
+        pair: pos.pair, direction: pos.direction,
+        entryPrice: pos.entryPrice, exitPrice, size: pos.size,
+        pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "ai-directional",
+        positionMode: "live",
+      });
+      console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
     }
 
     if (exchangeCoins.size > 0 || trackedPairs.size > 0) {

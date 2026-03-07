@@ -1068,14 +1068,16 @@ async function handlePnl(ctx: Context): Promise<void> {
           const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
           const hlUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
           const hlEq = parseFloat(state.marginSummary.accountValue) || 0;
-          hlMarginLine = `HL: $${hlUsed.toFixed(0)} locked | $${(hlEq - hlUsed).toFixed(0)} free`;
+          const hlFree = Math.max(0, hlEq - hlUsed);
+          hlMarginLine = `HL: $${hlUsed.toFixed(0)} locked | $${hlFree.toFixed(0)} free`;
         }
       } catch { /* non-fatal */ }
       try {
         const { getLighterAccountInfo, isLighterInitialized: ltInit } = await import("../lighter/client.js");
         if (ltInit()) {
           const ltAcc = await getLighterAccountInfo();
-          ltMarginLine = `LT: $${ltAcc.marginUsed.toFixed(0)} locked | $${(ltAcc.equity - ltAcc.marginUsed).toFixed(0)} free`;
+          const ltFree = Math.max(0, ltAcc.equity - ltAcc.marginUsed);
+          ltMarginLine = `LT: $${Math.max(0, ltAcc.marginUsed).toFixed(0)} locked | $${ltFree.toFixed(0)} free`;
         }
       } catch { /* non-fatal */ }
 
