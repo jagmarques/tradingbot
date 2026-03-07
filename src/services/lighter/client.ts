@@ -257,8 +257,8 @@ export async function getLighterAccountInfo(): Promise<{ equity: number; marginU
   );
   const account = (resp.data as any).accounts?.[0];
   if (!account) return { equity: 0, marginUsed: 0 };
-  const equity = parseFloat(account.total_asset_value ?? "0");
-  const free = parseFloat(account.available_balance ?? "0");
+  const equity = parseFloat(account.total_asset_value ?? "0") || 0;
+  const free = parseFloat(account.available_balance ?? "0") || 0;
   return { equity, marginUsed: equity - free };
 }
 
