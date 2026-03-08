@@ -48,6 +48,14 @@ export async function openPosition(
     (mode === "hybrid" && exchange === "lighter") ||
     (mode === "hybrid" && tradeType === "ai-directional");
 
+  // One position per pair per exchange
+  const allPositions = getOpenQuantPositions();
+  const existingOnExchange = allPositions.find(p => p.pair === pair && p.exchange === exchange);
+  if (existingOnExchange) {
+    console.log(`[Quant Executor] ${pair} already open on ${exchange}, skipping`);
+    return null;
+  }
+
   if (exchange === "lighter") {
     if (useLive) {
       return lighterOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
