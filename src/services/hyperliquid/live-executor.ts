@@ -139,18 +139,11 @@ async function reconcileWithExchange(): Promise<void> {
     if (!wallet) return;
 
     const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
-    const equity = parseFloat(state.marginSummary.accountValue);
     const exchangePositions = state.assetPositions
       .filter((ap: any) => parseFloat(ap.position.szi) !== 0);
     const exchangeCoins = new Set(exchangePositions.map((ap: any) => ap.position.coin as string));
 
     const trackedPairs = new Set(getLivePositions().map(p => p.pair));
-
-    // Unified account: perps returns $0, skip phantom detection
-    if (equity === 0 && exchangeCoins.size === 0 && trackedPairs.size > 0) {
-      console.log(`[Quant Live] Reconcile skipped: unified account, ${trackedPairs.size} tracked`);
-      return;
-    }
 
     for (const coin of exchangeCoins) { // orphan check
       if (!trackedPairs.has(coin) && !openingPairs.has(coin)) {
@@ -273,13 +266,22 @@ export async function liveOpenPosition(
         const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
         const equity = parseFloat(state.marginSummary.accountValue);
         const marginUsed = parseFloat(state.marginSummary.totalMarginUsed);
-        const availableMargin = equity - marginUsed;
-        if (equity > 0 && availableMargin < sizeUsd) {
-          console.log(`[Quant Live] ${pair} skipped: insufficient margin ($${availableMargin.toFixed(2)} available, need $${sizeUsd})`);
-          return null;
+        const perpsAvailable = equity - marginUsed;
+
+        // Check spot USDC for unified accounts
+        let spotUsdc = 0;
+        if (perpsAvailable < sizeUsd) {
+          try {
+            const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+            const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
+            spotUsdc = usdcBal ? parseFloat(usdcBal.total) : 0;
+          } catch { /* spot check optional */ }
         }
-        if (equity === 0) {
-          console.log(`[Quant Live] ${pair} unified account, skipping margin pre-check`);
+
+        const totalAvailable = perpsAvailable + spotUsdc;
+        if (totalAvailable < sizeUsd) {
+          console.log(`[Quant Live] ${pair} skipped: insufficient margin ($${totalAvailable.toFixed(2)} available, need $${sizeUsd})`);
+          return null;
         }
       }
     } catch (marginErr) {
@@ -619,7 +621,7 @@ export async function liveClosePosition(
     console.error(`[Quant Live] Close failed for ${position.pair}: ${msg}`);
     resetConnection();
 
-    if (err instanceof TimeoutError) { // check if close succeeded despite timeout
+    if (err instanceof TimeoutError) {
       try {
         await ensureConnected();
         const sdk2 = getClient();
