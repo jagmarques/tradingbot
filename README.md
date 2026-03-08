@@ -1,6 +1,6 @@
 # Trading Bot
 
-Polymarket AI betting, Polymarket copy trading, EVM insider copy trading, Hyperliquid quant trading, rug monitoring. TypeScript, Docker, Coolify.
+Polymarket AI betting, Polymarket copy trading, EVM insider copy trading, Hyperliquid + Lighter DEX quant trading, rug monitoring. TypeScript, Docker, Coolify.
 
 ## Strategies
 
@@ -71,21 +71,21 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 ### Hyperliquid Quant Trading
 
-Directional trades on 15 perpetual futures pairs via Hyperliquid.
+Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX.
 
 **Pairs:** BTC, ETH, SOL, XRP, DOGE, AVAX, LINK, ARB, BNB, OP, SUI, INJ, ATOM, APT, WIF
 
-**9 decision engines:**
-- Technical (8): PSAR, ZLEMA, Elder Impulse, Vortex, Schaff, DEMA, HMA, CCI
+**8 decision engines:**
+- Technical (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (PSAR, Schaff, HMA run on Lighter; rest on Hyperliquid)
 - AI (1): DeepSeek V3 with multi-timeframe candles, indicators, microstructure, funding, regime
 
 **Execution:**
-- $10 fixed margin per trade, 10x leverage ($100 notional)
+- $10 fixed margin per trade, 3x leverage on HL / 10x on Lighter
 - 50 max paper positions, 5 max live positions
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (2% absolute trail from peak after 5%+), stagnation exit (engine-specific, 8-24h), stop-loss (ATR-based, 5% max)
-- Software stop-loss via polling (no exchange-side TP/SL)
+- Trailing stop (20% activation, 7% trail, smart trail resets), stagnation exit (engine-specific, 8-24h), stop-loss (ATR-based, 5% max)
+- Exchange-level stop-loss orders on both HL and Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
 - 14-day paper validation before live
 
@@ -96,7 +96,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid.
 | Description | All strategies paper | AI quant live, technical engines paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
 | Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
-| Quant technical engines | Paper | Paper | Live |
+| Quant technical engines | Paper | Live on Lighter | Live on Lighter |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
@@ -111,7 +111,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid.
 
 | Command | Description |
 |---------|-------------|
-| `/balance` | Wallet balances (Polygon, Base, Arbitrum, Avax) |
+| `/balance` | Portfolio value (HL + LT equity) |
 | `/pnl` | P&L with period tabs (today/7d/30d/all-time) |
 | `/trades` | Open positions and recent trades |
 | `/insiders` | Insider wallets and holdings (2 tabs + chain filter) |
@@ -127,7 +127,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid.
 - **Status** - P&L summary (live/paper split in hybrid mode)
 - **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
 - **Bettors** - Tracked Polymarket bettors by ROI
-- **Quant** - Hyperliquid quant positions, engine stats, live/paper P&L split in hybrid
+- **Quant** - Quant positions (HL + LT), engine stats, live/paper P&L split in hybrid
 - **Settings** - Copy trading and AI betting configuration
 - **Manage** - Close all positions, clear copies
 
@@ -170,7 +170,7 @@ npm run dev
 
 ## Tech Stack
 
-TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Hyperliquid SDK, Docker, Coolify
+TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Hyperliquid SDK, zklighter-sdk, Docker, Coolify
 
 ## License
 
