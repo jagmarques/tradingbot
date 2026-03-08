@@ -151,7 +151,7 @@ const vortexOpenPairs = new Set(
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 3, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
         aiExecuted++;
         aiOpenPairs.add(decision.pair);
