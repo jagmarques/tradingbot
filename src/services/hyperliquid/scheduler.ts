@@ -9,7 +9,7 @@ import { runSchaffDecisionEngine } from "./schaff-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
 import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
-import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
@@ -60,8 +60,9 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const analyses = await runMarketDataPipeline();
 
-    // AI engine (DeepSeek, runs on Hyperliquid paper)
+    // AI engine (DeepSeek, runs on Hyperliquid)
     const aiDecisions: QuantAIDecision[] = [];
+    const aiSignals = new Map<string, "long" | "short" | "flat">();
     for (const analysis of analyses) {
       const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
       const closes = dailyCandles.map((c) => c.close);
@@ -73,7 +74,9 @@ export async function runDirectionalCycle(): Promise<void> {
         dailyTrend = { direction, price: markPrice, sma50 };
       }
       const decision = await analyzeWithAI(analysis, dailyTrend);
-      if (!decision || decision.direction === "flat") continue;
+      if (!decision) continue;
+      aiSignals.set(decision.pair, decision.direction);
+      if (decision.direction === "flat") continue;
       const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
       if (sizeUsd <= 0) continue;
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
@@ -145,6 +148,21 @@ const vortexOpenPairs = new Set(
     const cciOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "cci-directional").map(p => p.pair),
     );
+
+    // Close AI positions if signal flips
+    const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
+    for (const pos of aiPositions) {
+      const signal = aiSignals.get(pos.pair);
+      if (!signal) continue;
+      const flipped = signal === "flat" || signal !== pos.direction;
+      if (flipped) {
+        console.log(`[QuantScheduler] AI signal flip: ${pos.pair} position=${pos.direction} signal=${signal}, closing`);
+        const result = await closePosition(pos.id, `ai-signal-flip (${pos.direction}->${signal})`);
+        if (result.success) {
+          aiOpenPairs.delete(pos.pair);
+        }
+      }
+    }
 
     let aiExecuted = 0;
     for (const decision of aiDecisions) {
