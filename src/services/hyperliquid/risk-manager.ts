@@ -10,8 +10,8 @@ const dailyLossMap = new Map<string, number>();
 const lastLossTimestampMap = new Map<string, number>();
 
 export function strategyFromTradeType(tradeType: string): string {
-  // "psar-directional" -> "psar", "ai-directional" -> "ai", "elder-impulse-directional" -> "elder"
-  return tradeType.replace(/-directional$/, "").replace("elder-impulse", "elder");
+  // "psar-directional" -> "psar", "ai-directional" -> "ai"
+  return tradeType.replace(/-directional$/, "");
 }
 
 function resetIfStale(strategy: string): void {
@@ -50,7 +50,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["ai", "psar", "zlema", "elder", "vortex", "schaff", "dema", "hma", "cci"];
+  const strategies = ["ai", "psar", "zlema", "vortex", "schaff", "dema", "hma", "cci"];
   for (const strategy of strategies) {
     try {
       const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000, strategy);

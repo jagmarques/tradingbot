@@ -2609,7 +2609,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     const typeTag =
       pos.tradeType === "psar-directional" ? "[PS]" :
       pos.tradeType === "zlema-directional" ? "[ZL]" :
-      pos.tradeType === "elder-impulse-directional" ? "[EI]" :
       pos.tradeType === "vortex-directional" ? "[VO]" :
       pos.tradeType === "schaff-directional" ? "[SC]" :
       pos.tradeType === "dema-directional" ? "[DE]" :
@@ -2710,9 +2709,9 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const engines: [string, string][] = [
     ["PSAR", "psar-directional"], ["ZLEMA", "zlema-directional"],
-    ["Elder", "elder-impulse-directional"], ["Vortex", "vortex-directional"],
-    ["Schaff", "schaff-directional"], ["DEMA", "dema-directional"],
-    ["HMA", "hma-directional"], ["CCI", "cci-directional"],
+    ["Vortex", "vortex-directional"], ["Schaff", "schaff-directional"],
+    ["DEMA", "dema-directional"], ["HMA", "hma-directional"],
+    ["CCI", "cci-directional"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

@@ -684,8 +684,8 @@ function runBacktest(
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
 
-      // Check trailing stop (peak > 5%, trail = peak - 2%)
-      const trailingHit = pos.peakPnlPct > 5 && unrealizedPct <= pos.peakPnlPct - 2;
+      // Check trailing stop (peak > 20%, trail = peak - 7%)
+      const trailingHit = pos.peakPnlPct > 20 && unrealizedPct <= pos.peakPnlPct - 7;
 
       // Check stagnation
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;

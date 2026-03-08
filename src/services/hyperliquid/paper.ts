@@ -15,7 +15,6 @@ import { recordStopLossCooldown } from "./scheduler.js";
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "psar-directional",
   "zlema-directional",
-  "elder-impulse-directional",
   "vortex-directional",
   "schaff-directional",
   "dema-directional",

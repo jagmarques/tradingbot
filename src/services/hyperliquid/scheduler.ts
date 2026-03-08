@@ -1,7 +1,6 @@
 import { runMarketDataPipeline } from "./pipeline.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
 import { runZlemaDecisionEngine } from "./zlema-engine.js";
-import { runElderImpulseDecisionEngine } from "./elder-impulse-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
@@ -14,6 +13,13 @@ import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
+
+// Last signal direction per engine:pair (e.g. "zlema-directional:BTC" -> "long")
+const lastSignals = new Map<string, string>();
+
+export function getLastSignal(tradeType: string, pair: string): string | undefined {
+  return lastSignals.get(`${tradeType}:${pair}`);
+}
 
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 const stopLossCooldowns = new Map<string, number>(); // `${pair}:${direction}` -> timestamp
@@ -53,12 +59,32 @@ export async function runDirectionalCycle(): Promise<void> {
     // Technical engines always run (routed to paper in executor.ts)
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
-    const elderDecisions = await runElderImpulseDecisionEngine(analyses);
-    const vortexDecisions = await runVortexDecisionEngine(analyses);
+const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
     const hmaDecisions = await runHMADecisionEngine(analyses);
     const cciDecisions = await runCCIDecisionEngine(analyses);
+
+    // Record latest signals for smart trailing
+    const allDecisions: Array<{ tradeType: string; decisions: typeof psarDecisions }> = [
+      { tradeType: "psar-directional", decisions: psarDecisions },
+      { tradeType: "zlema-directional", decisions: zlemaDecisions },
+      { tradeType: "vortex-directional", decisions: vortexDecisions },
+      { tradeType: "schaff-directional", decisions: schaffDecisions },
+      { tradeType: "dema-directional", decisions: demaDecisions },
+      { tradeType: "hma-directional", decisions: hmaDecisions },
+      { tradeType: "cci-directional", decisions: cciDecisions },
+    ];
+    for (const { tradeType, decisions } of allDecisions) {
+      for (const d of decisions) {
+        const key = `${tradeType}:${d.pair}`;
+        if (d.direction === "flat") {
+          lastSignals.delete(key);
+        } else {
+          lastSignals.set(key, d.direction);
+        }
+      }
+    }
 
     const openPositions = getOpenQuantPositions();
 
@@ -68,10 +94,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const zlemaOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "zlema-directional").map(p => p.pair),
     );
-    const elderOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "elder-impulse-directional").map(p => p.pair),
-    );
-    const vortexOpenPairs = new Set(
+const vortexOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "vortex-directional").map(p => p.pair),
     );
     const schaffOpenPairs = new Set(
@@ -155,42 +178,6 @@ export async function runDirectionalCycle(): Promise<void> {
         zlemaOpenPairs.add(decision.pair);
         console.log(
           `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-    let elderExecuted = 0;
-    for (const decision of elderDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      if (elderOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Elder: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] Elder: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        "elder-impulse-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        elderExecuted++;
-        elderOpenPairs.add(decision.pair);
-        console.log(
-          `[QuantScheduler] Elder: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
         );
       }
     }
@@ -309,7 +296,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Elder ${elderExecuted}/${elderDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

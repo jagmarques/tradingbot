@@ -254,7 +254,7 @@ export async function notifyQuantTradeEntry(params: {
   if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
   const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -285,7 +285,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "elder-impulse-directional" ? "Elder" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +

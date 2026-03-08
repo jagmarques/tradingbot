@@ -93,22 +93,6 @@ export const ZLEMA_REVERSE_EXIT = 0;
 export const ZLEMA_TRAIL_ACTIVATION = 1;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
-// Elder
-export const ELDER_EMA_PERIOD = 17;
-export const ELDER_MACD_FAST = 16;
-export const ELDER_MACD_SLOW = 26;
-export const ELDER_MACD_SIGNAL = 9;
-export const ELDER_DAILY_SMA_PERIOD = 50;
-export const ELDER_DAILY_ADX_MIN = 8;
-export const ELDER_STOP_ATR_MULT = 2.5;
-export const ELDER_REWARD_RISK = 2.5;
-export const ELDER_STAGNATION_BARS = 12;
-export const ELDER_BASE_CONFIDENCE = 65;
-export const ELDER_DAILY_LOOKBACK_DAYS = 150;
-export const ELDER_REVERSE_EXIT = 0;
-export const ELDER_ADX_NOT_DECL = 1;
-export const ELDER_TRAIL_ACTIVATION = 1;
-export const ELDER_TRAIL_DISTANCE = 2.5;
 
 
 // Vortex
@@ -194,7 +178,8 @@ export type QuantExchange = "hyperliquid" | "lighter";
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "psar-directional": "lighter",
   "zlema-directional": "lighter",
-  "schaff-directional": "lighter",
+  "hma-directional": "lighter",
+  "dema-directional": "lighter",
 };
 
 export function getEngineExchange(tradeType: string): QuantExchange {

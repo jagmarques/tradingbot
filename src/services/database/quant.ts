@@ -325,15 +325,6 @@ export function sumRecentQuantLosses(withinMs: number, strategy?: string): { tot
       WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
         AND trade_type IN ('ai-directional', 'directional')
     `).get(cutoff) as typeof row;
-  } else if (strategy === "elder") {
-    row = db.prepare(`
-      SELECT
-        COALESCE(SUM(ABS(pnl)), 0) as total_loss,
-        COALESCE(MAX(updated_at), '') as last_loss_at
-      FROM quant_trades
-      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-        AND trade_type = 'elder-impulse-directional'
-    `).get(cutoff) as typeof row;
   } else {
     row = db.prepare(`
       SELECT

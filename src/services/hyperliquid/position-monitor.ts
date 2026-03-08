@@ -1,12 +1,13 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { notifyCriticalError } from "../telegram/notifications.js";
+import { getLastSignal } from "./scheduler.js";
 
 // Per-engine stagnation: bar count x 4h
 const H4_MS = 4 * 60 * 60 * 1000;
@@ -14,16 +15,15 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "cci-directional": CCI_STAGNATION_BARS * H4_MS,
   "psar-directional": PSAR_STAGNATION_BARS * H4_MS,
   "zlema-directional": ZLEMA_STAGNATION_BARS * H4_MS,
-  "elder-impulse-directional": ELDER_STAGNATION_BARS * H4_MS,
   "vortex-directional": VORTEX_STAGNATION_BARS * H4_MS,
   "schaff-directional": SCHAFF_STAGNATION_BARS * H4_MS,
   "dema-directional": DEMA_STAGNATION_BARS * H4_MS,
   "hma-directional": HMA_STAGNATION_BARS * H4_MS,
 };
 
-// Trailing stop: hardcoded 5% activation, 2% trail (backtest-validated)
-const TRAIL_ACTIVATION = 5;
-const TRAIL_DISTANCE = 2;
+// Trailing stop: 20% activation, 7% trail (backtest-validated)
+const TRAIL_ACTIVATION = 20;
+const TRAIL_DISTANCE = 7;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
@@ -164,8 +164,16 @@ async function checkPositionStops(): Promise<void> {
       if (peak > TRAIL_ACTIVATION) {
         const trailTrigger = peak - TRAIL_DISTANCE;
         if (unrealizedPnlPct <= trailTrigger) {
+          // Smart trailing: skip close if engine signal still agrees
+          const signal = position.tradeType ? getLastSignal(position.tradeType, position.pair) : undefined;
+          if (signal === position.direction) {
+            console.log(`[PositionMonitor] Trail hit but signal still ${signal} for ${position.pair}, resetting peak`);
+            position.maxUnrealizedPnlPct = unrealizedPnlPct;
+            saveQuantPosition(position);
+            continue;
+          }
           console.log(
-            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (trail trigger: ${trailTrigger.toFixed(2)}%)`,
+            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await tryClose(position, "trailing-stop");
           continue;
