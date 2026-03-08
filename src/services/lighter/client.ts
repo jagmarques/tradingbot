@@ -196,7 +196,13 @@ export function toPriceUnits(price: number, decimals: number): number {
   return Math.round(price * (10 ** decimals));
 }
 
+const midPriceCache = new Map<string, { price: number; at: number }>();
+const MID_PRICE_CACHE_MS = 5_000;
+
 export async function getLighterMidPrice(pair: string): Promise<number | null> {
+  const cached = midPriceCache.get(pair);
+  if (cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return cached.price;
+
   try {
     const marketId = await getMarketIndex(pair);
     if (marketId === null) {
@@ -220,17 +226,22 @@ export async function getLighterMidPrice(pair: string): Promise<number | null> {
       return null;
     }
 
-    return (bestBid + bestAsk) / 2;
+    const mid = (bestBid + bestAsk) / 2;
+    midPriceCache.set(pair, { price: mid, at: Date.now() });
+    return mid;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
-    return null;
+    if (!msg.includes("429")) {
+      console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
+    }
+    return cached?.price ?? null; // return stale price on error
   }
 }
 
+const INTER_REQUEST_DELAY_MS = 200;
+
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-  // Sequential to avoid 429 rate limits
   for (const pair of pairs) {
     try {
       const price = await getLighterMidPrice(pair);
@@ -240,6 +251,7 @@ export async function getLighterAllMids(pairs: string[]): Promise<Record<string,
     } catch (err) {
       console.error(`[Lighter] Mid price fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+    await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY_MS));
   }
   return results;
 }

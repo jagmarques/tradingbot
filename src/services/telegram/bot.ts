@@ -8,11 +8,8 @@ import {
   getDailyPnlPercentage,
   getTodayTrades,
 } from "../risk/manager.js";
-import { getMaticBalanceFormatted, getUsdcBalanceFormatted } from "../polygon/wallet.js";
+import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
-import { getEthBalance as getBaseEthBalance } from "../base/executor.js";
-import { getEthBalance as getArbitrumEthBalance } from "../arbitrum/executor.js";
-import { getAvaxBalance } from "../avalanche/executor.js";
 import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
 import {
   getSettings,
@@ -902,41 +899,48 @@ async function handleBalance(ctx: Context): Promise<void> {
   }
 
   const myOpId = activeOpId;
-  const fmt = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
+  const fmt = (n: number): string => `$${n.toFixed(2)}`;
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
 
   if (isPaperMode()) {
     const lines = [
       `Capital: ${fmt(STARTING_CAPITAL_USD)}`,
       `Per Strategy: ${fmt(CAPITAL_PER_STRATEGY_USD)}`,
     ];
-    const message = `<b>Balance</b> | Paper\n${lines.join("\n")}`;
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
+    await sendDataMessage(`<b>Balance</b> | Paper\n${lines.join("\n")}`, backButton);
     return;
   }
 
   try {
-    const formatWei = (wei: bigint): string => (Number(wei) / 1e18).toFixed(4);
+    const { getAccountBalance } = await import("../hyperliquid/account.js");
+    const { getLighterAccountInfo, isLighterInitialized } = await import("../lighter/client.js");
+    const env = loadEnv();
 
-    const maticBalance = await getMaticBalanceFormatted().catch(() => "Error");
-    const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
-    const baseEthBalance = await getBaseEthBalance().catch(() => BigInt(0));
-    const arbitrumEthBalance = await getArbitrumEthBalance().catch(() => BigInt(0));
-    const avaxBalance = await getAvaxBalance().catch(() => BigInt(0));
+    const [hlAccount, ltAccount] = await Promise.all([
+      env.HYPERLIQUID_WALLET_ADDRESS
+        ? getAccountBalance(env.HYPERLIQUID_WALLET_ADDRESS).catch(() => ({ equity: 0, balance: 0, unrealizedPnl: 0 }))
+        : Promise.resolve({ equity: 0, balance: 0, unrealizedPnl: 0 }),
+      isLighterInitialized()
+        ? getLighterAccountInfo().catch(() => ({ equity: 0, marginUsed: 0 }))
+        : Promise.resolve({ equity: 0, marginUsed: 0 }),
+    ]);
 
     if (activeOpId !== myOpId) return;
 
+    const totalEquity = hlAccount.equity + ltAccount.equity;
     const lines = [
-      `Polygon MATIC: ${maticBalance}`,
-      `Polygon USDC: ${usdcBalance}`,
-      `Base ETH: ${formatWei(baseEthBalance)}`,
-      `Arbitrum ETH: ${formatWei(arbitrumEthBalance)}`,
-      `Avax AVAX: ${formatWei(avaxBalance)}`,
+      `<b>Hyperliquid</b>`,
+      `  Equity: ${fmt(hlAccount.equity)}`,
+      `  Available: ${fmt(hlAccount.balance)}`,
+      `  Unrealized P&L: ${fmt(hlAccount.unrealizedPnl)}`,
+      ``,
+      `<b>Lighter</b>`,
+      `  Equity: ${fmt(ltAccount.equity)}`,
+      `  Available: ${fmt(ltAccount.equity - ltAccount.marginUsed)}`,
+      ``,
+      `<b>Total: ${fmt(totalEquity)}</b>`,
     ];
-    const message = `<b>Balance</b>\n${lines.join("\n")}`;
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
+    await sendDataMessage(`<b>Balance</b>\n${lines.join("\n")}`, backButton);
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
     if (activeOpId !== myOpId) return;
