@@ -927,20 +927,9 @@ async function handleBalance(ctx: Context): Promise<void> {
 
     if (activeOpId !== myOpId) return;
 
-    const totalEquity = hlAccount.equity + ltAccount.equity;
-    const lines = [
-      `<b>Hyperliquid</b>`,
-      `  Equity: ${fmt(hlAccount.equity)}`,
-      `  Available: ${fmt(hlAccount.balance)}`,
-      `  Unrealized P&L: ${fmt(hlAccount.unrealizedPnl)}`,
-      ``,
-      `<b>Lighter</b>`,
-      `  Equity: ${fmt(ltAccount.equity)}`,
-      `  Available: ${fmt(ltAccount.equity - ltAccount.marginUsed)}`,
-      ``,
-      `<b>Total: ${fmt(totalEquity)}</b>`,
-    ];
-    await sendDataMessage(`<b>Balance</b>\n${lines.join("\n")}`, backButton);
+    const total = hlAccount.equity + ltAccount.equity;
+    const msg = `<b>Portfolio</b>\nHL: ${fmt(hlAccount.equity)} | LT: ${fmt(ltAccount.equity)}\n<b>Total: ${fmt(total)}</b>`;
+    await sendDataMessage(msg, backButton);
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
     if (activeOpId !== myOpId) return;
