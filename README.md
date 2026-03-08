@@ -85,6 +85,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
 - Trailing stop (20% activation, 7% trail, smart trail resets), stagnation exit (engine-specific, 32-64h), stop-loss (ATR-based, 5% max)
+- AI signal flip: closes AI positions when signal reverses or goes flat, clears cache for fresh re-analysis
 - Exchange-level stop-loss orders on both HL and Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
 - 14-day paper validation before live

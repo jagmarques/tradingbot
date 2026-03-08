@@ -1,4 +1,4 @@
-import { analyzeWithAI } from "./ai-analyzer.js";
+import { analyzeWithAI, clearAICacheForPair } from "./ai-analyzer.js";
 import { fetchDailyCandles, computeDailySma } from "./daily-indicators.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runMarketDataPipeline } from "./pipeline.js";
@@ -160,6 +160,7 @@ const vortexOpenPairs = new Set(
         const result = await closePosition(pos.id, `ai-signal-flip (${pos.direction}->${signal})`);
         if (result.success) {
           aiOpenPairs.delete(pos.pair);
+          clearAICacheForPair(pos.pair);
         }
       }
     }
