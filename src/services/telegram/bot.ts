@@ -2712,7 +2712,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     const deployedStr = deployed > 0 ? ` ($${deployed.toFixed(0)})` : "";
     const unr = unrealizedByKey.get(k) ?? 0;
     const unrStr = ` | unr ${fmtUnr(unr)}`;
-    return `${label}: ${ret}${wr} ${ops}T${deployedStr}${unrStr}\n`;
+    return `${label}: ${ret}${wr} ${openCnt}/${ops}T${deployedStr}${unrStr}\n`;
   };
 
   const engines: [string, string][] = [
