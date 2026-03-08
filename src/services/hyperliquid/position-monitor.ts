@@ -148,11 +148,12 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Trailing stop
-      const unrealizedPnlPct =
+      // Trailing stop (leveraged P&L to match backtest)
+      const pricePct =
         position.direction === "long"
-          ? ((currentPrice - position.entryPrice) / position.entryPrice) * 100
-          : ((position.entryPrice - currentPrice) / position.entryPrice) * 100;
+          ? ((currentPrice - position.entryPrice) / position.entryPrice)
+          : ((position.entryPrice - currentPrice) / position.entryPrice);
+      const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
