@@ -12,7 +12,7 @@ import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
-import type { QuantAIDecision } from "./types.js";
+import type { QuantAIDecision, TradeType } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -127,27 +127,10 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const aiOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType).map(p => p.pair),
     );
-    const psarOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "psar-directional").map(p => p.pair),
-    );
-    const zlemaOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "zlema-directional").map(p => p.pair),
-    );
-const vortexOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "vortex-directional").map(p => p.pair),
-    );
-    const schaffOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "schaff-directional").map(p => p.pair),
-    );
-    const demaOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "dema-directional").map(p => p.pair),
-    );
-    const hmaOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "hma-directional").map(p => p.pair),
-    );
-    const cciOpenPairs = new Set(
-      openPositions.filter(p => p.tradeType === "cci-directional").map(p => p.pair),
-    );
+    const openPairsByEngine = new Map<string, Set<string>>();
+    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "hma-directional", "cci-directional"]) {
+      openPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt).map(p => p.pair)));
+    }
 
     // Close AI positions if signal flips
     const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
@@ -178,193 +161,59 @@ const vortexOpenPairs = new Set(
       }
     }
 
-    let psarExecuted = 0;
-    for (const decision of psarDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+    // Live engines: DEMA -> HMA -> Schaff (order matters for pair priority)
+    const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
+      { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
+      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
+      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
+    ];
 
-      if (psarOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] PSAR: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
+    const executed = new Map<string, number>();
+    for (const { label, tradeType, decisions } of liveEngines) {
+      let count = 0;
+      const openPairs = openPairsByEngine.get(tradeType)!;
+      for (const decision of decisions) {
+        if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+        if (openPairs.has(decision.pair)) continue;
+        if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
+        if (position) {
+          count++;
+          openPairs.add(decision.pair);
+          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+        }
       }
-
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] PSAR: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        "psar-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        psarExecuted++;
-        psarOpenPairs.add(decision.pair);
-        console.log(
-          `[QuantScheduler] PSAR: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
+      executed.set(tradeType, count);
     }
 
-    let zlemaExecuted = 0;
-    for (const decision of zlemaDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+    // Paper engines: independent, no ordering
+    const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
+      { label: "PSAR", tradeType: "psar-directional", decisions: psarDecisions },
+      { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
+      { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
+      { label: "CCI", tradeType: "cci-directional", decisions: cciDecisions },
+    ];
 
-      if (zlemaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] ZLEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
+    for (const { label, tradeType, decisions } of paperEngines) {
+      let count = 0;
+      const openPairs = openPairsByEngine.get(tradeType)!;
+      for (const decision of decisions) {
+        if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+        if (openPairs.has(decision.pair)) continue;
+        if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
+        if (position) {
+          count++;
+          openPairs.add(decision.pair);
+          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+        }
       }
-
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] ZLEMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        "zlema-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        zlemaExecuted++;
-        zlemaOpenPairs.add(decision.pair);
-        console.log(
-          `[QuantScheduler] ZLEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
+      executed.set(tradeType, count);
     }
 
-    let vortexExecuted = 0;
-    for (const decision of vortexDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      if (vortexOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Vortex: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] Vortex: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "vortex-directional", undefined, decision.entryPrice);
-      if (position) {
-        vortexExecuted++;
-        vortexOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] Vortex: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
-      }
-    }
-
-    let schaffExecuted = 0;
-    for (const decision of schaffDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-
-      if (schaffOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] Schaff: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] Schaff: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-
-      const position = await openPosition(
-        decision.pair,
-        decision.direction,
-        decision.suggestedSizeUsd,
-        10,
-        decision.stopLoss,
-        decision.takeProfit,
-        decision.regime,
-        "schaff-directional",
-        undefined,
-        decision.entryPrice,
-      );
-
-      if (position) {
-        schaffExecuted++;
-        schaffOpenPairs.add(decision.pair);
-        console.log(
-          `[QuantScheduler] Schaff: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`,
-        );
-      }
-    }
-
-
-    let demaExecuted = 0;
-    for (const decision of demaDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      if (demaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] DEMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] DEMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "dema-directional", undefined, decision.entryPrice);
-      if (position) {
-        demaExecuted++;
-        demaOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] DEMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
-      }
-    }
-
-    let hmaExecuted = 0;
-    for (const decision of hmaDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      if (hmaOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] HMA: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] HMA: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "hma-directional", undefined, decision.entryPrice);
-      if (position) {
-        hmaExecuted++;
-        hmaOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] HMA: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
-      }
-    }
-
-    let cciExecuted = 0;
-    for (const decision of cciDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      if (cciOpenPairs.has(decision.pair)) {
-        console.log(`[QuantScheduler] CCI: Skipping ${decision.pair} ${decision.direction}: pair already open`);
-        continue;
-      }
-      if (isInStopLossCooldown(decision.pair, decision.direction)) {
-        console.log(`[QuantScheduler] CCI: Skip ${decision.pair} ${decision.direction}: stop-loss cooldown`);
-        continue;
-      }
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "cci-directional", undefined, decision.entryPrice);
-      if (position) {
-        cciExecuted++;
-        cciOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] CCI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
-      }
-    }
-
+    const e = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, DEMA ${e("dema-directional", demaDecisions)}, HMA ${e("hma-directional", hmaDecisions)}, Schaff ${e("schaff-directional", schaffDecisions)}, PSAR ${e("psar-directional", psarDecisions)}, ZLEMA ${e("zlema-directional", zlemaDecisions)}, Vortex ${e("vortex-directional", vortexDecisions)}, CCI ${e("cci-directional", cciDecisions)}`,
     );
   } finally {
     cycleRunning = false;

@@ -1,5 +1,5 @@
 import { getTradingMode } from "../../config/env.js";
-import { getEngineExchange } from "../../config/constants.js";
+import { getEngineExchange, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
 import {
   paperOpenPosition,
   paperClosePosition,
@@ -42,18 +42,20 @@ export async function openPosition(
 
   const mode = getTradingMode();
   const exchange = getEngineExchange(tradeType);
-  // hybrid: Lighter engines + AI go live
+  // hybrid: specific engines + AI go live, rest stay paper
   const useLive =
     mode === "live" ||
-    (mode === "hybrid" && exchange === "lighter") ||
+    (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)) ||
     (mode === "hybrid" && tradeType === "ai-directional");
 
-  // One position per pair per exchange
-  const allPositions = getOpenQuantPositions();
-  const existingOnExchange = allPositions.find(p => p.pair === pair && p.exchange === exchange);
-  if (existingOnExchange) {
-    console.log(`[Quant Executor] ${pair} already open on ${exchange}, skipping`);
-    return null;
+  // One live position per pair per exchange (paper engines run independently for tracking)
+  if (useLive) {
+    const allPositions = getOpenQuantPositions();
+    const existingLive = allPositions.find(p => p.pair === pair && p.exchange === exchange && p.mode === "live");
+    if (existingLive) {
+      console.log(`[Quant Executor] ${pair} already open live on ${exchange}, skipping`);
+      return null;
+    }
   }
 
   if (exchange === "lighter") {

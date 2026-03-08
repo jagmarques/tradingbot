@@ -178,10 +178,20 @@ export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "psar-directional": "lighter",
+  "zlema-directional": "lighter",
+  "vortex-directional": "lighter",
   "schaff-directional": "lighter",
-  "hma-directional": "lighter",
   "dema-directional": "lighter",
+  "hma-directional": "lighter",
+  "cci-directional": "lighter",
 };
+
+// Engines that go live in hybrid mode (rest stay paper)
+export const QUANT_HYBRID_LIVE_ENGINES = new Set([
+  "schaff-directional",
+  "hma-directional",
+  "dema-directional",
+]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

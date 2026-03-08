@@ -76,7 +76,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 **Pairs:** BTC, ETH, SOL, XRP, DOGE, AVAX, LINK, ARB, BNB, OP, SUI, DOT, TIA, APT, WIF
 
 **8 decision engines:**
-- Technical (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (PSAR, Schaff, HMA, DEMA run on Lighter; rest on Hyperliquid)
+- Technical (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (all on Lighter; DEMA, HMA, Schaff live in hybrid; rest paper)
 - AI (1): DeepSeek with multi-timeframe candles, indicators, microstructure, funding, regime
 
 **Execution:**
@@ -94,11 +94,11 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 
 | | Paper | Hybrid | Live |
 |---|-------|--------|------|
-| Description | All strategies paper | AI + Lighter live, HL technical paper | All live |
+| Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
 | Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
-| Quant Lighter engines (4) | Paper | Live | Live |
-| Quant HL engines (3) | Paper | Paper | Live |
+| Quant live engines (DEMA, HMA, Schaff) | Paper | Live | Live |
+| Quant paper engines (PSAR, ZLEMA, Vortex, CCI) | Paper | Paper | Live |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
