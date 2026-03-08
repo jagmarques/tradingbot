@@ -75,15 +75,17 @@ async function cancelExchangeStop(pair: string): Promise<void> {
   if (!exchangeStopPairs.has(pair)) return;
   try {
     const nonce = await getNextNonce();
-    await getSignerClient().cancel_all_orders(0, 0, nonce); // account-wide, no per-market cancel
+    await getSignerClient().cancel_all_orders(0, 0, nonce);
     console.log(`[Lighter Executor] Exchange stop cancelled for ${pair}`);
   } catch (err) {
     if (err instanceof TimeoutError) resetNonce();
   }
   exchangeStopPairs.delete(pair);
-  // Re-place stops sequentially (nonce sync)
+}
+
+async function replaceOtherStops(excludePair: string): Promise<void> {
   for (const pos of getLighterLivePositions()) {
-    if (pos.pair !== pair && exchangeStopPairs.has(pos.pair)) {
+    if (pos.pair !== excludePair && exchangeStopPairs.has(pos.pair)) {
       exchangeStopPairs.delete(pos.pair);
       await placeExchangeStop(pos);
     }
@@ -552,6 +554,7 @@ export async function lighterClosePosition(
     });
 
     console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${reason}) @ ${exitPrice}`);
+    void replaceOtherStops(position.pair);
     return { success: true, pnl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
