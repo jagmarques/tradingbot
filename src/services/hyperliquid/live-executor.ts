@@ -57,6 +57,12 @@ function roundSize(size: number, decimals: number): number {
   return Math.floor(size * factor) / factor;
 }
 
+function roundPrice(price: number): number {
+  if (price >= 1000) return Math.round(price * 100) / 100;
+  if (price >= 1) return Math.round(price * 10000) / 10000;
+  return Math.round(price * 1000000) / 1000000;
+}
+
 async function placeExchangeStop(position: QuantPosition): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
   try {
@@ -73,8 +79,8 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
         coin: `${position.pair}-PERP`,
         is_buy: position.direction === "short",
         sz: sizeInCoins,
-        limit_px: position.stopLoss,
-        order_type: { trigger: { triggerPx: position.stopLoss, isMarket: true, tpsl: "sl" } },
+        limit_px: roundPrice(position.stopLoss),
+        order_type: { trigger: { triggerPx: roundPrice(position.stopLoss), isMarket: true, tpsl: "sl" } },
         reduce_only: true,
       }),
       API_ORDER_TIMEOUT_MS, "HL placeExchangeStop",
@@ -409,6 +415,7 @@ export async function liveOpenPosition(
       takeProfit: adjTP,
       unrealizedPnl: 0,
       mode: "live",
+      exchange: "hyperliquid",
       status: "open",
       openedAt: new Date().toISOString(),
       closedAt: undefined,
