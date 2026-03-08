@@ -10,6 +10,7 @@ import {
   toBaseUnits,
   toPriceUnits,
   getLighterOpenPositions,
+  getLighterAccountInfo,
 } from "./client.js";
 import type { QuantPosition, TradeType } from "../hyperliquid/types.js";
 import {
@@ -27,12 +28,69 @@ import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constan
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
+const exchangeStopPairs = new Set<string>();
 
 const positionContext = new Map<string, {
   aiConfidence?: number;
   aiReasoning?: string;
   indicatorsAtEntry?: string;
 }>();
+
+async function placeExchangeStop(position: QuantPosition): Promise<void> {
+  if (!position.stopLoss || !isFinite(position.stopLoss)) return;
+  try {
+    const marketIndex = await getMarketIndex(position.pair);
+    if (marketIndex === null) return;
+    const sizeDecimals = await getMarketSizeDecimals(marketIndex);
+    const priceDecimals = await getMarketPriceDecimals(marketIndex);
+    const notional = position.size * position.leverage;
+    const baseAmount = toBaseUnits(notional / position.entryPrice, sizeDecimals);
+    if (baseAmount <= 0) return;
+    const triggerPrice = toPriceUnits(position.stopLoss, priceDecimals);
+    const limitPrice = toPriceUnits( // 5% slippage buffer
+      position.direction === "long" ? position.stopLoss * 0.95 : position.stopLoss * 1.05,
+      priceDecimals,
+    );
+    const isAsk = position.direction === "long";
+    const nonce = await getNextNonce();
+    const [, , err] = await withTimeout(
+      getSignerClient().create_sl_order(
+        marketIndex, Date.now() % 1_000_000_000, baseAmount,
+        triggerPrice, limitPrice, isAsk, true, nonce,
+      ),
+      API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop",
+    );
+    if (err) {
+      console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
+    } else {
+      exchangeStopPairs.add(position.pair);
+      console.log(`[Lighter Executor] Exchange stop placed for ${position.pair} @ ${position.stopLoss}`);
+    }
+  } catch (err) {
+    if (err instanceof TimeoutError) resetNonce();
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Lighter Executor] Exchange stop error for ${position.pair}: ${msg}`);
+  }
+}
+
+async function cancelExchangeStop(pair: string): Promise<void> {
+  if (!exchangeStopPairs.has(pair)) return;
+  try {
+    const nonce = await getNextNonce();
+    await getSignerClient().cancel_all_orders(0, 0, nonce); // account-wide, no per-market cancel
+    console.log(`[Lighter Executor] Exchange stop cancelled for ${pair}`);
+  } catch (err) {
+    if (err instanceof TimeoutError) resetNonce();
+  }
+  exchangeStopPairs.delete(pair);
+  // Re-place stops for other positions
+  for (const pos of getLighterLivePositions()) {
+    if (pos.pair !== pair && exchangeStopPairs.has(pos.pair)) {
+      exchangeStopPairs.delete(pos.pair);
+      void placeExchangeStop(pos);
+    }
+  }
+}
 
 export function initLighterEngine(): void {
   lighterPositions.clear();
@@ -42,6 +100,13 @@ export function initLighterEngine(): void {
     lighterPositions.set(pos.id, pos);
   }
   console.log(`[Lighter Executor] Init: ${lighterLive.length} live positions restored`);
+  setTimeout(async () => { // re-place stops after init
+    for (const pos of getLighterLivePositions()) {
+      if (pos.stopLoss && isFinite(pos.stopLoss)) {
+        await placeExchangeStop(pos);
+      }
+    }
+  }, 30_000);
 }
 
 export function getLighterLivePositions(): QuantPosition[] {
@@ -76,7 +141,6 @@ export async function lighterOpenPosition(
     return null;
   }
 
-  // Block if pair already open on Lighter
   const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
   if (existingLighter) {
     console.log(`[Lighter Executor] ${pair} already open on Lighter, skipping`);
@@ -86,6 +150,18 @@ export async function lighterOpenPosition(
   openingPairs.add(pair);
 
   try {
+    try { // margin check
+      const acctInfo = await getLighterAccountInfo();
+      const availableMargin = acctInfo.equity - acctInfo.marginUsed;
+      if (availableMargin < sizeUsd) {
+        console.log(`[Lighter Executor] ${pair} skipped: insufficient margin ($${availableMargin.toFixed(2)} available, need $${sizeUsd})`);
+        return null;
+      }
+    } catch (marginErr) {
+      console.error(`[Lighter Executor] Margin check failed: ${marginErr instanceof Error ? marginErr.message : marginErr}`);
+      return null;
+    }
+
     const currentPrice = await withTimeout(getLighterMidPrice(pair), API_PRICE_TIMEOUT_MS, "Lighter midPrice");
     if (!currentPrice) {
       console.error(`[Lighter Executor] No price for ${pair}`);
@@ -104,7 +180,6 @@ export async function lighterOpenPosition(
     const sizeInCoins = notional / currentPrice;
     const baseAmount = toBaseUnits(sizeInCoins, sizeDecimals);
 
-    // 5% slippage tolerance
     const isBuy = direction === "long";
     const slippagePrice = isBuy ? currentPrice * 1.05 : currentPrice * 0.95;
     const priceBaseUnits = toPriceUnits(slippagePrice, priceDecimals);
@@ -122,8 +197,7 @@ export async function lighterOpenPosition(
       leverage = maxLev;
     }
 
-    // Set leverage
-    try {
+    try { // set leverage
       const nonce = await getNextNonce();
       await withTimeout(
         client.update_leverage(marketIndex, SignerClient.ISOLATED_MARGIN_MODE, leverage, nonce),
@@ -137,7 +211,6 @@ export async function lighterOpenPosition(
       return null;
     }
 
-    // Place market order
     console.log(`[Lighter Executor] Placing ${direction} ${pair} $${sizeUsd}x${leverage}`);
 
     const nonce = await getNextNonce();
@@ -164,29 +237,55 @@ export async function lighterOpenPosition(
       return null;
     }
 
-    // Verify fill (Lighter silently cancels unfilled orders)
-    let filled = false;
+    let filledPos: { size: number; entryPrice: number } | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       await new Promise(r => setTimeout(r, 2000));
       try {
         const exchangePositions = await getLighterOpenPositions();
-        if (exchangePositions.find(p => p.symbol === pair)) {
-          filled = true;
+        const match = exchangePositions.find(p => p.symbol === pair);
+        if (match) {
+          filledPos = match;
           break;
         }
       } catch (checkErr) {
         console.error(`[Lighter Executor] Fill check failed for ${pair}: ${checkErr instanceof Error ? checkErr.message : checkErr}`);
       }
     }
-    if (!filled) {
+    if (!filledPos) {
       console.error(`[Lighter Executor] Order not filled for ${pair} — cancelled by exchange`);
       void notifyCriticalError(`Lighter fill unverified: ${pair} ${direction} — check exchange for orphan`, "LighterExecutor");
       return null;
     }
 
-    const fillPrice = currentPrice;
+    const fillPrice = filledPos.entryPrice > 0 ? filledPos.entryPrice : currentPrice;
+    const actualNotional = filledPos.size * fillPrice;
 
-    // Rebase stop/TP to fill price
+    const filledBaseAmount = toBaseUnits(filledPos.size, sizeDecimals);
+    if (actualNotional < 5) {
+      console.error(`[Lighter Executor] ${pair} partial fill too small: $${actualNotional.toFixed(2)} notional, closing`);
+      try {
+        const closeNonce = await getNextNonce();
+        await withTimeout(
+          client.create_market_order(
+            marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
+            toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
+            isBuy, true, closeNonce,
+          ),
+          API_ORDER_TIMEOUT_MS, "Lighter autoClose",
+        );
+        console.log(`[Lighter Executor] Tiny partial fill closed for ${pair}`);
+      } catch (closeErr) {
+        if (closeErr instanceof TimeoutError) resetNonce();
+        void notifyCriticalError(`Tiny partial fill ${pair} ($${actualNotional.toFixed(2)}) — close failed`, "LighterExecutor");
+      }
+      return null;
+    }
+
+    const actualSizeUsd = actualNotional / leverage;
+    if (Math.abs(actualSizeUsd - sizeUsd) > 0.5) {
+      console.log(`[Lighter Executor] ${pair} partial fill: requested $${sizeUsd} got $${actualSizeUsd.toFixed(2)}`);
+    }
+
     let adjStop = stopLoss;
     let adjTP = takeProfit;
     if (aiEntryPrice && aiEntryPrice > 0) {
@@ -201,7 +300,7 @@ export async function lighterOpenPosition(
       pair,
       direction,
       entryPrice: fillPrice,
-      size: sizeUsd,
+      size: actualSizeUsd,
       leverage,
       stopLoss: adjStop,
       takeProfit: adjTP,
@@ -223,12 +322,11 @@ export async function lighterOpenPosition(
     } catch (dbErr) {
       const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       console.error(`[Lighter Executor] DB WRITE FAILED for ${pair}: ${dbMsg}`);
-      // Try to close the orphan on exchange
-      try {
+      try { // close orphan
         const closeNonce = await getNextNonce();
         await withTimeout(
           client.create_market_order(
-            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
             toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
             isBuy, true, closeNonce,
           ),
@@ -245,12 +343,13 @@ export async function lighterOpenPosition(
     positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
 
     void notifyQuantTradeEntry({
-      pair, direction, size: sizeUsd, entryPrice: fillPrice,
+      pair, direction, size: actualSizeUsd, entryPrice: fillPrice,
       leverage, tradeType, stopLoss: adjStop, takeProfit: adjTP,
       positionMode: "live",
     });
 
-    console.log(`[Lighter Executor] OPEN ${direction.toUpperCase()} ${pair} $${sizeUsd}x${leverage} @ ${fillPrice}`);
+    console.log(`[Lighter Executor] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice}`);
+    void placeExchangeStop(position);
     return position;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -259,8 +358,7 @@ export async function lighterOpenPosition(
 
     if (err instanceof TimeoutError) resetNonce();
 
-    // Orphan check
-    try {
+    try { // orphan check
       const exchangePositions = await getLighterOpenPositions();
       const orphan = exchangePositions.find(p => p.symbol === pair);
       if (orphan) {
@@ -314,15 +412,13 @@ export async function lighterClosePosition(
     const sizeInCoins = notional / position.entryPrice;
     const baseAmount = toBaseUnits(sizeInCoins, sizeDecimals);
 
-    // 5% slippage tolerance
     const isAsk = position.direction === "long";
     const slippageExitPrice = isAsk ? exitPrice * 0.95 : exitPrice * 1.05;
     const exitPriceBase = toPriceUnits(slippageExitPrice, priceDecimals);
 
     const client = getSignerClient();
 
-    // Double-check position exists before closing
-    try {
+    try { // verify position exists before closing
       let existsOnExchange = false;
       for (let check = 0; check < 2; check++) {
         if (check > 0) await new Promise(r => setTimeout(r, 2000));
@@ -334,6 +430,7 @@ export async function lighterClosePosition(
       }
       if (!existsOnExchange) {
         console.error(`[Lighter Executor] ${position.pair} not found on exchange (2 checks) — phantom`);
+        await cancelExchangeStop(position.pair);
         const now = new Date().toISOString();
         const phantom: QuantPosition = { ...position, status: "closed", closedAt: now, realizedPnl: 0, exitReason: "phantom-not-on-exchange" };
         lighterPositions.set(positionId, phantom);
@@ -365,6 +462,7 @@ export async function lighterClosePosition(
     }
 
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
+    await cancelExchangeStop(position.pair);
 
     const nonce = await getNextNonce();
     const closeResult = await withTimeout(
@@ -387,7 +485,6 @@ export async function lighterClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    // Verify close filled (3x retry)
     let closeFilled = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       await new Promise(r => setTimeout(r, 2000));

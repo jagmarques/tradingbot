@@ -244,7 +244,7 @@ export async function getLighterAllMids(pairs: string[]): Promise<Record<string,
   return results;
 }
 
-export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short" }[]> {
+export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number }[]> {
   const api = getAccountApi();
   const resp = await withTimeout(
     api.account("index" as any, storedAccountIndex.toString()),
@@ -259,6 +259,7 @@ export async function getLighterOpenPositions(): Promise<{ marketId: number; sym
       symbol: p.symbol?.split("_")[0] ?? "",
       size: Math.abs(parseFloat(p.position)),
       side: (p.sign === 1 ? "long" : "short") as "long" | "short",
+      entryPrice: parseFloat(p.avg_entry_price ?? "0"),
     }));
 }
 
