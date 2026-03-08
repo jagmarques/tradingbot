@@ -177,7 +177,7 @@ export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "psar-directional": "lighter",
-  "zlema-directional": "lighter",
+  "schaff-directional": "lighter",
   "hma-directional": "lighter",
 };
 
