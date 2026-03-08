@@ -154,7 +154,7 @@ const vortexOpenPairs = new Set(
     for (const pos of aiPositions) {
       const signal = aiSignals.get(pos.pair);
       if (!signal) continue;
-      const flipped = signal === "flat" || signal !== pos.direction;
+      const flipped = signal !== "flat" && signal !== pos.direction;
       if (flipped) {
         console.log(`[QuantScheduler] AI signal flip: ${pos.pair} position=${pos.direction} signal=${signal}, closing`);
         const result = await closePosition(pos.id, `ai-signal-flip (${pos.direction}->${signal})`);
