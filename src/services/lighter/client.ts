@@ -238,7 +238,7 @@ export async function getLighterMidPrice(pair: string): Promise<number | null> {
   }
 }
 
-const INTER_REQUEST_DELAY_MS = 200;
+export const INTER_REQUEST_DELAY_MS = 200;
 
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   const results: Record<string, string> = {};

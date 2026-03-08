@@ -22,7 +22,7 @@ export async function getAccountBalance(walletAddress: string): Promise<{
     const spotUsdcFree = usdcSpot ? parseFloat(usdcSpot.total) - parseFloat(usdcSpot.hold) : 0;
 
     const equity = perpsEquity + spotUsdcFree;
-    const balance = equity - totalMarginUsed;
+    const balance = (perpsEquity - totalMarginUsed) + spotUsdcFree;
 
     const unrealizedPnl = state.assetPositions.reduce((sum, ap) => {
       return sum + parseFloat(ap.position.unrealizedPnl);

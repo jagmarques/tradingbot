@@ -1,5 +1,5 @@
 import { getClient, resetConnection } from "./client.js";
-import { getLighterAllMids, isLighterInitialized } from "../lighter/client.js";
+import { getLighterAllMids, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, ELDER_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
 import { withTimeout } from "../../utils/timeout.js";
@@ -94,7 +94,7 @@ async function checkPositionStops(): Promise<void> {
       try {
         // Each individual call inside getLighterAllMids already has its own timeout.
         // Outer timeout must account for N sequential calls + 200ms inter-request delays.
-        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + 300);
+        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
           outerTimeoutMs, "Lighter getAllMids",
