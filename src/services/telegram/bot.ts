@@ -1017,13 +1017,17 @@ async function handlePnl(ctx: Context): Promise<void> {
             }
           } catch { /* HL state unavailable */ }
         }
-        const ltPairs = [...new Set(quantPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
-        if (ltPairs.length > 0) {
+        const ltPositions = quantPositions.filter(p => p.exchange === "lighter");
+        if (ltPositions.length > 0) {
           try {
             const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
             if (isLighterInitialized()) {
-              ltMids = await getLighterAllMids(ltPairs);
               ltExUpnl = await getLighterUnrealizedPnl();
+              // Mid-prices only needed for paper positions
+              const paperPairs = [...new Set(ltPositions.filter(p => p.mode !== "live").map(p => p.pair))];
+              if (paperPairs.length > 0) {
+                ltMids = await getLighterAllMids(paperPairs);
+              }
             }
           } catch { /* Lighter unavailable */ }
         }
@@ -2571,14 +2575,17 @@ async function handleQuant(ctx: Context): Promise<void> {
       // Prices unavailable
     }
 
-    // Lighter prices + unrealized
-    const lighterPairs = [...new Set(openPositions.filter(p => p.exchange === "lighter").map(p => p.pair))];
-    if (lighterPairs.length > 0) {
+    // Lighter unrealized + prices
+    const lighterPositions = openPositions.filter(p => p.exchange === "lighter");
+    if (lighterPositions.length > 0) {
       try {
         const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
         if (isLighterInitialized()) {
-          lighterMids = await getLighterAllMids(lighterPairs);
           ltExchangeUpnl = await getLighterUnrealizedPnl();
+          const paperPairs = [...new Set(lighterPositions.filter(p => p.mode !== "live").map(p => p.pair))];
+          if (paperPairs.length > 0) {
+            lighterMids = await getLighterAllMids(paperPairs);
+          }
         }
       } catch { /* Lighter unavailable */ }
     }
