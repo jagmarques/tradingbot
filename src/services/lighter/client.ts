@@ -211,22 +211,17 @@ export async function getLighterMidPrice(pair: string): Promise<number | null> {
 
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-
-  const settled = await Promise.allSettled(
-    pairs.map(async (pair) => {
+  // Sequential to avoid 429 rate limits
+  for (const pair of pairs) {
+    try {
       const price = await getLighterMidPrice(pair);
       if (price !== null) {
         results[pair] = price.toString();
       }
-    }),
-  );
-
-  for (const result of settled) {
-    if (result.status === "rejected") {
-      console.error(`[Lighter] Mid price fetch rejected: ${result.reason}`);
+    } catch (err) {
+      console.error(`[Lighter] Mid price fetch failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-
   return results;
 }
 

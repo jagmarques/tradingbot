@@ -1027,22 +1027,22 @@ async function handlePnl(ctx: Context): Promise<void> {
             }
           } catch { /* Lighter unavailable */ }
         }
-        // Double-counting guard
-        const livePairCnt = new Map<string, number>();
+        // Proportional exchange unrealized split
+        const livePairSize = new Map<string, number>();
         for (const pos of quantPositions) {
           if (pos.mode === "live") {
             const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-            livePairCnt.set(k, (livePairCnt.get(k) ?? 0) + 1);
+            livePairSize.set(k, (livePairSize.get(k) ?? 0) + pos.size);
           }
         }
         for (const pos of quantPositions) {
           let posUnr: number | undefined;
           if (pos.mode === "live") {
-            // Live: use exchange unrealized directly
             const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-            if ((livePairCnt.get(k) ?? 0) === 1) {
-              const exVal = pos.exchange === "lighter" ? ltExUpnl[pos.pair] : hlExUpnl[pos.pair];
-              if (exVal !== undefined) posUnr = exVal;
+            const exVal = pos.exchange === "lighter" ? ltExUpnl[pos.pair] : hlExUpnl[pos.pair];
+            const totalSize = livePairSize.get(k) ?? 0;
+            if (exVal !== undefined && totalSize > 0) {
+              posUnr = exVal * (pos.size / totalSize);
             }
           } else {
             // Paper: mid-price calc (no exchange data)
@@ -2586,18 +2586,22 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   if (activeOpId !== myOpId) return;
 
-  // Prevent double-counting when multiple engines share same pair
-  const livePairCount = new Map<string, number>();
+  // Proportional exchange unrealized split
+  const livePairSize = new Map<string, number>();
   for (const pos of openPositions) {
     if (pos.mode === "live") {
       const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-      livePairCount.set(k, (livePairCount.get(k) ?? 0) + 1);
+      livePairSize.set(k, (livePairSize.get(k) ?? 0) + pos.size);
     }
   }
-  const canUseExchangeUpnl = (pos: typeof openPositions[0]): boolean => {
-    if (pos.mode !== "live") return false;
+  const getExchangeUpnl = (pos: typeof openPositions[0]): number | undefined => {
+    if (pos.mode !== "live") return undefined;
     const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-    return (livePairCount.get(k) ?? 0) === 1;
+    const exVal = pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair];
+    if (exVal === undefined) return undefined;
+    const totalSize = livePairSize.get(k) ?? 0;
+    if (totalSize === 0) return undefined;
+    return exVal * (pos.size / totalSize);
   };
 
   const formatPosLine = (pos: typeof openPositions[0]): string => {
@@ -2613,10 +2617,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "cci-directional" ? "[CC]" : "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
-    // Exchange unrealized (single pos per pair only)
-    const exchangeUpnl = canUseExchangeUpnl(pos)
-      ? (pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair])
-      : undefined;
+    const exchangeUpnl = getExchangeUpnl(pos);
     if (exchangeUpnl !== undefined) {
       upnlStr = ` ${pnl(exchangeUpnl)}`;
     } else {
@@ -2676,10 +2677,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     openCountByKey.set(key, (openCountByKey.get(key) ?? 0) + 1);
     deployedByKey.set(key, (deployedByKey.get(key) ?? 0) + pos.size);
     let upnl: number | undefined;
-    if (canUseExchangeUpnl(pos)) {
-      const exUpnl = pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair];
-      if (exUpnl !== undefined) upnl = exUpnl;
-    }
+    const exUpnl = getExchangeUpnl(pos);
+    if (exUpnl !== undefined) upnl = exUpnl;
     if (upnl === undefined) {
       const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
       const rawMid = priceSource[pos.pair];
