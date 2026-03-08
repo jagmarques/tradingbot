@@ -24,22 +24,31 @@ const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
 
 let szDecimalsMap: Map<string, number> | null = null;
-let szDecimalsFetchedAt = 0;
-const SZ_DECIMALS_TTL_MS = 60 * 60 * 1000;
+let maxLeverageMap: Map<string, number> | null = null;
+let metaFetchedAt = 0;
+const META_TTL_MS = 60 * 60 * 1000;
 
-async function getSzDecimals(): Promise<Map<string, number>> {
-  if (szDecimalsMap && Date.now() - szDecimalsFetchedAt < SZ_DECIMALS_TTL_MS) {
-    return szDecimalsMap;
-  }
+async function fetchMeta(): Promise<void> {
+  if (szDecimalsMap && maxLeverageMap && Date.now() - metaFetchedAt < META_TTL_MS) return;
   const sdk = getClient();
   const meta = await sdk.info.perpetuals.getMeta(true);
   szDecimalsMap = new Map<string, number>();
+  maxLeverageMap = new Map<string, number>();
   for (const asset of meta.universe) {
     szDecimalsMap.set(asset.name, asset.szDecimals);
+    maxLeverageMap.set(asset.name, asset.maxLeverage);
   }
-  szDecimalsFetchedAt = Date.now();
-  console.log(`[Quant Live] Loaded szDecimals for ${szDecimalsMap.size} pairs`);
-  return szDecimalsMap;
+  metaFetchedAt = Date.now();
+  console.log(`[Quant Live] Loaded meta for ${szDecimalsMap.size} pairs`);
+}
+
+async function getSzDecimals(): Promise<Map<string, number>> {
+  await fetchMeta();
+  return szDecimalsMap!;
+}
+
+function getMaxLeverage(pair: string): number {
+  return maxLeverageMap?.get(pair) ?? 100;
 }
 
 function roundSize(size: number, decimals: number): number {
@@ -200,7 +209,12 @@ export async function liveOpenPosition(
     await ensureConnected();
     const sdk = getClient();
 
-    // Balance checked by exchange on submit
+    await fetchMeta();
+    const maxLev = getMaxLeverage(pair);
+    if (leverage > maxLev) {
+      console.log(`[Quant Live] ${pair} leverage clamped ${leverage}x -> ${maxLev}x (exchange max)`);
+      leverage = maxLev;
+    }
 
     const levOk = await setLeverage(pair, leverage);
     if (!levOk) {

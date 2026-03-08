@@ -21,6 +21,7 @@ let storedAccountIndex = 0;
 let marketIndexMap: Map<string, number> | null = null;
 let marketSizeDecimals: Map<number, number> | null = null;
 let marketPriceDecimals: Map<number, number> | null = null;
+let marketMaxLeverage: Map<string, number> | null = null;
 let marketIndexFetchedAt = 0;
 const MARKET_INDEX_TTL_MS = 60 * 60 * 1000;
 
@@ -127,6 +128,7 @@ async function refreshMarketIndex(): Promise<void> {
         const newIndexMap = new Map<string, number>();
         const newSizeDecimals = new Map<number, number>();
         const newPriceDecimals = new Map<number, number>();
+        const newMaxLeverage = new Map<string, number>();
 
         for (const book of books) {
           const base = book.symbol.split("_")[0];
@@ -137,10 +139,22 @@ async function refreshMarketIndex(): Promise<void> {
           }
         }
 
-        // Atomic swap — never leave maps empty on failure
+        // Fetch max leverage from orderBookDetails
+        try {
+          const detailResp = await withTimeout(api.orderBookDetails(undefined, "perp" as any), API_PRICE_TIMEOUT_MS, "Lighter orderBookDetails");
+          for (const d of detailResp.data.order_book_details ?? []) {
+            const base = d.symbol.split("_")[0];
+            if (base && d.min_initial_margin_fraction > 0) {
+              newMaxLeverage.set(base, Math.floor(10000 / d.min_initial_margin_fraction));
+            }
+          }
+        } catch { /* non-fatal, leverage will use requested value */ }
+
+        // Atomic swap
         marketIndexMap = newIndexMap;
         marketSizeDecimals = newSizeDecimals;
         marketPriceDecimals = newPriceDecimals;
+        marketMaxLeverage = newMaxLeverage;
         marketIndexFetchedAt = Date.now();
         console.log(`[Lighter] Discovered ${marketIndexMap.size} perp markets`);
       } finally {
@@ -155,6 +169,11 @@ async function refreshMarketIndex(): Promise<void> {
 export async function getMarketIndex(pair: string): Promise<number | null> {
   await refreshMarketIndex();
   return marketIndexMap?.get(pair) ?? null;
+}
+
+export async function getLighterMaxLeverage(pair: string): Promise<number> {
+  await refreshMarketIndex();
+  return marketMaxLeverage?.get(pair) ?? 100;
 }
 
 export async function getMarketSizeDecimals(marketId: number): Promise<number> {

@@ -4,6 +4,7 @@ import {
   getMarketSizeDecimals,
   getMarketPriceDecimals,
   getLighterMidPrice,
+  getLighterMaxLeverage,
   getNextNonce,
   resetNonce,
   toBaseUnits,
@@ -114,6 +115,12 @@ export async function lighterOpenPosition(
     }
 
     const client = getSignerClient();
+
+    const maxLev = await getLighterMaxLeverage(pair);
+    if (leverage > maxLev) {
+      console.log(`[Lighter Executor] ${pair} leverage clamped ${leverage}x -> ${maxLev}x (exchange max)`);
+      leverage = maxLev;
+    }
 
     // Set leverage
     try {
