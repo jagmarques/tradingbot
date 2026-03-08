@@ -42,10 +42,11 @@ export async function openPosition(
 
   const mode = getTradingMode();
   const exchange = getEngineExchange(tradeType);
-  // hybrid: Lighter engines go live
+  // hybrid: Lighter engines + AI go live
   const useLive =
     mode === "live" ||
-    (mode === "hybrid" && exchange === "lighter");
+    (mode === "hybrid" && exchange === "lighter") ||
+    (mode === "hybrid" && tradeType === "ai-directional");
 
   if (exchange === "lighter") {
     if (useLive) {
