@@ -8,7 +8,7 @@ import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { notifyCriticalError } from "../telegram/notifications.js";
 
-// Per-engine stagnation: bar count × 4h. Falls back for non-indicator types.
+// Per-engine stagnation: bar count x 4h
 const H4_MS = 4 * 60 * 60 * 1000;
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "cci-directional": CCI_STAGNATION_BARS * H4_MS,
@@ -20,6 +20,10 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "dema-directional": DEMA_STAGNATION_BARS * H4_MS,
   "hma-directional": HMA_STAGNATION_BARS * H4_MS,
 };
+
+// Trailing stop: hardcoded 5% activation, 2% trail (backtest-validated)
+const TRAIL_ACTIVATION = 5;
+const TRAIL_DISTANCE = 2;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
@@ -88,9 +92,12 @@ async function checkPositionStops(): Promise<void> {
     if (lighterPositions.length > 0 && isLighterInitialized()) {
       const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
       try {
+        // Each individual call inside getLighterAllMids already has its own timeout.
+        // Outer timeout must account for N sequential calls + 200ms inter-request delays.
+        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + 300);
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
-          API_PRICE_TIMEOUT_MS, "Lighter getAllMids",
+          outerTimeoutMs, "Lighter getAllMids",
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -153,9 +160,8 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      if (peak > 5) {
-        // Absolute trail: close if P&L drops more than 2% from peak
-        const trailTrigger = peak - 2;
+      if (peak > TRAIL_ACTIVATION) {
+        const trailTrigger = peak - TRAIL_DISTANCE;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(
             `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (trail trigger: ${trailTrigger.toFixed(2)}%)`,

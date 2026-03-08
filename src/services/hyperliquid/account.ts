@@ -9,17 +9,26 @@ export async function getAccountBalance(walletAddress: string): Promise<{
   try {
     await ensureConnected();
     const sdk = getClient();
-    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddress, true);
+    const [state, spotState] = await Promise.all([
+      sdk.info.perpetuals.getClearinghouseState(walletAddress, true),
+      sdk.info.spot.getSpotClearinghouseState(walletAddress).catch(() => ({ balances: [] })),
+    ]);
 
-    const equity = parseFloat(state.marginSummary.accountValue);
+    const perpsEquity = parseFloat(state.marginSummary.accountValue);
     const totalMarginUsed = parseFloat(state.marginSummary.totalMarginUsed);
+
+    // Add free spot USDC (total - hold; hold is already counted in perps equity)
+    const usdcSpot = spotState.balances.find(b => b.coin === "USDC-SPOT");
+    const spotUsdcFree = usdcSpot ? parseFloat(usdcSpot.total) - parseFloat(usdcSpot.hold) : 0;
+
+    const equity = perpsEquity + spotUsdcFree;
     const balance = equity - totalMarginUsed;
 
     const unrealizedPnl = state.assetPositions.reduce((sum, ap) => {
       return sum + parseFloat(ap.position.unrealizedPnl);
     }, 0);
 
-    console.log(`[Hyperliquid] Balance: $${equity.toFixed(2)} equity`);
+    console.log(`[Hyperliquid] Balance: $${equity.toFixed(2)} equity (perps $${perpsEquity.toFixed(2)} + spot $${spotUsdcFree.toFixed(2)})`);
     return { balance, equity, unrealizedPnl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
