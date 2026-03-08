@@ -179,7 +179,6 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "psar-directional": "lighter",
   "zlema-directional": "lighter",
   "hma-directional": "lighter",
-  "dema-directional": "lighter",
 };
 
 export function getEngineExchange(tradeType: string): QuantExchange {
