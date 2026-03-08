@@ -81,11 +81,11 @@ async function cancelExchangeStop(pair: string): Promise<void> {
     if (err instanceof TimeoutError) resetNonce();
   }
   exchangeStopPairs.delete(pair);
-  // Re-place stops for other positions
+  // Re-place stops sequentially (nonce sync)
   for (const pos of getLighterLivePositions()) {
     if (pos.pair !== pair && exchangeStopPairs.has(pos.pair)) {
       exchangeStopPairs.delete(pos.pair);
-      void placeExchangeStop(pos);
+      await placeExchangeStop(pos);
     }
   }
 }
@@ -225,6 +225,7 @@ export async function lighterOpenPosition(
     const orderErr = getOrderError(orderResult);
     if (orderErr) {
       console.error(`[Lighter Executor] Order failed for ${pair}: ${orderErr}`);
+      if (orderErr.includes("nonce")) resetNonce();
       const isMarginErr = orderErr.toLowerCase().includes("margin") || orderErr.toLowerCase().includes("insufficient");
       if (!isMarginErr) {
         void notifyCriticalError(`Lighter order failed: ${pair} ${direction} $${sizeUsd} — ${orderErr}`, "LighterExecutor");
@@ -474,6 +475,7 @@ export async function lighterClosePosition(
     const closeErr = getOrderError(closeResult);
     if (closeErr) {
       console.error(`[Lighter Executor] Close failed for ${position.pair}: ${closeErr}`);
+      if (closeErr.includes("nonce")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
       return { success: false, pnl: 0 };
     }
