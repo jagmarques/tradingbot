@@ -13,6 +13,7 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
+  "ai-directional",
   "psar-directional",
   "zlema-directional",
   "vortex-directional",

@@ -1,3 +1,6 @@
+import { analyzeWithAI } from "./ai-analyzer.js";
+import { fetchDailyCandles, computeDailySma } from "./daily-indicators.js";
+import { calculateQuantPositionSize } from "./kelly.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { runPsarDecisionEngine } from "./psar-engine.js";
 import { runZlemaDecisionEngine } from "./zlema-engine.js";
@@ -9,6 +12,7 @@ import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
+import type { QuantAIDecision } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -56,6 +60,25 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const analyses = await runMarketDataPipeline();
 
+    // AI engine (DeepSeek, runs on Hyperliquid paper)
+    const aiDecisions: QuantAIDecision[] = [];
+    for (const analysis of analyses) {
+      const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
+      const closes = dailyCandles.map((c) => c.close);
+      const sma50 = computeDailySma(closes, 50, closes.length - 1);
+      const markPrice = analysis.markPrice;
+      let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
+      if (sma50 !== null) {
+        const direction = markPrice > sma50 * 1.01 ? "bullish" : markPrice < sma50 * 0.99 ? "bearish" : "neutral";
+        dailyTrend = { direction, price: markPrice, sma50 };
+      }
+      const decision = await analyzeWithAI(analysis, dailyTrend);
+      if (!decision || decision.direction === "flat") continue;
+      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
+      if (sizeUsd <= 0) continue;
+      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
+    }
+
     // Technical engines always run (routed to paper in executor.ts)
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
@@ -86,8 +109,21 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       }
     }
 
+    // Record AI signals for smart trailing
+    for (const d of aiDecisions) {
+      const key = `ai-directional:${d.pair}`;
+      if (d.direction === "flat") {
+        lastSignals.delete(key);
+      } else {
+        lastSignals.set(key, d.direction);
+      }
+    }
+
     const openPositions = getOpenQuantPositions();
 
+    const aiOpenPairs = new Set(
+      openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType).map(p => p.pair),
+    );
     const psarOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "psar-directional").map(p => p.pair),
     );
@@ -109,6 +145,19 @@ const vortexOpenPairs = new Set(
     const cciOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "cci-directional").map(p => p.pair),
     );
+
+    let aiExecuted = 0;
+    for (const decision of aiDecisions) {
+      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+      if (aiOpenPairs.has(decision.pair)) continue;
+      if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 3, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
+      if (position) {
+        aiExecuted++;
+        aiOpenPairs.add(decision.pair);
+        console.log(`[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+      }
+    }
 
     let psarExecuted = 0;
     for (const decision of psarDecisions) {
@@ -296,7 +345,7 @@ const vortexOpenPairs = new Set(
     }
 
     console.log(
-      `[QuantScheduler] Cycle complete: PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, PSAR ${psarExecuted}/${psarDecisions.length}, ZLEMA ${zlemaExecuted}/${zlemaDecisions.length}, Vortex ${vortexExecuted}/${vortexDecisions.length}, Schaff ${schaffExecuted}/${schaffDecisions.length}, DEMA ${demaExecuted}/${demaDecisions.length}, HMA ${hmaExecuted}/${hmaDecisions.length}, CCI ${cciExecuted}/${cciDecisions.length}`,
     );
   } finally {
     cycleRunning = false;

@@ -2708,6 +2708,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
+    ["AI", "ai-directional"],
     ["PSAR", "psar-directional"], ["ZLEMA", "zlema-directional"],
     ["Vortex", "vortex-directional"], ["Schaff", "schaff-directional"],
     ["DEMA", "dema-directional"], ["HMA", "hma-directional"],

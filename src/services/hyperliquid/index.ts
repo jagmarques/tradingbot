@@ -121,6 +121,9 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
+// AI Engine
+export { analyzeWithAI, runAIDecisionEngine, clearAICache, clearAICacheForPair, getCachedAIDecision } from "./ai-analyzer.js";
+
 // Directional Engines
 export { runPsarDecisionEngine } from "./psar-engine.js";
 export { runZlemaDecisionEngine } from "./zlema-engine.js";
