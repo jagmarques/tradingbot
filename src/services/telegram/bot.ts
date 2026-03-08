@@ -1091,8 +1091,10 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     if (tm === "hybrid") {
       const db = (await import("../database/db.js")).getDb();
-      const hlRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number }).total;
-      const ltRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number }).total;
+      const hlClosedQ = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total, COUNT(*) as cnt FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number; cnt: number };
+      const ltClosedQ = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total, COUNT(*) as cnt FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number; cnt: number };
+      const hlRealizedQ = hlClosedQ.total;
+      const ltRealizedQ = ltClosedQ.total;
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
       const { getOpenQuantPositions: getQPos } = await import("../hyperliquid/executor.js");
       const qOpen = getQPos();
@@ -1124,8 +1126,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       } catch { /* non-fatal */ }
 
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
-      message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
+      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}/${hlClosedQ.cnt + hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
+      message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
       if (hlMarginLine || ltMarginLine) message += "\n";
       if (hlMarginLine) message += hlMarginLine;
       if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
