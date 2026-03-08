@@ -1104,7 +1104,14 @@ async function handlePnl(ctx: Context): Promise<void> {
         if (wallet) {
           const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
           const hlUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
-          const hlEq = parseFloat(state.marginSummary.accountValue) || 0;
+          let hlEq = parseFloat(state.marginSummary.accountValue) || 0;
+          if (hlEq <= hlUsed) {
+            try {
+              const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+              const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
+              if (usdcBal) hlEq += parseFloat(usdcBal.total) || 0;
+            } catch { /* ignore */ }
+          }
           const hlFree = Math.max(0, hlEq - hlUsed);
           hlMarginLine = `HL: $${hlUsed.toFixed(0)} locked | $${hlFree.toFixed(0)} free`;
         }
