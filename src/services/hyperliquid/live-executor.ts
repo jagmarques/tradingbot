@@ -58,9 +58,10 @@ function roundSize(size: number, decimals: number): number {
 }
 
 function roundPrice(price: number): number {
-  if (price >= 1000) return Math.round(price * 100) / 100;
-  if (price >= 1) return Math.round(price * 10000) / 10000;
-  return Math.round(price * 1000000) / 1000000;
+  if (price === 0 || !isFinite(price)) return 0;
+  const magnitude = Math.floor(Math.log10(Math.abs(price)));
+  const factor = 10 ** (4 - magnitude); // 5 significant figures
+  return Math.round(price * factor) / factor;
 }
 
 async function placeExchangeStop(position: QuantPosition): Promise<void> {
@@ -120,14 +121,14 @@ export function initLiveEngine(): void {
     livePositions.set(pos.id, pos);
   }
   console.log(`[Quant Live] Init: ${liveOnly.length} live positions restored from DB`);
-  setTimeout(async () => { // re-place stops
+  setTimeout(async () => {
+    await reconcileWithExchange();
     for (const pos of getLivePositions()) {
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos);
       }
     }
   }, 15_000);
-  setTimeout(() => void reconcileWithExchange(), 30_000);
   setInterval(() => void reconcileWithExchange(), 5 * 60 * 1000);
 }
 
