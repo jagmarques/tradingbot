@@ -139,11 +139,18 @@ async function reconcileWithExchange(): Promise<void> {
     if (!wallet) return;
 
     const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+    const equity = parseFloat(state.marginSummary.accountValue);
     const exchangePositions = state.assetPositions
       .filter((ap: any) => parseFloat(ap.position.szi) !== 0);
     const exchangeCoins = new Set(exchangePositions.map((ap: any) => ap.position.coin as string));
 
     const trackedPairs = new Set(getLivePositions().map(p => p.pair));
+
+    // Unified account: perps returns $0, skip phantom detection
+    if (equity === 0 && exchangeCoins.size === 0 && trackedPairs.size > 0) {
+      console.log(`[Quant Live] Reconcile skipped: unified account, ${trackedPairs.size} tracked`);
+      return;
+    }
 
     for (const coin of exchangeCoins) { // orphan check
       if (!trackedPairs.has(coin) && !openingPairs.has(coin)) {
@@ -259,7 +266,7 @@ export async function liveOpenPosition(
     await ensureConnected();
     const sdk = getClient();
 
-    try { // margin check
+    try {
       const env = loadEnv();
       const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
       if (wallet) {
@@ -267,14 +274,16 @@ export async function liveOpenPosition(
         const equity = parseFloat(state.marginSummary.accountValue);
         const marginUsed = parseFloat(state.marginSummary.totalMarginUsed);
         const availableMargin = equity - marginUsed;
-        if (availableMargin < sizeUsd) {
+        if (equity > 0 && availableMargin < sizeUsd) {
           console.log(`[Quant Live] ${pair} skipped: insufficient margin ($${availableMargin.toFixed(2)} available, need $${sizeUsd})`);
           return null;
+        }
+        if (equity === 0) {
+          console.log(`[Quant Live] ${pair} unified account, skipping margin pre-check`);
         }
       }
     } catch (marginErr) {
       console.error(`[Quant Live] Margin check failed for ${pair}: ${marginErr instanceof Error ? marginErr.message : marginErr}`);
-      return null;
     }
 
     await fetchMeta();
@@ -683,7 +692,13 @@ export async function getLiveBalance(): Promise<number> {
     if (!wallet) return 0;
 
     const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
-    return parseFloat(state.marginSummary.accountValue);
+    const perpsValue = parseFloat(state.marginSummary.accountValue);
+    if (perpsValue > 0) return perpsValue;
+
+    // Unified account fallback
+    const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+    const usdcBalance = spotState.balances?.find((b: any) => b.coin === "USDC");
+    return usdcBalance ? parseFloat(usdcBalance.total) : 0;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Quant Live] Failed to fetch balance: ${msg}`);
