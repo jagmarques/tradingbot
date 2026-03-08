@@ -19,7 +19,6 @@ export interface QuantPosition {
   tradeType?: TradeType;
   spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
   maxUnrealizedPnlPct?: number; // High-water mark for trailing stop
-  aiAgreed?: boolean | null; // Whether the cached AI agreed with this trade direction at open time
 }
 
 export interface QuantTrade {
@@ -35,14 +34,11 @@ export interface QuantTrade {
   mode: "paper" | "live";
   exchange?: "hyperliquid" | "lighter";
   status: "open" | "closed" | "failed";
-  aiConfidence: number | undefined;
-  aiReasoning: string | undefined;
   exitReason?: string;
   indicatorsAtEntry?: string; // JSON-stringified TechnicalIndicators snapshot at entry time
   createdAt: string; // ISO date
   updatedAt: string; // ISO date
   tradeType?: TradeType;
-  aiAgreed?: boolean | null; // Whether the cached AI agreed with this trade direction at open time
 }
 
 export interface QuantAccountState {
@@ -93,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "ai-directional" | "funding" | "psar-directional" | "zlema-directional" | "elder-impulse-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "hma-directional" | "cci-directional";
+export type TradeType = "directional" | "funding" | "psar-directional" | "zlema-directional" | "elder-impulse-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "hma-directional" | "cci-directional";
 
 export interface FundingOpportunity {
   pair: string;

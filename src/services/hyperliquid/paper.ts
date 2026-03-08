@@ -13,7 +13,6 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
-  "ai-directional",
   "psar-directional",
   "zlema-directional",
   "elder-impulse-directional",
@@ -26,10 +25,8 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
 
 const paperPositions = new Map<string, QuantPosition>();
 
-// AI context per position
+// Context per position
 const positionContext = new Map<string, {
-  aiConfidence?: number;
-  aiReasoning?: string;
   indicatorsAtEntry?: string;
 }>();
 
@@ -150,12 +147,9 @@ export async function paperOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
-  tradeType: TradeType = "ai-directional",
-  aiConfidence?: number,
-  aiReasoning?: string,
+  tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
-  aiAgreed?: boolean | null,
   exchange?: "hyperliquid" | "lighter",
 ): Promise<QuantPosition | null> {
   const price = await fetchMidPriceForExchange(pair, exchange);
@@ -198,12 +192,11 @@ export async function paperOpenPosition(
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType,
-    aiAgreed: aiAgreed !== undefined ? aiAgreed : null,
   };
 
   paperPositions.set(position.id, position);
   saveQuantPosition(position);
-  positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
+  positionContext.set(position.id, { indicatorsAtEntry });
   void notifyQuantTradeEntry({
     pair,
     direction,
@@ -290,14 +283,11 @@ export async function paperClosePosition(
     fees,
     mode: "paper",
     status: "closed",
-    aiConfidence: ctx?.aiConfidence,
-    aiReasoning: ctx?.aiReasoning,
     exitReason: reason,
     indicatorsAtEntry: ctx?.indicatorsAtEntry,
     createdAt: position.openedAt,
     updatedAt: now,
     tradeType: position.tradeType ?? "directional",
-    aiAgreed: position.aiAgreed,
     exchange: position.exchange,
   });
   positionContext.delete(positionId);

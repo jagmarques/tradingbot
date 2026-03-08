@@ -2042,11 +2042,10 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     // 16. Clear all in-memory caches
     const { clearWatcherMemory } = await import("../traders/watcher.js");
     const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
-    const { clearPaperMemory, clearAICache: clearQuantAICache, resetDailyDrawdown } = await import("../hyperliquid/index.js");
+    const { clearPaperMemory, resetDailyDrawdown } = await import("../hyperliquid/index.js");
     clearWatcherMemory();
     clearCopyPriceFailures();
     clearPaperMemory();
-    clearQuantAICache();
     resetDailyDrawdown();
 
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
@@ -2165,12 +2164,11 @@ async function handleModeConfirmLive(ctx: Context): Promise<void> {
     const { clearCryptoCopyMemory } = await import("../copy/executor.js");
     const { clearWatcherMemory } = await import("../traders/watcher.js");
     const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
-    const { clearPaperMemory, clearAICache: clearQuantAICache, resetDailyDrawdown } = await import("../hyperliquid/index.js");
+    const { clearPaperMemory, resetDailyDrawdown } = await import("../hyperliquid/index.js");
     clearCryptoCopyMemory();
     clearWatcherMemory();
     clearCopyPriceFailures();
     clearPaperMemory();
-    clearQuantAICache();
     resetDailyDrawdown();
 
     setTradingMode("hybrid");
@@ -2684,7 +2682,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const openCountByKey = new Map<string, number>();
   const deployedByKey = new Map<string, number>();
   for (const pos of openPositions) {
-    const type = pos.tradeType ?? "ai-directional";
+    const type = pos.tradeType ?? "directional";
     const m = pos.mode === "live" ? "live" : "paper";
     const key = makeKey(type, m);
     openCountByKey.set(key, (openCountByKey.get(key) ?? 0) + 1);
@@ -2726,7 +2724,6 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["Elder", "elder-impulse-directional"], ["Vortex", "vortex-directional"],
     ["Schaff", "schaff-directional"], ["DEMA", "dema-directional"],
     ["HMA", "hma-directional"], ["CCI", "cci-directional"],
-    ["AI", "ai-directional"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

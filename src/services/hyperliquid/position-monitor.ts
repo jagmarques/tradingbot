@@ -6,8 +6,7 @@ import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
-import { getCachedAIDecision } from "./ai-analyzer.js";
-import { notifyQuantAIFlip, notifyCriticalError } from "../telegram/notifications.js";
+import { notifyCriticalError } from "../telegram/notifications.js";
 
 // Per-engine stagnation: bar count × 4h. Falls back for non-indicator types.
 const H4_MS = 4 * 60 * 60 * 1000;
@@ -25,7 +24,6 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
 
-const aiFlipAlerted = new Set<string>();
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
 const CRITICAL_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
@@ -36,17 +34,6 @@ function throttledCriticalAlert(msg: string, context: string): void {
   lastCriticalAlertMs = now;
   void notifyCriticalError(msg, context);
 }
-
-const ENGINE_TAG: Record<string, string> = {
-  "psar-directional": "PSAR",
-  "zlema-directional": "ZLEMA",
-  "elder-impulse-directional": "Elder",
-  "vortex-directional": "Vortex",
-  "schaff-directional": "Schaff",
-  "dema-directional": "DEMA",
-  "hma-directional": "HMA",
-  "cci-directional": "CCI",
-};
 
 async function tryClose(position: QuantPosition, reason: string): Promise<void> {
   const result = await closePosition(position.id, reason);
@@ -129,30 +116,6 @@ async function checkPositionStops(): Promise<void> {
       if (isNaN(currentPrice)) {
         console.log(`[PositionMonitor] Invalid price for ${position.pair}: ${rawPrice}, skipping`);
         continue;
-      }
-
-      // AI flip detection for technical positions
-      const tradeType = position.tradeType ?? "";
-      if (tradeType !== "ai-directional" && tradeType !== "directional" && tradeType !== "funding") {
-        const aiDecision = getCachedAIDecision(position.pair);
-        if (aiDecision && aiDecision.direction !== "flat") {
-          const conflicts =
-            (position.direction === "long" && aiDecision.direction === "short") ||
-            (position.direction === "short" && aiDecision.direction === "long");
-          if (conflicts && !aiFlipAlerted.has(position.id)) {
-            aiFlipAlerted.add(position.id);
-            const tag = ENGINE_TAG[tradeType] ?? tradeType;
-            console.log(`[QuantMonitor] AI flip: ${tag} ${position.direction} ${position.pair} — AI now ${aiDecision.direction} (${aiDecision.confidence}%)`);
-            void notifyQuantAIFlip({
-              pair: position.pair,
-              direction: position.direction,
-              engineTag: tag,
-              aiDirection: aiDecision.direction,
-              aiConfidence: aiDecision.confidence,
-              positionMode: position.mode,
-            });
-          }
-        }
       }
 
       // Paper liquidation check (live positions are liquidated by exchange)
@@ -253,9 +216,6 @@ async function checkPositionStops(): Promise<void> {
 
     // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
-    for (const id of aiFlipAlerted) {
-      if (!openIds.has(id)) aiFlipAlerted.delete(id);
-    }
     for (const id of closeFailCounts.keys()) {
       if (!openIds.has(id)) closeFailCounts.delete(id);
     }

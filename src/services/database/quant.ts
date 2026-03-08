@@ -26,12 +26,12 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.fees,
     trade.mode,
     trade.status,
-    trade.aiConfidence ?? null,
-    trade.aiReasoning ?? null,
+    null, // ai_confidence (column kept for DB compat)
+    null, // ai_reasoning (column kept for DB compat)
     trade.exitReason ?? null,
     trade.indicatorsAtEntry ?? null,
     trade.tradeType ?? "directional",
-    trade.aiAgreed !== undefined ? (trade.aiAgreed === null ? null : trade.aiAgreed ? 1 : 0) : null,
+    null, // ai_agreed (column kept for DB compat)
     trade.exchange ?? "hyperliquid",
     trade.createdAt,
   );
@@ -61,7 +61,7 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.stopLoss ?? null,
     position.takeProfit ?? null,
     position.maxUnrealizedPnlPct ?? null,
-    position.aiAgreed !== undefined ? (position.aiAgreed === null ? null : position.aiAgreed ? 1 : 0) : null,
+    null, // ai_agreed (column kept for DB compat)
     position.exchange ?? "hyperliquid",
   );
 }
@@ -83,7 +83,6 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     opened_at: string;
     closed_at: string | null;
     trade_type: string | null;
-    ai_agreed: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -106,7 +105,6 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType: (row.trade_type ?? "directional") as TradeType,
-    aiAgreed: row.ai_agreed === null ? null : row.ai_agreed === 1,
   }));
 }
 
@@ -136,7 +134,6 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     created_at: string;
     updated_at: string;
     trade_type: string | null;
-    ai_agreed: number | null;
   }>;
 
   return rows.map((row) => ({
@@ -151,14 +148,11 @@ export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
     fees: row.fees,
     mode: row.mode as "paper" | "live",
     status: row.status as "open" | "closed" | "failed",
-    aiConfidence: row.ai_confidence ?? undefined,
-    aiReasoning: row.ai_reasoning ?? undefined,
     exitReason: row.exit_reason ?? undefined,
     indicatorsAtEntry: row.indicators_at_entry ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     tradeType: (row.trade_type ?? "directional") as TradeType,
-    aiAgreed: row.ai_agreed === null ? null : row.ai_agreed === 1,
     exchange: ((row as Record<string, unknown>).exchange as string | null) === "lighter" ? "lighter" as const : "hyperliquid" as const,
   }));
 }
@@ -366,19 +360,10 @@ export function getTotalRealizedPnl(): number {
 
 export function getTotalRealizedPnlByType(tradeType: TradeType): number {
   const db = getDb();
-  let row: { total_pnl: number };
-  if (tradeType === "ai-directional") {
-    // Backward compat: old records stored as 'directional' or NULL were AI trades
-    row = db.prepare(`
-      SELECT COALESCE(SUM(pnl), 0) as total_pnl
-      FROM quant_trades WHERE status = 'closed' AND (trade_type IN ('ai-directional', 'directional') OR trade_type IS NULL)
-    `).get() as { total_pnl: number };
-  } else {
-    row = db.prepare(`
-      SELECT COALESCE(SUM(pnl), 0) as total_pnl
-      FROM quant_trades WHERE status = 'closed' AND trade_type = ?
-    `).get(tradeType) as { total_pnl: number };
-  }
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(pnl), 0) as total_pnl
+    FROM quant_trades WHERE status = 'closed' AND trade_type = ?
+  `).get(tradeType) as { total_pnl: number };
   return row.total_pnl;
 }
 

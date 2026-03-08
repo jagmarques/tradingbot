@@ -16,8 +16,6 @@ const MAX_SLIPPAGE = 0.005;
 
 const livePositions = new Map<string, QuantPosition>();
 const positionContext = new Map<string, {
-  aiConfidence?: number;
-  aiReasoning?: string;
   indicatorsAtEntry?: string;
 }>();
 const closingSet = new Set<string>();
@@ -195,10 +193,9 @@ async function reconcileWithExchange(): Promise<void> {
         id: pos.id, pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
         pnl, fees, mode: "live", status: "closed",
-        aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
         exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
         createdAt: pos.openedAt, updatedAt: now,
-        tradeType: pos.tradeType ?? "ai-directional", aiAgreed: pos.aiAgreed,
+        tradeType: pos.tradeType ?? "directional",
       });
       positionContext.delete(pos.id);
       await cancelExchangeStop(pos.id, pos.pair);
@@ -206,7 +203,7 @@ async function reconcileWithExchange(): Promise<void> {
       void notifyQuantTradeExit({
         pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-        pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "ai-directional",
+        pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "directional",
         positionMode: "live",
       });
       console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
@@ -249,12 +246,9 @@ export async function liveOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
-  tradeType: TradeType = "ai-directional",
-  aiConfidence?: number,
-  aiReasoning?: string,
+  tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
-  aiAgreed?: boolean | null,
 ): Promise<QuantPosition | null> {
   if (openingPairs.has(pair)) {
     console.log(`[Quant Live] Open already in progress for ${pair}, skipping`);
@@ -424,7 +418,6 @@ export async function liveOpenPosition(
       realizedPnl: undefined,
       exitReason: undefined,
       tradeType,
-      aiAgreed: aiAgreed !== undefined ? aiAgreed : null,
     };
 
     if (Math.abs(actualSizeUsd - sizeUsd) > 0.5) {
@@ -445,7 +438,7 @@ export async function liveOpenPosition(
       return null;
     }
     livePositions.set(position.id, position);
-    positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
+    positionContext.set(position.id, { indicatorsAtEntry });
 
     void notifyQuantTradeEntry({
       pair, direction, size: actualSizeUsd, entryPrice: fillPrice,
@@ -591,14 +584,11 @@ export async function liveClosePosition(
       fees,
       mode: "live",
       status: "closed",
-      aiConfidence: ctx?.aiConfidence,
-      aiReasoning: ctx?.aiReasoning,
       exitReason: reason,
       indicatorsAtEntry: ctx?.indicatorsAtEntry,
       createdAt: position.openedAt,
       updatedAt: now,
-      tradeType: position.tradeType ?? "ai-directional",
-      aiAgreed: position.aiAgreed,
+      tradeType: position.tradeType ?? "directional",
     });
     positionContext.delete(positionId);
 
@@ -609,7 +599,7 @@ export async function liveClosePosition(
     void notifyQuantTradeExit({
       pair: position.pair, direction: position.direction,
       entryPrice: position.entryPrice, exitPrice, size: position.size,
-      pnl, exitReason: reason, tradeType: position.tradeType ?? "ai-directional",
+      pnl, exitReason: reason, tradeType: position.tradeType ?? "directional",
       positionMode: "live",
     });
 
@@ -655,10 +645,9 @@ export async function liveClosePosition(
               entryPrice: position.entryPrice, exitPrice: reconPrice,
               size: position.size, leverage: position.leverage,
               pnl: estPnl, fees, mode: "live", status: "closed",
-              aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
               exitReason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
               createdAt: position.openedAt, updatedAt: now,
-              tradeType: position.tradeType ?? "ai-directional", aiAgreed: position.aiAgreed,
+              tradeType: position.tradeType ?? "directional",
             });
             positionContext.delete(positionId);
             if (reason === "stop-loss") {
@@ -667,7 +656,7 @@ export async function liveClosePosition(
             void notifyQuantTradeExit({
               pair: position.pair, direction: position.direction,
               entryPrice: position.entryPrice, exitPrice: reconPrice, size: position.size,
-              pnl: estPnl, exitReason, tradeType: position.tradeType ?? "ai-directional",
+              pnl: estPnl, exitReason, tradeType: position.tradeType ?? "directional",
               positionMode: "live",
             });
             console.log(`[Quant Live] CLOSE ${position.pair} pnl=${estPnl >= 0 ? "+" : ""}$${estPnl.toFixed(2)} (${exitReason}) @ ${reconPrice}`);

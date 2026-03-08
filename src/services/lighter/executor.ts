@@ -31,8 +31,6 @@ const openingPairs = new Set<string>();
 const exchangeStopPairs = new Set<string>();
 
 const positionContext = new Map<string, {
-  aiConfidence?: number;
-  aiReasoning?: string;
   indicatorsAtEntry?: string;
 }>();
 
@@ -129,12 +127,9 @@ export async function lighterOpenPosition(
   leverage: number,
   stopLoss: number,
   takeProfit: number,
-  tradeType: TradeType = "ai-directional",
-  aiConfidence?: number,
-  aiReasoning?: string,
+  tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
-  aiAgreed?: boolean | null,
 ): Promise<QuantPosition | null> {
   if (openingPairs.has(pair)) {
     console.log(`[Lighter Executor] Open already in progress for ${pair}`);
@@ -314,7 +309,6 @@ export async function lighterOpenPosition(
       realizedPnl: undefined,
       exitReason: undefined,
       tradeType,
-      aiAgreed: aiAgreed !== undefined ? aiAgreed : null,
     };
 
     try {
@@ -340,7 +334,7 @@ export async function lighterOpenPosition(
       return null;
     }
     lighterPositions.set(position.id, position);
-    positionContext.set(position.id, { aiConfidence, aiReasoning, indicatorsAtEntry });
+    positionContext.set(position.id, { indicatorsAtEntry });
 
     void notifyQuantTradeEntry({
       pair, direction, size: actualSizeUsd, entryPrice: fillPrice,
@@ -441,17 +435,16 @@ export async function lighterClosePosition(
           entryPrice: position.entryPrice, exitPrice: position.entryPrice,
           size: position.size, leverage: position.leverage, pnl: 0, fees: 0,
           mode: "live", exchange: "lighter", status: "closed",
-          aiConfidence: ctx?.aiConfidence, aiReasoning: ctx?.aiReasoning,
           exitReason: "phantom-not-on-exchange", indicatorsAtEntry: ctx?.indicatorsAtEntry,
           createdAt: position.openedAt, updatedAt: now,
-          tradeType: position.tradeType ?? "ai-directional", aiAgreed: position.aiAgreed,
+          tradeType: position.tradeType ?? "directional",
         });
         positionContext.delete(positionId);
         void notifyCriticalError(`PHANTOM: ${position.pair} ${position.direction} not on Lighter exchange`, "LighterExecutor");
         void notifyQuantTradeExit({
           pair: position.pair, direction: position.direction,
           entryPrice: position.entryPrice, exitPrice: position.entryPrice, size: position.size,
-          pnl: 0, exitReason: "phantom-not-on-exchange", tradeType: position.tradeType ?? "ai-directional",
+          pnl: 0, exitReason: "phantom-not-on-exchange", tradeType: position.tradeType ?? "directional",
           positionMode: "live",
         });
         console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=$0.00 (phantom-not-on-exchange) @ ${position.entryPrice}`);
@@ -537,14 +530,11 @@ export async function lighterClosePosition(
       mode: "live",
       exchange: "lighter",
       status: "closed",
-      aiConfidence: ctx?.aiConfidence,
-      aiReasoning: ctx?.aiReasoning,
       exitReason: reason,
       indicatorsAtEntry: ctx?.indicatorsAtEntry,
       createdAt: position.openedAt,
       updatedAt: now,
-      tradeType: position.tradeType ?? "ai-directional",
-      aiAgreed: position.aiAgreed,
+      tradeType: position.tradeType ?? "directional",
     });
     positionContext.delete(positionId);
 
@@ -555,7 +545,7 @@ export async function lighterClosePosition(
     void notifyQuantTradeExit({
       pair: position.pair, direction: position.direction,
       entryPrice: position.entryPrice, exitPrice, size: position.size,
-      pnl, exitReason: reason, tradeType: position.tradeType ?? "ai-directional",
+      pnl, exitReason: reason, tradeType: position.tradeType ?? "directional",
       positionMode: "live",
     });
 
@@ -603,14 +593,11 @@ export async function lighterClosePosition(
             mode: "live",
             exchange: "lighter",
             status: "closed",
-            aiConfidence: ctx?.aiConfidence,
-            aiReasoning: ctx?.aiReasoning,
             exitReason,
             indicatorsAtEntry: ctx?.indicatorsAtEntry,
             createdAt: position.openedAt,
             updatedAt: now,
-            tradeType: position.tradeType ?? "ai-directional",
-            aiAgreed: position.aiAgreed,
+            tradeType: position.tradeType ?? "directional",
           });
           positionContext.delete(positionId);
           if (reason === "stop-loss") {
@@ -619,7 +606,7 @@ export async function lighterClosePosition(
           void notifyQuantTradeExit({
             pair: position.pair, direction: position.direction,
             entryPrice: position.entryPrice, exitPrice: reconPrice, size: position.size,
-            pnl: estPnl, exitReason, tradeType: position.tradeType ?? "ai-directional",
+            pnl: estPnl, exitReason, tradeType: position.tradeType ?? "directional",
             positionMode: "live",
           });
           console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=${estPnl >= 0 ? "+" : ""}$${estPnl.toFixed(2)} (${exitReason}) @ ${reconPrice}`);

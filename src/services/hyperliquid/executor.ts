@@ -17,7 +17,6 @@ import {
   getLighterLivePositions,
 } from "../lighter/executor.js";
 import { validateRiskGates, recordDailyLoss, strategyFromTradeType } from "./risk-manager.js";
-import { clearAICacheForPair } from "./ai-analyzer.js";
 import type { QuantPosition, MarketRegime, TradeType } from "./types.js";
 
 export async function openPosition(
@@ -28,12 +27,9 @@ export async function openPosition(
   stopLoss: number,
   takeProfit: number,
   regime: MarketRegime,
-  aiConfidence?: number,
-  aiReasoning?: string,
-  tradeType: TradeType = "ai-directional",
+  tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
-  aiAgreed?: boolean | null,
 ): Promise<QuantPosition | null> {
   // Funding positions bypass volatile regime check (they're regime-agnostic)
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
@@ -46,33 +42,31 @@ export async function openPosition(
 
   const mode = getTradingMode();
   const exchange = getEngineExchange(tradeType);
-  // hybrid: AI + Lighter engines go live
+  // hybrid: Lighter engines go live
   const useLive =
     mode === "live" ||
-    (mode === "hybrid" && (tradeType === "ai-directional" || exchange === "lighter"));
+    (mode === "hybrid" && exchange === "lighter");
 
   if (exchange === "lighter") {
     if (useLive) {
-      return lighterOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
+      return lighterOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
     }
-    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed, "lighter");
+    return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice, "lighter");
   }
 
   if (useLive) {
-    return liveOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
+    return liveOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
   }
 
-  return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, aiConfidence, aiReasoning, indicatorsAtEntry, aiEntryPrice, aiAgreed);
+  return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
 }
 
 export async function closePosition(
   positionId: string,
   reason: string,
 ): Promise<{ success: boolean; pnl: number }> {
-  // Invalidate AI cache so next cycle gets fresh analysis
   const positions = getOpenQuantPositions();
   const pos = positions.find(p => p.id === positionId);
-  if (pos) clearAICacheForPair(pos.pair);
 
   // Route close by position exchange and mode
   const isLighterLive = pos?.exchange === "lighter" && pos?.mode === "live";
@@ -84,7 +78,7 @@ export async function closePosition(
       : await paperClosePosition(positionId, reason);
 
   if (result.success && result.pnl < 0) {
-    const strategy = strategyFromTradeType(pos?.tradeType ?? "ai-directional");
+    const strategy = strategyFromTradeType(pos?.tradeType ?? "directional");
     recordDailyLoss(Math.abs(result.pnl), strategy);
   }
   return result;

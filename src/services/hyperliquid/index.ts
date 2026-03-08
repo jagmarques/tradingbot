@@ -100,9 +100,7 @@ export { computeIndicators } from "./indicators.js";
 export { classifyRegime } from "./regime.js";
 export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
 
-// AI Decision Engine
-export { buildQuantPrompt } from "./prompt.js";
-export { analyzeWithAI, clearAICache } from "./ai-analyzer.js";
+// Position Sizing
 export { calculateQuantPositionSize } from "./kelly.js";
 
 // Risk Management
