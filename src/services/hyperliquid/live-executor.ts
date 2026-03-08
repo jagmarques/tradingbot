@@ -264,23 +264,20 @@ export async function liveOpenPosition(
       const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
       if (wallet) {
         const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
-        const equity = parseFloat(state.marginSummary.accountValue);
-        const marginUsed = parseFloat(state.marginSummary.totalMarginUsed);
-        const perpsAvailable = equity - marginUsed;
+        let equity = parseFloat(state.marginSummary.accountValue) || 0;
+        const marginUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
 
-        // Check spot USDC for unified accounts
-        let spotUsdc = 0;
-        if (perpsAvailable < sizeUsd) {
+        if (equity <= marginUsed) {
           try {
             const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
             const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
-            spotUsdc = usdcBal ? parseFloat(usdcBal.total) : 0;
+            if (usdcBal) equity = parseFloat(usdcBal.total) || 0;
           } catch { /* spot check optional */ }
         }
 
-        const totalAvailable = perpsAvailable + spotUsdc;
-        if (totalAvailable < sizeUsd) {
-          console.log(`[Quant Live] ${pair} skipped: insufficient margin ($${totalAvailable.toFixed(2)} available, need $${sizeUsd})`);
+        const available = equity - marginUsed;
+        if (available < sizeUsd) {
+          console.log(`[Quant Live] ${pair} skipped: insufficient margin ($${available.toFixed(2)} available, need $${sizeUsd})`);
           return null;
         }
       }

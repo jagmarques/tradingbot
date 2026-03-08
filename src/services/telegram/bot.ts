@@ -1109,7 +1109,7 @@ async function handlePnl(ctx: Context): Promise<void> {
             try {
               const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
               const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
-              if (usdcBal) hlEq += parseFloat(usdcBal.total) || 0;
+              if (usdcBal) hlEq = parseFloat(usdcBal.total) || 0;
             } catch { /* ignore */ }
           }
           const hlFree = Math.max(0, hlEq - hlUsed);
