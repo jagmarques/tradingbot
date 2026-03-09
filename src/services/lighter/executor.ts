@@ -187,55 +187,106 @@ export function initLighterEngine(): void {
   setInterval(() => void reconcileLighter(), 5 * 60 * 1000);
 }
 
+async function closePhantom(pos: QuantPosition): Promise<void> {
+  const exitPrice = await getLighterMidPrice(pos.pair).catch(() => null) ?? pos.entryPrice;
+  const notional = pos.size * pos.leverage;
+  const rawPnl = pos.direction === "long"
+    ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
+    : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
+  const fees = notional * 0.0003 * 2;
+  const pnl = rawPnl - fees;
+  const now = new Date().toISOString();
+
+  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "reconciliation" };
+  lighterPositions.set(pos.id, closed);
+  saveQuantPosition(closed);
+  const ctx = positionContext.get(pos.id);
+  saveQuantTrade({
+    id: pos.id, pair: pos.pair, direction: pos.direction,
+    entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
+    pnl, fees, mode: "live", exchange: "lighter", status: "closed",
+    exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+    createdAt: pos.openedAt, updatedAt: now,
+    tradeType: pos.tradeType ?? "directional",
+  });
+  positionContext.delete(pos.id);
+  void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "LighterReconciliation");
+  void notifyQuantTradeExit({
+    pair: pos.pair, direction: pos.direction,
+    entryPrice: pos.entryPrice, exitPrice, size: pos.size,
+    pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "directional",
+    positionMode: "live",
+  });
+  console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
+}
+
 async function reconcileLighter(): Promise<void> {
   try {
     const exchangePositions = await getLighterOpenPositions();
-    const exchangePairs = new Set(exchangePositions.map(p => p.symbol));
+    const exchangeByPair = new Map<string, number>();
+    for (const ep of exchangePositions) {
+      exchangeByPair.set(ep.symbol, (exchangeByPair.get(ep.symbol) ?? 0) + ep.size);
+    }
     const tracked = getLighterLivePositions();
-    const trackedPairs = new Set(tracked.map(p => p.pair));
 
-    // Phantom check: in DB but not on exchange
+    // DB size per pair (sum of all engines)
+    const dbByPair = new Map<string, { totalSize: number; positions: QuantPosition[] }>();
     for (const pos of tracked) {
-      if (exchangePairs.has(pos.pair) || closingSet.has(pos.id)) continue;
+      const entry = dbByPair.get(pos.pair) ?? { totalSize: 0, positions: [] };
+      entry.totalSize += pos.size * pos.leverage / pos.entryPrice;
+      entry.positions.push(pos);
+      dbByPair.set(pos.pair, entry);
+    }
+
+    // Phantom check: pair gone from exchange entirely
+    for (const pos of tracked) {
+      if (closingSet.has(pos.id)) continue;
+      if (exchangeByPair.has(pos.pair)) continue;
       await new Promise(r => setTimeout(r, 2000));
       const recheck = await getLighterOpenPositions();
       if (recheck.find(p => p.symbol === pos.pair)) continue;
 
-      console.error(`[Lighter Executor] PHANTOM: ${pos.pair} in DB but not on exchange`);
-      const exitPrice = await getLighterMidPrice(pos.pair).catch(() => null) ?? pos.entryPrice;
-      const notional = pos.size * pos.leverage;
-      const rawPnl = pos.direction === "long"
-        ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
-        : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
-      const fees = notional * 0.0003 * 2;
-      const pnl = rawPnl - fees;
-      const now = new Date().toISOString();
-
-      const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "reconciliation" };
-      lighterPositions.set(pos.id, closed);
-      saveQuantPosition(closed);
-      const ctx = positionContext.get(pos.id);
-      saveQuantTrade({
-        id: pos.id, pair: pos.pair, direction: pos.direction,
-        entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
-        pnl, fees, mode: "live", exchange: "lighter", status: "closed",
-        exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
-        createdAt: pos.openedAt, updatedAt: now,
-        tradeType: pos.tradeType ?? "directional",
-      });
-      positionContext.delete(pos.id);
-      void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "LighterReconciliation");
-      void notifyQuantTradeExit({
-        pair: pos.pair, direction: pos.direction,
-        entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-        pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "directional",
-        positionMode: "live",
-      });
-      console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
+      console.error(`[Lighter Executor] PHANTOM: ${pos.pair} gone from exchange`);
+      await closePhantom(pos);
     }
 
-    if (exchangePairs.size > 0 || trackedPairs.size > 0) {
-      console.log(`[Lighter Executor] Reconcile: ${exchangePairs.size} exchange, ${trackedPairs.size} DB`);
+    // Partial phantom: pair exists but exchange size < DB size (some engines' positions were closed)
+    for (const [pair, db] of dbByPair) {
+      const exchSize = exchangeByPair.get(pair) ?? 0;
+      if (exchSize <= 0 || db.positions.length <= 1) continue;
+      // If exchange size is significantly less than DB size, close excess DB positions (oldest first)
+      const tolerance = exchSize * 0.1;
+      if (db.totalSize <= exchSize + tolerance) continue;
+
+      const recheck = await getLighterOpenPositions();
+      const recheckMatch = recheck.find(p => p.symbol === pair);
+      if (!recheckMatch) continue;
+      const recheckSize = recheckMatch.size;
+
+      let remainingExchSize = recheckSize;
+      const sorted = [...db.positions].sort((a, b) => (a.openedAt ?? "").localeCompare(b.openedAt ?? ""));
+      for (const pos of sorted) {
+        const posSizeCoins = pos.size * pos.leverage / pos.entryPrice;
+        if (remainingExchSize >= posSizeCoins * 0.9) {
+          remainingExchSize -= posSizeCoins;
+        } else {
+          if (closingSet.has(pos.id)) continue;
+          console.error(`[Lighter Executor] PARTIAL PHANTOM: ${pos.pair} ${pos.tradeType} — exchange size reduced`);
+          await closePhantom(pos);
+        }
+      }
+    }
+
+    // Orphan check: on exchange but not in DB
+    const trackedPairs = new Set(tracked.map(p => p.pair));
+    for (const ep of exchangePositions) {
+      if (trackedPairs.has(ep.symbol) || openingPairs.has(ep.symbol)) continue;
+      console.error(`[Lighter Executor] ORPHAN: ${ep.symbol} on exchange but not in DB`);
+      void notifyCriticalError(`ORPHAN: ${ep.symbol} on Lighter exchange but not in DB — manual close needed`, "LighterReconciliation");
+    }
+
+    if (exchangePositions.length > 0 || tracked.length > 0) {
+      console.log(`[Lighter Executor] Reconcile: ${exchangePositions.length} exchange, ${tracked.length} DB`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -563,36 +614,9 @@ export async function lighterClosePosition(
       if (!existsOnExchange) {
         console.error(`[Lighter Executor] ${position.pair} not found on exchange (2 checks) — phantom`);
         await cancelAndReplaceOrders(position.pair);
-        const exitPrice = await getLighterMidPrice(position.pair).catch(() => null) ?? position.entryPrice;
-        const notional = position.size * position.leverage;
-        const rawPnl = position.direction === "long"
-          ? ((exitPrice - position.entryPrice) / position.entryPrice) * notional
-          : ((position.entryPrice - exitPrice) / position.entryPrice) * notional;
-        const fees = notional * 0.0003 * 2;
-        const pnl = rawPnl - fees;
-        const now = new Date().toISOString();
-        const phantom: QuantPosition = { ...position, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "phantom-not-on-exchange" };
-        lighterPositions.set(positionId, phantom);
-        saveQuantPosition(phantom);
-        const ctx = positionContext.get(positionId);
-        saveQuantTrade({
-          id: position.id, pair: position.pair, direction: position.direction,
-          entryPrice: position.entryPrice, exitPrice, size: position.size, leverage: position.leverage,
-          pnl, fees, mode: "live", exchange: "lighter", status: "closed",
-          exitReason: "phantom-not-on-exchange", indicatorsAtEntry: ctx?.indicatorsAtEntry,
-          createdAt: position.openedAt, updatedAt: now,
-          tradeType: position.tradeType ?? "directional",
-        });
-        positionContext.delete(positionId);
-        void notifyCriticalError(`PHANTOM closed: ${position.pair} ${position.direction} — est P&L $${pnl.toFixed(2)}`, "LighterExecutor");
-        void notifyQuantTradeExit({
-          pair: position.pair, direction: position.direction,
-          entryPrice: position.entryPrice, exitPrice, size: position.size,
-          pnl, exitReason: "phantom-not-on-exchange", tradeType: position.tradeType ?? "directional",
-          positionMode: "live",
-        });
-        console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (phantom) @ ${exitPrice}`);
-        return { success: true, pnl };
+        await closePhantom(position);
+        const closed = lighterPositions.get(positionId);
+        return { success: true, pnl: closed?.realizedPnl ?? 0 };
       }
     } catch (checkErr) {
       console.error(`[Lighter Executor] Pre-close check failed: ${checkErr instanceof Error ? checkErr.message : checkErr}`);
@@ -649,7 +673,7 @@ export async function lighterClosePosition(
       position.direction === "long"
         ? ((exitPrice - position.entryPrice) / position.entryPrice) * notional
         : ((position.entryPrice - exitPrice) / position.entryPrice) * notional;
-    const fees = 0;
+    const fees = notional * 0.0003 * 2;
     const pnl = rawPnl - fees;
 
     const now = new Date().toISOString();
@@ -715,9 +739,10 @@ export async function lighterClosePosition(
           const exitReason = `${reason} (timeout-reconciled)`;
           const reconPrice = await getLighterMidPrice(position.pair).catch(() => null) ?? position.entryPrice;
           const notional = position.size * position.leverage;
-          const estPnl = position.direction === "long"
+          const fees = notional * 0.0003 * 2;
+          const estPnl = (position.direction === "long"
             ? ((reconPrice - position.entryPrice) / position.entryPrice) * notional
-            : ((position.entryPrice - reconPrice) / position.entryPrice) * notional;
+            : ((position.entryPrice - reconPrice) / position.entryPrice) * notional) - fees;
           const reconciled: QuantPosition = {
             ...position,
             status: "closed",
@@ -738,7 +763,7 @@ export async function lighterClosePosition(
             size: position.size,
             leverage: position.leverage,
             pnl: estPnl,
-            fees: 0,
+            fees,
             mode: "live",
             exchange: "lighter",
             status: "closed",
