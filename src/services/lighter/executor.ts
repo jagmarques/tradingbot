@@ -542,8 +542,8 @@ export async function lighterOpenPosition(
     });
 
     console.log(`[Lighter Executor] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice}`);
-    void placeExchangeStop(position);
-    void placeExchangeTP(position);
+    await placeExchangeStop(position);
+    await placeExchangeTP(position);
     return position;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
