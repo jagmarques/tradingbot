@@ -310,7 +310,7 @@ export async function notifyTrailActivation(params: {
   tradeType: string;
 }): Promise<void> {
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "hma1h-directional" ? "HMA1h" : params.tradeType === "zlema1h-directional" ? "ZLEMA1h" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType;
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "hma1h-directional" ? "HMA1h" : params.tradeType === "zlema1h-directional" ? "ZLEMA1h" : "AI";
   const message =
     `[LIVE] <b>TRAIL ACTIVATED</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
