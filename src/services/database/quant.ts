@@ -108,14 +108,16 @@ export function loadOpenQuantPositions(): QuantPosition[] {
   }));
 }
 
-export function loadClosedQuantTrades(limit: number = 20): QuantTrade[] {
+export function loadClosedQuantTrades(limit: number = 20, mode?: "live" | "paper"): QuantTrade[] {
   const db = getDb();
+  const modeClause = mode ? " AND mode = ?" : "";
+  const args: (string | number)[] = mode ? [mode, limit] : [limit];
   const rows = db.prepare(`
     SELECT * FROM quant_trades
-    WHERE status = 'closed'
+    WHERE status = 'closed'${modeClause}
     ORDER BY updated_at DESC
     LIMIT ?
-  `).all(limit) as Array<{
+  `).all(...args) as Array<{
     id: string;
     pair: string;
     direction: string;
@@ -221,11 +223,12 @@ export function getQuantValidationMetrics(): {
 } {
   const db = getDb();
 
-  // Load all closed AI directional trades (includes legacy 'directional') ordered chronologically
+  // Paper AI trades only
   const rows = db.prepare(`
     SELECT pnl, size, created_at, updated_at
     FROM quant_trades
     WHERE status = 'closed' AND trade_type IN ('directional', 'ai-directional')
+      AND mode = 'paper'
     ORDER BY updated_at ASC
   `).all() as Array<{
     pnl: number;
@@ -287,8 +290,8 @@ export function getQuantValidationMetrics(): {
     paperDaysElapsed = (nowMs - startMs) / (1000 * 60 * 60 * 24);
   }
 
-  // Win rate and total P&L from stats helper (includes legacy 'directional' records)
-  const stats = getQuantStats("ai-directional");
+  // Paper stats only
+  const stats = getQuantStats("ai-directional", "paper");
 
   return {
     sharpeRatio,
@@ -301,76 +304,48 @@ export function getQuantValidationMetrics(): {
   };
 }
 
-export function sumRecentQuantLosses(withinMs: number, strategy?: string): { totalLoss: number; lastLossTs: number } {
+export function sumRecentQuantLosses(withinMs: number, strategy?: string, mode?: "live" | "paper"): { totalLoss: number; lastLossTs: number } {
   const db = getDb();
   const cutoff = new Date(Date.now() - withinMs).toISOString();
 
   let row: { total_loss: number; last_loss_at: string };
+  const modeClause = mode ? " AND mode = ?" : "";
 
   if (strategy === undefined) {
+    const params: string[] = [cutoff];
+    if (mode) params.push(mode);
     row = db.prepare(`
       SELECT
         COALESCE(SUM(ABS(pnl)), 0) as total_loss,
         COALESCE(MAX(updated_at), '') as last_loss_at
       FROM quant_trades
-      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-    `).get(cutoff) as typeof row;
+      WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?${modeClause}
+    `).get(...params) as typeof row;
   } else if (strategy === "ai") {
-    // Backward compat: old records have trade_type="directional" which were AI trades
+    const params: string[] = [cutoff];
+    if (mode) params.push(mode);
     row = db.prepare(`
       SELECT
         COALESCE(SUM(ABS(pnl)), 0) as total_loss,
         COALESCE(MAX(updated_at), '') as last_loss_at
       FROM quant_trades
       WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-        AND trade_type IN ('ai-directional', 'directional')
-    `).get(cutoff) as typeof row;
+        AND trade_type IN ('ai-directional', 'directional')${modeClause}
+    `).get(...params) as typeof row;
   } else {
+    const params: string[] = [cutoff, `${strategy}-directional`];
+    if (mode) params.push(mode);
     row = db.prepare(`
       SELECT
         COALESCE(SUM(ABS(pnl)), 0) as total_loss,
         COALESCE(MAX(updated_at), '') as last_loss_at
       FROM quant_trades
       WHERE status = 'closed' AND pnl < 0 AND updated_at >= ?
-        AND trade_type = ?
-    `).get(cutoff, `${strategy}-directional`) as typeof row;
+        AND trade_type = ?${modeClause}
+    `).get(...params) as typeof row;
   }
 
   const lastLossTs = row.last_loss_at ? new Date(row.last_loss_at).getTime() : 0;
   return { totalLoss: row.total_loss, lastLossTs };
 }
 
-export function getTotalRealizedPnl(): number {
-  const db = getDb();
-  const row = db.prepare(`
-    SELECT COALESCE(SUM(pnl), 0) as total_pnl
-    FROM quant_trades WHERE status = 'closed'
-  `).get() as { total_pnl: number };
-  return row.total_pnl;
-}
-
-export function getTotalRealizedPnlByType(tradeType: TradeType): number {
-  const db = getDb();
-  const row = db.prepare(`
-    SELECT COALESCE(SUM(pnl), 0) as total_pnl
-    FROM quant_trades WHERE status = 'closed' AND trade_type = ?
-  `).get(tradeType) as { total_pnl: number };
-  return row.total_pnl;
-}
-
-export function getFundingIncome(): { totalIncome: number; tradeCount: number } {
-  const db = getDb();
-  const result = db
-    .prepare(
-      `
-    SELECT COALESCE(SUM(pnl), 0) as total_income, COUNT(*) as trade_count
-    FROM quant_trades
-    WHERE status = 'closed' AND trade_type = 'funding'
-  `,
-    )
-    .get() as { total_income: number; trade_count: number };
-  return {
-    totalIncome: result.total_income,
-    tradeCount: result.trade_count,
-  };
-}

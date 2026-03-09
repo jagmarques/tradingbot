@@ -33,13 +33,14 @@ export function setQuantKilled(killed: boolean): void {
   );
 }
 
-export function recordDailyLoss(loss: number, strategy: string): void {
-  resetIfStale(strategy);
-  const prev = dailyLossMap.get(strategy) ?? 0;
-  dailyLossMap.set(strategy, prev + loss);
-  lastLossTimestampMap.set(strategy, Date.now());
+export function recordDailyLoss(loss: number, strategy: string, mode: "live" | "paper" = "live"): void {
+  const key = `${mode}:${strategy}`;
+  resetIfStale(key);
+  const prev = dailyLossMap.get(key) ?? 0;
+  dailyLossMap.set(key, prev + loss);
+  lastLossTimestampMap.set(key, Date.now());
   console.log(
-    `[RiskManager] ${strategy} rolling 24h loss: $${(prev + loss).toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+    `[RiskManager] ${strategy}(${mode}) rolling 24h loss: $${(prev + loss).toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
   );
 }
 
@@ -51,30 +52,37 @@ export function resetDailyDrawdown(): void {
 
 export function seedDailyLossFromDb(): void {
   const strategies = ["ai", "psar", "zlema", "vortex", "schaff", "dema", "hma", "cci"];
-  for (const strategy of strategies) {
-    try {
-      const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000, strategy);
-      if (totalLoss > 0) {
-        dailyLossMap.set(strategy, totalLoss);
-        lastLossTimestampMap.set(strategy, lastLossTs);
-        console.log(`[RiskManager] Seeded rolling 24h loss from DB: ${strategy} $${totalLoss.toFixed(2)}`);
+  const modes: Array<"live" | "paper"> = ["live", "paper"];
+  for (const mode of modes) {
+    for (const strategy of strategies) {
+      try {
+        const { totalLoss, lastLossTs } = sumRecentQuantLosses(86_400_000, strategy, mode);
+        if (totalLoss > 0) {
+          const key = `${mode}:${strategy}`;
+          dailyLossMap.set(key, totalLoss);
+          lastLossTimestampMap.set(key, lastLossTs);
+          console.log(`[RiskManager] Seeded rolling 24h loss from DB: ${strategy}(${mode}) $${totalLoss.toFixed(2)}`);
+        }
+      } catch {
+        // No quant_trades table yet
       }
-    } catch {
-      console.log(`[RiskManager] No quant_trades table yet, starting with 0 loss for ${strategy}`);
     }
   }
 }
 
-export function getDailyLossTotal(strategy?: string): number {
-  if (strategy !== undefined) {
-    resetIfStale(strategy);
-    return dailyLossMap.get(strategy) ?? 0;
+export function getDailyLossTotal(strategy?: string, mode?: "live" | "paper"): number {
+  if (strategy !== undefined && mode !== undefined) {
+    const key = `${mode}:${strategy}`;
+    resetIfStale(key);
+    return dailyLossMap.get(key) ?? 0;
   }
-  // No strategy given: return global sum across all strategies
+  // Sum across all matching keys
   let total = 0;
-  for (const [strat, loss] of dailyLossMap) {
-    resetIfStale(strat);
-    total += dailyLossMap.get(strat) ?? loss;
+  for (const [key] of dailyLossMap) {
+    if (strategy !== undefined && !key.endsWith(`:${strategy}`)) continue;
+    if (mode !== undefined && !key.startsWith(`${mode}:`)) continue;
+    resetIfStale(key);
+    total += dailyLossMap.get(key) ?? 0;
   }
   return total;
 }
@@ -105,13 +113,14 @@ function checkStopLossPresent(stopLoss: number): {
   return { allowed: true, reason: "" };
 }
 
-function checkDailyDrawdown(strategy: string): { allowed: boolean; reason: string } {
-  resetIfStale(strategy);
-  const loss = dailyLossMap.get(strategy) ?? 0;
+function checkDailyDrawdown(strategy: string, mode: "live" | "paper" = "live"): { allowed: boolean; reason: string } {
+  const key = `${mode}:${strategy}`;
+  resetIfStale(key);
+  const loss = dailyLossMap.get(key) ?? 0;
   if (loss >= QUANT_DAILY_DRAWDOWN_LIMIT) {
     return {
       allowed: false,
-      reason: `Rolling 24h loss for ${strategy}: $${loss.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+      reason: `Rolling 24h loss for ${strategy}(${mode}): $${loss.toFixed(2)} exceeds limit $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
     };
   }
   return { allowed: true, reason: "" };
@@ -135,8 +144,9 @@ export function validateRiskGates(params: {
   stopLoss: number;
   regime: MarketRegime;
   strategy: string;
+  mode?: "live" | "paper";
 }): { allowed: boolean; reason: string } {
-  const { leverage, stopLoss, regime, strategy } = params;
+  const { leverage, stopLoss, regime, strategy, mode = "live" } = params;
 
   // 1. Kill switch
   if (isQuantKilled()) {
@@ -152,8 +162,8 @@ export function validateRiskGates(params: {
     return regimeCheck;
   }
 
-  // 3. Daily drawdown (per-strategy)
-  const drawdownCheck = checkDailyDrawdown(strategy);
+  // 3. Daily drawdown (per-strategy, per-mode)
+  const drawdownCheck = checkDailyDrawdown(strategy, mode);
   if (!drawdownCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${drawdownCheck.reason}`);
     return drawdownCheck;

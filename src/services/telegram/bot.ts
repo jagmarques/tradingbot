@@ -2543,14 +2543,15 @@ async function handleQuant(ctx: Context): Promise<void> {
   const mode = tradingMode === "paper" ? "PAPER" : tradingMode === "hybrid" ? "HYBRID" : "LIVE";
 
   const killed = isQuantKilled();
-  const dailyLoss = getDailyLossTotal();
+  const liveLoss = getDailyLossTotal(undefined, "live");
+  const paperLoss = getDailyLossTotal(undefined, "paper");
   // Stats fetched per engine inline below
 
   const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
   const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
   let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
-  text += `${openPositions.length} open | ${$(dailyLoss)}/$${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
+  text += `${openPositions.length} open | Live ${$(liveLoss)} Paper ${$(paperLoss)} / $${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};

@@ -34,15 +34,22 @@ export async function openPosition(
 ): Promise<QuantPosition | null> {
   // Funding positions bypass volatile regime check (they're regime-agnostic)
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
+  const mode = getTradingMode();
+  const exchange = getEngineExchange(tradeType);
+
+  // forcePaper bypasses live routing
+  const useLive = !forcePaper && (
+    mode === "live" ||
+    (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)) ||
+    (mode === "hybrid" && tradeType === "ai-directional"));
+
+  const posMode: "live" | "paper" = useLive ? "live" : "paper";
   const strategy = strategyFromTradeType(tradeType);
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy });
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;
   }
-
-  const mode = getTradingMode();
-  const exchange = getEngineExchange(tradeType);
 
   // Cap SL to avoid liquidation
   if (aiEntryPrice && aiEntryPrice > 0) {
@@ -61,11 +68,6 @@ export async function openPosition(
       }
     }
   }
-  // forcePaper bypasses live routing
-  const useLive = !forcePaper && (
-    mode === "live" ||
-    (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)) ||
-    (mode === "hybrid" && tradeType === "ai-directional"));
 
   // One live position per pair per exchange
   if (useLive) {
@@ -109,7 +111,8 @@ export async function closePosition(
 
   if (result.success && result.pnl < 0) {
     const strategy = strategyFromTradeType(pos?.tradeType ?? "directional");
-    recordDailyLoss(Math.abs(result.pnl), strategy);
+    const posMode: "live" | "paper" = pos?.mode === "live" ? "live" : "paper";
+    recordDailyLoss(Math.abs(result.pnl), strategy, posMode);
   }
   return result;
 }
