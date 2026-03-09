@@ -7,18 +7,25 @@ import * as fs from "node:fs";
 
 const LEV = 10;
 const FEE_RATE = 0.0009;
+const SLIPPAGE_PCT = Number(process.env.SLIPPAGE ?? 0.05) / 100; // 0.05% default entry+exit slippage
+const FUNDING_8H = 0.0001; // 0.01% per 8h funding rate on notional
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV;
 const SL_CAP_PCT = Number(process.env.SL_CAP ?? 0);
 const TRAIL_ACTIVATION = Number(process.env.TRAIL_ACT ?? 20);
 const TRAIL_DISTANCE = Number(process.env.TRAIL_DIST ?? 5);
+const INVERT_SIGNALS = process.env.INVERT === "1";
+const RR_OVERRIDE = process.env.RR ? Number(process.env.RR) : 0;
+const SMART_TRAIL = process.env.SMART_TRAIL === "1";
 const LIQUIDATION_FEE_PCT = 0.01;
 const LIQUIDATION_THRESHOLD_PCT = 4;
 
 const PAIRS = process.env.PAIRS ? process.env.PAIRS.split(",") : ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT","BCH","AAVE","WLD","TRX","UNI","TON","ONDO","ENA"];
-const DAYS_4H = 780;
+const CANDLE_INTERVAL = process.env.INTERVAL ?? "4h";
+const BARS_PER_DAY = CANDLE_INTERVAL === "1h" ? 24 : CANDLE_INTERVAL === "15m" ? 96 : 6;
+const DAYS_CANDLE = 780;
 const DAYS_DAILY = 780;
-const TRAIN_BARS = 2935;
+const TRAIN_BARS = Math.round(2935 * (BARS_PER_DAY / 6));
 const PSAR_STEP = 0.02;
 const PSAR_MAX = 0.1;
 
@@ -67,6 +74,7 @@ interface BacktestResult {
   maxDrawdown: number;
   tradePnlPcts: number[];
   days: number;
+  exitReasons: { sl: number; tp: number; trail: number; stag: number; liq: number };
 }
 
 interface EngineConfig {
@@ -499,6 +507,9 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
 
 // Engine definitions
 
+// Scale stagnation for candle interval
+const STAG_SCALE = BARS_PER_DAY / 6;
+
 const ENGINES: EngineConfig[] = [
   {
     name: "psar",
@@ -506,7 +517,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 18,
     stopAtrMult: 5.0,
     rewardRisk: 6.0,
-    stagnationBars: 8,
+    stagnationBars: Math.round(8 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { candles, psarValues } = ctx;
       const currSar = psarValues[i];
@@ -526,7 +537,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: Math.round(10 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { zlemaFast, zlemaSlow } = ctx;
       const cf = zlemaFast[i], pf = zlemaFast[i - 1];
@@ -543,7 +554,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 8,
     stopAtrMult: 2.5,
     rewardRisk: 2.5,
-    stagnationBars: 12,
+    stagnationBars: Math.round(12 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { elderEma, elderHistogram } = ctx;
       // Need 4 bars: i-3, i-2, i-1, i (prev-prev-prev, prev-prev, prev, curr)
@@ -569,7 +580,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 14,
     stopAtrMult: 5.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: Math.round(10 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { vortexPlus, vortexMinus } = ctx;
       const cvp = vortexPlus[i], pvp = vortexPlus[i - 1];
@@ -586,7 +597,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 22,
     stopAtrMult: 3.0,
     rewardRisk: 4.0,
-    stagnationBars: 12,
+    stagnationBars: Math.round(12 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { stcValues } = ctx;
       const curr = stcValues[i], prev = stcValues[i - 1];
@@ -602,7 +613,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 10,
     stopAtrMult: 3.5,
     rewardRisk: 4.0,
-    stagnationBars: 16,
+    stagnationBars: Math.round(16 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { demaFast, demaSlow } = ctx;
       const cf = demaFast[i], pf = demaFast[i - 1];
@@ -619,7 +630,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 8,
     stopAtrMult: 4.0,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: Math.round(10 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { hmaFast, hmaSlow } = ctx;
       const cf = hmaFast[i], pf = hmaFast[i - 1];
@@ -636,7 +647,7 @@ const ENGINES: EngineConfig[] = [
     adxMin: 8,
     stopAtrMult: 3.5,
     rewardRisk: 4.0,
-    stagnationBars: 10,
+    stagnationBars: Math.round(10 * STAG_SCALE),
     checkSignal(i, ctx) {
       const { cciValues } = ctx;
       const curr = cciValues[i], prev = cciValues[i - 1];
@@ -674,6 +685,7 @@ function runBacktest(
   let trades = 0;
   let wins = 0;
   const tradePnlPcts: number[] = [];
+  const exitReasons = { sl: 0, tp: 0, trail: 0, stag: 0, liq: 0 };
 
   type Pos = {
     dir: "long" | "short";
@@ -707,6 +719,7 @@ function runBacktest(
         maxDrawdown = Math.max(maxDrawdown, peakPnl - pnlTotal);
         trades++;
         tradePnlPcts.push((net / MARGIN_PER_TRADE) * 100);
+        exitReasons.liq++;
         pos = null;
         continue;
       }
@@ -717,7 +730,16 @@ function runBacktest(
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
 
       // Check trailing stop
-      const trailingHit = pos.peakPnlPct > TRAIL_ACTIVATION && unrealizedPct <= pos.peakPnlPct - TRAIL_DISTANCE;
+      let trailingHit = pos.peakPnlPct > TRAIL_ACTIVATION && unrealizedPct <= pos.peakPnlPct - TRAIL_DISTANCE;
+
+      // Smart trail: skip close if signal still agrees with position direction
+      if (trailingHit && SMART_TRAIL) {
+        const currentSignal = engine.checkSignal(i, ctx);
+        if (currentSignal === pos.dir) {
+          pos.peakPnlPct = unrealizedPct; // reset peak
+          trailingHit = false;
+        }
+      }
 
       // Check stagnation
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;
@@ -727,24 +749,34 @@ function runBacktest(
       const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
       let exitPrice: number | null = null;
+      let exitReason = "";
 
       // Trailing/stagnation checked before SL/TP (live monitor runs more frequently)
       if (trailingHit) {
         exitPrice = c.close;
+        exitReason = "trail";
       } else if (stagHit) {
         exitPrice = c.close;
+        exitReason = "stag";
       } else if (slHit && tpHit) {
         exitPrice = pos.sl;
+        exitReason = "sl";
       } else if (slHit) {
         exitPrice = pos.sl;
+        exitReason = "sl";
       } else if (tpHit) {
         exitPrice = pos.tp;
+        exitReason = "tp";
       }
 
       if (exitPrice !== null) {
+        // Apply exit slippage (worse fill)
+        exitPrice = pos.dir === "long" ? exitPrice * (1 - SLIPPAGE_PCT) : exitPrice * (1 + SLIPPAGE_PCT);
+        const barsHeld = i - pos.entryIdx;
+        const fundingCost = NOTIONAL * FUNDING_8H * (barsHeld * (CANDLE_INTERVAL === "4h" ? 0.5 : CANDLE_INTERVAL === "1h" ? 0.125 : 0.03125));
         const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
         const grossPnl = pp * NOTIONAL;
-        const fees = NOTIONAL * FEE_RATE;
+        const fees = NOTIONAL * FEE_RATE + fundingCost;
         const net = grossPnl - fees;
         pnlTotal += net;
         peakPnl = Math.max(peakPnl, pnlTotal);
@@ -752,6 +784,10 @@ function runBacktest(
         trades++;
         if (net > 0) wins++;
         tradePnlPcts.push((net / MARGIN_PER_TRADE) * 100);
+        if (exitReason === "sl") exitReasons.sl++;
+        else if (exitReason === "tp") exitReasons.tp++;
+        else if (exitReason === "trail") exitReasons.trail++;
+        else if (exitReason === "stag") exitReasons.stag++;
         pos = null;
       }
     }
@@ -773,17 +809,27 @@ function runBacktest(
       const rawSignal = engine.checkSignal(i, ctx);
       if (rawSignal === null) continue;
 
+      // Invert: flip signal AND ignore daily trend filter
+      const signal = INVERT_SIGNALS ? (rawSignal === "long" ? "short" : "long") : rawSignal;
+
       let dir: "long" | "short" | null = null;
-      if (rawSignal === "long" && dailyUptrend) dir = "long";
-      if (rawSignal === "short" && dailyDowntrend) dir = "short";
+      if (INVERT_SIGNALS) {
+        dir = signal; // skip trend filter for inverted signals
+      } else {
+        if (signal === "long" && dailyUptrend) dir = "long";
+        if (signal === "short" && dailyDowntrend) dir = "short";
+      }
 
       if (dir !== null) {
-        const entryPrice = candles4h[i + 1].open;
+        const rawEntry = candles4h[i + 1].open;
+        // Apply entry slippage (worse fill)
+        const entryPrice = dir === "long" ? rawEntry * (1 + SLIPPAGE_PCT) : rawEntry * (1 - SLIPPAGE_PCT);
         const atr = atr4h[i] ?? c.close * 0.02;
         let stopDist = atr * engine.stopAtrMult;
         if (SL_CAP_PCT > 0) stopDist = Math.min(stopDist, entryPrice * SL_CAP_PCT / 100);
         const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
-        const tp = dir === "long" ? entryPrice + stopDist * engine.rewardRisk : entryPrice - stopDist * engine.rewardRisk;
+        const rr = RR_OVERRIDE > 0 ? RR_OVERRIDE : engine.rewardRisk;
+        const tp = dir === "long" ? entryPrice + stopDist * rr : entryPrice - stopDist * rr;
         pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0 };
       }
     }
@@ -798,6 +844,7 @@ function runBacktest(
     maxDrawdown,
     tradePnlPcts,
     days: (endTs - startTs) / 86400_000,
+    exitReasons,
   };
 }
 
@@ -812,6 +859,7 @@ interface EngineResult {
   allPnlPcts: number[];
   maxDrawdown: number;
   pairBreakdown: { pair: string; trades: number; pnl: number }[];
+  exitReasons: { sl: number; tp: number; trail: number; stag: number; liq: number };
 }
 
 async function main() {
@@ -823,9 +871,9 @@ async function main() {
     process.exit(1);
   }
 
-  const allSmaPeriods = [...new Set(enginesFiltered.map((e) => e.smaPeriod))];
+  const allSmaPeriods = [...new Set([...enginesFiltered.map((e) => e.smaPeriod), 30, 50, 75])];
 
-  console.log(`=== backtest-engines.ts: 9 Engine Walk-Forward Backtest ===`);
+  console.log(`=== backtest-engines.ts: ${INVERT_SIGNALS ? "INVERTED" : "NORMAL"} Walk-Forward Backtest ===`);
   console.log(`Pairs: ${PAIRS.join(", ")}`);
   console.log(`Engines: ${enginesFiltered.map((e) => e.name).join(", ")}`);
   console.log(`Walk-forward: train first ${TRAIN_BARS} 4h bars (~120d), test remainder (~150d)`);
@@ -851,8 +899,8 @@ async function main() {
     const pair = PAIRS[pi];
     if (pi > 0) await sleep(300);
     try {
-      process.stdout.write(`  ${pair} 4h...`);
-      const h4 = await fetchCandles(pair, "4h", DAYS_4H);
+      process.stdout.write(`  ${pair} ${CANDLE_INTERVAL}...`);
+      const h4 = await fetchCandles(pair, CANDLE_INTERVAL, DAYS_CANDLE);
 
       process.stdout.write(` ${h4.length}bars. daily...`);
       let dailyCandles: Candle[] | null = null;
@@ -907,6 +955,7 @@ async function main() {
     let maxDays = 0;
     const allPnlPcts: number[] = [];
     const pairBreakdown: { pair: string; trades: number; pnl: number }[] = [];
+    const exitReasons = { sl: 0, tp: 0, trail: 0, stag: 0, liq: 0 };
 
     for (const pair of pairs) {
       const { h4, atr4h, ctx, dailyCandles, preDaily, idxDailyAt, trainEnd } = candleMap[pair];
@@ -918,6 +967,11 @@ async function main() {
       allPnlPcts.push(...r.tradePnlPcts);
       maxDays = Math.max(maxDays, r.days);
       pairBreakdown.push({ pair, trades: r.trades, pnl: r.totalReturn });
+      exitReasons.sl += r.exitReasons.sl;
+      exitReasons.tp += r.exitReasons.tp;
+      exitReasons.trail += r.exitReasons.trail;
+      exitReasons.stag += r.exitReasons.stag;
+      exitReasons.liq += r.exitReasons.liq;
     }
 
     engineResults.push({
@@ -929,6 +983,7 @@ async function main() {
       allPnlPcts,
       maxDrawdown: maxDD,
       pairBreakdown,
+      exitReasons,
     });
   }
 
@@ -998,6 +1053,17 @@ async function main() {
     console.log(`${rank + 1}. ${r.name.padEnd(12)} ${sign}${pctPerDay.toFixed(3)}%/d  ${r.trades}T  ${winRate.toFixed(0)}%wr  Sharpe=${sh.toFixed(2)}`);
   });
 
+  // Exit reasons
+  console.log("\n=== Exit Reasons ===");
+  console.log(`${"Engine".padEnd(12)} | SL      TP      Trail   Stag    Liq`);
+  console.log("─".repeat(65));
+  for (const r of engineResults) {
+    const { sl, tp, trail, stag, liq } = r.exitReasons;
+    const total = sl + tp + trail + stag + liq;
+    const pct = (v: number) => total > 0 ? `${v}(${(v/total*100).toFixed(0)}%)` : "0";
+    console.log(`${r.name.padEnd(12)} | ${pct(sl).padEnd(8)}${pct(tp).padEnd(8)}${pct(trail).padEnd(8)}${pct(stag).padEnd(8)}${pct(liq)}`);
+  }
+
   // Gross profit/loss breakdown
   console.log("\n=== Gross Profit / Loss / Max Single Loss ===");
   console.log(`${"Engine".padEnd(12)} | Wins  Losses  GrossProfit   GrossLoss  MaxSingleLoss  TotalPnL`);
@@ -1021,6 +1087,259 @@ async function main() {
   // Save full results
   fs.writeFileSync("/tmp/backtest-engines.txt", fullLines.join("\n") + "\n");
   console.log(`\nFull results saved to /tmp/backtest-engines.txt`);
+
+  // ── Portfolio Simulation (multi-engine, bar-by-bar) ──────────────────────────
+  if (process.env.PORTFOLIO === "1") {
+    const MAX_POS = Number(process.env.MAX_POS ?? 0); // 0 = unlimited
+    const MAX_PER_PAIR = Number(process.env.MAX_PER_PAIR ?? 0); // 0 = unlimited
+    const MAX_PER_DIR = Number(process.env.MAX_PER_DIR ?? 0); // 0 = unlimited
+    const DYNAMIC_LIMIT = process.env.DYNAMIC === "1";
+    const REQUIRE_DISAGREE = process.env.REQUIRE_DISAGREE === "1";
+    const VOL_FILTER = Number(process.env.VOL_FILTER ?? 0); // e.g. 1.5 = skip entry when ATR > 1.5x its 20-bar avg
+    const EQUITY_BREAKER = Number(process.env.EQUITY_BREAKER ?? 0); // e.g. 20 = pause entries if rolling 20-bar PnL < 0
+    const DECORRELATE = process.env.DECORRELATE === "1"; // use different SMA per engine
+    const liveEngineNames = (process.env.LIVE_ENGINES ?? "schaff,dema,hma").split(",");
+    const liveEngines = ENGINES.filter(e => liveEngineNames.includes(e.name));
+
+    // Decorrelated SMA overrides: spread engines across different trend timeframes
+    const decorrelatedSma: Record<string, number> = { schaff: 30, dema: 50, hma: 75 };
+
+    const ATR_TRAIL = Number(process.env.ATR_TRAIL ?? 0); // e.g. 2.5 = trail at 2.5*ATR from peak price
+    interface PortPos {
+      engine: string; pair: string; dir: "long" | "short";
+      entry: number; entryIdx: number; sl: number; tp: number; peakPnlPct: number;
+      peakPrice: number; // for ATR-based trailing
+    }
+
+    const COMPOUND = process.env.COMPOUND === "1";
+    const START_EQUITY = Number(process.env.START_EQUITY ?? 400);
+    const SIZE_PCT = Number(process.env.SIZE_PCT ?? 2.5) / 100; // % of equity per trade
+    const MIN_SIZE = 5; // minimum position margin
+
+    interface PortPosExt extends PortPos { margin: number; notional: number; }
+    const positions: PortPosExt[] = [];
+    let totalPnl = 0;
+    let totalTrades = 0;
+    let totalWins = 0;
+    let peakEquity = 0;
+    let maxDD = 0;
+    const exitReasons = { sl: 0, tp: 0, trail: 0, stag: 0, liq: 0 };
+    let worstBar = 0;
+    let bestBar = 0;
+    let maxConcurrent = 0;
+    const recentBarPnl: number[] = []; // rolling bar PnL for equity curve breaker
+    let skippedByVol = 0;
+    let skippedByEquity = 0;
+
+    const refPair = pairs[0];
+    const refData = candleMap[refPair];
+    const startIdx = refData.trainEnd;
+    const endIdx = refData.h4.length;
+
+    for (let i = startIdx; i < endIdx; i++) {
+      let dayPnl = 0;
+
+      // Check exits for all open positions
+      for (let p = positions.length - 1; p >= 0; p--) {
+        const pos = positions[p];
+        const pd = candleMap[pos.pair];
+        if (!pd || i >= pd.h4.length) continue;
+        const c = pd.h4[i];
+
+        // Liquidation check
+        const liqPrice = pos.dir === "long"
+          ? pos.entry * (1 - LIQUIDATION_THRESHOLD_PCT / 100)
+          : pos.entry * (1 + LIQUIDATION_THRESHOLD_PCT / 100);
+        const liqHit = pos.dir === "long" ? c.low <= liqPrice : c.high >= liqPrice;
+        const slDistPct = Math.abs(pos.sl - pos.entry) / pos.entry * 100;
+        if (liqHit && slDistPct > LIQUIDATION_THRESHOLD_PCT) {
+          const posNotional = pos.notional;
+          const liqFee = posNotional * LIQUIDATION_FEE_PCT;
+          const pp = ((liqPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
+          const net = pp * posNotional - posNotional * FEE_RATE - liqFee;
+          totalPnl += net; dayPnl += net; totalTrades++;
+          exitReasons.liq++;
+          positions.splice(p, 1);
+          continue;
+        }
+
+        const unrealizedPct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1) * LEV * 100;
+        pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
+        pos.peakPrice = pos.dir === "long" ? Math.max(pos.peakPrice, c.high) : Math.min(pos.peakPrice, c.low);
+
+        const slHit = pos.dir === "long" ? c.low <= pos.sl : c.high >= pos.sl;
+        const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
+
+        let trailingHit: boolean;
+        if (ATR_TRAIL > 0) {
+          // ATR-based trail: trail at N*ATR from peak price, only after activation
+          const atrNow = pd.atr4h[i] ?? c.close * 0.02;
+          const trailDist = ATR_TRAIL * atrNow;
+          if (pos.dir === "long") {
+            const trailStop = pos.peakPrice - trailDist;
+            trailingHit = trailStop > pos.entry && c.low <= trailStop;
+          } else {
+            const trailStop = pos.peakPrice + trailDist;
+            trailingHit = trailStop < pos.entry && c.high >= trailStop;
+          }
+        } else {
+          trailingHit = pos.peakPnlPct > TRAIL_ACTIVATION && unrealizedPct <= pos.peakPnlPct - TRAIL_DISTANCE;
+        }
+        const eng = liveEngines.find(e => e.name === pos.engine);
+        const barsHeld = i - pos.entryIdx;
+        const stagHit = eng ? barsHeld >= eng.stagnationBars : false;
+
+        let exitPrice: number | null = null;
+        let reason = "";
+        if (trailingHit) { exitPrice = c.close; reason = "trail"; }
+        else if (stagHit) { exitPrice = c.close; reason = "stag"; }
+        else if (slHit) { exitPrice = pos.sl; reason = "sl"; }
+        else if (tpHit) { exitPrice = pos.tp; reason = "tp"; }
+
+        if (exitPrice !== null) {
+          exitPrice = pos.dir === "long" ? exitPrice * (1 - SLIPPAGE_PCT) : exitPrice * (1 + SLIPPAGE_PCT);
+          const posNotional = pos.notional;
+          const fundingCost = posNotional * FUNDING_8H * (barsHeld * (CANDLE_INTERVAL === "4h" ? 0.5 : CANDLE_INTERVAL === "1h" ? 0.125 : 0.03125));
+          const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
+          const net = pp * posNotional - posNotional * FEE_RATE - fundingCost;
+          totalPnl += net;
+          dayPnl += net;
+          totalTrades++;
+          if (net > 0) totalWins++;
+          if (reason === "sl") exitReasons.sl++;
+          else if (reason === "tp") exitReasons.tp++;
+          else if (reason === "trail") exitReasons.trail++;
+          else if (reason === "stag") exitReasons.stag++;
+          positions.splice(p, 1);
+        }
+      }
+
+      // Try entries for each engine x pair
+      if (i + 1 < endIdx) {
+        for (const engine of liveEngines) {
+          for (const pair of pairs) {
+            const pd = candleMap[pair];
+            if (!pd || i >= pd.h4.length || i + 1 >= pd.h4.length) continue;
+
+            // Skip if already have position for this engine+pair
+            if (positions.find(p => p.engine === engine.name && p.pair === pair)) continue;
+
+            // Limits
+            if (MAX_POS > 0 && positions.length >= MAX_POS) continue;
+            if (MAX_PER_PAIR > 0 && positions.filter(p => p.pair === pair).length >= MAX_PER_PAIR) continue;
+
+            const dIdx = pd.idxDailyAt[i];
+            if (dIdx < 0) continue;
+
+            // Volatility filter: skip when ATR is spiking (reversal risk)
+            if (VOL_FILTER > 0) {
+              const atrNow = pd.atr4h[i];
+              const atrWindow = 20;
+              if (atrNow !== null && i >= atrWindow) {
+                let atrSum = 0, atrCount = 0;
+                for (let k = i - atrWindow; k < i; k++) {
+                  if (pd.atr4h[k] !== null) { atrSum += pd.atr4h[k]!; atrCount++; }
+                }
+                if (atrCount > 0 && atrNow > (atrSum / atrCount) * VOL_FILTER) { skippedByVol++; continue; }
+              }
+            }
+
+            // Equity curve breaker: pause entries if recent bars are net negative
+            if (EQUITY_BREAKER > 0 && recentBarPnl.length >= EQUITY_BREAKER) {
+              const rollingPnl = recentBarPnl.slice(-EQUITY_BREAKER).reduce((s, v) => s + v, 0);
+              if (rollingPnl < 0) { skippedByEquity++; continue; }
+            }
+
+            // Decorrelated SMA: each engine uses different trend period
+            const smaPeriod = DECORRELATE ? (decorrelatedSma[engine.name] ?? engine.smaPeriod) : engine.smaPeriod;
+            const dailySma = pd.preDaily.smaMap.get(smaPeriod)?.[dIdx] ?? null;
+            const dailyAdx = pd.preDaily.adx[dIdx];
+            const dailyClose = pd.dailyCandles[dIdx].close;
+            if (dailySma === null || dailyAdx === null || dailyAdx < engine.adxMin) continue;
+
+            const dailyUptrend = dailyClose > dailySma;
+            const dailyDowntrend = dailyClose < dailySma;
+
+            const rawSignal = engine.checkSignal(i, pd.ctx);
+            if (rawSignal === null) continue;
+
+            let dir: "long" | "short" | null = null;
+            if (rawSignal === "long" && dailyUptrend) dir = "long";
+            if (rawSignal === "short" && dailyDowntrend) dir = "short";
+            if (dir === null) continue;
+
+            // Direction limit (dynamic: profitable positions -> allow more, losing -> tighten)
+            if (MAX_PER_DIR > 0) {
+              let effectiveLimit = MAX_PER_DIR;
+              if (DYNAMIC_LIMIT) {
+                const dirPositions = positions.filter(p => p.dir === dir);
+                const dirUnrealizedPnl = dirPositions.reduce((sum, p) => {
+                  const pd2 = candleMap[p.pair];
+                  if (!pd2 || i >= pd2.h4.length) return sum;
+                  const pp = ((pd2.h4[i].close - p.entry) / p.entry) * (p.dir === "long" ? 1 : -1);
+                  return sum + pp * NOTIONAL;
+                }, 0);
+                const EXPAND_MULT = Number(process.env.EXPAND_MULT ?? 3);
+                if (dirUnrealizedPnl > 0) effectiveLimit = Math.floor(MAX_PER_DIR * EXPAND_MULT);
+                else if (dirUnrealizedPnl < -MARGIN_PER_TRADE * 3) effectiveLimit = Math.max(5, Math.floor(MAX_PER_DIR / 2));
+              }
+              if (positions.filter(p => p.dir === dir).length >= effectiveLimit) continue;
+            }
+
+            // Require disagreement: at least 1 other engine must NOT signal same direction for same pair
+            if (REQUIRE_DISAGREE) {
+              const otherEngines = liveEngines.filter(e => e.name !== engine.name);
+              const allAgree = otherEngines.every(other => {
+                const otherSma = pd.preDaily.smaMap.get(other.smaPeriod)?.[dIdx] ?? null;
+                const otherAdx = pd.preDaily.adx[dIdx];
+                if (otherSma === null || otherAdx === null || otherAdx < other.adxMin) return false;
+                const otherSignal = other.checkSignal(i, pd.ctx);
+                if (otherSignal === null) return false;
+                if (dir === "long") return otherSignal === "long" && dailyClose > otherSma;
+                return otherSignal === "short" && dailyClose < otherSma;
+              });
+              if (allAgree) continue; // Skip when ALL engines agree (likely to be correlated loss)
+            }
+
+            const rawEntry = pd.h4[i + 1].open;
+            const entryPrice = dir === "long" ? rawEntry * (1 + SLIPPAGE_PCT) : rawEntry * (1 - SLIPPAGE_PCT);
+            const atr = pd.atr4h[i] ?? pd.h4[i].close * 0.02;
+            let stopDist = atr * engine.stopAtrMult;
+            if (SL_CAP_PCT > 0) stopDist = Math.min(stopDist, entryPrice * SL_CAP_PCT / 100);
+            const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
+            const rr = RR_OVERRIDE > 0 ? RR_OVERRIDE : engine.rewardRisk;
+            const tp = dir === "long" ? entryPrice + stopDist * rr : entryPrice - stopDist * rr;
+
+            const equity = COMPOUND ? START_EQUITY + totalPnl : START_EQUITY;
+            const margin = COMPOUND ? Math.max(MIN_SIZE, Math.floor(equity * SIZE_PCT)) : MARGIN_PER_TRADE;
+            const notional = margin * LEV;
+            positions.push({ engine: engine.name, pair, dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0, peakPrice: entryPrice, margin, notional });
+          }
+        }
+      }
+
+      recentBarPnl.push(dayPnl);
+      maxConcurrent = Math.max(maxConcurrent, positions.length);
+      peakEquity = Math.max(peakEquity, totalPnl);
+      maxDD = Math.max(maxDD, peakEquity - totalPnl);
+      worstBar = Math.min(worstBar, dayPnl);
+      bestBar = Math.max(bestBar, dayPnl);
+    }
+
+    const winRate = totalTrades > 0 ? (totalWins / totalTrades * 100).toFixed(1) : "0";
+    const { sl, tp, trail, stag, liq } = exitReasons;
+    const total = sl + tp + trail + stag + liq;
+    const pct = (v: number) => total > 0 ? `${v}(${(v/total*100).toFixed(0)}%)` : "0";
+
+    console.log(`\n=== PORTFOLIO SIMULATION ===`);
+    console.log(`Engines: ${liveEngineNames.join(", ")} | Pairs: ${pairs.length}`);
+    console.log(`Limits: maxPerPair=${MAX_PER_PAIR||"none"} maxPerDir=${MAX_PER_DIR||"none"} volFilter=${VOL_FILTER||"off"} equityBreaker=${EQUITY_BREAKER||"off"} decorrelate=${DECORRELATE}`);
+    console.log(`Trades: ${totalTrades} | WinRate: ${winRate}% | PnL: $${totalPnl.toFixed(2)}${COMPOUND ? ` | FinalEquity: $${(START_EQUITY + totalPnl).toFixed(2)} (${((totalPnl / START_EQUITY) * 100).toFixed(0)}%)` : ""}`);
+    console.log(`MaxDD: $${maxDD.toFixed(2)} | MaxConcurrent: ${maxConcurrent} | WorstBar: $${worstBar.toFixed(2)} | BestBar: $${bestBar.toFixed(2)}`);
+    console.log(`Exits: SL=${pct(sl)} TP=${pct(tp)} Trail=${pct(trail)} Stag=${pct(stag)} Liq=${pct(liq)}`);
+    if (skippedByVol > 0 || skippedByEquity > 0) console.log(`Filtered: vol=${skippedByVol} equity=${skippedByEquity}`);
+    console.log(`---PORTFOLIO done---`);
+  }
 }
 
 main().catch(console.error);

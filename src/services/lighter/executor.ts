@@ -190,10 +190,11 @@ export function initLighterEngine(): void {
 function inferExitReason(pos: QuantPosition, exitPrice: number): string {
   const sl = pos.stopLoss;
   const tp = pos.takeProfit;
-  if (sl && pos.direction === "long" && exitPrice <= sl) return "exchange-sl";
-  if (sl && pos.direction === "short" && exitPrice >= sl) return "exchange-sl";
-  if (tp && pos.direction === "long" && exitPrice >= tp) return "exchange-tp";
-  if (tp && pos.direction === "short" && exitPrice <= tp) return "exchange-tp";
+  const tol = pos.entryPrice * 0.005; // 0.5% tolerance for slippage
+  if (sl && pos.direction === "long" && exitPrice <= sl + tol) return "exchange-sl";
+  if (sl && pos.direction === "short" && exitPrice >= sl - tol) return "exchange-sl";
+  if (tp && pos.direction === "long" && exitPrice >= tp - tol) return "exchange-tp";
+  if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "exchange-tp";
   return "exchange-close";
 }
 

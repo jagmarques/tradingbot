@@ -39,8 +39,9 @@ export async function evaluateCCIPair(analysis: PairAnalysis): Promise<QuantAIDe
   if (!candles4h || candles4h.length < CCI_PERIOD + 5) return null;
 
   const n = candles4h.length;
+  const prevCCI = computeCCI(candles4h, CCI_PERIOD, n - 2);
   const currCCI = computeCCI(candles4h, CCI_PERIOD, n - 1);
-  if (currCCI === null) return null;
+  if (prevCCI === null || currCCI === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, CCI_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < CCI_DAILY_SMA_PERIOD + 2) return null;
@@ -60,8 +61,8 @@ export async function evaluateCCIPair(analysis: PairAnalysis): Promise<QuantAIDe
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && currCCI > CCI_THRESHOLD) direction = "long";
-  if (dailyDowntrend && currCCI < -CCI_THRESHOLD) direction = "short";
+  if (dailyUptrend && prevCCI <= CCI_THRESHOLD && currCCI > CCI_THRESHOLD) direction = "long";
+  if (dailyDowntrend && prevCCI >= -CCI_THRESHOLD && currCCI < -CCI_THRESHOLD) direction = "short";
 
   if (direction === null) return null;
 

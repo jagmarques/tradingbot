@@ -32,8 +32,11 @@ export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAID
   const psarStartIdx = n - psarValues.length;
 
   const currIdx = n - 1;
-  if (currIdx - psarStartIdx < 0) return null;
+  const prevIdx = n - 2;
+  if (prevIdx - psarStartIdx < 0) return null;
 
+  const prevSar = psarValues[prevIdx - psarStartIdx];
+  const prevClose = closes4h[prevIdx];
   const currSar = psarValues[currIdx - psarStartIdx];
   const currClose = closes4h[currIdx];
 
@@ -54,10 +57,10 @@ export async function evaluatePsarPair(analysis: PairAnalysis): Promise<QuantAID
   const dailyUptrend = dailyClose > dailySma;
   const dailyDowntrend = dailyClose < dailySma;
 
-  // SAR below curr close -> long state, SAR above curr close -> short state
+  // Crossover: SAR flips from above to below close (long) or below to above (short)
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && currSar < currClose) direction = "long";
-  if (dailyDowntrend && currSar > currClose) direction = "short";
+  if (dailyUptrend && prevSar > prevClose && currSar < currClose) direction = "long";
+  if (dailyDowntrend && prevSar < prevClose && currSar > currClose) direction = "short";
 
   if (direction === null) return null;
 

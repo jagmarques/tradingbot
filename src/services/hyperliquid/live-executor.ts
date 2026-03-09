@@ -262,14 +262,15 @@ async function reconcileWithExchange(): Promise<void> {
       const pnl = rawPnl - fees;
       const now = new Date().toISOString();
 
-      // Infer whether SL or TP fired based on exit price
+      // Infer whether SL or TP fired based on exit price (0.5% tolerance for slippage)
       let reason = "exchange-close";
       const sl = pos.stopLoss;
       const tp = pos.takeProfit;
-      if (sl && pos.direction === "long" && exitPrice <= sl) reason = "exchange-sl";
-      if (sl && pos.direction === "short" && exitPrice >= sl) reason = "exchange-sl";
-      if (tp && pos.direction === "long" && exitPrice >= tp) reason = "exchange-tp";
-      if (tp && pos.direction === "short" && exitPrice <= tp) reason = "exchange-tp";
+      const tol = pos.entryPrice * 0.005;
+      if (sl && pos.direction === "long" && exitPrice <= sl + tol) reason = "exchange-sl";
+      else if (sl && pos.direction === "short" && exitPrice >= sl - tol) reason = "exchange-sl";
+      else if (tp && pos.direction === "long" && exitPrice >= tp - tol) reason = "exchange-tp";
+      else if (tp && pos.direction === "short" && exitPrice <= tp + tol) reason = "exchange-tp";
 
       const closedPosition: QuantPosition = {
         ...pos,

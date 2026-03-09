@@ -84,6 +84,7 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   if (stcValues.length < 2) return null;
 
   const currSTC = stcValues[stcValues.length - 1];
+  const prevSTC = stcValues[stcValues.length - 2];
 
   const dailyCandles = await fetchDailyCandles(pair, SCHAFF_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < SCHAFF_DAILY_SMA_PERIOD + 2) return null;
@@ -103,8 +104,8 @@ export async function evaluateSchaffPair(analysis: PairAnalysis): Promise<QuantA
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && currSTC > SCHAFF_STC_THRESHOLD) direction = "long";
-  if (dailyDowntrend && currSTC < (100 - SCHAFF_STC_THRESHOLD)) direction = "short";
+  if (dailyUptrend && prevSTC <= SCHAFF_STC_THRESHOLD && currSTC > SCHAFF_STC_THRESHOLD) direction = "long";
+  if (dailyDowntrend && prevSTC >= (100 - SCHAFF_STC_THRESHOLD) && currSTC < (100 - SCHAFF_STC_THRESHOLD)) direction = "short";
 
   if (direction === null) return null;
 

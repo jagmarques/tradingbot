@@ -11,7 +11,7 @@ import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION } from "../../config/constants.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -164,12 +164,20 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       }
     }
 
-    // Live engines: DEMA -> HMA -> Schaff (order matters for pair priority)
+    // Live engines: Schaff + ZLEMA (decorrelated SMA30/SMA75 trend filters)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
-      { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
-      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
+      { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
     ];
+
+    // Track live positions for cross-engine limits
+    const livePositions = openPositions.filter(p => p.mode === "live");
+    const liveByPair = new Map<string, number>();
+    const liveByDir = new Map<string, number>();
+    for (const p of livePositions) {
+      liveByPair.set(p.pair, (liveByPair.get(p.pair) ?? 0) + 1);
+      liveByDir.set(p.direction, (liveByDir.get(p.direction) ?? 0) + 1);
+    }
 
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
@@ -179,10 +187,14 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
         if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+        if ((liveByPair.get(decision.pair) ?? 0) >= QUANT_MAX_PER_PAIR) continue;
+        if ((liveByDir.get(decision.direction) ?? 0) >= QUANT_MAX_PER_DIRECTION) continue;
         const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
         if (position) {
           count++;
           openPairs.add(decision.pair);
+          liveByPair.set(decision.pair, (liveByPair.get(decision.pair) ?? 0) + 1);
+          liveByDir.set(decision.direction, (liveByDir.get(decision.direction) ?? 0) + 1);
           console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
         }
       }
@@ -191,11 +203,11 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
 
     // Paper engines: all 7 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
+      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
+      { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
       { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
       { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
-      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "PSAR", tradeType: "psar-directional", decisions: psarDecisions },
-      { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
       { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
       { label: "CCI", tradeType: "cci-directional", decisions: cciDecisions },
     ];
@@ -221,7 +233,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, DEMA ${eL("dema-directional", demaDecisions)}L+${eP("dema-directional", demaDecisions)}P, HMA ${eL("hma-directional", hmaDecisions)}L+${eP("hma-directional", hmaDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}, ZLEMA ${eP("zlema-directional", zlemaDecisions)}, Vortex ${eP("vortex-directional", vortexDecisions)}, CCI ${eP("cci-directional", cciDecisions)}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, ZLEMA ${eL("zlema-directional", zlemaDecisions)}L+${eP("zlema-directional", zlemaDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, HMA ${eP("hma-directional", hmaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P`,
     );
   } finally {
     cycleRunning = false;

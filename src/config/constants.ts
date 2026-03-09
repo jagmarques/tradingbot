@@ -41,7 +41,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["ENA", "LDO", "OP", "ARB", "TIA", "SEI", "ONDO", "AVAX", "DOGE", "JUP", "APT", "SOL", "DOT", "SUI", "WLD"];
+export const QUANT_TRADING_PAIRS = ["TIA", "OP", "WIF", "ARB", "LDO", "AVAX", "JUP", "ONDO", "DOT", "ENA", "DOGE", "APT", "SOL", "SEI", "LINK"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -57,6 +57,8 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 
 // Directional Trading Scheduler
 export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
+export const QUANT_MAX_PER_PAIR = 2;       // Max engines with open position on same pair
+export const QUANT_MAX_PER_DIRECTION = 10; // Max positions in same direction across all engines
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14;
@@ -80,7 +82,7 @@ export const PSAR_TRAIL_ACTIVATION = 9;
 export const PSAR_TRAIL_DISTANCE = 2.5;
 
 // ZLEMA
-export const ZLEMA_DAILY_SMA_PERIOD = 50;
+export const ZLEMA_DAILY_SMA_PERIOD = 75;
 export const ZLEMA_DAILY_ADX_MIN = 10;
 export const ZLEMA_FAST = 10;
 export const ZLEMA_SLOW = 34;
@@ -111,7 +113,7 @@ export const VORTEX_TRAIL_ACTIVATION = 6;
 export const VORTEX_TRAIL_DISTANCE = 3;
 
 // Schaff
-export const SCHAFF_DAILY_SMA_PERIOD = 50;
+export const SCHAFF_DAILY_SMA_PERIOD = 30;
 export const SCHAFF_DAILY_ADX_MIN = 22;
 export const SCHAFF_STC_FAST = 10;
 export const SCHAFF_STC_SLOW = 26;
@@ -189,8 +191,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set([
   "schaff-directional",
-  "hma-directional",
-  "dema-directional",
+  "zlema-directional",
 ]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {

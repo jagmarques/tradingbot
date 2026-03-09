@@ -49,7 +49,9 @@ export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAI
 
   const currFast = fastArr[n - 1];
   const currSlow = slowArr[n - 1];
-  if (currFast === null || currSlow === null) return null;
+  const prevFast = fastArr[n - 2];
+  const prevSlow = slowArr[n - 2];
+  if (currFast === null || currSlow === null || prevFast === null || prevSlow === null) return null;
 
   const dailyCandles = await fetchDailyCandles(pair, ZLEMA_DAILY_LOOKBACK_DAYS);
   if (dailyCandles.length < ZLEMA_DAILY_SMA_PERIOD + 2) return null;
@@ -69,8 +71,8 @@ export async function evaluateZlemaPair(analysis: PairAnalysis): Promise<QuantAI
   const dailyDowntrend = dailyClose < dailySma;
 
   let direction: "long" | "short" | null = null;
-  if (dailyUptrend && currFast > currSlow) direction = "long";
-  if (dailyDowntrend && currFast < currSlow) direction = "short";
+  if (dailyUptrend && prevFast <= prevSlow && currFast > currSlow) direction = "long";
+  if (dailyDowntrend && prevFast >= prevSlow && currFast < currSlow) direction = "short";
 
   if (direction === null) return null;
 
