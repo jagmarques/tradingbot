@@ -127,9 +127,12 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const aiOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType).map(p => p.pair),
     );
-    const openPairsByEngine = new Map<string, Set<string>>();
+    // Separate live/paper pair tracking
+    const liveOpenPairsByEngine = new Map<string, Set<string>>();
+    const paperOpenPairsByEngine = new Map<string, Set<string>>();
     for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "hma-directional", "cci-directional"]) {
-      openPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt).map(p => p.pair)));
+      liveOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "live").map(p => p.pair)));
+      paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
 
     // Close AI positions if signal flips
@@ -171,7 +174,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
-      const openPairs = openPairsByEngine.get(tradeType)!;
+      const openPairs = liveOpenPairsByEngine.get(tradeType)!;
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
@@ -186,34 +189,39 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       executed.set(tradeType, count);
     }
 
-    // Paper engines: independent, no ordering
+    // Paper engines: all 7 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
+      { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
+      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
+      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "PSAR", tradeType: "psar-directional", decisions: psarDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
       { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
       { label: "CCI", tradeType: "cci-directional", decisions: cciDecisions },
     ];
 
+    const paperExecuted = new Map<string, number>();
     for (const { label, tradeType, decisions } of paperEngines) {
       let count = 0;
-      const openPairs = openPairsByEngine.get(tradeType)!;
+      const openPairs = paperOpenPairsByEngine.get(tradeType)!;
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
         if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
+        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice, true);
         if (position) {
           count++;
           openPairs.add(decision.pair);
-          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+          console.log(`[QuantScheduler] ${label}(paper): Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
         }
       }
-      executed.set(tradeType, count);
+      paperExecuted.set(tradeType, count);
     }
 
-    const e = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
+    const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
+    const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, DEMA ${e("dema-directional", demaDecisions)}, HMA ${e("hma-directional", hmaDecisions)}, Schaff ${e("schaff-directional", schaffDecisions)}, PSAR ${e("psar-directional", psarDecisions)}, ZLEMA ${e("zlema-directional", zlemaDecisions)}, Vortex ${e("vortex-directional", vortexDecisions)}, CCI ${e("cci-directional", cciDecisions)}`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, DEMA ${eL("dema-directional", demaDecisions)}L+${eP("dema-directional", demaDecisions)}P, HMA ${eL("hma-directional", hmaDecisions)}L+${eP("hma-directional", hmaDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}, ZLEMA ${eP("zlema-directional", zlemaDecisions)}, Vortex ${eP("vortex-directional", vortexDecisions)}, CCI ${eP("cci-directional", cciDecisions)}`,
     );
   } finally {
     cycleRunning = false;

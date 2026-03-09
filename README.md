@@ -84,7 +84,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 - 50 max paper positions, 5 max live positions
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (20% activation, 7% trail, smart trail resets), stagnation exit (engine-specific, 32-64h), stop-loss (ATR-based, 5% max)
+- Trailing stop (20% activation, 5% trail, smart trail resets), stagnation exit (engine-specific, 32-64h), stop-loss (ATR-based, 5% max)
 - AI signal flip: closes AI positions on reversal (long->short or vice versa), flat signals ignored
 - Exchange-level stop-loss orders on both HL and Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
@@ -97,8 +97,9 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 | Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
 | Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
-| Quant live engines (DEMA, HMA, Schaff) | Paper | Live | Live |
+| Quant live engines (DEMA, HMA, Schaff) | Paper | Live + Paper | Live |
 | Quant paper engines (PSAR, ZLEMA, Vortex, CCI) | Paper | Paper | Live |
+| Note: live engines also run paper for independent performance tracking ||||
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**

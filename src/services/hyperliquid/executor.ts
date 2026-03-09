@@ -30,6 +30,7 @@ export async function openPosition(
   tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
+  forcePaper?: boolean,
 ): Promise<QuantPosition | null> {
   // Funding positions bypass volatile regime check (they're regime-agnostic)
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
@@ -42,13 +43,13 @@ export async function openPosition(
 
   const mode = getTradingMode();
   const exchange = getEngineExchange(tradeType);
-  // hybrid: specific engines + AI go live, rest stay paper
-  const useLive =
+  // forcePaper bypasses live routing
+  const useLive = !forcePaper && (
     mode === "live" ||
     (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)) ||
-    (mode === "hybrid" && tradeType === "ai-directional");
+    (mode === "hybrid" && tradeType === "ai-directional"));
 
-  // One live position per pair per exchange (paper engines run independently for tracking)
+  // One live position per pair per exchange
   if (useLive) {
     const allPositions = getOpenQuantPositions();
     const existingLive = allPositions.find(p => p.pair === pair && p.exchange === exchange && p.mode === "live");

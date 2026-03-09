@@ -21,9 +21,9 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "hma-directional": HMA_STAGNATION_BARS * H4_MS,
 };
 
-// Trailing stop: 20% activation, 7% trail (backtest-validated)
+// Trailing stop: 20% activation, 5% trail (backtest-validated)
 const TRAIL_ACTIVATION = 20;
-const TRAIL_DISTANCE = 7;
+const TRAIL_DISTANCE = 5;
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
