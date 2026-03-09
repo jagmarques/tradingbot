@@ -21,6 +21,7 @@ const positionContext = new Map<string, {
 const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
 const exchangeStopOids = new Map<string, number>();
+const exchangeTpOids = new Map<string, number>();
 
 let szDecimalsMap: Map<string, number> | null = null;
 let maxLeverageMap: Map<string, number> | null = null;
@@ -108,6 +109,43 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
   }
 }
 
+async function placeExchangeTP(position: QuantPosition): Promise<void> {
+  if (!position.takeProfit || !isFinite(position.takeProfit) || position.takeProfit <= 0) return;
+  if (exchangeTpOids.has(position.id)) return;
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const szMap = await getSzDecimals();
+    const decimals = szMap.get(position.pair);
+    if (decimals === undefined) return;
+    const notional = position.size * position.leverage;
+    const sizeInCoins = roundSize(notional / position.entryPrice, decimals);
+    if (sizeInCoins <= 0) return;
+    const tp = position.takeProfit;
+    const result = await withTimeout(
+      sdk.exchange.placeOrder({
+        coin: `${position.pair}-PERP`,
+        is_buy: position.direction === "short",
+        sz: sizeInCoins,
+        limit_px: roundPrice(tp),
+        order_type: { trigger: { triggerPx: roundPrice(tp), isMarket: true, tpsl: "tp" } },
+        reduce_only: true,
+      }),
+      API_ORDER_TIMEOUT_MS, "HL placeExchangeTP",
+    );
+    const statuses = result?.response?.data?.statuses;
+    if (statuses?.[0]?.resting) {
+      exchangeTpOids.set(position.id, statuses[0].resting.oid);
+      console.log(`[Quant Live] Exchange TP placed for ${position.pair} @ ${tp}`);
+    } else {
+      console.error(`[Quant Live] Exchange TP not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Quant Live] Exchange TP failed for ${position.pair}: ${msg}`);
+  }
+}
+
 async function cancelExchangeStop(positionId: string, pair: string): Promise<void> {
   const oid = exchangeStopOids.get(positionId);
   if (!oid) return;
@@ -121,6 +159,19 @@ async function cancelExchangeStop(positionId: string, pair: string): Promise<voi
   exchangeStopOids.delete(positionId);
 }
 
+async function cancelExchangeTP(positionId: string, pair: string): Promise<void> {
+  const oid = exchangeTpOids.get(positionId);
+  if (!oid) return;
+  try {
+    const sdk = getClient();
+    await sdk.exchange.cancelOrder({ coin: `${pair}-PERP`, o: oid });
+    console.log(`[Quant Live] Exchange TP cancelled for ${pair}`);
+  } catch {
+    // best effort
+  }
+  exchangeTpOids.delete(positionId);
+}
+
 async function cancelAllExistingStops(): Promise<void> {
   try {
     await ensureConnected();
@@ -131,11 +182,12 @@ async function cancelAllExistingStops(): Promise<void> {
       await sdk.info.getUserOpenOrders(wallet);
     const stops = orders.filter(o => o.reduceOnly);
     if (stops.length === 0) return;
-    console.log(`[Quant Live] Cancelling ${stops.length} stale stops`);
+    console.log(`[Quant Live] Cancelling ${stops.length} stale stops/TPs`);
     for (const o of stops) {
       try { await sdk.exchange.cancelOrder({ coin: o.coin, o: o.oid }); } catch { /* best effort */ }
     }
     exchangeStopOids.clear();
+    exchangeTpOids.clear();
   } catch (err) {
     console.error(`[Quant Live] Failed to cancel stops: ${err instanceof Error ? err.message : err}`);
   }
@@ -154,9 +206,8 @@ export function initLiveEngine(): void {
     await reconcileWithExchange();
     await cancelAllExistingStops();
     for (const pos of getLivePositions()) {
-      if (pos.stopLoss && isFinite(pos.stopLoss)) {
-        await placeExchangeStop(pos);
-      }
+      if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos);
+      if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos);
     }
   }, 15_000);
   setInterval(() => void reconcileWithExchange(), 5 * 60 * 1000);
@@ -231,6 +282,7 @@ async function reconcileWithExchange(): Promise<void> {
       });
       positionContext.delete(pos.id);
       await cancelExchangeStop(pos.id, pos.pair);
+      await cancelExchangeTP(pos.id, pos.pair);
       void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "Reconciliation");
       void notifyQuantTradeExit({
         pair: pos.pair, direction: pos.direction,
@@ -488,6 +540,7 @@ export async function liveOpenPosition(
 
     console.log(`[Quant Live] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice} (${fillSize} coins)`);
     void placeExchangeStop(position);
+    void placeExchangeTP(position);
     return position;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -554,6 +607,7 @@ export async function liveClosePosition(
 
     console.log(`[Quant Live] Closing ${position.pair} ${position.direction} (${reason})`);
     await cancelExchangeStop(positionId, position.pair);
+    await cancelExchangeTP(positionId, position.pair);
 
     const result = await withTimeout(
       sdk.custom.marketClose(position.pair, undefined, undefined, MAX_SLIPPAGE),
@@ -565,6 +619,7 @@ export async function liveClosePosition(
       console.error(`[Quant Live] Close failed for ${position.pair}: no statuses`);
       console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
       void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
@@ -576,12 +631,14 @@ export async function liveClosePosition(
         await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: status.resting.oid });
       } catch { /* best effort */ }
       void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
     if (!status.filled) {
       console.error(`[Quant Live] Close rejected for ${position.pair}: ${JSON.stringify(status)}`);
       void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
@@ -712,6 +769,7 @@ export async function liveClosePosition(
     }
 
     void placeExchangeStop(position);
+    void placeExchangeTP(position);
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

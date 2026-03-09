@@ -29,6 +29,7 @@ const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
 const exchangeStops = new Map<string, { marketIndex: number; orderIndex: bigint }>();
+const exchangeTPs = new Map<string, { marketIndex: number; orderIndex: bigint }>();
 
 const positionContext = new Map<string, {
   indicatorsAtEntry?: string;
@@ -94,6 +95,57 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
   }
 }
 
+async function placeExchangeTP(position: QuantPosition, force = false): Promise<void> {
+  if (!position.takeProfit || !isFinite(position.takeProfit) || position.takeProfit <= 0) return;
+  if (!force && exchangeTPs.has(position.pair)) return;
+  try {
+    const marketIndex = await getMarketIndex(position.pair);
+    if (marketIndex === null) return;
+    const sizeDecimals = await getMarketSizeDecimals(marketIndex);
+    const priceDecimals = await getMarketPriceDecimals(marketIndex);
+    const notional = position.size * position.leverage;
+    const baseAmount = toBaseUnits(notional / position.entryPrice, sizeDecimals);
+    if (baseAmount <= 0) return;
+    const tp = position.takeProfit;
+    const triggerPrice = toPriceUnits(tp, priceDecimals);
+    const limitPrice = toPriceUnits(
+      position.direction === "long" ? tp * 0.95 : tp * 1.05,
+      priceDecimals,
+    );
+    const isAsk = position.direction === "long";
+    const nonce = await getNextNonce();
+    // TP: longs trigger above (SL order), shorts trigger below (TP order) - opposite of SL
+    const createOrder = position.direction === "long"
+      ? getSignerClient().create_sl_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        )
+      : getSignerClient().create_tp_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        );
+    const [order, , err] = await withTimeout(
+      createOrder,
+      API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP",
+    );
+    if (err) {
+      console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
+    } else {
+      const orderIdx = order?.order_index ?? order?.orderIndex;
+      if (orderIdx !== undefined) {
+        exchangeTPs.set(position.pair, { marketIndex, orderIndex: BigInt(orderIdx) });
+        console.log(`[Lighter Executor] Exchange TP placed for ${position.pair} @ ${tp} oid=${orderIdx}`);
+      } else {
+        console.error(`[Lighter Executor] TP placed for ${position.pair} but no orderIdx returned`);
+      }
+    }
+  } catch (err) {
+    if (err instanceof TimeoutError) resetNonce();
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Lighter Executor] Exchange TP error for ${position.pair}: ${msg}`);
+  }
+}
+
 async function cancelExchangeStop(pair: string): Promise<void> {
   const info = exchangeStops.get(pair);
   if (!info) return;
@@ -111,6 +163,23 @@ async function cancelExchangeStop(pair: string): Promise<void> {
   exchangeStops.delete(pair);
 }
 
+async function cancelExchangeTP(pair: string): Promise<void> {
+  const info = exchangeTPs.get(pair);
+  if (!info) return;
+  try {
+    const nonce = await getNextNonce();
+    await withTimeout(
+      getSignerClient().cancel_order(info.marketIndex, info.orderIndex, nonce),
+      API_ORDER_TIMEOUT_MS, "Lighter cancelExchangeTP",
+    );
+    console.log(`[Lighter Executor] Exchange TP cancelled for ${pair}`);
+  } catch (err) {
+    if (err instanceof TimeoutError) resetNonce();
+    console.error(`[Lighter Executor] Cancel TP error for ${pair}: ${err instanceof Error ? err.message : err}`);
+  }
+  exchangeTPs.delete(pair);
+}
+
 export function initLighterEngine(): void {
   lighterPositions.clear();
   const allOpen = loadOpenQuantPositions();
@@ -124,12 +193,12 @@ export function initLighterEngine(): void {
       const nonce = await getNextNonce();
       await getSignerClient().cancel_all_orders(0, 0, nonce);
       exchangeStops.clear();
-      console.log("[Lighter Executor] Cleared stale stops");
+      exchangeTPs.clear();
+      console.log("[Lighter Executor] Cleared stale orders");
     } catch { /* best effort */ }
     for (const pos of getLighterLivePositions()) {
-      if (pos.stopLoss && isFinite(pos.stopLoss)) {
-        await placeExchangeStop(pos, true);
-      }
+      if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
+      if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
     }
   }, 30_000);
 }
@@ -372,6 +441,7 @@ export async function lighterOpenPosition(
 
     console.log(`[Lighter Executor] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice}`);
     void placeExchangeStop(position);
+    void placeExchangeTP(position);
     return position;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -453,6 +523,7 @@ export async function lighterClosePosition(
       if (!existsOnExchange) {
         console.error(`[Lighter Executor] ${position.pair} not found on exchange (2 checks) — phantom`);
         await cancelExchangeStop(position.pair);
+        await cancelExchangeTP(position.pair);
         const now = new Date().toISOString();
         const phantom: QuantPosition = { ...position, status: "closed", closedAt: now, realizedPnl: 0, exitReason: "phantom-not-on-exchange" };
         lighterPositions.set(positionId, phantom);
@@ -484,6 +555,7 @@ export async function lighterClosePosition(
 
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
     await cancelExchangeStop(position.pair);
+    await cancelExchangeTP(position.pair);
 
     const nonce = await getNextNonce();
     const closeResult = await withTimeout(
@@ -505,6 +577,7 @@ export async function lighterClosePosition(
       if (closeErr.includes("nonce")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
       void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
@@ -525,6 +598,7 @@ export async function lighterClosePosition(
       console.error(`[Lighter Executor] Close not filled for ${position.pair} — still open on exchange`);
       void notifyCriticalError(`Lighter close not filled: ${position.pair} still open`, "LighterExecutor");
       void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
     const rawPnl =
@@ -650,6 +724,7 @@ export async function lighterClosePosition(
     }
 
     void placeExchangeStop(position);
+    void placeExchangeTP(position);
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);
