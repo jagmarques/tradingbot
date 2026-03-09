@@ -102,6 +102,12 @@ export function initLighterEngine(): void {
   }
   console.log(`[Lighter Executor] Init: ${lighterLive.length} live positions restored`);
   setTimeout(async () => {
+    try {
+      const nonce = await getNextNonce();
+      await getSignerClient().cancel_all_orders(0, 0, nonce);
+      exchangeStopPairs.clear();
+      console.log("[Lighter Executor] Cleared stale stops");
+    } catch { /* best effort */ }
     for (const pos of getLighterLivePositions()) {
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos, true);
