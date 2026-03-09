@@ -10,6 +10,8 @@ const FEE_RATE = 0.0009;
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV;
 const SL_CAP_PCT = Number(process.env.SL_CAP ?? 0);
+const TRAIL_ACTIVATION = Number(process.env.TRAIL_ACT ?? 20);
+const TRAIL_DISTANCE = Number(process.env.TRAIL_DIST ?? 5);
 const LIQUIDATION_FEE_PCT = 0.01;
 const LIQUIDATION_THRESHOLD_PCT = 4;
 
@@ -714,8 +716,8 @@ function runBacktest(
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
 
-      // Check trailing stop (peak > 20%, trail = peak - 5%)
-      const trailingHit = pos.peakPnlPct > 20 && unrealizedPct <= pos.peakPnlPct - 5;
+      // Check trailing stop
+      const trailingHit = pos.peakPnlPct > TRAIL_ACTIVATION && unrealizedPct <= pos.peakPnlPct - TRAIL_DISTANCE;
 
       // Check stagnation
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;
@@ -828,7 +830,7 @@ async function main() {
   console.log(`Engines: ${enginesFiltered.map((e) => e.name).join(", ")}`);
   console.log(`Walk-forward: train first ${TRAIN_BARS} 4h bars (~120d), test remainder (~150d)`);
   console.log(`Fee: ${(FEE_RATE * 100).toFixed(3)}% RT | Leverage: ${LEV}x | Margin: $${MARGIN_PER_TRADE}/trade`);
-  console.log(`Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)`);
+  console.log(`Exit: SL/TP + trailing(peak>${TRAIL_ACTIVATION}%,trail peak-${TRAIL_DISTANCE}%) + stagnation(per-engine)`);
   console.log(`NOTE: params were tuned on test window in quick-276 (data leakage). Re-tuning on train yields 0 trades.`);
   console.log(`These results reflect overfit params -- treat Sharpe > 4 as inflated.\n`);
   console.log("Fetching candle data...");
@@ -938,7 +940,7 @@ async function main() {
   const fullLines: string[] = [
     `=== backtest-engines.ts: 9 Engine Backtest Results ===`,
     `Test window: ~${testDaysRef.toFixed(0)}d | ${pairs.length} pairs | fees=${(FEE_RATE * 100).toFixed(3)}%RT | leverage=${LEV}x | margin=$${MARGIN_PER_TRADE}`,
-    `Exit: SL/TP + trailing(peak>5%,trail peak-2%) + stagnation(per-engine)`,
+    `Exit: SL/TP + trailing(peak>${TRAIL_ACTIVATION}%,trail peak-${TRAIL_DISTANCE}%) + stagnation(per-engine)`,
     "",
     header,
     sep,
