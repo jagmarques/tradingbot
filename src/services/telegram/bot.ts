@@ -1128,9 +1128,17 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
       message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}/${hlClosedQ.cnt + hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
+      const lastHl = hlOpen.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const lastLt = ltOpen.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       if (hlMarginLine || ltMarginLine) message += "\n";
       if (hlMarginLine) message += hlMarginLine;
       if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
+      if (lastHl || lastLt) {
+        const parts: string[] = [];
+        if (lastHl) parts.push(`HL: $${lastHl.size.toFixed(2)} ${lastHl.pair}`);
+        if (lastLt) parts.push(`LT: $${lastLt.size.toFixed(2)} ${lastLt.pair}`);
+        message += `\nLast trade: ${parts.join(" | ")}`;
+      }
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
