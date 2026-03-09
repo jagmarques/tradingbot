@@ -111,7 +111,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const CACHE_DIR = "/tmp/bt-candle-cache";
+try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch { /* ok */ }
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4h
+
 async function fetchCandlesOnce(coin: string, interval: string, days: number): Promise<Candle[]> {
+  // Disk cache
+  const cacheFile = `${CACHE_DIR}/${coin}_${interval}_${days}.json`;
+  try {
+    const stat = fs.statSync(cacheFile);
+    if (Date.now() - stat.mtimeMs < CACHE_TTL_MS) {
+      return JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+    }
+  } catch { /* miss */ }
+
   const endTime = Date.now();
   const startTime = endTime - days * 86400_000;
   const res = await fetch("https://api.hyperliquid.xyz/info", {
@@ -121,7 +134,7 @@ async function fetchCandlesOnce(coin: string, interval: string, days: number): P
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${coin} ${interval}`);
   const raw = (await res.json()) as Array<{ t: number; o: string; h: string; l: string; c: string; v: string }>;
-  return raw
+  const candles = raw
     .map((c) => ({
       timestamp: c.t,
       open: parseFloat(c.o),
@@ -131,6 +144,9 @@ async function fetchCandlesOnce(coin: string, interval: string, days: number): P
       volume: parseFloat(c.v),
     }))
     .sort((a, b) => a.timestamp - b.timestamp);
+
+  try { fs.writeFileSync(cacheFile, JSON.stringify(candles)); } catch { /* ok */ }
+  return candles;
 }
 
 async function fetchCandles(coin: string, interval: string, days: number): Promise<Candle[]> {
