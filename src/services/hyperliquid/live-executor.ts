@@ -268,7 +268,7 @@ async function reconcileWithExchange(): Promise<void> {
         closedAt: now,
         exitPrice,
         realizedPnl: pnl,
-        exitReason: "reconciliation",
+        exitReason: "exchange-close",
       };
       livePositions.set(pos.id, closedPosition);
       saveQuantPosition(closedPosition);
@@ -277,21 +277,20 @@ async function reconcileWithExchange(): Promise<void> {
         id: pos.id, pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
         pnl, fees, mode: "live", status: "closed", exchange: "hyperliquid",
-        exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+        exitReason: "exchange-close", indicatorsAtEntry: ctx?.indicatorsAtEntry,
         createdAt: pos.openedAt, updatedAt: now,
         tradeType: pos.tradeType ?? "directional",
       });
       positionContext.delete(pos.id);
       await cancelExchangeStop(pos.id, pos.pair);
       await cancelExchangeTP(pos.id, pos.pair);
-      void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "Reconciliation");
       void notifyQuantTradeExit({
         pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-        pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "directional",
+        pnl, exitReason: "exchange-close", tradeType: pos.tradeType ?? "directional",
         positionMode: "live",
       });
-      console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
+      console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (exchange-close) @ ${exitPrice}`);
     }
 
     if (exchangeCoins.size > 0 || trackedPairs.size > 0) {

@@ -197,7 +197,7 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
   const pnl = rawPnl - fees;
   const now = new Date().toISOString();
 
-  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "reconciliation" };
+  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "exchange-close" };
   lighterPositions.set(pos.id, closed);
   saveQuantPosition(closed);
   const ctx = positionContext.get(pos.id);
@@ -205,19 +205,18 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
     id: pos.id, pair: pos.pair, direction: pos.direction,
     entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
     pnl, fees, mode: "live", exchange: "lighter", status: "closed",
-    exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+    exitReason: "exchange-close", indicatorsAtEntry: ctx?.indicatorsAtEntry,
     createdAt: pos.openedAt, updatedAt: now,
     tradeType: pos.tradeType ?? "directional",
   });
   positionContext.delete(pos.id);
-  void notifyCriticalError(`PHANTOM closed: ${pos.pair} ${pos.direction} — est P&L $${pnl.toFixed(2)}`, "LighterReconciliation");
   void notifyQuantTradeExit({
     pair: pos.pair, direction: pos.direction,
     entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-    pnl, exitReason: "reconciliation", tradeType: pos.tradeType ?? "directional",
+    pnl, exitReason: "exchange-close", tradeType: pos.tradeType ?? "directional",
     positionMode: "live",
   });
-  console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (reconciliation) @ ${exitPrice}`);
+  console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (exchange-close) @ ${exitPrice}`);
 }
 
 async function reconcileLighter(): Promise<void> {
