@@ -64,6 +64,7 @@ function roundPrice(price: number): number {
 
 async function placeExchangeStop(position: QuantPosition): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
+  if (exchangeStopOids.has(position.id)) return;
   try {
     await ensureConnected();
     const sdk = getClient();

@@ -34,8 +34,9 @@ const positionContext = new Map<string, {
   indicatorsAtEntry?: string;
 }>();
 
-async function placeExchangeStop(position: QuantPosition): Promise<void> {
+async function placeExchangeStop(position: QuantPosition, force = false): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
+  if (!force && exchangeStopPairs.has(position.pair)) return;
   try {
     const marketIndex = await getMarketIndex(position.pair);
     if (marketIndex === null) return;
