@@ -1,31 +1,22 @@
-// Unified backtest for all 9 live quant engines using exact production signal logic.
-// Walk-forward: train=120d (720 4h bars), test=~60d. 8 pairs.
-// Fee model: 0.09% round-trip, 10x leverage, $10 margin per trade.
-// Exit model: SL, TP, trailing stop (peak>5%, trail peak-2%), stagnation (per-engine bars).
-//
-// NOTE: Trailing stop is checked per 4h bar (not per minute like live). This is
-// conservative -- wider bars mean less favorable trailing-stop fills than live.
-//
-// Run: npx tsx scripts/backtest-engines.ts [engine-name|all]
-// Output: summary table to stdout + full breakdown to /tmp/backtest-engines.txt
+// Backtest all quant engines. Run: npx tsx scripts/backtest-engines.ts [engine|all]
 
 import { ATR, ADX, MACD, EMA, PSAR } from "technicalindicators";
 import * as fs from "node:fs";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// Constants
 
 const LEV = 10;
-const FEE_RATE = 0.0009; // 0.09% round-trip
+const FEE_RATE = 0.0009;
 const MARGIN_PER_TRADE = 10;
-const NOTIONAL = MARGIN_PER_TRADE * LEV; // $100 notional
-const SL_CAP_PCT = Number(process.env.SL_CAP ?? 0); // 0 = no cap
+const NOTIONAL = MARGIN_PER_TRADE * LEV;
+const SL_CAP_PCT = Number(process.env.SL_CAP ?? 0);
+const LIQUIDATION_FEE_PCT = 0.01;
+const LIQUIDATION_THRESHOLD_PCT = 4;
 
 const PAIRS = ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT"];
-const DAYS_4H = 780; // 730d + warmup buffer
+const DAYS_4H = 780;
 const DAYS_DAILY = 780;
-const TRAIN_BARS = 2935; // ~67% of 4381 bars (730d)
-
-// Engine parameters (exact copies from constants.ts)
+const TRAIN_BARS = 2935;
 const PSAR_STEP = 0.02;
 const PSAR_MAX = 0.1;
 
@@ -56,7 +47,7 @@ const HMA_SLOW = 34;
 const CCI_PERIOD = 14;
 const CCI_THRESHOLD = 100;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Types
 
 interface Candle {
   timestamp: number;
@@ -114,7 +105,7 @@ interface SignalContext {
   cciValues: (number | null)[];
 }
 
-// ─── Fetch ────────────────────────────────────────────────────────────────────
+// Fetch
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -151,7 +142,7 @@ async function fetchCandles(coin: string, interval: string, days: number): Promi
   }
 }
 
-// ─── Daily precomputation ─────────────────────────────────────────────────────
+// Daily precomputation
 
 interface DailyPre {
   smaMap: Map<number, (number | null)[]>; // smaPeriod -> array aligned to daily candles
@@ -185,7 +176,7 @@ function precomputeDaily(candles: Candle[], smaPeriods: number[]): DailyPre {
   return { smaMap, adx: adxArr };
 }
 
-// ─── Daily index map: for each 4h bar, index of last completed daily bar ────────
+// Daily index map
 
 function buildDailyIndex(h4: Candle[], daily: Candle[]): number[] {
   const idxDailyAt: number[] = new Array(h4.length).fill(-1);
@@ -197,7 +188,7 @@ function buildDailyIndex(h4: Candle[], daily: Candle[]): number[] {
   return idxDailyAt;
 }
 
-// ─── 4h ATR ───────────────────────────────────────────────────────────────────
+// 4h ATR
 
 function precomputeATR(candles: Candle[]): (number | null)[] {
   const n = candles.length;
@@ -212,7 +203,7 @@ function precomputeATR(candles: Candle[]): (number | null)[] {
   return arr;
 }
 
-// ─── Indicator computation functions (exact copies from engine files) ──────────
+// Indicators
 
 // ZLEMA: lag-corrected EMA (from zlema-engine.ts)
 function computeZLEMA(closes: number[], period: number): (number | null)[] {
@@ -455,7 +446,7 @@ function precomputeElderIndicators(candles: Candle[]): { ema: (number | null)[];
   return { ema, histogram };
 }
 
-// ─── Precompute all indicators for a pair ────────────────────────────────────
+// Precompute all indicators
 
 function precomputeSignalContext(candles: Candle[]): SignalContext {
   const closes = candles.map((c) => c.close);
@@ -488,7 +479,7 @@ function precomputeSignalContext(candles: Candle[]): SignalContext {
   };
 }
 
-// ─── Engine definitions ───────────────────────────────────────────────────────
+// Engine definitions
 
 const ENGINES: EngineConfig[] = [
   {
@@ -696,6 +687,7 @@ function runBacktest(
       const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
       let exitPrice: number | null = null;
+      let exitViaSl = false;
 
       // Trailing/stagnation checked before SL/TP (live monitor runs more frequently)
       if (trailingHit) {
@@ -705,16 +697,30 @@ function runBacktest(
       } else if (slHit && tpHit) {
         // Both hit same bar: conservative, assume SL
         exitPrice = pos.sl;
+        exitViaSl = true;
       } else if (slHit) {
         exitPrice = pos.sl;
+        exitViaSl = true;
       } else if (tpHit) {
         exitPrice = pos.tp;
       }
 
       if (exitPrice !== null) {
-        const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
+        // If SL beyond liq threshold, position gets liquidated instead
+        let actualExitPrice = exitPrice;
+        let liqFee = 0;
+        if (exitViaSl) {
+          const slDistPct = Math.abs(pos.sl - pos.entry) / pos.entry * 100;
+          if (slDistPct > LIQUIDATION_THRESHOLD_PCT) {
+            actualExitPrice = pos.dir === "long"
+              ? pos.entry * (1 - LIQUIDATION_THRESHOLD_PCT / 100)
+              : pos.entry * (1 + LIQUIDATION_THRESHOLD_PCT / 100);
+            liqFee = NOTIONAL * LIQUIDATION_FEE_PCT;
+          }
+        }
+        const pp = ((actualExitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
         const grossPnl = pp * NOTIONAL;
-        const fees = NOTIONAL * FEE_RATE;
+        const fees = NOTIONAL * FEE_RATE + liqFee;
         const net = grossPnl - fees;
         pnlTotal += net;
         peakPnl = Math.max(peakPnl, pnlTotal);

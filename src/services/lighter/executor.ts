@@ -62,11 +62,18 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
     );
     const isAsk = position.direction === "long";
     const nonce = await getNextNonce();
+    // Lighter SL triggers above (for shorts), TP triggers below (for longs)
+    const createOrder = position.direction === "long"
+      ? getSignerClient().create_tp_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        )
+      : getSignerClient().create_sl_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        );
     const [order, , err] = await withTimeout(
-      getSignerClient().create_sl_order(
-        marketIndex, Date.now() % 1_000_000_000, baseAmount,
-        triggerPrice, limitPrice, isAsk, true, nonce,
-      ),
+      createOrder,
       API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop",
     );
     if (err) {
