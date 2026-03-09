@@ -30,6 +30,21 @@ let currentNonce = -1;
 let nonceInitPromise: Promise<void> | null = null;
 let nonceGeneration = 0;
 
+// Serializes nonce-consuming writes to prevent out-of-order arrival at server
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+export function withNonce<T>(fn: (nonce: number) => Promise<T>): Promise<T> {
+  const p = writeQueue.then(async () => {
+    const nonce = await getNextNonce();
+    return fn(nonce);
+  }, async () => {
+    const nonce = await getNextNonce();
+    return fn(nonce);
+  });
+  writeQueue = p.then(() => {}, () => {});
+  return p;
+}
+
 export function initLighter(
   apiKeyIndex: number,
   privateKey: string,

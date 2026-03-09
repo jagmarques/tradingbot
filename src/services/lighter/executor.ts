@@ -5,7 +5,7 @@ import {
   getMarketPriceDecimals,
   getLighterMidPrice,
   getLighterMaxLeverage,
-  getNextNonce,
+  withNonce,
   resetNonce,
   toBaseUnits,
   toPriceUnits,
@@ -63,21 +63,19 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
       priceDecimals,
     );
     const isAsk = position.direction === "long";
-    const nonce = await getNextNonce();
     // Lighter SL triggers above (for shorts), TP triggers below (for longs)
-    const createOrder = position.direction === "long"
-      ? getSignerClient().create_tp_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
-          triggerPrice, limitPrice, isAsk, true, nonce,
-        )
-      : getSignerClient().create_sl_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
-          triggerPrice, limitPrice, isAsk, true, nonce,
-        );
-    const [, , err] = await withTimeout(
-      createOrder,
-      API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop",
-    );
+    const [, , err] = await withNonce(async (nonce) => {
+      const createOrder = position.direction === "long"
+        ? getSignerClient().create_tp_order(
+            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            triggerPrice, limitPrice, isAsk, true, nonce,
+          )
+        : getSignerClient().create_sl_order(
+            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            triggerPrice, limitPrice, isAsk, true, nonce,
+          );
+      return withTimeout(createOrder, API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop");
+    });
     if (err) {
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
@@ -110,21 +108,19 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
       priceDecimals,
     );
     const isAsk = position.direction === "long";
-    const nonce = await getNextNonce();
     // TP: longs trigger above (SL order), shorts trigger below (TP order) - opposite of SL
-    const createOrder = position.direction === "long"
-      ? getSignerClient().create_sl_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
-          triggerPrice, limitPrice, isAsk, true, nonce,
-        )
-      : getSignerClient().create_tp_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
-          triggerPrice, limitPrice, isAsk, true, nonce,
-        );
-    const [, , err] = await withTimeout(
-      createOrder,
-      API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP",
-    );
+    const [, , err] = await withNonce(async (nonce) => {
+      const createOrder = position.direction === "long"
+        ? getSignerClient().create_sl_order(
+            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            triggerPrice, limitPrice, isAsk, true, nonce,
+          )
+        : getSignerClient().create_tp_order(
+            marketIndex, Date.now() % 1_000_000_000, baseAmount,
+            triggerPrice, limitPrice, isAsk, true, nonce,
+          );
+      return withTimeout(createOrder, API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP");
+    });
     if (err) {
       console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
     } else {
@@ -141,10 +137,8 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
 // Cancel all exchange orders, then re-place stops/TPs for remaining open positions
 async function cancelAndReplaceOrders(excludePair: string): Promise<void> {
   try {
-    const nonce = await getNextNonce();
-    await withTimeout(
-      getSignerClient().cancel_all_orders(0, 0, nonce),
-      API_ORDER_TIMEOUT_MS, "Lighter cancelAllOrders",
+    await withNonce(async (nonce) =>
+      withTimeout(getSignerClient().cancel_all_orders(0, 0, nonce), API_ORDER_TIMEOUT_MS, "Lighter cancelAllOrders"),
     );
     exchangeStops.clear();
     exchangeTPs.clear();
@@ -173,8 +167,7 @@ export function initLighterEngine(): void {
   setTimeout(async () => {
     await reconcileLighter();
     try {
-      const nonce = await getNextNonce();
-      await getSignerClient().cancel_all_orders(0, 0, nonce);
+      await withNonce(async (nonce) => getSignerClient().cancel_all_orders(0, 0, nonce));
       exchangeStops.clear();
       exchangeTPs.clear();
       console.log("[Lighter Executor] Cleared stale orders");
@@ -391,10 +384,8 @@ export async function lighterOpenPosition(
     }
 
     try { // set leverage
-      const nonce = await getNextNonce();
-      await withTimeout(
-        client.update_leverage(marketIndex, SignerClient.ISOLATED_MARGIN_MODE, leverage, nonce),
-        API_ORDER_TIMEOUT_MS, "Lighter updateLeverage",
+      await withNonce(async (nonce) =>
+        withTimeout(client.update_leverage(marketIndex, SignerClient.ISOLATED_MARGIN_MODE, leverage, nonce), API_ORDER_TIMEOUT_MS, "Lighter updateLeverage"),
       );
       console.log(`[Lighter Executor] ${pair} leverage ${leverage}x`);
     } catch (err) {
@@ -406,18 +397,14 @@ export async function lighterOpenPosition(
 
     console.log(`[Lighter Executor] Placing ${direction} ${pair} $${sizeUsd}x${leverage}`);
 
-    const nonce = await getNextNonce();
-    const orderResult = await withTimeout(
-      client.create_market_order(
-        marketIndex,
-        Date.now() % 1_000_000_000,
-        baseAmount,
-        priceBaseUnits,
-        !isBuy, // is_ask: true for sell/short
-        false,
-        nonce,
+    const orderResult = await withNonce(async (nonce) =>
+      withTimeout(
+        client.create_market_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          priceBaseUnits, !isBuy, false, nonce,
+        ),
+        API_ORDER_TIMEOUT_MS, "Lighter marketOpen",
       ),
-      API_ORDER_TIMEOUT_MS, "Lighter marketOpen",
     );
 
     const orderErr = getOrderError(orderResult);
@@ -458,14 +445,15 @@ export async function lighterOpenPosition(
     if (actualNotional < 5) {
       console.error(`[Lighter Executor] ${pair} partial fill too small: $${actualNotional.toFixed(2)} notional, closing`);
       try {
-        const closeNonce = await getNextNonce();
-        await withTimeout(
-          client.create_market_order(
-            marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
-            toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
-            isBuy, true, closeNonce,
+        await withNonce(async (nonce) =>
+          withTimeout(
+            client.create_market_order(
+              marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
+              toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
+              isBuy, true, nonce,
+            ),
+            API_ORDER_TIMEOUT_MS, "Lighter autoClose",
           ),
-          API_ORDER_TIMEOUT_MS, "Lighter autoClose",
         );
         console.log(`[Lighter Executor] Tiny partial fill closed for ${pair}`);
       } catch (closeErr) {
@@ -516,14 +504,15 @@ export async function lighterOpenPosition(
       const dbMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
       console.error(`[Lighter Executor] DB WRITE FAILED for ${pair}: ${dbMsg}`);
       try { // close orphan
-        const closeNonce = await getNextNonce();
-        await withTimeout(
-          client.create_market_order(
-            marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
-            toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
-            isBuy, true, closeNonce,
+        await withNonce(async (nonce) =>
+          withTimeout(
+            client.create_market_order(
+              marketIndex, Date.now() % 1_000_000_000, filledBaseAmount,
+              toPriceUnits(isBuy ? currentPrice * 0.95 : currentPrice * 1.05, priceDecimals),
+              isBuy, true, nonce,
+            ),
+            API_ORDER_TIMEOUT_MS, "Lighter autoClose",
           ),
-          API_ORDER_TIMEOUT_MS, "Lighter autoClose",
         );
         console.log(`[Lighter Executor] Auto-closed orphan ${pair} after DB failure`);
       } catch (closeErr) {
@@ -636,18 +625,14 @@ export async function lighterClosePosition(
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
     await cancelAndReplaceOrders(position.pair);
 
-    const nonce = await getNextNonce();
-    const closeResult = await withTimeout(
-      client.create_market_order(
-        marketIndex,
-        Date.now() % 1_000_000_000,
-        baseAmount,
-        exitPriceBase,
-        isAsk,
-        true, // reduce_only
-        nonce,
+    const closeResult = await withNonce(async (nonce) =>
+      withTimeout(
+        client.create_market_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          exitPriceBase, isAsk, true, nonce,
+        ),
+        API_ORDER_TIMEOUT_MS, "Lighter marketClose",
       ),
-      API_ORDER_TIMEOUT_MS, "Lighter marketClose",
     );
 
     const closeErr = getOrderError(closeResult);
