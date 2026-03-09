@@ -13,7 +13,7 @@ import { runHMA1hDecisionEngine } from "./hma1h-engine.js";
 import { runZlema1hDecisionEngine } from "./zlema1h-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE, getEngineExchange } from "../../config/constants.js";
 import { getLighterAccountInfo } from "../lighter/client.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 
@@ -178,13 +178,18 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
     ];
 
-    // Track live positions for cross-engine limits
+    // Track live positions for cross-engine limits (per-exchange)
     const livePositions = openPositions.filter(p => p.mode === "live");
-    const liveByPair = new Map<string, number>();
-    const liveByDir = new Map<string, number>();
+    const liveByPairByExchange = new Map<string, Map<string, number>>();
+    const liveByDirByExchange = new Map<string, Map<string, number>>();
     for (const p of livePositions) {
-      liveByPair.set(p.pair, (liveByPair.get(p.pair) ?? 0) + 1);
-      liveByDir.set(p.direction, (liveByDir.get(p.direction) ?? 0) + 1);
+      const ex = p.exchange ?? getEngineExchange(p.tradeType ?? "");
+      if (!liveByPairByExchange.has(ex)) liveByPairByExchange.set(ex, new Map());
+      if (!liveByDirByExchange.has(ex)) liveByDirByExchange.set(ex, new Map());
+      const pairMap = liveByPairByExchange.get(ex)!;
+      const dirMap = liveByDirByExchange.get(ex)!;
+      pairMap.set(p.pair, (pairMap.get(p.pair) ?? 0) + 1);
+      dirMap.set(p.direction, (dirMap.get(p.direction) ?? 0) + 1);
     }
 
     // Compound sizing: use 2.5% of Lighter equity for live trades
@@ -202,6 +207,9 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
       const openPairs = liveOpenPairsByEngine.get(tradeType)!;
+      const ex = getEngineExchange(tradeType);
+      const liveByPair = liveByPairByExchange.get(ex) ?? new Map<string, number>();
+      const liveByDir = liveByDirByExchange.get(ex) ?? new Map<string, number>();
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
