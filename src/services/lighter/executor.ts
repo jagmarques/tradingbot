@@ -204,7 +204,7 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
   const rawPnl = pos.direction === "long"
     ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
     : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
-  const fees = notional * 0.0003 * 2;
+  const fees = 0; // Lighter: zero fees
   const pnl = rawPnl - fees;
   const now = new Date().toISOString();
   const reason = inferExitReason(pos, exitPrice);
@@ -684,7 +684,7 @@ export async function lighterClosePosition(
       position.direction === "long"
         ? ((exitPrice - position.entryPrice) / position.entryPrice) * notional
         : ((position.entryPrice - exitPrice) / position.entryPrice) * notional;
-    const fees = notional * 0.0003 * 2;
+    const fees = 0; // Lighter: zero fees
     const pnl = rawPnl - fees;
 
     const now = new Date().toISOString();
@@ -750,7 +750,7 @@ export async function lighterClosePosition(
           const exitReason = `${reason} (timeout-reconciled)`;
           const reconPrice = await getLighterMidPrice(position.pair).catch(() => null) ?? position.entryPrice;
           const notional = position.size * position.leverage;
-          const fees = notional * 0.0003 * 2;
+          const fees = 0; // Lighter: zero fees
           const estPnl = (position.direction === "long"
             ? ((reconPrice - position.entryPrice) / position.entryPrice) * notional
             : ((position.entryPrice - reconPrice) / position.entryPrice) * notional) - fees;

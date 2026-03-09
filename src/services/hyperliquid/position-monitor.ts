@@ -1,16 +1,17 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, HMA1H_STAGNATION_BARS, ZLEMA1H_STAGNATION_BARS, HMA1H_TRAIL_ACTIVATION, HMA1H_TRAIL_DISTANCE, ZLEMA1H_TRAIL_ACTIVATION, ZLEMA1H_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
-import { notifyCriticalError } from "../telegram/notifications.js";
+import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifications.js";
 import { getLastSignal } from "./scheduler.js";
 
-// Per-engine stagnation: bar count x 4h
+// Per-engine stagnation
 const H4_MS = 4 * 60 * 60 * 1000;
+const H1_MS = 1 * 60 * 60 * 1000;
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "cci-directional": CCI_STAGNATION_BARS * H4_MS,
   "psar-directional": PSAR_STAGNATION_BARS * H4_MS,
@@ -19,14 +20,22 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "schaff-directional": SCHAFF_STAGNATION_BARS * H4_MS,
   "dema-directional": DEMA_STAGNATION_BARS * H4_MS,
   "hma-directional": HMA_STAGNATION_BARS * H4_MS,
+  "hma1h-directional": HMA1H_STAGNATION_BARS * H1_MS,
+  "zlema1h-directional": ZLEMA1H_STAGNATION_BARS * H1_MS,
 };
 
-// Trailing stop: 20% activation, 5% trail (backtest-validated)
-const TRAIL_ACTIVATION = 20;
-const TRAIL_DISTANCE = 5;
+// Per-engine trailing stop config
+const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
+  "hma1h-directional": { activation: HMA1H_TRAIL_ACTIVATION, distance: HMA1H_TRAIL_DISTANCE },
+  "zlema1h-directional": { activation: ZLEMA1H_TRAIL_ACTIVATION, distance: ZLEMA1H_TRAIL_DISTANCE },
+};
+const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
+
+// Track positions that already fired trail activation notification
+const trailActivatedIds = new Set<string>();
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -161,8 +170,26 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      if (peak > TRAIL_ACTIVATION) {
-        const trailTrigger = peak - TRAIL_DISTANCE;
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+      if (peak > trailCfg.activation) {
+        // Notify once when trail activates for live positions
+        if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
+          trailActivatedIds.add(position.id);
+          console.log(
+            `[PositionMonitor] Trail activated: ${position.pair} ${position.direction} at +${peak.toFixed(1)}% (threshold ${trailCfg.activation}%, trail ${trailCfg.distance}%)`,
+          );
+          void notifyTrailActivation({
+            pair: position.pair,
+            direction: position.direction,
+            entryPrice: position.entryPrice,
+            currentPrice: currentPrice,
+            unrealizedPnlPct: peak,
+            trailActivation: trailCfg.activation,
+            trailDistance: trailCfg.distance,
+            tradeType: position.tradeType ?? "directional",
+          });
+        }
+        const trailTrigger = peak - trailCfg.distance;
         if (unrealizedPnlPct <= trailTrigger) {
           // Smart trailing: skip close if engine signal still agrees
           const signal = position.tradeType ? getLastSignal(position.tradeType, position.pair) : undefined;
@@ -239,6 +266,9 @@ async function checkPositionStops(): Promise<void> {
 
     // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
+    for (const id of trailActivatedIds) {
+      if (!openIds.has(id)) trailActivatedIds.delete(id);
+    }
     for (const id of closeFailCounts.keys()) {
       if (!openIds.has(id)) closeFailCounts.delete(id);
     }

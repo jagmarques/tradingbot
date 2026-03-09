@@ -254,7 +254,7 @@ export async function notifyQuantTradeEntry(params: {
   if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
   const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "hma1h-directional" ? "HMA1h" : params.tradeType === "zlema1h-directional" ? "ZLEMA1h" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -285,7 +285,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "hma1h-directional" ? "HMA1h" : params.tradeType === "zlema1h-directional" ? "ZLEMA1h" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -295,6 +295,30 @@ export async function notifyQuantTradeExit(params: {
     `Size: $${params.size.toFixed(2)}\n` +
     `P&L: ${indicator}$${Math.abs(params.pnl).toFixed(2)} (${indicator}${Math.abs(pnlPct).toFixed(1)}%)\n` +
     `Reason: ${escapeHtml(params.exitReason)}\n` +
+    `Type: ${typeLabel}`;
+  await sendMessage(message);
+}
+
+export async function notifyTrailActivation(params: {
+  pair: string;
+  direction: "long" | "short";
+  entryPrice: number;
+  currentPrice: number;
+  unrealizedPnlPct: number;
+  trailActivation: number;
+  trailDistance: number;
+  tradeType: string;
+}): Promise<void> {
+  const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
+  const typeLabel = params.tradeType === "hma1h-directional" ? "HMA1h" : params.tradeType === "zlema1h-directional" ? "ZLEMA1h" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType;
+  const message =
+    `[LIVE] <b>TRAIL ACTIVATED</b>\n\n` +
+    `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
+    `Direction: ${dirLabel}\n` +
+    `Entry: ${params.entryPrice}\n` +
+    `Now: ${params.currentPrice}\n` +
+    `P&L: +${params.unrealizedPnlPct.toFixed(1)}%\n` +
+    `Trail: ${params.trailActivation}% / ${params.trailDistance}%\n` +
     `Type: ${typeLabel}`;
   await sendMessage(message);
 }

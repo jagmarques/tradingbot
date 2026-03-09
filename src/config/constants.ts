@@ -98,7 +98,17 @@ export const ZLEMA_REVERSE_EXIT = 0;
 export const ZLEMA_TRAIL_ACTIVATION = 1;
 export const ZLEMA_TRAIL_DISTANCE = 2;
 
-
+// ZLEMA 1h (scalping - uses 4h HTF filter instead of daily)
+export const ZLEMA1H_HTF_SMA_PERIOD = 75;
+export const ZLEMA1H_HTF_ADX_MIN = 10;
+export const ZLEMA1H_FAST = 10;
+export const ZLEMA1H_SLOW = 21;
+export const ZLEMA1H_STOP_ATR_MULT = 0.75;
+export const ZLEMA1H_REWARD_ATR_MULT = 40;
+export const ZLEMA1H_STAGNATION_BARS = 72;
+export const ZLEMA1H_BASE_CONFIDENCE = 65;
+export const ZLEMA1H_TRAIL_ACTIVATION = 40;
+export const ZLEMA1H_TRAIL_DISTANCE = 6;
 
 // Vortex
 export const VORTEX_DAILY_SMA_PERIOD = 50;
@@ -161,6 +171,18 @@ export const HMA_REVERSE_EXIT = 0;
 export const HMA_TRAIL_ACTIVATION = 10;
 export const HMA_TRAIL_DISTANCE = 1;
 
+// HMA 1h (scalping - uses 4h HTF filter instead of daily)
+export const HMA1H_HTF_SMA_PERIOD = 75;
+export const HMA1H_HTF_ADX_MIN = 10;
+export const HMA1H_FAST = 11;
+export const HMA1H_SLOW = 32;
+export const HMA1H_STOP_ATR_MULT = 0.75;
+export const HMA1H_REWARD_ATR_MULT = 50;
+export const HMA1H_STAGNATION_BARS = 72;
+export const HMA1H_BASE_CONFIDENCE = 65;
+export const HMA1H_TRAIL_ACTIVATION = 42;
+export const HMA1H_TRAIL_DISTANCE = 6;
+
 // CCI
 export const CCI_DAILY_SMA_PERIOD = 50;
 export const CCI_DAILY_ADX_MIN = 8;
@@ -188,12 +210,15 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "dema-directional": "lighter",
   "hma-directional": "lighter",
   "cci-directional": "lighter",
+  "hma1h-directional": "lighter",
+  "zlema1h-directional": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set([
   "schaff-directional",
   "zlema-directional",
+  "hma1h-directional",
 ]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {

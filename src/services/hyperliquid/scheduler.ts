@@ -9,6 +9,8 @@ import { runSchaffDecisionEngine } from "./schaff-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
 import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
+import { runHMA1hDecisionEngine } from "./hma1h-engine.js";
+import { runZlema1hDecisionEngine } from "./zlema1h-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE } from "../../config/constants.js";
@@ -91,6 +93,8 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
     const hmaDecisions = await runHMADecisionEngine(analyses);
     const cciDecisions = await runCCIDecisionEngine(analyses);
+    const hma1hDecisions = await runHMA1hDecisionEngine(analyses);
+    const zlema1hDecisions = await runZlema1hDecisionEngine(analyses);
 
     // Record latest signals for smart trailing
     const allDecisions: Array<{ tradeType: string; decisions: typeof psarDecisions }> = [
@@ -101,6 +105,8 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       { tradeType: "dema-directional", decisions: demaDecisions },
       { tradeType: "hma-directional", decisions: hmaDecisions },
       { tradeType: "cci-directional", decisions: cciDecisions },
+      { tradeType: "hma1h-directional", decisions: hma1hDecisions },
+      { tradeType: "zlema1h-directional", decisions: zlema1hDecisions },
     ];
     for (const { tradeType, decisions } of allDecisions) {
       for (const d of decisions) {
@@ -131,7 +137,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     // Separate live/paper pair tracking
     const liveOpenPairsByEngine = new Map<string, Set<string>>();
     const paperOpenPairsByEngine = new Map<string, Set<string>>();
-    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "hma-directional", "cci-directional"]) {
+    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "hma-directional", "cci-directional", "hma1h-directional", "zlema1h-directional"]) {
       liveOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "live").map(p => p.pair)));
       paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
@@ -165,10 +171,11 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       }
     }
 
-    // Live engines: Schaff + ZLEMA (decorrelated SMA30/SMA75 trend filters)
+    // Live engines ordered by backtest profitability (best first)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
-      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
+      { label: "HMA1h", tradeType: "hma1h-directional", decisions: hma1hDecisions },
+      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
     ];
 
     // Track live positions for cross-engine limits
@@ -223,6 +230,8 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       { label: "PSAR", tradeType: "psar-directional", decisions: psarDecisions },
       { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
       { label: "CCI", tradeType: "cci-directional", decisions: cciDecisions },
+      { label: "HMA1h", tradeType: "hma1h-directional", decisions: hma1hDecisions },
+      { label: "ZLEMA1h", tradeType: "zlema1h-directional", decisions: zlema1hDecisions },
     ];
 
     const paperExecuted = new Map<string, number>();
@@ -246,7 +255,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, ZLEMA ${eL("zlema-directional", zlemaDecisions)}L+${eP("zlema-directional", zlemaDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, HMA ${eP("hma-directional", hmaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMA ${eL("zlema-directional", zlemaDecisions)}L+${eP("zlema-directional", zlemaDecisions)}P, HMA1h ${eL("hma1h-directional", hma1hDecisions)}L+${eP("hma1h-directional", hma1hDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, ZLEMA1h ${eP("zlema1h-directional", zlema1hDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, HMA ${eP("hma-directional", hmaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P`,
     );
   } finally {
     cycleRunning = false;

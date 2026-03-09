@@ -75,16 +75,18 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 
 **Pairs:** BTC, ETH, SOL, XRP, DOGE, AVAX, LINK, ARB, BNB, OP, SUI, DOT, TIA, APT, WIF
 
-**8 decision engines:**
-- Technical (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (all on Lighter; DEMA, HMA, Schaff live in hybrid; rest paper)
+**10 decision engines:**
+- Technical 4h (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (all on Lighter)
+- Technical 1h (2): HMA 1h, ZLEMA 1h (both on Lighter, 4h HTF filter)
 - AI (1): DeepSeek with multi-timeframe candles, indicators, microstructure, funding, regime
+- Live (hybrid): ZLEMA 4h, HMA 1h, Schaff. Paper: all others
 
 **Execution:**
 - $10 fixed margin per trade, 10x leverage
 - 50 max paper positions, 5 max live positions
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (20% activation, 5% trail, smart trail resets), stagnation exit (engine-specific, 32-64h), stop-loss (ATR-based, 5% max)
+- Trailing stop (per-engine: HMA1h 42/6, ZLEMA1h 40/6, others 20/5; smart trail resets), stagnation exit (engine-specific, 32-72h), stop-loss (ATR-based, 5% max)
 - AI signal flip: closes AI positions on reversal (long->short or vice versa), flat signals ignored
 - Exchange-level stop-loss orders on both HL and Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
@@ -97,13 +99,13 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 | Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
 | Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
-| Quant live engines (DEMA, HMA, Schaff) | Paper | Live + Paper | Live |
-| Quant paper engines (PSAR, ZLEMA, Vortex, CCI) | Paper | Paper | Live |
+| Quant live engines (ZLEMA 4h, HMA 1h, Schaff) | Paper | Live + Paper | Live |
+| Quant paper engines (DEMA, HMA 4h, PSAR, Vortex, CCI, ZLEMA 1h) | Paper | Paper | Live |
 | Note: live engines also run paper for independent performance tracking ||||
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
-- Virtual $1000 quant bankroll ($125/engine x 8 engines)
+- Virtual $1000 quant bankroll ($100/engine x 10 engines)
 - Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
 - Simulated funding: accrued hourly from live predicted rates
 - Simulated liquidation: per-pair maintenance margin rates
@@ -150,7 +152,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($125/engine x 8) |
+| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($100/engine x 10) |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
