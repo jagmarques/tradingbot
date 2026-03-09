@@ -187,6 +187,16 @@ export function initLighterEngine(): void {
   setInterval(() => void reconcileLighter(), 5 * 60 * 1000);
 }
 
+function inferExitReason(pos: QuantPosition, exitPrice: number): string {
+  const sl = pos.stopLoss;
+  const tp = pos.takeProfit;
+  if (sl && pos.direction === "long" && exitPrice <= sl) return "exchange-sl";
+  if (sl && pos.direction === "short" && exitPrice >= sl) return "exchange-sl";
+  if (tp && pos.direction === "long" && exitPrice >= tp) return "exchange-tp";
+  if (tp && pos.direction === "short" && exitPrice <= tp) return "exchange-tp";
+  return "exchange-close";
+}
+
 async function closePhantom(pos: QuantPosition): Promise<void> {
   const exitPrice = await getLighterMidPrice(pos.pair).catch(() => null) ?? pos.entryPrice;
   const notional = pos.size * pos.leverage;
@@ -196,8 +206,9 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
   const fees = notional * 0.0003 * 2;
   const pnl = rawPnl - fees;
   const now = new Date().toISOString();
+  const reason = inferExitReason(pos, exitPrice);
 
-  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: "exchange-close" };
+  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: reason };
   lighterPositions.set(pos.id, closed);
   saveQuantPosition(closed);
   const ctx = positionContext.get(pos.id);
@@ -205,7 +216,7 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
     id: pos.id, pair: pos.pair, direction: pos.direction,
     entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
     pnl, fees, mode: "live", exchange: "lighter", status: "closed",
-    exitReason: "exchange-close", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+    exitReason: reason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
     createdAt: pos.openedAt, updatedAt: now,
     tradeType: pos.tradeType ?? "directional",
   });
@@ -213,10 +224,10 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
   void notifyQuantTradeExit({
     pair: pos.pair, direction: pos.direction,
     entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-    pnl, exitReason: "exchange-close", tradeType: pos.tradeType ?? "directional",
+    pnl, exitReason: reason, tradeType: pos.tradeType ?? "directional",
     positionMode: "live",
   });
-  console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (exchange-close) @ ${exitPrice}`);
+  console.log(`[Lighter Executor] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${reason}) @ ${exitPrice}`);
 }
 
 async function reconcileLighter(): Promise<void> {

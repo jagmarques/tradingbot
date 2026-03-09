@@ -251,7 +251,7 @@ async function reconcileWithExchange(): Promise<void> {
       const recheckCoins = new Set(recheck.assetPositions.filter((ap: any) => parseFloat(ap.position.szi) !== 0).map((ap: any) => ap.position.coin as string));
       if (recheckCoins.has(pos.pair)) continue;
 
-      console.error(`[Quant Live] PHANTOM: ${pos.pair} in DB but not on exchange, marking closed`);
+      console.log(`[Quant Live] ${pos.pair} in DB but not on exchange, marking closed`);
       const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
       const exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
       const notional = pos.size * pos.leverage;
@@ -262,13 +262,22 @@ async function reconcileWithExchange(): Promise<void> {
       const pnl = rawPnl - fees;
       const now = new Date().toISOString();
 
+      // Infer whether SL or TP fired based on exit price
+      let reason = "exchange-close";
+      const sl = pos.stopLoss;
+      const tp = pos.takeProfit;
+      if (sl && pos.direction === "long" && exitPrice <= sl) reason = "exchange-sl";
+      if (sl && pos.direction === "short" && exitPrice >= sl) reason = "exchange-sl";
+      if (tp && pos.direction === "long" && exitPrice >= tp) reason = "exchange-tp";
+      if (tp && pos.direction === "short" && exitPrice <= tp) reason = "exchange-tp";
+
       const closedPosition: QuantPosition = {
         ...pos,
         status: "closed",
         closedAt: now,
         exitPrice,
         realizedPnl: pnl,
-        exitReason: "exchange-close",
+        exitReason: reason,
       };
       livePositions.set(pos.id, closedPosition);
       saveQuantPosition(closedPosition);
@@ -277,7 +286,7 @@ async function reconcileWithExchange(): Promise<void> {
         id: pos.id, pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
         pnl, fees, mode: "live", status: "closed", exchange: "hyperliquid",
-        exitReason: "exchange-close", indicatorsAtEntry: ctx?.indicatorsAtEntry,
+        exitReason: reason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
         createdAt: pos.openedAt, updatedAt: now,
         tradeType: pos.tradeType ?? "directional",
       });
@@ -287,10 +296,10 @@ async function reconcileWithExchange(): Promise<void> {
       void notifyQuantTradeExit({
         pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size,
-        pnl, exitReason: "exchange-close", tradeType: pos.tradeType ?? "directional",
+        pnl, exitReason: reason, tradeType: pos.tradeType ?? "directional",
         positionMode: "live",
       });
-      console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (exchange-close) @ ${exitPrice}`);
+      console.log(`[Quant Live] CLOSE ${pos.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${reason}) @ ${exitPrice}`);
     }
 
     if (exchangeCoins.size > 0 || trackedPairs.size > 0) {
