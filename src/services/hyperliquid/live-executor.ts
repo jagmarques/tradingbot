@@ -10,7 +10,7 @@ import {
 import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from "../telegram/notifications.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
-import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
 const MAX_SLIPPAGE = 0.005;
 
@@ -66,6 +66,16 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
   if (exchangeStopOids.has(position.id)) return;
   try {
+    // Cap SL
+    const maxSlFrac = QUANT_MAX_SL_PCT / 100;
+    let sl = position.stopLoss;
+    if (position.direction === "long") {
+      const floor = position.entryPrice * (1 - maxSlFrac);
+      if (sl < floor) sl = floor;
+    } else {
+      const ceil = position.entryPrice * (1 + maxSlFrac);
+      if (sl > ceil) sl = ceil;
+    }
     await ensureConnected();
     const sdk = getClient();
     const szMap = await getSzDecimals();
@@ -79,8 +89,8 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
         coin: `${position.pair}-PERP`,
         is_buy: position.direction === "short",
         sz: sizeInCoins,
-        limit_px: roundPrice(position.stopLoss),
-        order_type: { trigger: { triggerPx: roundPrice(position.stopLoss), isMarket: true, tpsl: "sl" } },
+        limit_px: roundPrice(sl),
+        order_type: { trigger: { triggerPx: roundPrice(sl), isMarket: true, tpsl: "sl" } },
         reduce_only: true,
       }),
       API_ORDER_TIMEOUT_MS, "HL placeExchangeStop",
@@ -88,7 +98,7 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
     const statuses = result?.response?.data?.statuses;
     if (statuses?.[0]?.resting) {
       exchangeStopOids.set(position.id, statuses[0].resting.oid);
-      console.log(`[Quant Live] Exchange stop placed for ${position.pair} @ ${position.stopLoss}`);
+      console.log(`[Quant Live] Exchange stop placed for ${position.pair} @ ${sl}`);
     } else {
       console.error(`[Quant Live] Exchange stop not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
     }
@@ -554,6 +564,7 @@ export async function liveClosePosition(
     if (!statuses || statuses.length === 0) {
       console.error(`[Quant Live] Close failed for ${position.pair}: no statuses`);
       console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
+      void placeExchangeStop(position);
       return { success: false, pnl: 0 };
     }
 
@@ -564,11 +575,13 @@ export async function liveClosePosition(
       try {
         await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: status.resting.oid });
       } catch { /* best effort */ }
+      void placeExchangeStop(position);
       return { success: false, pnl: 0 };
     }
 
     if (!status.filled) {
       console.error(`[Quant Live] Close rejected for ${position.pair}: ${JSON.stringify(status)}`);
+      void placeExchangeStop(position);
       return { success: false, pnl: 0 };
     }
 
@@ -698,6 +711,7 @@ export async function liveClosePosition(
       }
     }
 
+    void placeExchangeStop(position);
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

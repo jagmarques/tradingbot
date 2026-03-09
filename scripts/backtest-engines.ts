@@ -18,6 +18,7 @@ const LEV = 10;
 const FEE_RATE = 0.0009; // 0.09% round-trip
 const MARGIN_PER_TRADE = 10;
 const NOTIONAL = MARGIN_PER_TRADE * LEV; // $100 notional
+const SL_CAP_PCT = Number(process.env.SL_CAP ?? 0); // 0 = no cap
 
 const PAIRS = ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT"];
 const DAYS_4H = 780; // 730d + warmup buffer
@@ -684,8 +685,8 @@ function runBacktest(
       const unrealizedPct = pricePct * LEV * 100;
       pos.peakPnlPct = Math.max(pos.peakPnlPct, unrealizedPct);
 
-      // Check trailing stop (peak > 20%, trail = peak - 7%)
-      const trailingHit = pos.peakPnlPct > 20 && unrealizedPct <= pos.peakPnlPct - 7;
+      // Check trailing stop (peak > 20%, trail = peak - 5%)
+      const trailingHit = pos.peakPnlPct > 20 && unrealizedPct <= pos.peakPnlPct - 5;
 
       // Check stagnation
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;
@@ -749,7 +750,8 @@ function runBacktest(
       if (dir !== null) {
         const entryPrice = candles4h[i + 1].open;
         const atr = atr4h[i] ?? c.close * 0.02;
-        const stopDist = atr * engine.stopAtrMult;
+        let stopDist = atr * engine.stopAtrMult;
+        if (SL_CAP_PCT > 0) stopDist = Math.min(stopDist, entryPrice * SL_CAP_PCT / 100);
         const sl = dir === "long" ? entryPrice - stopDist : entryPrice + stopDist;
         const tp = dir === "long" ? entryPrice + stopDist * engine.rewardRisk : entryPrice - stopDist * engine.rewardRisk;
         pos = { dir, entry: entryPrice, entryIdx: i + 1, sl, tp, peakPnlPct: 0 };

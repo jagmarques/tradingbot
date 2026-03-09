@@ -23,12 +23,12 @@ import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from
 import { recordStopLossCooldown } from "../hyperliquid/scheduler.js";
 import { SignerClient } from "zklighter-sdk";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
-import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
-const exchangeStopPairs = new Set<string>();
+const exchangeStops = new Map<string, { marketIndex: number; orderIndex: bigint }>();
 
 const positionContext = new Map<string, {
   indicatorsAtEntry?: string;
@@ -36,8 +36,18 @@ const positionContext = new Map<string, {
 
 async function placeExchangeStop(position: QuantPosition, force = false): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
-  if (!force && exchangeStopPairs.has(position.pair)) return;
+  if (!force && exchangeStops.has(position.pair)) return;
   try {
+    // Cap SL
+    const maxSlFrac = QUANT_MAX_SL_PCT / 100;
+    let sl = position.stopLoss;
+    if (position.direction === "long") {
+      const floor = position.entryPrice * (1 - maxSlFrac);
+      if (sl < floor) sl = floor;
+    } else {
+      const ceil = position.entryPrice * (1 + maxSlFrac);
+      if (sl > ceil) sl = ceil;
+    }
     const marketIndex = await getMarketIndex(position.pair);
     if (marketIndex === null) return;
     const sizeDecimals = await getMarketSizeDecimals(marketIndex);
@@ -45,14 +55,14 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
     const notional = position.size * position.leverage;
     const baseAmount = toBaseUnits(notional / position.entryPrice, sizeDecimals);
     if (baseAmount <= 0) return;
-    const triggerPrice = toPriceUnits(position.stopLoss, priceDecimals);
-    const limitPrice = toPriceUnits( // 5% slippage buffer
-      position.direction === "long" ? position.stopLoss * 0.95 : position.stopLoss * 1.05,
+    const triggerPrice = toPriceUnits(sl, priceDecimals);
+    const limitPrice = toPriceUnits(
+      position.direction === "long" ? sl * 0.95 : sl * 1.05,
       priceDecimals,
     );
     const isAsk = position.direction === "long";
     const nonce = await getNextNonce();
-    const [, , err] = await withTimeout(
+    const [order, , err] = await withTimeout(
       getSignerClient().create_sl_order(
         marketIndex, Date.now() % 1_000_000_000, baseAmount,
         triggerPrice, limitPrice, isAsk, true, nonce,
@@ -62,8 +72,13 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
     if (err) {
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
-      exchangeStopPairs.add(position.pair);
-      console.log(`[Lighter Executor] Exchange stop placed for ${position.pair} @ ${position.stopLoss}`);
+      const orderIdx = order?.order_index ?? order?.orderIndex;
+      if (orderIdx !== undefined) {
+        exchangeStops.set(position.pair, { marketIndex, orderIndex: BigInt(orderIdx) });
+        console.log(`[Lighter Executor] Exchange stop placed for ${position.pair} @ ${sl} oid=${orderIdx}`);
+      } else {
+        console.error(`[Lighter Executor] Stop placed for ${position.pair} but no orderIdx returned`);
+      }
     }
   } catch (err) {
     if (err instanceof TimeoutError) resetNonce();
@@ -73,24 +88,20 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
 }
 
 async function cancelExchangeStop(pair: string): Promise<void> {
-  if (!exchangeStopPairs.has(pair)) return;
+  const info = exchangeStops.get(pair);
+  if (!info) return;
   try {
     const nonce = await getNextNonce();
-    await getSignerClient().cancel_all_orders(0, 0, nonce);
+    await withTimeout(
+      getSignerClient().cancel_order(info.marketIndex, info.orderIndex, nonce),
+      API_ORDER_TIMEOUT_MS, "Lighter cancelExchangeStop",
+    );
     console.log(`[Lighter Executor] Exchange stop cancelled for ${pair}`);
   } catch (err) {
     if (err instanceof TimeoutError) resetNonce();
+    console.error(`[Lighter Executor] Cancel stop error for ${pair}: ${err instanceof Error ? err.message : err}`);
   }
-  exchangeStopPairs.delete(pair);
-}
-
-async function replaceOtherStops(excludePair: string): Promise<void> {
-  for (const pos of getLighterLivePositions()) {
-    if (pos.pair !== excludePair && exchangeStopPairs.has(pos.pair)) {
-      exchangeStopPairs.delete(pos.pair);
-      await placeExchangeStop(pos);
-    }
-  }
+  exchangeStops.delete(pair);
 }
 
 export function initLighterEngine(): void {
@@ -105,7 +116,7 @@ export function initLighterEngine(): void {
     try {
       const nonce = await getNextNonce();
       await getSignerClient().cancel_all_orders(0, 0, nonce);
-      exchangeStopPairs.clear();
+      exchangeStops.clear();
       console.log("[Lighter Executor] Cleared stale stops");
     } catch { /* best effort */ }
     for (const pos of getLighterLivePositions()) {
@@ -486,6 +497,7 @@ export async function lighterClosePosition(
       console.error(`[Lighter Executor] Close failed for ${position.pair}: ${closeErr}`);
       if (closeErr.includes("nonce")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
+      void placeExchangeStop(position);
       return { success: false, pnl: 0 };
     }
 
@@ -505,6 +517,7 @@ export async function lighterClosePosition(
     if (!closeFilled) {
       console.error(`[Lighter Executor] Close not filled for ${position.pair} — still open on exchange`);
       void notifyCriticalError(`Lighter close not filled: ${position.pair} still open`, "LighterExecutor");
+      void placeExchangeStop(position);
       return { success: false, pnl: 0 };
     }
     const rawPnl =
@@ -561,7 +574,6 @@ export async function lighterClosePosition(
     });
 
     console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${reason}) @ ${exitPrice}`);
-    void replaceOtherStops(position.pair);
     return { success: true, pnl };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -622,7 +634,7 @@ export async function lighterClosePosition(
             positionMode: "live",
           });
           console.log(`[Lighter Executor] CLOSE ${position.pair} pnl=${estPnl >= 0 ? "+" : ""}$${estPnl.toFixed(2)} (${exitReason}) @ ${reconPrice}`);
-          return { success: true, pnl: estPnl };
+                return { success: true, pnl: estPnl };
         }
       } catch (checkErr) {
         const checkMsg = checkErr instanceof Error ? checkErr.message : String(checkErr);
@@ -630,6 +642,7 @@ export async function lighterClosePosition(
       }
     }
 
+    void placeExchangeStop(position);
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

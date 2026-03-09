@@ -1,7 +1,7 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, ZLEMA_STAGNATION_BARS, VORTEX_STAGNATION_BARS, SCHAFF_STAGNATION_BARS, DEMA_STAGNATION_BARS, HMA_STAGNATION_BARS, CCI_STAGNATION_BARS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
@@ -203,11 +203,19 @@ async function checkPositionStops(): Promise<void> {
         isFinite(position.takeProfit) &&
         position.takeProfit > 0;
 
+      // Cap SL
+      const maxSlFrac = QUANT_MAX_SL_PCT / 100;
+      const rawSl = position.stopLoss ?? 0;
+      const cappedSl = position.direction === "long"
+        ? Math.max(rawSl, position.entryPrice * (1 - maxSlFrac))
+        : Math.min(rawSl, position.entryPrice * (1 + maxSlFrac));
+      const effectiveSl = hasValidStopLoss ? cappedSl : 0;
+
       const stopLossBreached =
         hasValidStopLoss &&
         (position.direction === "long"
-          ? currentPrice <= (position.stopLoss ?? 0)
-          : currentPrice >= (position.stopLoss ?? 0));
+          ? currentPrice <= effectiveSl
+          : currentPrice >= effectiveSl);
 
       const takeProfitBreached =
         hasValidTakeProfit &&

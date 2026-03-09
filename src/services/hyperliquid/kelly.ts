@@ -1,7 +1,7 @@
 import { getVirtualBalance } from "./executor.js";
 import {
   QUANT_AI_KELLY_FRACTION,
-  QUANT_AI_STOP_LOSS_MAX_PCT,
+  QUANT_MAX_SL_PCT,
   QUANT_FIXED_POSITION_SIZE_USD,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
@@ -23,7 +23,7 @@ export function calculateQuantPositionSize(
 
   const stopDistance = Math.abs(entryPrice - stopLoss) / entryPrice;
 
-  const maxStopFraction = QUANT_AI_STOP_LOSS_MAX_PCT / 100;
+  const maxStopFraction = QUANT_MAX_SL_PCT / 100;
   const effectiveStop = Math.min(stopDistance, maxStopFraction);
 
   if (effectiveStop <= 0) return 0;
@@ -61,7 +61,7 @@ export function calculateBacktestPositionSize(
 
   const winProb = confidence / 100;
   const stopDistance = Math.abs(entryPrice - stopLoss) / entryPrice;
-  const maxStopFraction = QUANT_AI_STOP_LOSS_MAX_PCT / 100;
+  const maxStopFraction = QUANT_MAX_SL_PCT / 100;
   const effectiveStop = Math.min(stopDistance, maxStopFraction);
   if (effectiveStop <= 0) return 0;
 
