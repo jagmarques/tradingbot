@@ -111,6 +111,26 @@ async function cancelExchangeStop(positionId: string, pair: string): Promise<voi
   exchangeStopOids.delete(positionId);
 }
 
+async function cancelAllExistingStops(): Promise<void> {
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const wallet = loadEnv().HYPERLIQUID_WALLET_ADDRESS;
+    if (!wallet) return;
+    const orders: Array<{ coin: string; oid: number; reduceOnly?: boolean }> =
+      await sdk.info.getUserOpenOrders(wallet);
+    const stops = orders.filter(o => o.reduceOnly);
+    if (stops.length === 0) return;
+    console.log(`[Quant Live] Cancelling ${stops.length} stale stops`);
+    for (const o of stops) {
+      try { await sdk.exchange.cancelOrder({ coin: o.coin, o: o.oid }); } catch { /* best effort */ }
+    }
+    exchangeStopOids.clear();
+  } catch (err) {
+    console.error(`[Quant Live] Failed to cancel stops: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 export function initLiveEngine(): void {
   livePositions.clear();
   szDecimalsMap = null;
@@ -122,6 +142,7 @@ export function initLiveEngine(): void {
   console.log(`[Quant Live] Init: ${liveOnly.length} live positions restored from DB`);
   setTimeout(async () => {
     await reconcileWithExchange();
+    await cancelAllExistingStops();
     for (const pos of getLivePositions()) {
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos);
