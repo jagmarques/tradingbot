@@ -21,6 +21,11 @@ vi.mock("../../config/env.js", () => ({
     MAX_SLIPPAGE_POLYMARKET: 0.02,
   }),
   isPaperMode: (): boolean => true,
+  isPolymarketPaperMode: (): boolean => true,
+  isHybridMode: (): boolean => false,
+  isLiveMode: (): boolean => false,
+  getTradingMode: (): string => "paper",
+  setTradingMode: (): void => {},
 }));
 
 vi.mock("../polygon/wallet.js", () => ({

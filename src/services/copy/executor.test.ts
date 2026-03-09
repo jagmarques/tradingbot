@@ -10,6 +10,12 @@ import type { Trader, TraderTrade } from "../traders/types.js";
 // Mock all dependencies
 vi.mock("../../config/env.js", () => ({
   isPaperMode: vi.fn(() => true),
+  isPolymarketPaperMode: vi.fn(() => true),
+  isHybridMode: vi.fn(() => false),
+  isLiveMode: vi.fn(() => false),
+  getTradingMode: vi.fn(() => "paper"),
+  setTradingMode: vi.fn(),
+  loadEnv: vi.fn(() => ({})),
 }));
 
 vi.mock("../settings/settings.js", () => ({

@@ -6,6 +6,11 @@ vi.mock("../../config/env.js", () => ({
     TRADING_MODE: "paper",
   }),
   isPaperMode: (): boolean => true,
+  isPolymarketPaperMode: (): boolean => true,
+  isHybridMode: (): boolean => false,
+  isLiveMode: (): boolean => false,
+  getTradingMode: (): string => "paper",
+  setTradingMode: (): void => {},
 }));
 
 import { initDb, closeDb, getDb, isDbInitialized } from "./db.js";

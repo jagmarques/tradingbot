@@ -11,6 +11,11 @@ vi.mock("./bot.js", () => ({
 // Mock env
 vi.mock("../../config/env.js", () => ({
   isPaperMode: (): boolean => true,
+  isPolymarketPaperMode: (): boolean => true,
+  isHybridMode: (): boolean => false,
+  isLiveMode: (): boolean => false,
+  getTradingMode: (): string => "paper",
+  setTradingMode: (): void => {},
   loadEnv: (): Record<string, string> => ({
     TIMEZONE: "UTC",
   }),

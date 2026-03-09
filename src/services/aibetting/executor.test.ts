@@ -4,6 +4,12 @@ import type { BetDecision, PolymarketEvent } from "./types.js";
 // Mock all external deps before importing
 vi.mock("../../config/env.js", () => ({
   isPaperMode: vi.fn(() => true),
+  isPolymarketPaperMode: vi.fn(() => true),
+  isHybridMode: vi.fn(() => false),
+  isLiveMode: vi.fn(() => false),
+  getTradingMode: vi.fn(() => "paper"),
+  setTradingMode: vi.fn(),
+  loadEnv: vi.fn(() => ({})),
 }));
 
 vi.mock("../polygon/polymarket.js", () => ({
