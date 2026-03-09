@@ -58,8 +58,9 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  const magnitude = Math.floor(Math.log10(Math.abs(price)));
-  const factor = 10 ** (4 - magnitude); // 5 significant figures
+  let magnitude = Math.floor(Math.log10(Math.abs(price)));
+  if (magnitude === -1 && Math.abs(price) >= 0.5) magnitude = 0;
+  const factor = 10 ** (4 - magnitude);
   return Math.round(price * factor) / factor;
 }
 
@@ -275,7 +276,7 @@ async function reconcileWithExchange(): Promise<void> {
       saveQuantTrade({
         id: pos.id, pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
-        pnl, fees, mode: "live", status: "closed",
+        pnl, fees, mode: "live", status: "closed", exchange: "hyperliquid",
         exitReason: "reconciliation", indicatorsAtEntry: ctx?.indicatorsAtEntry,
         createdAt: pos.openedAt, updatedAt: now,
         tradeType: pos.tradeType ?? "directional",
@@ -367,6 +368,7 @@ export async function liveOpenPosition(
       }
     } catch (marginErr) {
       console.error(`[Quant Live] Margin check failed for ${pair}: ${marginErr instanceof Error ? marginErr.message : marginErr}`);
+      return null;
     }
 
     await fetchMeta();
@@ -685,6 +687,7 @@ export async function liveClosePosition(
       mode: "live",
       status: "closed",
       exitReason: reason,
+      exchange: "hyperliquid",
       indicatorsAtEntry: ctx?.indicatorsAtEntry,
       createdAt: position.openedAt,
       updatedAt: now,
@@ -744,7 +747,7 @@ export async function liveClosePosition(
               id: position.id, pair: position.pair, direction: position.direction,
               entryPrice: position.entryPrice, exitPrice: reconPrice,
               size: position.size, leverage: position.leverage,
-              pnl: estPnl, fees, mode: "live", status: "closed",
+              pnl: estPnl, fees, mode: "live", status: "closed", exchange: "hyperliquid",
               exitReason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
               createdAt: position.openedAt, updatedAt: now,
               tradeType: position.tradeType ?? "directional",

@@ -687,6 +687,28 @@ function runBacktest(
     const c = candles4h[i];
 
     if (pos !== null) {
+      // Liquidation check (skipped if SL is tighter than liq level)
+      const liqPrice = pos.dir === "long"
+        ? pos.entry * (1 - LIQUIDATION_THRESHOLD_PCT / 100)
+        : pos.entry * (1 + LIQUIDATION_THRESHOLD_PCT / 100);
+      const liqHit = pos.dir === "long" ? c.low <= liqPrice : c.high >= liqPrice;
+      const slDistPct = Math.abs(pos.sl - pos.entry) / pos.entry * 100;
+
+      if (liqHit && slDistPct > LIQUIDATION_THRESHOLD_PCT) {
+        const liqFee = NOTIONAL * LIQUIDATION_FEE_PCT;
+        const pp = ((liqPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
+        const grossPnl = pp * NOTIONAL;
+        const fees = NOTIONAL * FEE_RATE + liqFee;
+        const net = grossPnl - fees;
+        pnlTotal += net;
+        peakPnl = Math.max(peakPnl, pnlTotal);
+        maxDrawdown = Math.max(maxDrawdown, peakPnl - pnlTotal);
+        trades++;
+        tradePnlPcts.push((net / MARGIN_PER_TRADE) * 100);
+        pos = null;
+        continue;
+      }
+
       // Current unrealized P&L %
       const pricePct = ((c.close - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
       const unrealizedPct = pricePct * LEV * 100;
@@ -703,7 +725,6 @@ function runBacktest(
       const tpHit = pos.dir === "long" ? c.high >= pos.tp : c.low <= pos.tp;
 
       let exitPrice: number | null = null;
-      let exitViaSl = false;
 
       // Trailing/stagnation checked before SL/TP (live monitor runs more frequently)
       if (trailingHit) {
@@ -711,32 +732,17 @@ function runBacktest(
       } else if (stagHit) {
         exitPrice = c.close;
       } else if (slHit && tpHit) {
-        // Both hit same bar: conservative, assume SL
         exitPrice = pos.sl;
-        exitViaSl = true;
       } else if (slHit) {
         exitPrice = pos.sl;
-        exitViaSl = true;
       } else if (tpHit) {
         exitPrice = pos.tp;
       }
 
       if (exitPrice !== null) {
-        // If SL beyond liq threshold, position gets liquidated instead
-        let actualExitPrice = exitPrice;
-        let liqFee = 0;
-        if (exitViaSl) {
-          const slDistPct = Math.abs(pos.sl - pos.entry) / pos.entry * 100;
-          if (slDistPct > LIQUIDATION_THRESHOLD_PCT) {
-            actualExitPrice = pos.dir === "long"
-              ? pos.entry * (1 - LIQUIDATION_THRESHOLD_PCT / 100)
-              : pos.entry * (1 + LIQUIDATION_THRESHOLD_PCT / 100);
-            liqFee = NOTIONAL * LIQUIDATION_FEE_PCT;
-          }
-        }
-        const pp = ((actualExitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
+        const pp = ((exitPrice - pos.entry) / pos.entry) * (pos.dir === "long" ? 1 : -1);
         const grossPnl = pp * NOTIONAL;
-        const fees = NOTIONAL * FEE_RATE + liqFee;
+        const fees = NOTIONAL * FEE_RATE;
         const net = grossPnl - fees;
         pnlTotal += net;
         peakPnl = Math.max(peakPnl, pnlTotal);
