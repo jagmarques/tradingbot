@@ -11,7 +11,8 @@ import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE } from "../../config/constants.js";
+import { getLighterAccountInfo } from "../lighter/client.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -179,6 +180,17 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       liveByDir.set(p.direction, (liveByDir.get(p.direction) ?? 0) + 1);
     }
 
+    // Compound sizing: use 2.5% of Lighter equity for live trades
+    let compoundSize = QUANT_COMPOUND_MIN_SIZE;
+    try {
+      const acct = await getLighterAccountInfo();
+      const raw = Math.floor(acct.equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
+      compoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
+      console.log(`[QuantScheduler] Compound size: $${compoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${acct.equity.toFixed(2)} equity)`);
+    } catch (err) {
+      console.error(`[QuantScheduler] Failed to fetch Lighter equity for compound sizing, using $${compoundSize}`);
+    }
+
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
@@ -189,13 +201,14 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
         if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
         if ((liveByPair.get(decision.pair) ?? 0) >= QUANT_MAX_PER_PAIR) continue;
         if ((liveByDir.get(decision.direction) ?? 0) >= QUANT_MAX_PER_DIRECTION) continue;
-        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
+        const liveSize = compoundSize;
+        const position = await openPosition(decision.pair, decision.direction, liveSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
         if (position) {
           count++;
           openPairs.add(decision.pair);
           liveByPair.set(decision.pair, (liveByPair.get(decision.pair) ?? 0) + 1);
           liveByDir.set(decision.direction, (liveByDir.get(decision.direction) ?? 0) + 1);
-          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${liveSize.toFixed(2)} @ ${decision.entryPrice}`);
         }
       }
       executed.set(tradeType, count);
