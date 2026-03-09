@@ -41,7 +41,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "AVAX", "LINK", "ARB", "BNB", "OP", "SUI", "DOT", "TIA", "APT", "WIF"];
+export const QUANT_TRADING_PAIRS = ["ENA", "LDO", "OP", "ARB", "TIA", "SEI", "ONDO", "AVAX", "DOGE", "JUP", "APT", "SOL", "DOT", "SUI", "WLD"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -201,19 +201,25 @@ export const LIGHTER_TAKER_FEE_PCT = 0;
 
 // Hyperliquid Tier 1 maintenance margin rates
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
-  BTC: 0.02,   // 40x max
-  ETH: 0.0125, // 25x max
-  SOL: 0.01,   // 20x max
-  XRP: 0.02,   // 50x max
-  DOGE: 0.02,  // 50x max
-  AVAX: 0.01,
-  LINK: 0.01,
-  ARB: 0.01,
-  BNB: 0.01,
-  OP: 0.01,
-  SUI: 0.01,
-  DOT: 0.01,
-  TIA: 0.01,
-  APT: 0.01,
-  WIF: 0.01,
+  BTC: 0.0125,  // 40x max (table 56)
+  ETH: 0.02,    // 25x max (table 55)
+  SOL: 0.025,   // 20x max (table 54)
+  XRP: 0.025,   // 20x max (table 53)
+  DOGE: 0.05,   // 10x max (table 52)
+  AVAX: 0.05,   // 10x max (table 52)
+  LINK: 0.05,   // 10x max (table 52)
+  ARB: 0.05,    // 10x max (table 51)
+  BNB: 0.05,    // 10x max (table 51)
+  OP: 0.05,     // 10x max (table 51)
+  SUI: 0.05,    // 10x max (table 52)
+  DOT: 0.05,    // 10x max (table 51)
+  TIA: 0.05,    // 10x max (table 52)
+  APT: 0.05,    // 10x max (table 52)
+  WIF: 0.1,     // 5x max
+  ENA: 0.05,    // 10x max (table 52)
+  LDO: 0.05,    // 10x max (table 51)
+  SEI: 0.05,    // 10x max (table 51)
+  ONDO: 0.05,   // 10x max (table 51)
+  JUP: 0.05,    // 10x max (table 51)
+  WLD: 0.05,    // 10x max (table 52)
 };

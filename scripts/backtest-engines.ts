@@ -15,7 +15,7 @@ const TRAIL_DISTANCE = Number(process.env.TRAIL_DIST ?? 5);
 const LIQUIDATION_FEE_PCT = 0.01;
 const LIQUIDATION_THRESHOLD_PCT = 4;
 
-const PAIRS = ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT"];
+const PAIRS = process.env.PAIRS ? process.env.PAIRS.split(",") : ["BTC","ETH","SOL","XRP","DOGE","AVAX","LINK","ARB","BNB","OP","SUI","INJ","ATOM","APT","WIF","kPEPE","kBONK","kFLOKI","kSHIB","NEAR","RUNE","FET","LDO","CRV","HBAR","LTC","TIA","SEI","JUP","PYTH","TAO","ADA","DOT","BCH","AAVE","WLD","TRX","UNI","TON","ONDO","ENA"];
 const DAYS_4H = 780;
 const DAYS_DAILY = 780;
 const TRAIN_BARS = 2935;

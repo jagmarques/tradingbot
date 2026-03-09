@@ -111,6 +111,16 @@ const BINANCE_SYMBOL_MAP: Record<string, string> = {
   LINK: "LINKUSDT",
   ARB: "ARBUSDT",
   OP: "OPUSDT",
+  ENA: "ENAUSDT",
+  LDO: "LDOUSDT",
+  SEI: "SEIUSDT",
+  ONDO: "ONDOUSDT",
+  JUP: "JUPUSDT",
+  WLD: "WLDUSDT",
+  TIA: "TIAUSDT",
+  APT: "APTUSDT",
+  DOT: "DOTUSDT",
+  SUI: "SUIUSDT",
 };
 
 export async function fetchBinanceLongShortRatio(pair: string): Promise<LongShortRatio | null> {
