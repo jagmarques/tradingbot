@@ -78,16 +78,17 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 **10 decision engines:**
 - Technical 4h (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (all on Lighter)
 - Technical 1h (2): HMA 1h, ZLEMA 1h (both on Lighter, 4h HTF filter)
-- AI (1): DeepSeek with multi-timeframe candles, indicators, microstructure, funding, regime
-- Live (hybrid): ZLEMA 4h, HMA 1h, Schaff. Paper: all others
+- AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime, and technical engine signals as context
+- Live (hybrid): HMA 4h, Schaff, DEMA on Lighter + AI on HL. Paper: all 9 technical engines
 
 **Execution:**
 - $10 fixed margin per trade, 10x leverage
 - 50 max paper positions, 5 max live positions
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (per-engine: HMA1h 42/6, ZLEMA1h 40/6, others 20/5; smart trail resets), stagnation exit (engine-specific, 32-72h), stop-loss (ATR-based, 5% max)
-- AI signal flip: closes AI positions on reversal (long->short or vice versa), flat signals ignored
+- Trailing stop (per-engine config; smart trail resets), stagnation exit (technical engines only), stop-loss (ATR-based, 5% max)
+- AI: no stagnation (uses signal-flip only), closes on reversal (long->short or vice versa), flat signals ignored
+- Scheduler runs technical engines first, collects signals per pair, passes to AI as reference context
 - Exchange-level stop-loss orders on both HL and Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
 - 14-day paper validation before live
@@ -98,14 +99,14 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 |---|-------|--------|------|
 | Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
-| Quant AI engine | Paper | Live ($10 margin, 5 max) | Live |
-| Quant live engines (ZLEMA 4h, HMA 1h, Schaff) | Paper | Live + Paper | Live |
-| Quant paper engines (DEMA, HMA 4h, PSAR, Vortex, CCI, ZLEMA 1h) | Paper | Paper | Live |
+| Quant AI engine (R1) | Paper | Live ($10 margin, HL) | Live |
+| Quant live engines (HMA 4h, Schaff, DEMA) | Paper | Live + Paper (Lighter) | Live |
+| Quant paper engines (ZLEMA 4h, HMA 1h, ZLEMA 1h, PSAR, Vortex, CCI) | Paper | Paper (Lighter) | Live |
 | Note: live engines also run paper for independent performance tracking ||||
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
-- Virtual $1000 quant bankroll ($100/engine x 10 engines)
+- Virtual $1250 quant bankroll ($125/engine x 10 engines)
 - Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
 - Simulated funding: accrued hourly from live predicted rates
 - Simulated liquidation: per-pair maintenance margin rates
