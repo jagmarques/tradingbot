@@ -26,12 +26,6 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
-// Last signal direction per engine:pair (e.g. "zlema-directional:BTC" -> "long")
-const lastSignals = new Map<string, string>();
-
-export function getLastSignal(tradeType: string, pair: string): string | undefined {
-  return lastSignals.get(`${tradeType}:${pair}`);
-}
 
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 const stopLossCooldowns = new Map<string, number>(); // `${pair}:${direction}` -> timestamp
@@ -81,31 +75,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const zlemav2Decisions = await runZlemaV2DecisionEngine(analyses);
     const schaffv2Decisions = await runSchaffV2DecisionEngine(analyses);
 
-    // Record latest signals for smart trailing
-    const allDecisions: Array<{ tradeType: string; decisions: typeof psarDecisions }> = [
-      { tradeType: "psar-directional", decisions: psarDecisions },
-      { tradeType: "zlema-directional", decisions: zlemaDecisions },
-      { tradeType: "vortex-directional", decisions: vortexDecisions },
-      { tradeType: "schaff-directional", decisions: schaffDecisions },
-      { tradeType: "dema-directional", decisions: demaDecisions },
-      { tradeType: "hma-directional", decisions: hmaDecisions },
-      { tradeType: "cci-directional", decisions: cciDecisions },
-      { tradeType: "aroon-directional", decisions: aroonDecisions },
-      { tradeType: "macd-directional", decisions: macdDecisions },
-      { tradeType: "zlemav2-directional", decisions: zlemav2Decisions },
-      { tradeType: "schaffv2-directional", decisions: schaffv2Decisions },
-    ];
-    for (const { tradeType, decisions } of allDecisions) {
-      for (const d of decisions) {
-        const key = `${tradeType}:${d.pair}`;
-        if (d.direction === "flat") {
-          lastSignals.delete(key);
-        } else {
-          lastSignals.set(key, d.direction);
-        }
-      }
-    }
-
     // Collect per-pair signals from ALL engines for AI context
     const techSignalsByPair = new Map<string, TechSignal[]>();
     const signalSources: Array<{ engine: string; decisions: typeof hmaDecisions }> = [
@@ -149,16 +118,6 @@ export async function runDirectionalCycle(): Promise<void> {
       const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
       if (sizeUsd <= 0) continue;
       aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
-    }
-
-    // Record AI signals for smart trailing
-    for (const d of aiDecisions) {
-      const key = `ai-directional:${d.pair}`;
-      if (d.direction === "flat") {
-        lastSignals.delete(key);
-      } else {
-        lastSignals.set(key, d.direction);
-      }
     }
 
     const openPositions = getOpenQuantPositions();

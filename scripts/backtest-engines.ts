@@ -16,7 +16,7 @@ const TRAIL_ACTIVATION = Number(process.env.TRAIL_ACT ?? 20);
 const TRAIL_DISTANCE = Number(process.env.TRAIL_DIST ?? 5);
 const INVERT_SIGNALS = process.env.INVERT === "1";
 const RR_OVERRIDE = process.env.RR ? Number(process.env.RR) : 0;
-const SMART_TRAIL = process.env.SMART_TRAIL === "1";
+
 const LIQUIDATION_FEE_PCT = 0.01;
 const LIQUIDATION_THRESHOLD_PCT = 4;
 
@@ -731,15 +731,6 @@ function runBacktest(
 
       // Check trailing stop
       let trailingHit = pos.peakPnlPct > TRAIL_ACTIVATION && unrealizedPct <= pos.peakPnlPct - TRAIL_DISTANCE;
-
-      // Smart trail: skip close if signal still agrees with position direction
-      if (trailingHit && SMART_TRAIL) {
-        const currentSignal = engine.checkSignal(i, ctx);
-        if (currentSignal === pos.dir) {
-          pos.peakPnlPct = unrealizedPct; // reset peak
-          trailingHit = false;
-        }
-      }
 
       // Check stagnation
       const stagHit = (i - pos.entryIdx) >= engine.stagnationBars;

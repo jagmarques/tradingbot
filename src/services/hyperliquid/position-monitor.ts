@@ -7,7 +7,7 @@ import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifications.js";
-import { getLastSignal } from "./scheduler.js";
+
 
 // Per-engine stagnation
 const H4_MS = 4 * 60 * 60 * 1000;
@@ -202,14 +202,6 @@ async function checkPositionStops(): Promise<void> {
         }
         const trailTrigger = peak - trailCfg.distance;
         if (unrealizedPnlPct <= trailTrigger) {
-          // Smart trailing: skip close if engine signal still agrees
-          const signal = position.tradeType ? getLastSignal(position.tradeType, position.pair) : undefined;
-          if (signal === position.direction) {
-            console.log(`[PositionMonitor] Trail hit but signal still ${signal} for ${position.pair}, resetting peak`);
-            position.maxUnrealizedPnlPct = unrealizedPnlPct;
-            saveQuantPosition(position);
-            continue;
-          }
           console.log(
             `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
           );

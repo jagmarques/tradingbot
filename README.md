@@ -86,7 +86,7 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 - 50 max paper positions, 5 max live positions
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (per-engine config; smart trail resets), stagnation exit (technical engines only), stop-loss (ATR-based, 5% max)
+- Trailing stop (per-engine config), stagnation exit (technical engines only), stop-loss (ATR-based, 5% max)
 - AI: no stagnation (uses signal-flip only), closes on reversal (long->short or vice versa), flat signals ignored
 - Scheduler runs technical engines first, collects signals per pair, passes to AI as reference context
 - Exchange-level stop-loss orders on both HL and Lighter
