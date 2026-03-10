@@ -9,7 +9,7 @@ import {
 } from "../database/quant.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from "../telegram/notifications.js";
 import { recordStopLossCooldown } from "./scheduler.js";
-import { withTimeout, TimeoutError } from "../../utils/timeout.js";
+import { withTimeout } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
 const MAX_SLIPPAGE = 0.005;
@@ -730,7 +730,8 @@ export async function liveClosePosition(
     console.error(`[Quant Live] Close failed for ${position.pair}: ${msg}`);
     resetConnection();
 
-    if (err instanceof TimeoutError) {
+    // Check if position was already closed by exchange SL/TP (handles both timeout and SDK errors)
+    {
       try {
         await ensureConnected();
         const sdk2 = getClient();
@@ -742,7 +743,7 @@ export async function liveClosePosition(
             (ap: any) => ap.position.coin === position.pair && parseFloat(ap.position.szi) !== 0,
           );
           if (!stillOpen) {
-            console.log(`[Quant Live] ${position.pair} closed on exchange despite timeout`);
+            console.log(`[Quant Live] ${position.pair} already closed on exchange, reconciling`);
             const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
             const reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
             const notional = position.size * position.leverage;
@@ -784,7 +785,7 @@ export async function liveClosePosition(
           }
         }
       } catch (reconErr) {
-        console.error(`[Quant Live] Timeout reconciliation failed: ${reconErr instanceof Error ? reconErr.message : reconErr}`);
+        console.error(`[Quant Live] Reconciliation failed: ${reconErr instanceof Error ? reconErr.message : reconErr}`);
       }
     }
 
