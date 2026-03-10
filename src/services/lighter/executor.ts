@@ -601,27 +601,6 @@ export async function lighterClosePosition(
 
     const client = getSignerClient();
 
-    try { // verify position exists before closing
-      let existsOnExchange = false;
-      for (let check = 0; check < 2; check++) {
-        if (check > 0) await new Promise(r => setTimeout(r, 2000));
-        const preClosePositions = await getLighterOpenPositions();
-        if (preClosePositions.find(p => p.symbol === position.pair)) {
-          existsOnExchange = true;
-          break;
-        }
-      }
-      if (!existsOnExchange) {
-        console.error(`[Lighter Executor] ${position.pair} not found on exchange (2 checks) — phantom`);
-        await cancelAndReplaceOrders(position.pair);
-        await closePhantom(position);
-        const closed = lighterPositions.get(positionId);
-        return { success: true, pnl: closed?.realizedPnl ?? 0 };
-      }
-    } catch (checkErr) {
-      console.error(`[Lighter Executor] Pre-close check failed: ${checkErr instanceof Error ? checkErr.message : checkErr}`);
-    }
-
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
     await cancelAndReplaceOrders(position.pair);
 

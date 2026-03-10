@@ -41,7 +41,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["TIA", "OP", "WIF", "ARB", "LDO", "AVAX", "JUP", "ONDO", "DOT", "ENA", "DOGE", "APT", "SOL", "SEI", "LINK"];
+export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "JUP", "ONDO", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "ETH", "XRP", "SUI", "LTC", "UNI"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -255,8 +255,6 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set([
-  "hma-directional",
-  "schaff-directional",
   "dema-directional",
 ]);
 
@@ -268,25 +266,25 @@ export const LIGHTER_TAKER_FEE_PCT = 0;
 
 // Hyperliquid Tier 1 maintenance margin rates
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
-  BTC: 0.0125,  // 40x max (table 56)
-  ETH: 0.02,    // 25x max (table 55)
-  SOL: 0.025,   // 20x max (table 54)
-  XRP: 0.025,   // 20x max (table 53)
-  DOGE: 0.05,   // 10x max (table 52)
-  AVAX: 0.05,   // 10x max (table 52)
-  LINK: 0.05,   // 10x max (table 52)
-  ARB: 0.05,    // 10x max (table 51)
-  BNB: 0.05,    // 10x max (table 51)
-  OP: 0.05,     // 10x max (table 51)
-  SUI: 0.05,    // 10x max (table 52)
-  DOT: 0.05,    // 10x max (table 51)
-  TIA: 0.05,    // 10x max (table 52)
-  APT: 0.05,    // 10x max (table 52)
-  WIF: 0.1,     // 5x max
-  ENA: 0.05,    // 10x max (table 52)
-  LDO: 0.05,    // 10x max (table 51)
-  SEI: 0.05,    // 10x max (table 51)
-  ONDO: 0.05,   // 10x max (table 51)
-  JUP: 0.05,    // 10x max (table 51)
-  WLD: 0.05,    // 10x max (table 52)
+  BTC: 0.0125,  // 40x max
+  ETH: 0.02,    // 25x max
+  XRP: 0.025,   // 20x max
+  DOGE: 0.05,   // 10x max
+  AVAX: 0.05,   // 10x max
+  LINK: 0.05,   // 10x max
+  ARB: 0.05,    // 10x max
+  OP: 0.05,     // 10x max
+  DOT: 0.05,    // 10x max
+  APT: 0.05,    // 10x max
+  WIF: 0.1,     // 5x HL, 10x Lighter
+  ENA: 0.05,    // 10x max
+  LDO: 0.05,    // 10x max
+  SEI: 0.05,    // 10x max
+  ONDO: 0.05,   // 10x max
+  JUP: 0.05,    // 10x max
+  WLD: 0.05,    // 10x max
+  ADA: 0.05,    // 10x max
+  SUI: 0.05,    // 10x max
+  LTC: 0.05,    // 10x max
+  UNI: 0.05,    // 10x max
 };
