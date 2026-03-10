@@ -195,9 +195,70 @@ export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 3;
-export const CCI_TRAIL_DISTANCE = 2.5;
+export const CCI_TRAIL_ACTIVATION = 30;
+export const CCI_TRAIL_DISTANCE = 4;
 
+// ZLEMA v2 (clone of ZLEMA with different trail config from backtest sweep)
+export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
+export const ZLEMAV2_DAILY_ADX_MIN = 10;
+export const ZLEMAV2_FAST = 10;
+export const ZLEMAV2_SLOW = 34;
+export const ZLEMAV2_STOP_ATR_MULT = 4.0;
+export const ZLEMAV2_REWARD_RISK = 4.0;
+export const ZLEMAV2_STAGNATION_BARS = 10;
+export const ZLEMAV2_BASE_CONFIDENCE = 65;
+export const ZLEMAV2_DAILY_LOOKBACK_DAYS = 150;
+export const ZLEMAV2_ADX_NOT_DECL = 0;
+export const ZLEMAV2_REVERSE_EXIT = 0;
+export const ZLEMAV2_TRAIL_ACTIVATION = 20;
+export const ZLEMAV2_TRAIL_DISTANCE = 6;
+
+// Schaff v2 (clone of Schaff with SMA 75 from backtest sweep)
+export const SCHAFFV2_DAILY_SMA_PERIOD = 75;
+export const SCHAFFV2_DAILY_ADX_MIN = 0;
+export const SCHAFFV2_STC_FAST = 8;
+export const SCHAFFV2_STC_SLOW = 20;
+export const SCHAFFV2_STC_CYCLE = 12;
+export const SCHAFFV2_STC_THRESHOLD = 40;
+export const SCHAFFV2_STOP_ATR_MULT = 3.5;
+export const SCHAFFV2_REWARD_RISK = 4.0;
+export const SCHAFFV2_STAGNATION_BARS = 9;
+export const SCHAFFV2_BASE_CONFIDENCE = 65;
+export const SCHAFFV2_DAILY_LOOKBACK_DAYS = 150;
+export const SCHAFFV2_ADX_NOT_DECL = 0;
+export const SCHAFFV2_REVERSE_EXIT = 0;
+export const SCHAFFV2_TRAIL_ACTIVATION = 25;
+export const SCHAFFV2_TRAIL_DISTANCE = 5;
+
+// Aroon (from backtest sweep: period=14, sma75, adxMin=10, atr=3.5, rr=4)
+export const AROON_DAILY_SMA_PERIOD = 75;
+export const AROON_DAILY_ADX_MIN = 10;
+export const AROON_PERIOD = 14;
+export const AROON_STOP_ATR_MULT = 3.5;
+export const AROON_REWARD_RISK = 4.0;
+export const AROON_STAGNATION_BARS = 10;
+export const AROON_BASE_CONFIDENCE = 65;
+export const AROON_DAILY_LOOKBACK_DAYS = 150;
+export const AROON_ADX_NOT_DECL = 0;
+export const AROON_REVERSE_EXIT = 0;
+export const AROON_TRAIL_ACTIVATION = 25;
+export const AROON_TRAIL_DISTANCE = 5;
+
+// MACD (from backtest sweep: fast=8, slow=21, signal=7, sma75, adxMin=10, atr=3.5, rr=4)
+export const MACD_DAILY_SMA_PERIOD = 75;
+export const MACD_DAILY_ADX_MIN = 10;
+export const MACD_FAST = 8;
+export const MACD_SLOW = 21;
+export const MACD_SIGNAL_PERIOD = 7;
+export const MACD_STOP_ATR_MULT = 3.5;
+export const MACD_REWARD_RISK = 4.0;
+export const MACD_STAGNATION_BARS = 10;
+export const MACD_BASE_CONFIDENCE = 65;
+export const MACD_DAILY_LOOKBACK_DAYS = 150;
+export const MACD_ADX_NOT_DECL = 0;
+export const MACD_REVERSE_EXIT = 0;
+export const MACD_TRAIL_ACTIVATION = 25;
+export const MACD_TRAIL_DISTANCE = 5;
 
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
@@ -212,6 +273,10 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "cci-directional": "lighter",
   "hma1h-directional": "lighter",
   "zlema1h-directional": "lighter",
+  "aroon-directional": "lighter",
+  "macd-directional": "lighter",
+  "zlemav2-directional": "lighter",
+  "schaffv2-directional": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
