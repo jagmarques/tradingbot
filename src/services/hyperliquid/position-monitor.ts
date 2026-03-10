@@ -36,7 +36,7 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "hma1h-directional": { activation: HMA1H_TRAIL_ACTIVATION, distance: HMA1H_TRAIL_DISTANCE },
   "zlema1h-directional": { activation: ZLEMA1H_TRAIL_ACTIVATION, distance: ZLEMA1H_TRAIL_DISTANCE },
 };
-const DEFAULT_TRAIL = { activation: 20, distance: 5 };
+const DEFAULT_TRAIL = { activation: 25, distance: 8 };
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
