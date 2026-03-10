@@ -1128,8 +1128,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
       message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}/${hlClosedQ.cnt + hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
-      const lastHl = hlOpen.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      const lastLt = ltOpen.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const lastHl = hlOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
+      const lastLt = ltOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
       if (hlMarginLine || ltMarginLine) message += "\n";
       if (hlMarginLine) message += hlMarginLine;
       if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
