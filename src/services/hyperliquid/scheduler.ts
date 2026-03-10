@@ -18,6 +18,7 @@ import { getLighterAccountInfo } from "../lighter/client.js";
 import { ensureConnected, getClient } from "./client.js";
 import { loadEnv } from "../../config/env.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
+import type { TechSignal } from "./prompt.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -65,32 +66,10 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const analyses = await runMarketDataPipeline();
 
-    // AI engine (DeepSeek, runs on Hyperliquid)
-    const aiDecisions: QuantAIDecision[] = [];
-    const aiSignals = new Map<string, "long" | "short" | "flat">();
-    for (const analysis of analyses) {
-      const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
-      const closes = dailyCandles.map((c) => c.close);
-      const sma50 = computeDailySma(closes, 50, closes.length - 1);
-      const markPrice = analysis.markPrice;
-      let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
-      if (sma50 !== null) {
-        const direction = markPrice > sma50 * 1.01 ? "bullish" : markPrice < sma50 * 0.99 ? "bearish" : "neutral";
-        dailyTrend = { direction, price: markPrice, sma50 };
-      }
-      const decision = await analyzeWithAI(analysis, dailyTrend);
-      if (!decision) continue;
-      aiSignals.set(decision.pair, decision.direction);
-      if (decision.direction === "flat") continue;
-      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
-      if (sizeUsd <= 0) continue;
-      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
-    }
-
-    // Technical engines always run (routed to paper in executor.ts)
+    // Technical engines run FIRST so we can feed signals to AI
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
-const vortexDecisions = await runVortexDecisionEngine(analyses);
+    const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
     const hmaDecisions = await runHMADecisionEngine(analyses);
@@ -119,6 +98,43 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
           lastSignals.set(key, d.direction);
         }
       }
+    }
+
+    // Collect per-pair signals from live engines (HMA, Schaff, DEMA) for AI context
+    const techSignalsByPair = new Map<string, TechSignal[]>();
+    const signalSources: Array<{ engine: string; decisions: typeof hmaDecisions }> = [
+      { engine: "HMA 4h", decisions: hmaDecisions },
+      { engine: "Schaff 4h", decisions: schaffDecisions },
+      { engine: "DEMA 1h", decisions: demaDecisions },
+    ];
+    for (const { engine, decisions } of signalSources) {
+      for (const d of decisions) {
+        if (!techSignalsByPair.has(d.pair)) techSignalsByPair.set(d.pair, []);
+        techSignalsByPair.get(d.pair)!.push({ engine, direction: d.direction });
+      }
+    }
+
+    // AI engine (DeepSeek, runs on Hyperliquid) - receives technical signals as context
+    const aiDecisions: QuantAIDecision[] = [];
+    const aiSignals = new Map<string, "long" | "short" | "flat">();
+    for (const analysis of analyses) {
+      const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
+      const closes = dailyCandles.map((c) => c.close);
+      const sma50 = computeDailySma(closes, 50, closes.length - 1);
+      const markPrice = analysis.markPrice;
+      let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
+      if (sma50 !== null) {
+        const direction = markPrice > sma50 * 1.01 ? "bullish" : markPrice < sma50 * 0.99 ? "bearish" : "neutral";
+        dailyTrend = { direction, price: markPrice, sma50 };
+      }
+      const pairSignals = techSignalsByPair.get(analysis.pair);
+      const decision = await analyzeWithAI(analysis, dailyTrend, pairSignals);
+      if (!decision) continue;
+      aiSignals.set(decision.pair, decision.direction);
+      if (decision.direction === "flat") continue;
+      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
+      if (sizeUsd <= 0) continue;
+      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
     // Record AI signals for smart trailing

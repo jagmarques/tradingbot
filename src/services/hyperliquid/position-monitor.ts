@@ -22,6 +22,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "hma-directional": HMA_STAGNATION_BARS * H4_MS,
   "hma1h-directional": HMA1H_STAGNATION_BARS * H1_MS,
   "zlema1h-directional": ZLEMA1H_STAGNATION_BARS * H1_MS,
+  "ai-directional": Infinity, // no stagnation, uses signal-flip
 };
 
 // Per-engine trailing stop config

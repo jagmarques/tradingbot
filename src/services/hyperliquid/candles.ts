@@ -5,6 +5,7 @@ const INTERVAL_MS: Record<CandleInterval, number> = {
   "15m": 15 * 60 * 1000,
   "1h": 60 * 60 * 1000,
   "4h": 4 * 60 * 60 * 1000,
+  "1d": 24 * 60 * 60 * 1000,
 };
 
 export async function fetchCandles(
@@ -46,15 +47,17 @@ export async function fetchAllCandles(
   pair: string,
   count: number,
 ): Promise<Record<CandleInterval, OhlcvCandle[]>> {
-  const [candles15m, candles1h, candles4h] = await Promise.all([
+  const [candles15m, candles1h, candles4h, candles1d] = await Promise.all([
     fetchCandles(pair, "15m", count),
     fetchCandles(pair, "1h", count),
     fetchCandles(pair, "4h", count),
+    fetchCandles(pair, "1d", Math.min(count, 60)),
   ]);
 
   return {
     "15m": candles15m,
     "1h": candles1h,
     "4h": candles4h,
+    "1d": candles1d,
   };
 }

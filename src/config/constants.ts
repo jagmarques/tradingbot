@@ -47,7 +47,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant Position Sizing
 export const QUANT_AI_KELLY_FRACTION = 0.25;
-export const QUANT_AI_CACHE_TTL_MS = 8 * 60 * 60 * 1000; // 8h cache on AI analyses
+export const QUANT_AI_CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1h cache on AI analyses
 export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 export const QUANT_COMPOUND_SIZE_PCT = 0.025; // 2.5% of equity per trade
 export const QUANT_COMPOUND_MIN_SIZE = 5; // minimum $5 per trade

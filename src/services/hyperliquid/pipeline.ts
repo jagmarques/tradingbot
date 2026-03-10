@@ -34,6 +34,7 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
     "15m": computeIndicators(candlesByInterval["15m"]),
     "1h": computeIndicators(candlesByInterval["1h"]),
     "4h": computeIndicators(candlesByInterval["4h"]),
+    "1d": computeIndicators(candlesByInterval["1d"]),
   };
 
   // Classify regime from 1h indicators (most balanced timeframe)

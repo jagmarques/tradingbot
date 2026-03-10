@@ -1,4 +1,4 @@
-import { buildQuantPrompt, type DailyTrend } from "./prompt.js";
+import { buildQuantPrompt, type DailyTrend, type TechSignal } from "./prompt.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
@@ -182,7 +182,7 @@ function parseAIResponse(
 
 // --- Main analyzer function ---
 
-export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null): Promise<QuantAIDecision | null> {
+export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null, techSignals?: TechSignal[]): Promise<QuantAIDecision | null> {
   const { pair } = analysis;
 
   const cached = getCached(pair);
@@ -191,11 +191,11 @@ export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTr
     return cached;
   }
 
-  const prompt = buildQuantPrompt(analysis, dailyTrend);
+  const prompt = buildQuantPrompt(analysis, dailyTrend, techSignals);
 
   let raw: string;
   try {
-    raw = await callDeepSeek(prompt, "deepseek-chat", undefined, 0.3, "quant");
+    raw = await callDeepSeek(prompt, "deepseek-reasoner", undefined, undefined, "quant");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[QuantAI] DeepSeek call failed for ${pair}: ${msg}`);

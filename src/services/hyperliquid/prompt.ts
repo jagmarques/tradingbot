@@ -143,8 +143,26 @@ function formatDailyTrend(trend: DailyTrend): string {
   ].join("\n");
 }
 
-export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }, dailyTrend?: DailyTrend | null): string {
-  const intervals: CandleInterval[] = ["15m", "1h", "4h"];
+export interface TechSignal {
+  engine: string;
+  direction: "long" | "short" | "flat";
+}
+
+function formatTechSignals(signals: TechSignal[]): string {
+  if (!signals.length) return "No technical signals available this cycle.";
+  const lines = signals.map(s => `  ${s.engine}: ${s.direction.toUpperCase()}`);
+  const longs = signals.filter(s => s.direction === "long").length;
+  const shorts = signals.filter(s => s.direction === "short").length;
+  const flats = signals.filter(s => s.direction === "flat").length;
+  lines.push(`  Consensus: ${longs} long, ${shorts} short, ${flats} flat`);
+  if (longs > shorts && longs > flats) lines.push(`  [Engines lean long - consider as one input alongside price action and microstructure]`);
+  else if (shorts > longs && shorts > flats) lines.push(`  [Engines lean short - consider as one input alongside price action and microstructure]`);
+  else lines.push(`  [Mixed engine signals - no clear consensus from technical systems]`);
+  return lines.join("\n");
+}
+
+export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }, dailyTrend?: DailyTrend | null, techSignals?: TechSignal[]): string {
+  const intervals: CandleInterval[] = ["15m", "1h", "4h", "1d"];
   const fundingPct = (analysis.fundingRate * 100).toFixed(4);
 
   const timeframeSections = intervals
@@ -191,7 +209,7 @@ Use funding as confirmation, not primary signal. High funding also erodes edge o
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
-${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
+${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}${techSignals?.length ? `=== TECHNICAL ENGINE SIGNALS (reference data) ===\n${formatTechSignals(techSignals)}\n\nThese signals come from backtested technical engines (HMA 4h, Schaff 4h, DEMA 1h). Use them as additional context alongside price action, microstructure, funding, and regime. Engine consensus can confirm or add weight to your own analysis, but you should form an independent view from all data - do not simply copy engine directions.\n\n` : ""}=== INSTRUCTIONS ===
 The 4h ATR is ${formatNum(analysis.indicators["4h"].atr, 4)}. Use 2-3x ATR for stop-loss distance (${formatNum((analysis.indicators["4h"].atr ?? 0) * 2, 4)} to ${formatNum((analysis.indicators["4h"].atr ?? 0) * 3, 4)} from entry). Stops beyond 5% of entry will be capped automatically.
 
 Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
@@ -200,6 +218,7 @@ IMPORTANT: Before deciding direction, you MUST reason through BOTH sides:
 - Write a bull case (why price goes up)
 - Write a bear case (why price goes down)
 - Only then decide direction based on which case is stronger
+- If technical engines have consensus, explain why you agree or disagree
 
 OUTPUT JSON ONLY (no markdown, no extra text):
 {

@@ -59,7 +59,7 @@ export interface OrderResult {
   error: string | undefined;
 }
 
-export type CandleInterval = "15m" | "1h" | "4h";
+export type CandleInterval = "15m" | "1h" | "4h" | "1d";
 
 export interface OhlcvCandle {
   timestamp: number; // open time in ms
