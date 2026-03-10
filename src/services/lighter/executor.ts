@@ -202,7 +202,7 @@ async function closePhantom(pos: QuantPosition): Promise<void> {
   const now = new Date().toISOString();
   const reason = inferExitReason(pos, exitPrice);
 
-  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, exitReason: reason };
+  const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, unrealizedPnl: pnl, exitReason: reason };
   lighterPositions.set(pos.id, closed);
   saveQuantPosition(closed);
   const ctx = positionContext.get(pos.id);
@@ -658,6 +658,7 @@ export async function lighterClosePosition(
       closedAt: now,
       exitPrice,
       realizedPnl: pnl,
+      unrealizedPnl: pnl,
       exitReason: reason,
     };
 
@@ -724,6 +725,7 @@ export async function lighterClosePosition(
             closedAt: now,
             exitPrice: reconPrice,
             realizedPnl: estPnl,
+            unrealizedPnl: estPnl,
             exitReason,
           };
           lighterPositions.set(positionId, reconciled);

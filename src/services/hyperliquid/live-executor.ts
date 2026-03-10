@@ -278,6 +278,7 @@ async function reconcileWithExchange(): Promise<void> {
         closedAt: now,
         exitPrice,
         realizedPnl: pnl,
+        unrealizedPnl: pnl,
         exitReason: reason,
       };
       livePositions.set(pos.id, closedPosition);
@@ -684,6 +685,7 @@ export async function liveClosePosition(
       closedAt: now,
       exitPrice,
       realizedPnl: pnl,
+      unrealizedPnl: pnl,
       exitReason: reason,
     };
 
@@ -756,7 +758,7 @@ export async function liveClosePosition(
             const exitReason = `${reason} (timeout-reconciled)`;
             const reconciled: QuantPosition = {
               ...position, status: "closed", closedAt: now,
-              exitPrice: reconPrice, realizedPnl: estPnl, exitReason,
+              exitPrice: reconPrice, realizedPnl: estPnl, unrealizedPnl: estPnl, exitReason,
             };
             livePositions.set(positionId, reconciled);
             saveQuantPosition(reconciled);

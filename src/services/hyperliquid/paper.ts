@@ -268,6 +268,7 @@ export async function paperClosePosition(
     closedAt: now,
     exitPrice: currentPrice,
     realizedPnl: pnl,
+    unrealizedPnl: pnl,
     exitReason: reason,
   };
 
