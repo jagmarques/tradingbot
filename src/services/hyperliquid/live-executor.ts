@@ -626,34 +626,42 @@ export async function liveClosePosition(
     );
 
     const statuses = result?.response?.data?.statuses;
-    if (!statuses || statuses.length === 0) {
-      console.error(`[Quant Live] Close failed for ${position.pair}: no statuses`);
-      console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
+    const status = statuses?.[0];
+    const closeFailed = !statuses || statuses.length === 0 || status?.resting || !status?.filled;
+
+    if (closeFailed) {
+      // Position may already be closed by exchange SL/TP
+      const env = loadEnv();
+      const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+      if (wallet) {
+        try {
+          const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+          const stillOpen = state.assetPositions.some(
+            (ap: any) => ap.position.coin === position.pair && parseFloat(ap.position.szi) !== 0,
+          );
+          if (!stillOpen) {
+            console.log(`[Quant Live] ${position.pair} already closed on exchange, deferring to reconciliation`);
+            closingSet.delete(positionId);
+            void reconcileWithExchange();
+            return { success: true, pnl: 0 };
+          }
+        } catch { /* fall through to normal failure handling */ }
+      }
+
+      if (status?.resting) {
+        console.error(`[Quant Live] Close resting for ${position.pair}`);
+        try {
+          await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: status.resting.oid });
+        } catch { /* best effort */ }
+      } else {
+        console.error(`[Quant Live] Close failed for ${position.pair}: ${JSON.stringify(statuses)}`);
+      }
       void placeExchangeStop(position);
       void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
-    const status = statuses[0];
-
-    if (status.resting) {
-      console.error(`[Quant Live] Close resting for ${position.pair}`);
-      try {
-        await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: status.resting.oid });
-      } catch { /* best effort */ }
-      void placeExchangeStop(position);
-      void placeExchangeTP(position);
-      return { success: false, pnl: 0 };
-    }
-
-    if (!status.filled) {
-      console.error(`[Quant Live] Close rejected for ${position.pair}: ${JSON.stringify(status)}`);
-      void placeExchangeStop(position);
-      void placeExchangeTP(position);
-      return { success: false, pnl: 0 };
-    }
-
-    const exitPrice = parseFloat(status.filled.avgPx);
+    const exitPrice = parseFloat(status!.filled!.avgPx);
 
     if (!isFinite(exitPrice) || exitPrice <= 0) {
       console.error(`[Quant Live] Invalid exit price for ${position.pair}`);

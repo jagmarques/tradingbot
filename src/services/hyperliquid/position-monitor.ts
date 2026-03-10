@@ -23,7 +23,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "macd-directional": MACD_STAGNATION_BARS * H4_MS,
   "zlemav2-directional": ZLEMAV2_STAGNATION_BARS * H4_MS,
   "schaffv2-directional": SCHAFFV2_STAGNATION_BARS * H4_MS,
-  "ai-directional": Infinity, // no stagnation, uses signal-flip
+  "ai-directional": 24 * 60 * 60 * 1000, // 24h max hold
 };
 
 // Per-engine trailing stop config

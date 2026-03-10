@@ -100,11 +100,13 @@ function getRegimeInstruction(regime: MarketRegime): string {
       );
     case "ranging":
       return (
-        "Market is RANGING. Look for mean-reversion setups at extremes only. " +
-        "If price is near the upper Bollinger Band AND RSI > 70, go short. " +
-        "If price is near the lower Bollinger Band AND RSI < 30, go long. " +
-        "Return flat if price is NOT at an extreme. " +
-        "Only trade with 75%+ confidence when multiple indicators align."
+        "Market is RANGING/SIDEWAYS. Most ranging trades lose money - default to FLAT unless you see a clear extreme. " +
+        "ONLY trade if ALL of these conditions are met: " +
+        "(1) Price is at a Bollinger Band extreme (touching upper or lower band), " +
+        "(2) RSI confirms (>70 for short at upper band, <30 for long at lower band), " +
+        "(3) Orderbook imbalance supports the reversal direction. " +
+        "If ANY condition is missing, return flat. Ranging markets chop - sitting out IS the edge. " +
+        "Do NOT use daily trend bias in ranging markets - trend-following loses when there is no trend."
       );
     case "volatile":
       return (
@@ -127,12 +129,12 @@ function formatDailyTrend(trend: DailyTrend): string {
   let bias: string;
   if (trend.direction === "bearish") {
     bias =
-      "Price is below the daily SMA50. The macro trend is DOWN. Favor short setups and be skeptical of long entries -- they are counter-trend and need stronger confirmation.";
+      "Price is below the daily SMA50. The macro trend leans bearish. In TRENDING regimes, this favors shorts. In RANGING regimes, ignore this - there is no trend to follow.";
   } else if (trend.direction === "bullish") {
     bias =
-      "Price is above the daily SMA50. The macro trend is UP. Favor long setups and be skeptical of short entries -- they are counter-trend and need stronger confirmation.";
+      "Price is above the daily SMA50. The macro trend leans bullish. In TRENDING regimes, this favors longs. In RANGING regimes, ignore this - there is no trend to follow.";
   } else {
-    bias = "Price is near the daily SMA50. No clear macro trend bias.";
+    bias = "Price is near the daily SMA50. No clear macro trend bias. Consider both directions equally.";
   }
   return [
     `=== DAILY TREND ===`,
@@ -209,16 +211,23 @@ Use funding as confirmation, not primary signal. High funding also erodes edge o
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
-${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}${techSignals?.length ? `=== TECHNICAL ENGINE SIGNALS (reference data) ===\n${formatTechSignals(techSignals)}\n\nThese signals come from backtested technical engines (HMA 4h, Schaff 4h, DEMA 1h). Use them as additional context alongside price action, microstructure, funding, and regime. Engine consensus can confirm or add weight to your own analysis, but you should form an independent view from all data - do not simply copy engine directions.\n\n` : ""}=== INSTRUCTIONS ===
+${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}${techSignals?.length ? `=== TECHNICAL ENGINE SIGNALS (11 backtested engines) ===\n${formatTechSignals(techSignals)}\n\nThese are live signals from 11 backtested technical engines running on real data. Top engines by backtest Sharpe: ZLEMA 4h (7.0), Aroon (6.7), Schaff (6.6), HMA 4h (6.5), DEMA (6.3), MACD (5.7), CCI (5.6). Weight higher-Sharpe engines more heavily. Strong consensus (7+ engines agreeing) is a powerful confirmation signal. Mixed signals suggest caution - lean flat.\n\n` : ""}=== INSTRUCTIONS ===
 The 4h ATR is ${formatNum(analysis.indicators["4h"].atr, 4)}. Use 2-3x ATR for stop-loss distance (${formatNum((analysis.indicators["4h"].atr ?? 0) * 2, 4)} to ${formatNum((analysis.indicators["4h"].atr ?? 0) * 3, 4)} from entry). Stops beyond 5% of entry will be capped automatically.
 
-Return flat only when signals clearly contradict each other or there is no identifiable directional edge. Use microstructure data (long/short ratio, orderbook imbalance, OI delta) to confirm or contradict technical signals. Crowded positioning or orderbook imbalance can strengthen or weaken a setup.
+Return flat when signals contradict, the market is choppy, or there is no clear edge. FLAT IS A VALID AND PROFITABLE DECISION - not trading bad setups preserves capital. You should return flat at least 40-60% of the time across all pairs. Do not force trades.
 
-IMPORTANT: Before deciding direction, you MUST reason through BOTH sides:
+CRITICAL RULES:
+1. In RANGING markets: Return flat unless price is at a clear Bollinger Band extreme with RSI confirmation. Most ranging trades lose money.
+2. BOTH directions are valid: Do not develop a bias toward only long or only short. Actively consider both directions - a balanced trader takes longs AND shorts depending on the setup.
+3. Microstructure confirms, not drives: Use long/short ratio, orderbook imbalance, and OI delta to confirm or reject a technical setup, not as standalone signals.
+4. Confidence calibration: 50-60% = weak/skip, 60-70% = moderate, 70-80% = good, 80%+ = very strong. Be honest about uncertainty.
+
+Before deciding direction, you MUST reason through BOTH sides:
 - Write a bull case (why price goes up)
 - Write a bear case (why price goes down)
 - Only then decide direction based on which case is stronger
 - If technical engines have consensus, explain why you agree or disagree
+- If both cases are roughly equal, return flat
 
 OUTPUT JSON ONLY (no markdown, no extra text):
 {

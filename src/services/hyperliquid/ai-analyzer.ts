@@ -78,15 +78,19 @@ function parseAIResponse(
     return null;
   }
 
-  // Volatile override
+  // Regime overrides
   let finalDirection: "long" | "short" | "flat" = direction;
   if (regime === "volatile" && direction !== "flat") {
     console.log(`[QuantAI] Overriding to flat: volatile regime for ${pair}`);
     finalDirection = "flat";
   }
+  const rawConf = Number(parsed["confidence"]);
+  if (regime === "ranging" && direction !== "flat" && isFinite(rawConf) && rawConf < 80) {
+    console.log(`[QuantAI] Overriding to flat: ranging regime + low confidence (${rawConf}%) for ${pair}`);
+    finalDirection = "flat";
+  }
 
   if (finalDirection === "flat") {
-    const rawConf = Number(parsed["confidence"]);
     const flatConfidence = isFinite(rawConf) ? Math.max(0, Math.min(100, rawConf)) : 0;
     const flatReasoning =
       typeof parsed["reasoning"] === "string" && parsed["reasoning"].trim().length > 0

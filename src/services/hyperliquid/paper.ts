@@ -21,6 +21,10 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "dema-directional",
   "hma-directional",
   "cci-directional",
+  "aroon-directional",
+  "macd-directional",
+  "zlemav2-directional",
+  "schaffv2-directional",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

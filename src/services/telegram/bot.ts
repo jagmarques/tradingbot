@@ -2630,6 +2630,10 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "dema-directional" ? "[DE]" :
       pos.tradeType === "hma-directional" ? "[HM]" :
       pos.tradeType === "cci-directional" ? "[CC]" :
+      pos.tradeType === "aroon-directional" ? "[AR]" :
+      pos.tradeType === "macd-directional" ? "[MA]" :
+      pos.tradeType === "zlemav2-directional" ? "[Z2]" :
+      pos.tradeType === "schaffv2-directional" ? "[S2]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2730,6 +2734,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["Vortex", "vortex-directional"], ["Schaff", "schaff-directional"],
     ["DEMA", "dema-directional"], ["HMA", "hma-directional"],
     ["CCI", "cci-directional"],
+    ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
+    ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

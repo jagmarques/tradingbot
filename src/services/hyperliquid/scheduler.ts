@@ -106,12 +106,20 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Collect per-pair signals from live engines (HMA, Schaff, DEMA) for AI context
+    // Collect per-pair signals from ALL engines for AI context
     const techSignalsByPair = new Map<string, TechSignal[]>();
     const signalSources: Array<{ engine: string; decisions: typeof hmaDecisions }> = [
       { engine: "HMA 4h", decisions: hmaDecisions },
       { engine: "Schaff 4h", decisions: schaffDecisions },
-      { engine: "DEMA 1h", decisions: demaDecisions },
+      { engine: "DEMA 4h", decisions: demaDecisions },
+      { engine: "ZLEMA 4h", decisions: zlemaDecisions },
+      { engine: "PSAR 4h", decisions: psarDecisions },
+      { engine: "Vortex 4h", decisions: vortexDecisions },
+      { engine: "CCI 4h", decisions: cciDecisions },
+      { engine: "Aroon 4h", decisions: aroonDecisions },
+      { engine: "MACD 4h", decisions: macdDecisions },
+      { engine: "ZLEMAv2 4h", decisions: zlemav2Decisions },
+      { engine: "SchaffV2 4h", decisions: schaffv2Decisions },
     ];
     for (const { engine, decisions } of signalSources) {
       for (const d of decisions) {

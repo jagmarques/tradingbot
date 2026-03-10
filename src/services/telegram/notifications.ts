@@ -254,7 +254,7 @@ export async function notifyQuantTradeEntry(params: {
   if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
   const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -263,8 +263,8 @@ export async function notifyQuantTradeEntry(params: {
     `Entry: ${params.entryPrice}\n` +
     `Leverage: ${params.leverage}x\n` +
     `Type: ${typeLabel}\n` +
-    `Stop-Loss: ${params.stopLoss}\n` +
-    `Take-Profit: ${params.takeProfit}`;
+    `Stop-Loss: ${Number(params.stopLoss.toPrecision(6))}\n` +
+    `Take-Profit: ${Number(params.takeProfit.toPrecision(6))}`;
   await sendMessage(message);
 }
 
@@ -285,7 +285,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -310,7 +310,7 @@ export async function notifyTrailActivation(params: {
   tradeType: string;
 }): Promise<void> {
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : "AI";
+  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "hma-directional" ? "HMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
   const message =
     `[LIVE] <b>TRAIL ACTIVATED</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
