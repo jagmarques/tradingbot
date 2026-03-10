@@ -139,7 +139,7 @@ export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_ADX_NOT_DECL = 0;
 export const SCHAFF_REVERSE_EXIT = 0;
 export const SCHAFF_TRAIL_ACTIVATION = 25;
-export const SCHAFF_TRAIL_DISTANCE = 8;
+export const SCHAFF_TRAIL_DISTANCE = 5;
 
 // DEMA (params from backtest-mixed +448%)
 export const DEMA_DAILY_SMA_PERIOD = 50;
@@ -154,7 +154,7 @@ export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const DEMA_ADX_NOT_DECL = 0;
 export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 25;
-export const DEMA_TRAIL_DISTANCE = 8;
+export const DEMA_TRAIL_DISTANCE = 5;
 
 // HMA (params from backtest-mixed +448%)
 export const HMA_DAILY_SMA_PERIOD = 50;
@@ -169,7 +169,7 @@ export const HMA_DAILY_LOOKBACK_DAYS = 150;
 export const HMA_ADX_NOT_DECL = 0;
 export const HMA_REVERSE_EXIT = 0;
 export const HMA_TRAIL_ACTIVATION = 25;
-export const HMA_TRAIL_DISTANCE = 8;
+export const HMA_TRAIL_DISTANCE = 5;
 
 // HMA 1h (scalping - uses 4h HTF filter instead of daily)
 export const HMA1H_HTF_SMA_PERIOD = 75;

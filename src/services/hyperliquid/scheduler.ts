@@ -15,6 +15,8 @@ import { openPosition, closePosition, getOpenQuantPositions } from "./executor.j
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE, getEngineExchange } from "../../config/constants.js";
 import { getLighterAccountInfo } from "../lighter/client.js";
+import { ensureConnected, getClient } from "./client.js";
+import { loadEnv } from "../../config/env.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -158,16 +160,53 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       }
     }
 
+    // Compound sizing: per-exchange (2.5% of each exchange's equity)
+    let lighterCompoundSize = QUANT_COMPOUND_MIN_SIZE;
+    try {
+      const acct = await getLighterAccountInfo();
+      const raw = Math.floor(acct.equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
+      lighterCompoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
+      console.log(`[QuantScheduler] Lighter compound: $${lighterCompoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${acct.equity.toFixed(2)} equity)`);
+    } catch (err) {
+      console.error(`[QuantScheduler] Failed to fetch Lighter equity for compound sizing, using $${lighterCompoundSize}`);
+    }
+
+    let hlCompoundSize = QUANT_COMPOUND_MIN_SIZE;
+    try {
+      await ensureConnected();
+      const sdk = getClient();
+      const env = loadEnv();
+      const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+      if (wallet) {
+        const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+        let equity = parseFloat(state.marginSummary.accountValue) || 0;
+        const marginUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
+        if (equity <= marginUsed) {
+          try {
+            const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+            const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
+            if (usdcBal) equity = parseFloat(usdcBal.total) || 0;
+          } catch { /* spot check optional */ }
+        }
+        const raw = Math.floor(equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
+        hlCompoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
+        console.log(`[QuantScheduler] HL compound: $${hlCompoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${equity.toFixed(2)} equity)`);
+      }
+    } catch (err) {
+      console.error(`[QuantScheduler] Failed to fetch HL equity for compound sizing, using $${hlCompoundSize}`);
+    }
+
     let aiExecuted = 0;
     for (const decision of aiDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-      const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
+      const aiSize = hlCompoundSize;
+      const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
         aiExecuted++;
         aiOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+        console.log(`[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${aiSize.toFixed(2)} @ ${decision.entryPrice}`);
       }
     }
 
@@ -192,17 +231,6 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       dirMap.set(p.direction, (dirMap.get(p.direction) ?? 0) + 1);
     }
 
-    // Compound sizing: use 2.5% of Lighter equity for live trades
-    let compoundSize = QUANT_COMPOUND_MIN_SIZE;
-    try {
-      const acct = await getLighterAccountInfo();
-      const raw = Math.floor(acct.equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
-      compoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
-      console.log(`[QuantScheduler] Compound size: $${compoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${acct.equity.toFixed(2)} equity)`);
-    } catch (err) {
-      console.error(`[QuantScheduler] Failed to fetch Lighter equity for compound sizing, using $${compoundSize}`);
-    }
-
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
@@ -216,7 +244,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
         if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
         if ((liveByPair.get(decision.pair) ?? 0) >= QUANT_MAX_PER_PAIR) continue;
         if ((liveByDir.get(decision.direction) ?? 0) >= QUANT_MAX_PER_DIRECTION) continue;
-        const liveSize = compoundSize;
+        const liveSize = lighterCompoundSize;
         const position = await openPosition(decision.pair, decision.direction, liveSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
         if (position) {
           count++;
