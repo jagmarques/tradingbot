@@ -1,7 +1,8 @@
 // Overnight sweep: exhaustive strategy space exploration.
-// Phase 1: Parameter sweep of all 9 existing engines (~60%)
-// Phase 2: New indicators (Keltner, Donchian, Williams %R, Stochastic, ADX-only, Ichimoku) (~25%)
-// Phase 3: Hybrid approaches (dual-confirm, inverted, cross-timeframe, adaptive trail) (~15%)
+// Phase 1: Parameter sweep of all 9 existing engines + SMA/ADX sweeps (~45%)
+// Phase 2: New indicators (Keltner, Donchian, Williams %R, Stochastic, ADX-only, Ichimoku,
+//           RSI, Bollinger Bands, Supertrend, TRIX, Aroon) + mean reversion (~35%)
+// Phase 3: Hybrid approaches (dual-confirm, inverted, cross-timeframe, adaptive trail) (~20%)
 // Output: /tmp/overnight-sweep-results.txt
 // Run: npx tsx scripts/backtest-overnight-sweep.ts 2>&1 | tee /tmp/overnight-sweep-results.txt
 
@@ -404,6 +405,103 @@ function computeIchimoku(candles: Candle[], tenkan: number, kijun: number, senko
   return { tenkanSen, kijunSen, senkouA, senkouB };
 }
 
+function computeRSI(closes: number[], period: number): (number | null)[] {
+  const n = closes.length;
+  const result: (number | null)[] = new Array(n).fill(null);
+  if (n < period + 1) return result;
+  let gainSum = 0, lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) gainSum += d; else lossSum += Math.abs(d);
+  }
+  let avgGain = gainSum / period, avgLoss = lossSum / period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < n; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (d < 0 ? Math.abs(d) : 0)) / period;
+    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
+}
+
+function computeBollingerBands(closes: number[], period: number, mult: number): { upper: (number | null)[]; lower: (number | null)[]; mid: (number | null)[]; width: (number | null)[] } {
+  const n = closes.length;
+  const upper: (number | null)[] = new Array(n).fill(null);
+  const lower: (number | null)[] = new Array(n).fill(null);
+  const mid: (number | null)[] = new Array(n).fill(null);
+  const width: (number | null)[] = new Array(n).fill(null);
+  for (let i = period - 1; i < n; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    const sma = sum / period;
+    let sqSum = 0;
+    for (let j = i - period + 1; j <= i; j++) sqSum += (closes[j] - sma) ** 2;
+    const std = Math.sqrt(sqSum / period);
+    mid[i] = sma;
+    upper[i] = sma + mult * std;
+    lower[i] = sma - mult * std;
+    width[i] = sma > 0 ? (2 * mult * std) / sma : 0;
+  }
+  return { upper, lower, mid, width };
+}
+
+function computeSupertrend(candles: Candle[], period: number, mult: number): { trend: (number | null)[]; direction: (number | null)[] } {
+  const n = candles.length;
+  const trend: (number | null)[] = new Array(n).fill(null);
+  const direction: (number | null)[] = new Array(n).fill(null); // 1=up, -1=down
+  const atrRaw = ATR.calculate({ high: candles.map(c => c.high), low: candles.map(c => c.low), close: candles.map(c => c.close), period });
+  const atrArr: (number | null)[] = new Array(n).fill(null);
+  atrRaw.forEach((v, i) => { atrArr[n - atrRaw.length + i] = v; });
+
+  let upperBand = 0, lowerBand = 0, dir = 1;
+  for (let i = period; i < n; i++) {
+    const atr = atrArr[i];
+    if (atr === null) continue;
+    const hl2 = (candles[i].high + candles[i].low) / 2;
+    const newUpper = hl2 + mult * atr;
+    const newLower = hl2 - mult * atr;
+    upperBand = (i > period && upperBand !== 0) ? (newUpper < upperBand || candles[i - 1].close > upperBand ? newUpper : upperBand) : newUpper;
+    lowerBand = (i > period && lowerBand !== 0) ? (newLower > lowerBand || candles[i - 1].close < lowerBand ? newLower : lowerBand) : newLower;
+    if (dir === 1 && candles[i].close < lowerBand) dir = -1;
+    else if (dir === -1 && candles[i].close > upperBand) dir = 1;
+    direction[i] = dir;
+    trend[i] = dir === 1 ? lowerBand : upperBand;
+  }
+  return { trend, direction };
+}
+
+function computeTRIX(closes: number[], period: number): (number | null)[] {
+  const n = closes.length;
+  const e1 = EMA.calculate({ values: closes, period });
+  if (e1.length < period) return new Array(n).fill(null);
+  const e2 = EMA.calculate({ values: e1, period });
+  if (e2.length < period) return new Array(n).fill(null);
+  const e3 = EMA.calculate({ values: e2, period });
+  const result: (number | null)[] = new Array(n).fill(null);
+  const offset = n - e3.length;
+  for (let i = 1; i < e3.length; i++) {
+    result[offset + i] = e3[i - 1] !== 0 ? ((e3[i] - e3[i - 1]) / e3[i - 1]) * 10000 : 0;
+  }
+  return result;
+}
+
+function computeAroon(candles: Candle[], period: number): { up: (number | null)[]; down: (number | null)[] } {
+  const n = candles.length;
+  const up: (number | null)[] = new Array(n).fill(null);
+  const down: (number | null)[] = new Array(n).fill(null);
+  for (let i = period; i < n; i++) {
+    let hiIdx = i, loIdx = i;
+    for (let j = i - period; j <= i; j++) {
+      if (candles[j].high >= candles[hiIdx].high) hiIdx = j;
+      if (candles[j].low <= candles[loIdx].low) loIdx = j;
+    }
+    up[i] = ((period - (i - hiIdx)) / period) * 100;
+    down[i] = ((period - (i - loIdx)) / period) * 100;
+  }
+  return { up, down };
+}
+
 // ─── Sharpe Calculation ───────────────────────────────────────────────────────
 
 function sharpe(pnls: number[]): number {
@@ -579,7 +677,7 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
     {
       name: "HMA-4h",
       currentParams: { fast: 3, slow: 50, stopAtr: 3.0, rr: 6.0, stag: 10 },
-      paramRanges: { fast: [2, 3, 4, 5], slow: [40, 50, 60], stopAtr: [2.0, 3.0, 4.0], rr: [4, 6, 8], stag: [8, 10, 12] },
+      paramRanges: { fast: [2, 3, 4, 5, 7, 10], slow: [30, 40, 50, 60, 80], stopAtr: [2.0, 3.0, 4.0, 5.0], rr: [3, 4, 6, 8, 10], stag: [6, 8, 10, 14] },
       buildSignal: (candles, closes, p) => {
         const hF = computeHMA(closes, p.fast);
         const hS = computeHMA(closes, p.slow);
@@ -591,13 +689,13 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 3.0, rewardRisk: 6.0, stagnationBars: 10, trailActivation: 5, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 3.0, rewardRisk: 6.0, stagnationBars: 10, trailActivation: 25, trailDistance: 5, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
     },
     // ZLEMA-4h
     {
       name: "ZLEMA-4h",
-      currentParams: { fast: 4, slow: 40, stopAtr: 2.5, rr: 4.0, stag: 10 },
-      paramRanges: { fast: [6, 8, 10, 12], slow: [26, 30, 34, 40], stopAtr: [3.0, 4.0, 5.0], rr: [3, 4, 5], stag: [8, 10, 12] },
+      currentParams: { fast: 10, slow: 34, stopAtr: 4.0, rr: 4.0, stag: 10 },
+      paramRanges: { fast: [5, 8, 10, 12, 16], slow: [20, 26, 30, 34, 40, 50], stopAtr: [2.5, 3.0, 4.0, 5.0, 6.0], rr: [2, 3, 4, 5, 7], stag: [6, 8, 10, 14] },
       buildSignal: (candles, closes, p) => {
         const zF = computeZLEMA(closes, p.fast);
         const zS = computeZLEMA(closes, p.slow);
@@ -609,7 +707,7 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 2.5, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 3, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 4.0, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 1, trailDistance: 2, smaPeriod: 75, adxMin: 10, adxNotDecl: false, reverseExit: false },
     },
     // Schaff-4h
     {
@@ -627,13 +725,13 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 3.5, rewardRisk: 4.0, stagnationBars: 9, trailActivation: 5, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 3.5, rewardRisk: 4.0, stagnationBars: 9, trailActivation: 25, trailDistance: 5, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
     },
     // DEMA-4h
     {
       name: "DEMA-4h",
       currentParams: { fast: 5, slow: 21, stopAtr: 3.0, rr: 4.0, stag: 16 },
-      paramRanges: { fast: [3, 5, 7], slow: [18, 21, 25], stopAtr: [2.0, 3.0, 4.0], rr: [3, 4, 5], stag: [12, 16, 20] },
+      paramRanges: { fast: [3, 5, 7, 10], slow: [14, 18, 21, 25, 34], stopAtr: [2.0, 3.0, 4.0, 5.0], rr: [2, 3, 4, 5, 7], stag: [8, 12, 16, 20] },
       buildSignal: (candles, closes, p) => {
         const dF = computeDEMA(closes, p.fast);
         const dS = computeDEMA(closes, p.slow);
@@ -645,13 +743,13 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 3.0, rewardRisk: 4.0, stagnationBars: 16, trailActivation: 5, trailDistance: 2, smaPeriod: 50, adxMin: 10, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 3.0, rewardRisk: 4.0, stagnationBars: 16, trailActivation: 25, trailDistance: 5, smaPeriod: 50, adxMin: 10, adxNotDecl: false, reverseExit: false },
     },
     // PSAR-4h
     {
       name: "PSAR-4h",
-      currentParams: { step: 0.008, max: 0.12, stopAtr: 3.0, rr: 4.0, stag: 16 },
-      paramRanges: { step: [0.005, 0.008, 0.015, 0.02, 0.03], max: [0.08, 0.1, 0.12, 0.15], stopAtr: [4.0, 5.0, 6.0], rr: [4, 6, 8], stag: [12, 16, 20] },
+      currentParams: { step: 0.02, max: 0.1, stopAtr: 5.0, rr: 6.0, stag: 8 },
+      paramRanges: { step: [0.01, 0.02, 0.03, 0.04], max: [0.08, 0.1, 0.15, 0.2], stopAtr: [4.0, 5.0, 6.0], rr: [4, 6, 8], stag: [6, 8, 10, 12] },
       buildSignal: (candles, closes, p) => {
         const psar = precomputePSAR(candles, p.step, p.max);
         return (i) => {
@@ -663,12 +761,12 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 3.0, rewardRisk: 4.0, stagnationBars: 16, trailActivation: 8, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 5.0, rewardRisk: 6.0, stagnationBars: 8, trailActivation: 9, trailDistance: 2.5, smaPeriod: 50, adxMin: 18, adxNotDecl: false, reverseExit: true },
     },
     // Vortex-4h
     {
       name: "Vortex-4h",
-      currentParams: { period: 25, stopAtr: 5.0, rr: 4.0, stag: 10 },
+      currentParams: { period: 14, stopAtr: 5.0, rr: 4.0, stag: 10 },
       paramRanges: { period: [10, 14, 20, 25], stopAtr: [4.0, 5.0, 6.0], rr: [3, 4, 5], stag: [8, 10, 14] },
       buildSignal: (candles, closes, p) => {
         const v = precomputeVortex(candles, p.period);
@@ -680,12 +778,12 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 5.0, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 5, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 5.0, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 6, trailDistance: 3, smaPeriod: 50, adxMin: 14, adxNotDecl: true, reverseExit: false },
     },
     // CCI-4h
     {
       name: "CCI-4h",
-      currentParams: { period: 20, thresh: 85, stopAtr: 2.5, rr: 4.0, stag: 10 },
+      currentParams: { period: 14, thresh: 100, stopAtr: 3.5, rr: 4.0, stag: 10 },
       paramRanges: { period: [10, 14, 20], thresh: [80, 100, 120], stopAtr: [2.5, 3.5, 4.5], rr: [3, 4, 5], stag: [8, 10, 14] },
       buildSignal: (candles, closes, p) => {
         const cci = precomputeCCI(candles, p.period);
@@ -698,7 +796,7 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 2.5, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 3, trailDistance: 2, smaPeriod: 50, adxMin: 0, adxNotDecl: false, reverseExit: true },
+      riskParams: { stopAtrMult: 3.5, rewardRisk: 4.0, stagnationBars: 10, trailActivation: 3, trailDistance: 2.5, smaPeriod: 50, adxMin: 8, adxNotDecl: false, reverseExit: true },
     },
     // HMA-1h (uses 4h data for backtest simplicity, but with 1h-like params)
     {
@@ -716,7 +814,7 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 0.75, rewardRisk: 50, stagnationBars: 72, trailActivation: 8, trailDistance: 1, smaPeriod: 50, adxMin: 10, adxNotDecl: false, reverseExit: false },
+      riskParams: { stopAtrMult: 0.75, rewardRisk: 50, stagnationBars: 72, trailActivation: 42, trailDistance: 6, smaPeriod: 75, adxMin: 10, adxNotDecl: false, reverseExit: false },
     },
     // ZLEMA-1h (on 4h data with 1h-like params)
     {
@@ -734,7 +832,7 @@ function buildPhase1Engines(): EngineSweeperConfig[] {
           return null;
         };
       },
-      riskParams: { stopAtrMult: 0.75, rewardRisk: 40, stagnationBars: 72, trailActivation: 8, trailDistance: 2, smaPeriod: 50, adxMin: 10, adxNotDecl: false, reverseExit: true },
+      riskParams: { stopAtrMult: 0.75, rewardRisk: 40, stagnationBars: 72, trailActivation: 40, trailDistance: 6, smaPeriod: 75, adxMin: 10, adxNotDecl: false, reverseExit: false },
     },
   ];
 }
@@ -810,6 +908,96 @@ function runPhase1OAT(engine: EngineSweeperConfig, allPairData: Map<string, Pair
         r.phase = 1;
         results.push(r);
       }
+    }
+  }
+
+  // SMA period sweep (test different HTF trend filters)
+  for (const smaPeriod of [30, 50, 75, 100, 150]) {
+    if (smaPeriod === riskParams.smaPeriod) continue;
+    const rp = { ...combinedRp, smaPeriod };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-sma${smaPeriod}`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // ADX minimum sweep (test different trend strength filters)
+  for (const adxMin of [0, 5, 10, 15, 20, 25]) {
+    if (adxMin === riskParams.adxMin) continue;
+    const rp = { ...combinedRp, adxMin };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-adxMin${adxMin}`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // No HTF filter at all (remove SMA + ADX requirements)
+  {
+    const rp = { ...combinedRp, smaPeriod: 1, adxMin: 0 };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-noHTF`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // Reverse exit toggle
+  if (!riskParams.reverseExit) {
+    const rp = { ...combinedRp, reverseExit: true };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-reverseExit`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // No trailing stop (pure SL/TP only)
+  {
+    const rp = { ...combinedRp, trailActivation: 9999, trailDistance: 9999 };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-noTrail`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // No stagnation exit (hold until SL/TP/trail)
+  {
+    const rp = { ...combinedRp, stagnationBars: 9999 };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-noStag`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // No SL (just trail + stag + TP) - wild but worth testing
+  {
+    const rp = { ...combinedRp, stopAtrMult: 99 };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-noSL`;
+      r.phase = 1;
+      results.push(r);
+    }
+  }
+
+  // Combined: reverseExit + no HTF filter (maximum signal freedom)
+  {
+    const rp = { ...combinedRp, reverseExit: true, smaPeriod: 1, adxMin: 0 };
+    const r = evaluate3Fold(allPairData, rp, (candles, closes) => engine.buildSignal(candles, closes, bestPerParam));
+    if (r) {
+      r.strategy = `${engine.name}-freeSignal`;
+      r.phase = 1;
+      results.push(r);
     }
   }
 
@@ -916,10 +1104,260 @@ function buildPhase2Indicators(): NewIndicatorConfig[] {
           const cloudTop = Math.max(ich.senkouA[i]!, ich.senkouB[i]!);
           const cloudBot = Math.min(ich.senkouA[i]!, ich.senkouB[i]!);
           const price = candles[i].close;
-          // Long: price above cloud + tenkan crosses above kijun
           if (price > cloudTop && ich.tenkanSen[i-1]! <= ich.kijunSen[i-1]! && ich.tenkanSen[i]! > ich.kijunSen[i]!) return "long";
-          // Short: price below cloud + tenkan crosses below kijun
           if (price < cloudBot && ich.tenkanSen[i-1]! >= ich.kijunSen[i-1]! && ich.tenkanSen[i]! < ich.kijunSen[i]!) return "short";
+          return null;
+        };
+      },
+    },
+    // 7. RSI Crossover (oversold/overbought)
+    {
+      name: "RSI",
+      paramGrid: { period: [7, 14, 21], oversold: [25, 30, 35], overbought: [65, 70, 75] },
+      buildSignal: (candles, closes, p) => {
+        const rsi = computeRSI(closes, p.period);
+        return (i) => {
+          if (i < 1 || rsi[i] === null || rsi[i-1] === null) return null;
+          if (rsi[i-1]! < p.oversold && rsi[i]! >= p.oversold) return "long";
+          if (rsi[i-1]! > p.overbought && rsi[i]! <= p.overbought) return "short";
+          return null;
+        };
+      },
+    },
+    // 8. RSI Trend (momentum, not mean reversion)
+    {
+      name: "RSI-Trend",
+      paramGrid: { period: [7, 14, 21], level: [50, 55, 60] },
+      buildSignal: (candles, closes, p) => {
+        const rsi = computeRSI(closes, p.period);
+        return (i) => {
+          if (i < 1 || rsi[i] === null || rsi[i-1] === null) return null;
+          if (rsi[i-1]! < p.level && rsi[i]! >= p.level) return "long";
+          if (rsi[i-1]! > (100 - p.level) && rsi[i]! <= (100 - p.level)) return "short";
+          return null;
+        };
+      },
+    },
+    // 9. Bollinger Band Breakout
+    {
+      name: "BB-Breakout",
+      paramGrid: { period: [15, 20, 25], mult: [1.5, 2.0, 2.5] },
+      buildSignal: (candles, closes, p) => {
+        const bb = computeBollingerBands(closes, p.period, p.mult);
+        return (i) => {
+          if (i < 1 || bb.upper[i] === null || bb.lower[i] === null || bb.upper[i-1] === null || bb.lower[i-1] === null) return null;
+          if (closes[i-1] <= bb.upper[i-1]! && closes[i] > bb.upper[i]!) return "long";
+          if (closes[i-1] >= bb.lower[i-1]! && closes[i] < bb.lower[i]!) return "short";
+          return null;
+        };
+      },
+    },
+    // 10. Bollinger Band Mean Reversion (fade the band touch)
+    {
+      name: "BB-MeanRev",
+      paramGrid: { period: [15, 20, 25], mult: [2.0, 2.5, 3.0] },
+      buildSignal: (candles, closes, p) => {
+        const bb = computeBollingerBands(closes, p.period, p.mult);
+        return (i) => {
+          if (bb.upper[i] === null || bb.lower[i] === null || bb.mid[i] === null) return null;
+          // Mean reversion: buy when price touches lower band, sell when touches upper
+          if (closes[i] <= bb.lower[i]!) return "long";
+          if (closes[i] >= bb.upper[i]!) return "short";
+          return null;
+        };
+      },
+    },
+    // 11. Bollinger Band Squeeze (low vol -> expansion)
+    {
+      name: "BB-Squeeze",
+      paramGrid: { period: [20], mult: [2.0], squeezePct: [2, 3, 4] },
+      buildSignal: (candles, closes, p) => {
+        const bb = computeBollingerBands(closes, p.period, p.mult);
+        return (i) => {
+          if (i < 5 || bb.width[i] === null) return null;
+          // Check if width is at local minimum (squeeze)
+          let minWidth = Infinity;
+          for (let j = i - 5; j < i; j++) { if (bb.width[j] !== null && bb.width[j]! < minWidth) minWidth = bb.width[j]!; }
+          const squeezed = bb.width[i]! <= minWidth * 1.1 && bb.width[i]! < p.squeezePct / 100;
+          if (!squeezed) return null;
+          // Direction from close vs mid
+          if (bb.mid[i] !== null && closes[i] > bb.mid[i]!) return "long";
+          if (bb.mid[i] !== null && closes[i] < bb.mid[i]!) return "short";
+          return null;
+        };
+      },
+    },
+    // 12. Supertrend
+    {
+      name: "Supertrend",
+      paramGrid: { period: [7, 10, 14], mult: [2.0, 3.0, 4.0] },
+      buildSignal: (candles, closes, p) => {
+        const st = computeSupertrend(candles, p.period, p.mult);
+        return (i) => {
+          if (i < 1 || st.direction[i] === null || st.direction[i-1] === null) return null;
+          if (st.direction[i-1] === -1 && st.direction[i] === 1) return "long";
+          if (st.direction[i-1] === 1 && st.direction[i] === -1) return "short";
+          return null;
+        };
+      },
+    },
+    // 13. TRIX Momentum
+    {
+      name: "TRIX",
+      paramGrid: { period: [8, 12, 15, 20] },
+      buildSignal: (candles, closes, p) => {
+        const trix = computeTRIX(closes, p.period);
+        return (i) => {
+          if (i < 1 || trix[i] === null || trix[i-1] === null) return null;
+          if (trix[i-1]! <= 0 && trix[i]! > 0) return "long";
+          if (trix[i-1]! >= 0 && trix[i]! < 0) return "short";
+          return null;
+        };
+      },
+    },
+    // 14. Aroon Trend
+    {
+      name: "Aroon",
+      paramGrid: { period: [14, 20, 25] },
+      buildSignal: (candles, closes, p) => {
+        const ar = computeAroon(candles, p.period);
+        return (i) => {
+          if (i < 1 || ar.up[i] === null || ar.down[i] === null || ar.up[i-1] === null || ar.down[i-1] === null) return null;
+          if (ar.up[i-1]! <= ar.down[i-1]! && ar.up[i]! > ar.down[i]!) return "long";
+          if (ar.down[i-1]! <= ar.up[i-1]! && ar.down[i]! > ar.up[i]!) return "short";
+          return null;
+        };
+      },
+    },
+    // 15. MACD (we import it but never test it standalone!)
+    {
+      name: "MACD",
+      paramGrid: { fast: [8, 12, 16], slow: [21, 26, 30], signal: [7, 9, 12] },
+      buildSignal: (candles, closes, p) => {
+        const macdResult = MACD.calculate({ values: closes, fastPeriod: p.fast, slowPeriod: p.slow, signalPeriod: p.signal, SimpleMAOscillator: false, SimpleMASignal: false });
+        const macdArr: { macd: number | null; signal: number | null; histogram: number | null }[] = new Array(closes.length).fill({ macd: null, signal: null, histogram: null });
+        const offset = closes.length - macdResult.length;
+        for (let i = 0; i < macdResult.length; i++) {
+          macdArr[offset + i] = { macd: macdResult[i].MACD ?? null, signal: macdResult[i].signal ?? null, histogram: macdResult[i].histogram ?? null };
+        }
+        return (i) => {
+          if (i < 1) return null;
+          const cur = macdArr[i], prev = macdArr[i - 1];
+          if (cur.macd === null || cur.signal === null || prev.macd === null || prev.signal === null) return null;
+          if (prev.macd <= prev.signal && cur.macd > cur.signal) return "long";
+          if (prev.macd >= prev.signal && cur.macd < cur.signal) return "short";
+          return null;
+        };
+      },
+    },
+    // 16. MACD Histogram reversal
+    {
+      name: "MACD-Hist",
+      paramGrid: { fast: [8, 12], slow: [21, 26], signal: [9] },
+      buildSignal: (candles, closes, p) => {
+        const macdResult = MACD.calculate({ values: closes, fastPeriod: p.fast, slowPeriod: p.slow, signalPeriod: p.signal, SimpleMAOscillator: false, SimpleMASignal: false });
+        const histArr: (number | null)[] = new Array(closes.length).fill(null);
+        const offset = closes.length - macdResult.length;
+        for (let i = 0; i < macdResult.length; i++) histArr[offset + i] = macdResult[i].histogram ?? null;
+        return (i) => {
+          if (i < 2 || histArr[i] === null || histArr[i-1] === null || histArr[i-2] === null) return null;
+          // Histogram turns positive after being negative
+          if (histArr[i-2]! < 0 && histArr[i-1]! < 0 && histArr[i]! > 0) return "long";
+          if (histArr[i-2]! > 0 && histArr[i-1]! > 0 && histArr[i]! < 0) return "short";
+          return null;
+        };
+      },
+    },
+    // 17. Simple EMA Crossover (the most basic strategy, surprisingly untested)
+    {
+      name: "EMA-Cross",
+      paramGrid: { fast: [5, 8, 12, 15], slow: [21, 30, 50] },
+      buildSignal: (candles, closes, p) => {
+        const eFast = EMA.calculate({ values: closes, period: p.fast });
+        const eSlow = EMA.calculate({ values: closes, period: p.slow });
+        const fOff = closes.length - eFast.length;
+        const sOff = closes.length - eSlow.length;
+        return (i) => {
+          const fi = i - fOff, si = i - sOff, fi1 = fi - 1, si1 = si - 1;
+          if (fi < 1 || si < 1 || fi1 < 0 || si1 < 0) return null;
+          if (eFast[fi1] <= eSlow[si1] && eFast[fi] > eSlow[si]) return "long";
+          if (eFast[fi1] >= eSlow[si1] && eFast[fi] < eSlow[si]) return "short";
+          return null;
+        };
+      },
+    },
+    // 18. Rate of Change (ROC) - pure momentum
+    {
+      name: "ROC",
+      paramGrid: { period: [5, 10, 14, 20] },
+      buildSignal: (candles, closes, p) => {
+        return (i) => {
+          if (i < p.period + 1) return null;
+          const roc = ((closes[i] - closes[i - p.period]) / closes[i - p.period]) * 100;
+          const rocPrev = ((closes[i-1] - closes[i - 1 - p.period]) / closes[i - 1 - p.period]) * 100;
+          if (rocPrev <= 0 && roc > 0) return "long";
+          if (rocPrev >= 0 && roc < 0) return "short";
+          return null;
+        };
+      },
+    },
+    // 19. Volume Spike + Direction (trade when volume explodes)
+    {
+      name: "VolSpike",
+      paramGrid: { lookback: [10, 20], mult: [2.0, 3.0] },
+      buildSignal: (candles, closes, p) => {
+        return (i) => {
+          if (i < p.lookback) return null;
+          let volSum = 0;
+          for (let j = i - p.lookback; j < i; j++) volSum += candles[j].volume;
+          const avgVol = volSum / p.lookback;
+          if (candles[i].volume < avgVol * p.mult) return null;
+          // Direction from candle body
+          if (candles[i].close > candles[i].open) return "long";
+          if (candles[i].close < candles[i].open) return "short";
+          return null;
+        };
+      },
+    },
+    // 20. Inside Bar Breakout (price action)
+    {
+      name: "InsideBar",
+      paramGrid: { minBars: [1, 2] },
+      buildSignal: (candles, closes, p) => {
+        return (i) => {
+          if (i < p.minBars + 1) return null;
+          // Check if previous bar(s) are inside the mother bar
+          const motherIdx = i - p.minBars - 1;
+          const motherHi = candles[motherIdx].high, motherLo = candles[motherIdx].low;
+          for (let j = motherIdx + 1; j < i; j++) {
+            if (candles[j].high > motherHi || candles[j].low < motherLo) return null;
+          }
+          // Current bar breaks out
+          if (candles[i].close > motherHi) return "long";
+          if (candles[i].close < motherLo) return "short";
+          return null;
+        };
+      },
+    },
+    // 21. Engulfing Pattern
+    {
+      name: "Engulfing",
+      paramGrid: { minBodyRatio: [50, 60, 70] },
+      buildSignal: (candles, closes, p) => {
+        return (i) => {
+          if (i < 1) return null;
+          const prev = candles[i-1], cur = candles[i];
+          const prevBody = Math.abs(prev.close - prev.open);
+          const curBody = Math.abs(cur.close - cur.open);
+          const prevRange = prev.high - prev.low;
+          const curRange = cur.high - cur.low;
+          if (prevRange === 0 || curRange === 0) return null;
+          // Body must be significant portion of range
+          if ((curBody / curRange) * 100 < p.minBodyRatio) return null;
+          // Bullish engulfing
+          if (prev.close < prev.open && cur.close > cur.open && cur.open <= prev.close && cur.close >= prev.open) return "long";
+          // Bearish engulfing
+          if (prev.close > prev.open && cur.close < cur.open && cur.open >= prev.close && cur.close <= prev.open) return "short";
           return null;
         };
       },
@@ -930,9 +1368,11 @@ function buildPhase2Indicators(): NewIndicatorConfig[] {
 function runPhase2(indicators: NewIndicatorConfig[], allPairData: Map<string, PairData>): SweepResult[] {
   const results: SweepResult[] = [];
   const riskGrid = [
+    { stopAtr: 2.0, rr: 2, stag: 6, trailAct: 15, trailDist: 3 },
     { stopAtr: 2.5, rr: 3, stag: 8, trailAct: 20, trailDist: 5 },
     { stopAtr: 3.5, rr: 4, stag: 10, trailAct: 25, trailDist: 5 },
     { stopAtr: 5.0, rr: 6, stag: 14, trailAct: 10, trailDist: 3 },
+    { stopAtr: 4.0, rr: 8, stag: 16, trailAct: 30, trailDist: 6 },
   ];
 
   for (let ii = 0; ii < indicators.length; ii++) {
@@ -943,23 +1383,31 @@ function runPhase2(indicators: NewIndicatorConfig[], allPairData: Map<string, Pa
     let done = 0;
     for (const combo of combos) {
       for (const risk of riskGrid) {
-        const rp = {
-          smaPeriod: 50,
-          adxMin: 0,
-          adxNotDecl: false,
-          reverseExit: false,
-          trailActivation: risk.trailAct,
-          trailDistance: risk.trailDist,
-          stopAtrMult: risk.stopAtr,
-          rewardRisk: risk.rr,
-          stagnationBars: risk.stag,
-        };
-        const r = evaluate3Fold(allPairData, rp, (candles, closes) => ind.buildSignal(candles, closes, combo));
-        if (r) {
-          const sigStr = Object.entries(combo).map(([k, v]) => `${k}=${v}`).join(",");
-          r.strategy = `${ind.name}(${sigStr},atr=${risk.stopAtr},rr=${risk.rr},stag=${risk.stag},t=${risk.trailAct}/${risk.trailDist})`;
-          r.phase = 2;
-          results.push(r);
+        // Test with different HTF filter combos
+        const filterSets = [
+          { smaPeriod: 50, adxMin: 0, label: "" },
+          { smaPeriod: 75, adxMin: 10, label: ",sma75/adx10" },
+          { smaPeriod: 1, adxMin: 0, label: ",noHTF" },
+        ];
+        for (const filter of filterSets) {
+          const rp = {
+            smaPeriod: filter.smaPeriod,
+            adxMin: filter.adxMin,
+            adxNotDecl: false,
+            reverseExit: false,
+            trailActivation: risk.trailAct,
+            trailDistance: risk.trailDist,
+            stopAtrMult: risk.stopAtr,
+            rewardRisk: risk.rr,
+            stagnationBars: risk.stag,
+          };
+          const r = evaluate3Fold(allPairData, rp, (candles, closes) => ind.buildSignal(candles, closes, combo));
+          if (r) {
+            const sigStr = Object.entries(combo).map(([k, v]) => `${k}=${v}`).join(",");
+            r.strategy = `${ind.name}(${sigStr},atr=${risk.stopAtr},rr=${risk.rr},stag=${risk.stag},t=${risk.trailAct}/${risk.trailDist}${filter.label})`;
+            r.phase = 2;
+            results.push(r);
+          }
         }
         done++;
       }
@@ -980,8 +1428,8 @@ function runPhase3(allPairData: Map<string, PairData>, phase1Results: SweepResul
   const dualCombos: { name: string; build1: (c: Candle[], cl: number[]) => (i: number) => "long" | "short" | null; build2: (c: Candle[], cl: number[]) => (i: number) => "long" | "short" | null }[] = [
     {
       name: "ZLEMA+CCI",
-      build1: (c, cl) => { const f = computeZLEMA(cl, 4), s = computeZLEMA(cl, 40); return (i) => { const cf = f[i], pf = f[i-1], cs = s[i], ps = s[i-1]; if (cf===null||pf===null||cs===null||ps===null) return null; if (pf<=ps&&cf>cs) return "long"; if (pf>=ps&&cf<cs) return "short"; return null; }; },
-      build2: (c, cl) => { const cci = precomputeCCI(c, 20); return (i) => { const cv = cci[i], pv = cci[i-1]; if (cv===null||pv===null) return null; if (pv<=85&&cv>85) return "long"; if (pv>=-85&&cv<-85) return "short"; return null; }; },
+      build1: (c, cl) => { const f = computeZLEMA(cl, 10), s = computeZLEMA(cl, 34); return (i) => { const cf = f[i], pf = f[i-1], cs = s[i], ps = s[i-1]; if (cf===null||pf===null||cs===null||ps===null) return null; if (pf<=ps&&cf>cs) return "long"; if (pf>=ps&&cf<cs) return "short"; return null; }; },
+      build2: (c, cl) => { const cci = precomputeCCI(c, 14); return (i) => { const cv = cci[i], pv = cci[i-1]; if (cv===null||pv===null) return null; if (pv<=100&&cv>100) return "long"; if (pv>=-100&&cv<-100) return "short"; return null; }; },
     },
     {
       name: "HMA+Schaff",
@@ -991,7 +1439,7 @@ function runPhase3(allPairData: Map<string, PairData>, phase1Results: SweepResul
     {
       name: "DEMA+Vortex",
       build1: (c, cl) => { const f = computeDEMA(cl, 5), s = computeDEMA(cl, 21); return (i) => { const cf = f[i], pf = f[i-1], cs = s[i], ps = s[i-1]; if (cf===null||pf===null||cs===null||ps===null) return null; if (pf<=ps&&cf>cs) return "long"; if (pf>=ps&&cf<cs) return "short"; return null; }; },
-      build2: (c, cl) => { const v = precomputeVortex(c, 25); return (i) => { const cp = v.vPlus[i], cm = v.vMinus[i]; if (cp===null||cm===null) return null; return cp > cm ? "long" : "short"; }; },
+      build2: (c, cl) => { const v = precomputeVortex(c, 14); return (i) => { const cp = v.vPlus[i], cm = v.vMinus[i]; if (cp===null||cm===null) return null; return cp > cm ? "long" : "short"; }; },
     },
     {
       name: "Keltner+ADX",
@@ -1002,6 +1450,31 @@ function runPhase3(allPairData: Map<string, PairData>, phase1Results: SweepResul
       name: "Donchian+Stochastic",
       build1: (c, cl) => { const dc = computeDonchian(c, 30); return (i) => { if (i<1||dc.upper[i-1]===null||dc.lower[i-1]===null) return null; if (c[i].close>dc.upper[i-1]!) return "long"; if (c[i].close<dc.lower[i-1]!) return "short"; return null; }; },
       build2: (c, cl) => { const st = computeStochastic(c, 14, 3, 3); return (i) => { if (st.k[i]===null) return null; if (st.k[i]!<30) return "long"; if (st.k[i]!>70) return "short"; return null; }; },
+    },
+    {
+      name: "Supertrend+RSI",
+      build1: (c, cl) => { const st = computeSupertrend(c, 10, 3.0); return (i) => { if (i<1||st.direction[i]===null||st.direction[i-1]===null) return null; if (st.direction[i-1]===-1&&st.direction[i]===1) return "long"; if (st.direction[i-1]===1&&st.direction[i]===-1) return "short"; return null; }; },
+      build2: (c, cl) => { const rsi = computeRSI(cl, 14); return (i) => { if (rsi[i]===null) return null; if (rsi[i]!>40&&rsi[i]!<70) return "long"; if (rsi[i]!<60&&rsi[i]!>30) return "short"; return null; }; },
+    },
+    {
+      name: "HMA+RSI",
+      build1: (c, cl) => { const f = computeHMA(cl, 3), s = computeHMA(cl, 50); return (i) => { const cf = f[i], pf = f[i-1], cs = s[i], ps = s[i-1]; if (cf===null||pf===null||cs===null||ps===null) return null; if (pf<=ps&&cf>cs) return "long"; if (pf>=ps&&cf<cs) return "short"; return null; }; },
+      build2: (c, cl) => { const rsi = computeRSI(cl, 14); return (i) => { if (rsi[i]===null) return null; if (rsi[i]!<70) return "long"; if (rsi[i]!>30) return "short"; return null; }; },
+    },
+    {
+      name: "BB+TRIX",
+      build1: (c, cl) => { const bb = computeBollingerBands(cl, 20, 2.0); return (i) => { if (i<1||bb.upper[i]===null||bb.lower[i]===null||bb.upper[i-1]===null||bb.lower[i-1]===null) return null; if (cl[i-1]<=bb.upper[i-1]!&&cl[i]>bb.upper[i]!) return "long"; if (cl[i-1]>=bb.lower[i-1]!&&cl[i]<bb.lower[i]!) return "short"; return null; }; },
+      build2: (c, cl) => { const trix = computeTRIX(cl, 12); return (i) => { if (trix[i]===null) return null; return trix[i]!>0 ? "long" : "short"; }; },
+    },
+    {
+      name: "Aroon+Supertrend",
+      build1: (c, cl) => { const ar = computeAroon(c, 20); return (i) => { if (i<1||ar.up[i]===null||ar.down[i]===null||ar.up[i-1]===null||ar.down[i-1]===null) return null; if (ar.up[i-1]!<=ar.down[i-1]!&&ar.up[i]!>ar.down[i]!) return "long"; if (ar.down[i-1]!<=ar.up[i-1]!&&ar.down[i]!>ar.up[i]!) return "short"; return null; }; },
+      build2: (c, cl) => { const st = computeSupertrend(c, 10, 3.0); return (i) => { if (st.direction[i]===null) return null; return st.direction[i]===1 ? "long" : "short"; }; },
+    },
+    {
+      name: "ZLEMA+Supertrend",
+      build1: (c, cl) => { const f = computeZLEMA(cl, 10), s = computeZLEMA(cl, 34); return (i) => { const cf = f[i], pf = f[i-1], cs = s[i], ps = s[i-1]; if (cf===null||pf===null||cs===null||ps===null) return null; if (pf<=ps&&cf>cs) return "long"; if (pf>=ps&&cf<cs) return "short"; return null; }; },
+      build2: (c, cl) => { const st = computeSupertrend(c, 10, 3.0); return (i) => { if (st.direction[i]===null) return null; return st.direction[i]===1 ? "long" : "short"; }; },
     },
   ];
 
@@ -1205,7 +1678,7 @@ async function main() {
 
   // ── Fetch Data ──────────────────────────────────────────────────────────
   const allPairData = new Map<string, PairData>();
-  const allSma = [50, 75, 100];
+  const allSma = [1, 30, 50, 75, 100, 150];
 
   console.log("Fetching candle data...");
   for (let pi = 0; pi < PAIRS.length; pi++) {
@@ -1253,7 +1726,7 @@ async function main() {
   // Run each baseline engine individually and average
   const baselineResults: SweepResult[] = [];
   for (const eng of [hmaEng, schaffEng, demaEng]) {
-    const rp = { ...eng.riskParams, trailActivation: 25, trailDistance: 5 };
+    const rp = { ...eng.riskParams };
     const r = evaluate3Fold(allPairData, rp, (candles, closes) => eng.buildSignal(candles, closes, eng.currentParams));
     if (r) {
       r.strategy = `BASELINE:${eng.name}`;
