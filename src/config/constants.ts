@@ -255,7 +255,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set([
-  "dema-directional",
+  "zlema-directional",
 ]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
