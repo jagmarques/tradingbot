@@ -2712,10 +2712,16 @@ async function handleQuant(ctx: Context): Promise<void> {
     unrealizedByKey.set(key, (unrealizedByKey.get(key) ?? 0) + upnl);
   }
 
-  const fmtUnr = (v: number): string => `${v > 0 ? "+" : v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
+  const fmtSign = (v: number, dp: number): string => {
+    const abs = Math.abs(v);
+    const str = abs.toFixed(dp);
+    if (parseFloat(str) === 0) return `$${str}`;
+    return `${v > 0 ? "+" : "-"}$${str}`;
+  };
+  const fmtUnr = (v: number): string => fmtSign(v, 2);
 
   const sl = (label: string, s: { totalPnl: number; totalTrades: number; winRate: number }, typeKey: string, mode: string): string => {
-    const ret = `${s.totalPnl > 0 ? "+" : s.totalPnl < 0 ? "-" : ""}$${Math.abs(s.totalPnl).toFixed(1)}`;
+    const ret = fmtSign(s.totalPnl, 1);
     const wr = s.totalTrades > 0 ? ` ${s.winRate.toFixed(0)}%w` : "";
     const k = makeKey(typeKey, mode);
     const openCnt = openCountByKey.get(k) ?? 0;
@@ -2770,14 +2776,14 @@ async function handleQuant(ctx: Context): Promise<void> {
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;
       text += liveBlock;
-      const fmt = `${livePnlTotal > 0 ? "+" : livePnlTotal < 0 ? "-" : ""}$${Math.abs(livePnlTotal).toFixed(1)}`;
+      const fmt = fmtSign(livePnlTotal, 1);
       const dep = liveDepTotal > 0 ? ` | $${liveDepTotal.toFixed(0)}` : "";
       text += `Total: ${fmt} ${liveTrades + liveOpenTotal}T${dep} | unr ${fmtUnr(liveUnrTotal)}\n`;
     }
     if (paperBlock) {
       text += `\n<b>-- Paper --</b>\n`;
       text += paperBlock;
-      const fmt = `${paperPnlTotal > 0 ? "+" : paperPnlTotal < 0 ? "-" : ""}$${Math.abs(paperPnlTotal).toFixed(1)}`;
+      const fmt = fmtSign(paperPnlTotal, 1);
       const dep = paperDepTotal > 0 ? ` | $${paperDepTotal.toFixed(0)}` : "";
       text += `Total: ${fmt} ${paperTrades + paperOpenTotal}T${dep} | unr ${fmtUnr(paperUnrTotal)}\n`;
     }
@@ -2791,7 +2797,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     let totalUnr = 0, totalDeployed = 0;
     for (const v of unrealizedByKey.values()) totalUnr += v;
     for (const v of deployedByKey.values()) totalDeployed += v;
-    const fmtTotal = `${totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : ""}$${Math.abs(totalPnl).toFixed(1)}`;
+    const fmtTotal = fmtSign(totalPnl, 1);
     const totalOps = engines.reduce((s, [, t]) => s + getQuantStats(t).totalTrades, 0) + openPositions.length;
     const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
     text += `\nTotal: ${fmtTotal} ${totalOps}T${deployedTotal} | unr ${fmtUnr(totalUnr)}\n`;
