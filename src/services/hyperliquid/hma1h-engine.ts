@@ -1,15 +1,17 @@
+// DEAD CODE: This engine is no longer called at runtime (removed from scheduler).
+// Kept for reference only.
 import { ADX } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
-import {
-  HMA1H_HTF_SMA_PERIOD,
-  HMA1H_HTF_ADX_MIN,
-  HMA1H_FAST,
-  HMA1H_SLOW,
-  HMA1H_STOP_ATR_MULT,
-  HMA1H_REWARD_ATR_MULT,
-  HMA1H_BASE_CONFIDENCE,
-} from "../../config/constants.js";
+
+// Inlined constants (removed from constants.ts)
+const HMA1H_HTF_SMA_PERIOD = 75;
+const HMA1H_HTF_ADX_MIN = 10;
+const HMA1H_FAST = 11;
+const HMA1H_SLOW = 32;
+const HMA1H_STOP_ATR_MULT = 0.75;
+const HMA1H_REWARD_ATR_MULT = 50;
+const HMA1H_BASE_CONFIDENCE = 65;
 
 function computeWMA(values: number[], period: number): (number | null)[] {
   const n = values.length;
@@ -101,7 +103,7 @@ export async function evaluateHMA1hPair(analysis: PairAnalysis): Promise<QuantAI
   else if (adxVal > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
 
-  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "hma1h-directional");
+  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "directional");
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((htfClose - sma75) / sma75 * 100).toFixed(1);

@@ -1,16 +1,18 @@
+// DEAD CODE: This engine is no longer called at runtime (removed from scheduler).
+// Kept for reference only.
 import { EMA } from "technicalindicators";
 import { ADX } from "technicalindicators";
 import { calculateQuantPositionSize } from "./kelly.js";
 import type { PairAnalysis, QuantAIDecision } from "./types.js";
-import {
-  ZLEMA1H_HTF_SMA_PERIOD,
-  ZLEMA1H_HTF_ADX_MIN,
-  ZLEMA1H_FAST,
-  ZLEMA1H_SLOW,
-  ZLEMA1H_STOP_ATR_MULT,
-  ZLEMA1H_REWARD_ATR_MULT,
-  ZLEMA1H_BASE_CONFIDENCE,
-} from "../../config/constants.js";
+
+// Inlined constants (removed from constants.ts)
+const ZLEMA1H_HTF_SMA_PERIOD = 75;
+const ZLEMA1H_HTF_ADX_MIN = 10;
+const ZLEMA1H_FAST = 10;
+const ZLEMA1H_SLOW = 21;
+const ZLEMA1H_STOP_ATR_MULT = 0.75;
+const ZLEMA1H_REWARD_ATR_MULT = 40;
+const ZLEMA1H_BASE_CONFIDENCE = 65;
 
 // ZLEMA: lag-corrected EMA (reduces lag vs standard EMA)
 function computeZLEMA(closes: number[], period: number): (number | null)[] {
@@ -86,7 +88,7 @@ export async function evaluateZlema1hPair(analysis: PairAnalysis): Promise<Quant
   else if (adxVal > 25) confidence += 5;
   confidence = Math.min(90, Math.max(0, confidence));
 
-  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "zlema1h-directional");
+  const suggestedSizeUsd = calculateQuantPositionSize(confidence, markPrice, stopLoss, true, "directional");
   if (suggestedSizeUsd <= 0) return null;
 
   const smaDev = ((htfClose - sma75) / sma75 * 100).toFixed(1);
