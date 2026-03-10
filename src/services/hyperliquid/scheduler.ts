@@ -173,9 +173,9 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
 
     // Live engines ordered by backtest profitability (best first)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
-      { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
-      { label: "HMA1h", tradeType: "hma1h-directional", decisions: hma1hDecisions },
+      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
+      { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
     ];
 
     // Track live positions for cross-engine limits (per-exchange)
@@ -229,7 +229,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
       executed.set(tradeType, count);
     }
 
-    // Paper engines: all 7 run independently for performance tracking
+    // Paper engines: all 9 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
@@ -263,7 +263,7 @@ const vortexDecisions = await runVortexDecisionEngine(analyses);
     const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMA ${eL("zlema-directional", zlemaDecisions)}L+${eP("zlema-directional", zlemaDecisions)}P, HMA1h ${eL("hma1h-directional", hma1hDecisions)}L+${eP("hma1h-directional", hma1hDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, ZLEMA1h ${eP("zlema1h-directional", zlema1hDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, HMA ${eP("hma-directional", hmaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, HMA ${eL("hma-directional", hmaDecisions)}L+${eP("hma-directional", hmaDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, DEMA ${eL("dema-directional", demaDecisions)}L+${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, HMA1h ${eP("hma1h-directional", hma1hDecisions)}P, ZLEMA1h ${eP("zlema1h-directional", zlema1hDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P`,
     );
   } finally {
     cycleRunning = false;
