@@ -124,52 +124,52 @@ export const VORTEX_REVERSE_EXIT = 0;
 export const VORTEX_TRAIL_ACTIVATION = 6;
 export const VORTEX_TRAIL_DISTANCE = 3;
 
-// Schaff
-export const SCHAFF_DAILY_SMA_PERIOD = 30;
-export const SCHAFF_DAILY_ADX_MIN = 22;
-export const SCHAFF_STC_FAST = 10;
-export const SCHAFF_STC_SLOW = 26;
-export const SCHAFF_STC_CYCLE = 10;
-export const SCHAFF_STC_THRESHOLD = 30;
-export const SCHAFF_STOP_ATR_MULT = 3.0;
-export const SCHAFF_REWARD_RISK = 3.0;
-export const SCHAFF_STAGNATION_BARS = 12;
+// Schaff (params from backtest-mixed +448%)
+export const SCHAFF_DAILY_SMA_PERIOD = 50;
+export const SCHAFF_DAILY_ADX_MIN = 0;
+export const SCHAFF_STC_FAST = 8;
+export const SCHAFF_STC_SLOW = 20;
+export const SCHAFF_STC_CYCLE = 12;
+export const SCHAFF_STC_THRESHOLD = 40;
+export const SCHAFF_STOP_ATR_MULT = 3.5;
+export const SCHAFF_REWARD_RISK = 4.0;
+export const SCHAFF_STAGNATION_BARS = 9;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_ADX_NOT_DECL = 0;
 export const SCHAFF_REVERSE_EXIT = 0;
 export const SCHAFF_TRAIL_ACTIVATION = 5;
-export const SCHAFF_TRAIL_DISTANCE = 2.5;
+export const SCHAFF_TRAIL_DISTANCE = 2;
 
-// DEMA
+// DEMA (params from backtest-mixed +448%)
 export const DEMA_DAILY_SMA_PERIOD = 50;
 export const DEMA_DAILY_ADX_MIN = 10;
 export const DEMA_FAST = 5;
 export const DEMA_SLOW = 21;
-export const DEMA_STOP_ATR_MULT = 3.5;
-export const DEMA_REWARD_RISK = 3.0;
+export const DEMA_STOP_ATR_MULT = 3.0;
+export const DEMA_REWARD_RISK = 4.0;
 export const DEMA_STAGNATION_BARS = 16;
 export const DEMA_BASE_CONFIDENCE = 65;
 export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const DEMA_ADX_NOT_DECL = 0;
 export const DEMA_REVERSE_EXIT = 0;
-export const DEMA_TRAIL_ACTIVATION = 4;
+export const DEMA_TRAIL_ACTIVATION = 5;
 export const DEMA_TRAIL_DISTANCE = 2;
 
-// HMA
+// HMA (params from backtest-mixed +448%)
 export const HMA_DAILY_SMA_PERIOD = 50;
-export const HMA_DAILY_ADX_MIN = 8;
-export const HMA_FAST = 12;
-export const HMA_SLOW = 34;
-export const HMA_STOP_ATR_MULT = 4.0;
-export const HMA_REWARD_RISK = 3.0;
+export const HMA_DAILY_ADX_MIN = 0;
+export const HMA_FAST = 3;
+export const HMA_SLOW = 50;
+export const HMA_STOP_ATR_MULT = 3.0;
+export const HMA_REWARD_RISK = 6.0;
 export const HMA_STAGNATION_BARS = 10;
 export const HMA_BASE_CONFIDENCE = 65;
 export const HMA_DAILY_LOOKBACK_DAYS = 150;
 export const HMA_ADX_NOT_DECL = 0;
 export const HMA_REVERSE_EXIT = 0;
-export const HMA_TRAIL_ACTIVATION = 10;
-export const HMA_TRAIL_DISTANCE = 1;
+export const HMA_TRAIL_ACTIVATION = 5;
+export const HMA_TRAIL_DISTANCE = 2;
 
 // HMA 1h (scalping - uses 4h HTF filter instead of daily)
 export const HMA1H_HTF_SMA_PERIOD = 75;
