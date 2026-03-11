@@ -161,10 +161,13 @@ export async function paperOpenPosition(
     return null;
   }
 
-  // Rebase stop/TP to actual fill
+  const isInverted = tradeType.startsWith("inv-");
+  const entryPrice = isInverted && aiEntryPrice && aiEntryPrice > 0 ? aiEntryPrice : price;
+
+  // Rebase stop/TP to fill price (inverted: SL/TP already in normal's price space)
   let adjStop = stopLoss;
   let adjTP = takeProfit;
-  if (aiEntryPrice && aiEntryPrice > 0) {
+  if (!isInverted && aiEntryPrice && aiEntryPrice > 0) {
     const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
     const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
     adjStop = price * (1 + stopPct);
@@ -180,7 +183,7 @@ export async function paperOpenPosition(
     id: generateQuantId(),
     pair,
     direction,
-    entryPrice: price,
+    entryPrice,
     size: sizeUsd,
     leverage,
     stopLoss: adjStop,

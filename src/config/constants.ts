@@ -54,7 +54,7 @@ export const QUANT_COMPOUND_MIN_SIZE = 5; // minimum $5 per trade
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;
-export const QUANT_MAX_SL_PCT = 3;
+export const QUANT_MAX_SL_PCT = 3.5;
 export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 
 // Directional Trading Scheduler
@@ -80,7 +80,7 @@ export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 export const PSAR_REVERSE_EXIT = 1;
 export const PSAR_ADX_NOT_DECL = 0;
-export const PSAR_TRAIL_ACTIVATION = 25;
+export const PSAR_TRAIL_ACTIVATION = 20;
 export const PSAR_TRAIL_DISTANCE = 5;
 
 // ZLEMA
@@ -95,7 +95,7 @@ export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMA_ADX_NOT_DECL = 0;
 export const ZLEMA_REVERSE_EXIT = 0;
-export const ZLEMA_TRAIL_ACTIVATION = 25;
+export const ZLEMA_TRAIL_ACTIVATION = 20;
 export const ZLEMA_TRAIL_DISTANCE = 5;
 
 // Vortex
@@ -109,7 +109,7 @@ export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const VORTEX_ADX_NOT_DECL = 1;
 export const VORTEX_REVERSE_EXIT = 0;
-export const VORTEX_TRAIL_ACTIVATION = 25;
+export const VORTEX_TRAIL_ACTIVATION = 20;
 export const VORTEX_TRAIL_DISTANCE = 5;
 
 // Schaff
@@ -126,7 +126,7 @@ export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_ADX_NOT_DECL = 0;
 export const SCHAFF_REVERSE_EXIT = 0;
-export const SCHAFF_TRAIL_ACTIVATION = 25;
+export const SCHAFF_TRAIL_ACTIVATION = 20;
 export const SCHAFF_TRAIL_DISTANCE = 5;
 
 // DEMA
@@ -141,8 +141,8 @@ export const DEMA_BASE_CONFIDENCE = 65;
 export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const DEMA_ADX_NOT_DECL = 0;
 export const DEMA_REVERSE_EXIT = 0;
-export const DEMA_TRAIL_ACTIVATION = 25;
-export const DEMA_TRAIL_DISTANCE = 4;
+export const DEMA_TRAIL_ACTIVATION = 20;
+export const DEMA_TRAIL_DISTANCE = 5;
 
 // CCI
 export const CCI_DAILY_SMA_PERIOD = 75;
@@ -156,8 +156,8 @@ export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 30;
-export const CCI_TRAIL_DISTANCE = 3;
+export const CCI_TRAIL_ACTIVATION = 20;
+export const CCI_TRAIL_DISTANCE = 5;
 
 // ZLEMA v2
 export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
@@ -188,7 +188,7 @@ export const SCHAFFV2_BASE_CONFIDENCE = 65;
 export const SCHAFFV2_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFFV2_ADX_NOT_DECL = 0;
 export const SCHAFFV2_REVERSE_EXIT = 0;
-export const SCHAFFV2_TRAIL_ACTIVATION = 25;
+export const SCHAFFV2_TRAIL_ACTIVATION = 20;
 export const SCHAFFV2_TRAIL_DISTANCE = 5;
 
 // Aroon
@@ -202,7 +202,7 @@ export const AROON_BASE_CONFIDENCE = 65;
 export const AROON_DAILY_LOOKBACK_DAYS = 150;
 export const AROON_ADX_NOT_DECL = 0;
 export const AROON_REVERSE_EXIT = 0;
-export const AROON_TRAIL_ACTIVATION = 25;
+export const AROON_TRAIL_ACTIVATION = 20;
 export const AROON_TRAIL_DISTANCE = 5;
 
 // MACD
@@ -218,7 +218,7 @@ export const MACD_BASE_CONFIDENCE = 65;
 export const MACD_DAILY_LOOKBACK_DAYS = 150;
 export const MACD_ADX_NOT_DECL = 0;
 export const MACD_REVERSE_EXIT = 0;
-export const MACD_TRAIL_ACTIVATION = 25;
+export const MACD_TRAIL_ACTIVATION = 20;
 export const MACD_TRAIL_DISTANCE = 5;
 
 // Exchange routing per engine
