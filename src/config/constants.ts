@@ -70,12 +70,12 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
 // PSAR
 export const PSAR_DAILY_SMA_PERIOD = 50;
-export const PSAR_DAILY_ADX_MIN = 18;
+export const PSAR_DAILY_ADX_MIN = 14;
 export const PSAR_STEP = 0.02;
 export const PSAR_MAX = 0.1;
-export const PSAR_STOP_ATR_MULT = 5.0;
+export const PSAR_STOP_ATR_MULT = 6.0;
 export const PSAR_REWARD_RISK = 6.0;
-export const PSAR_STAGNATION_BARS = 8;
+export const PSAR_STAGNATION_BARS = 10;
 export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 export const PSAR_REVERSE_EXIT = 1;
@@ -89,8 +89,8 @@ export const ZLEMA_DAILY_ADX_MIN = 10;
 export const ZLEMA_FAST = 10;
 export const ZLEMA_SLOW = 34;
 export const ZLEMA_STOP_ATR_MULT = 4.0;
-export const ZLEMA_REWARD_RISK = 4.0;
-export const ZLEMA_STAGNATION_BARS = 10;
+export const ZLEMA_REWARD_RISK = 3.0;
+export const ZLEMA_STAGNATION_BARS = 8;
 export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMA_ADX_NOT_DECL = 0;
@@ -99,12 +99,12 @@ export const ZLEMA_TRAIL_ACTIVATION = 25;
 export const ZLEMA_TRAIL_DISTANCE = 5;
 
 // Vortex
-export const VORTEX_DAILY_SMA_PERIOD = 50;
-export const VORTEX_DAILY_ADX_MIN = 14;
+export const VORTEX_DAILY_SMA_PERIOD = 75;
+export const VORTEX_DAILY_ADX_MIN = 10;
 export const VORTEX_VORTEX_PERIOD = 14;
-export const VORTEX_STOP_ATR_MULT = 5.0;
+export const VORTEX_STOP_ATR_MULT = 4.0;
 export const VORTEX_REWARD_RISK = 4.0;
-export const VORTEX_STAGNATION_BARS = 10;
+export const VORTEX_STAGNATION_BARS = 12;
 export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const VORTEX_ADX_NOT_DECL = 1;
@@ -112,16 +112,16 @@ export const VORTEX_REVERSE_EXIT = 0;
 export const VORTEX_TRAIL_ACTIVATION = 25;
 export const VORTEX_TRAIL_DISTANCE = 5;
 
-// Schaff (params from backtest-mixed +448%)
+// Schaff
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
-export const SCHAFF_DAILY_ADX_MIN = 0;
+export const SCHAFF_DAILY_ADX_MIN = 10;
 export const SCHAFF_STC_FAST = 8;
 export const SCHAFF_STC_SLOW = 20;
 export const SCHAFF_STC_CYCLE = 12;
 export const SCHAFF_STC_THRESHOLD = 40;
-export const SCHAFF_STOP_ATR_MULT = 3.5;
-export const SCHAFF_REWARD_RISK = 4.0;
-export const SCHAFF_STAGNATION_BARS = 9;
+export const SCHAFF_STOP_ATR_MULT = 3.0;
+export const SCHAFF_REWARD_RISK = 3.0;
+export const SCHAFF_STAGNATION_BARS = 12;
 export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_ADX_NOT_DECL = 0;
@@ -129,61 +129,61 @@ export const SCHAFF_REVERSE_EXIT = 0;
 export const SCHAFF_TRAIL_ACTIVATION = 25;
 export const SCHAFF_TRAIL_DISTANCE = 5;
 
-// DEMA (params from backtest-mixed +448%)
-export const DEMA_DAILY_SMA_PERIOD = 50;
+// DEMA
+export const DEMA_DAILY_SMA_PERIOD = 75;
 export const DEMA_DAILY_ADX_MIN = 10;
 export const DEMA_FAST = 5;
 export const DEMA_SLOW = 21;
-export const DEMA_STOP_ATR_MULT = 3.0;
-export const DEMA_REWARD_RISK = 4.0;
-export const DEMA_STAGNATION_BARS = 16;
+export const DEMA_STOP_ATR_MULT = 3.5;
+export const DEMA_REWARD_RISK = 3.0;
+export const DEMA_STAGNATION_BARS = 12;
 export const DEMA_BASE_CONFIDENCE = 65;
 export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const DEMA_ADX_NOT_DECL = 0;
 export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 25;
-export const DEMA_TRAIL_DISTANCE = 5;
+export const DEMA_TRAIL_DISTANCE = 4;
 
 // CCI
-export const CCI_DAILY_SMA_PERIOD = 50;
-export const CCI_DAILY_ADX_MIN = 8;
+export const CCI_DAILY_SMA_PERIOD = 75;
+export const CCI_DAILY_ADX_MIN = 10;
 export const CCI_PERIOD = 14;
 export const CCI_THRESHOLD = 100;
-export const CCI_STOP_ATR_MULT = 3.5;
-export const CCI_REWARD_RISK = 4.0;
-export const CCI_STAGNATION_BARS = 10;
+export const CCI_STOP_ATR_MULT = 3.0;
+export const CCI_REWARD_RISK = 3.0;
+export const CCI_STAGNATION_BARS = 12;
 export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 25;
-export const CCI_TRAIL_DISTANCE = 5;
+export const CCI_TRAIL_ACTIVATION = 30;
+export const CCI_TRAIL_DISTANCE = 3;
 
-// ZLEMA v2 (clone of ZLEMA with different trail config from backtest sweep)
+// ZLEMA v2
 export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
 export const ZLEMAV2_DAILY_ADX_MIN = 10;
 export const ZLEMAV2_FAST = 10;
-export const ZLEMAV2_SLOW = 34;
+export const ZLEMAV2_SLOW = 30;
 export const ZLEMAV2_STOP_ATR_MULT = 4.0;
-export const ZLEMAV2_REWARD_RISK = 4.0;
-export const ZLEMAV2_STAGNATION_BARS = 10;
+export const ZLEMAV2_REWARD_RISK = 3.0;
+export const ZLEMAV2_STAGNATION_BARS = 8;
 export const ZLEMAV2_BASE_CONFIDENCE = 65;
 export const ZLEMAV2_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMAV2_ADX_NOT_DECL = 0;
 export const ZLEMAV2_REVERSE_EXIT = 0;
-export const ZLEMAV2_TRAIL_ACTIVATION = 25;
+export const ZLEMAV2_TRAIL_ACTIVATION = 20;
 export const ZLEMAV2_TRAIL_DISTANCE = 5;
 
-// Schaff v2 (clone of Schaff with SMA 75 from backtest sweep)
+// Schaff v2
 export const SCHAFFV2_DAILY_SMA_PERIOD = 75;
 export const SCHAFFV2_DAILY_ADX_MIN = 0;
-export const SCHAFFV2_STC_FAST = 8;
+export const SCHAFFV2_STC_FAST = 10;
 export const SCHAFFV2_STC_SLOW = 20;
-export const SCHAFFV2_STC_CYCLE = 12;
+export const SCHAFFV2_STC_CYCLE = 10;
 export const SCHAFFV2_STC_THRESHOLD = 40;
 export const SCHAFFV2_STOP_ATR_MULT = 3.5;
 export const SCHAFFV2_REWARD_RISK = 4.0;
-export const SCHAFFV2_STAGNATION_BARS = 9;
+export const SCHAFFV2_STAGNATION_BARS = 8;
 export const SCHAFFV2_BASE_CONFIDENCE = 65;
 export const SCHAFFV2_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFFV2_ADX_NOT_DECL = 0;
@@ -191,12 +191,12 @@ export const SCHAFFV2_REVERSE_EXIT = 0;
 export const SCHAFFV2_TRAIL_ACTIVATION = 25;
 export const SCHAFFV2_TRAIL_DISTANCE = 5;
 
-// Aroon (from backtest sweep: period=14, sma75, adxMin=10, atr=3.5, rr=4)
+// Aroon
 export const AROON_DAILY_SMA_PERIOD = 75;
 export const AROON_DAILY_ADX_MIN = 10;
 export const AROON_PERIOD = 14;
-export const AROON_STOP_ATR_MULT = 3.5;
-export const AROON_REWARD_RISK = 4.0;
+export const AROON_STOP_ATR_MULT = 4.0;
+export const AROON_REWARD_RISK = 3.0;
 export const AROON_STAGNATION_BARS = 10;
 export const AROON_BASE_CONFIDENCE = 65;
 export const AROON_DAILY_LOOKBACK_DAYS = 150;
@@ -205,15 +205,15 @@ export const AROON_REVERSE_EXIT = 0;
 export const AROON_TRAIL_ACTIVATION = 25;
 export const AROON_TRAIL_DISTANCE = 5;
 
-// MACD (from backtest sweep: fast=8, slow=21, signal=7, sma75, adxMin=10, atr=3.5, rr=4)
+// MACD
 export const MACD_DAILY_SMA_PERIOD = 75;
-export const MACD_DAILY_ADX_MIN = 10;
+export const MACD_DAILY_ADX_MIN = 8;
 export const MACD_FAST = 8;
-export const MACD_SLOW = 21;
+export const MACD_SLOW = 17;
 export const MACD_SIGNAL_PERIOD = 7;
 export const MACD_STOP_ATR_MULT = 3.5;
-export const MACD_REWARD_RISK = 4.0;
-export const MACD_STAGNATION_BARS = 10;
+export const MACD_REWARD_RISK = 3.0;
+export const MACD_STAGNATION_BARS = 8;
 export const MACD_BASE_CONFIDENCE = 65;
 export const MACD_DAILY_LOOKBACK_DAYS = 150;
 export const MACD_ADX_NOT_DECL = 0;
