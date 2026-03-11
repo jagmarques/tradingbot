@@ -224,7 +224,7 @@ export const MACD_TRAIL_DISTANCE = 5;
 // HFT Fade Engine
 export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 export const HFT_FADE_MIN_RETURN_PCT = 0.08; // 0.08% minimum candle return to trigger fade
-export const HFT_FADE_POSITION_SIZE_USD = 5; // fixed $5 per trade
+export const HFT_FADE_POSITION_SIZE_USD = 10; // fixed $10 per trade
 export const HFT_FADE_LEVERAGE = 10;
 export const HFT_FADE_TP_PCT = 0.10; // +0.10% take-profit
 export const HFT_FADE_SL_PCT = 0.15; // -0.15% stop-loss
