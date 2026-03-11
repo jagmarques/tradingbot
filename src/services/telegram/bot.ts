@@ -1,7 +1,7 @@
 import { Bot, Context } from "grammy";
 import { readFileSync, writeFileSync } from "fs";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -2756,19 +2756,24 @@ async function handleQuant(ctx: Context): Promise<void> {
     let liveOpenTotal = 0, paperOpenTotal = 0;
 
     for (const [label, typeKey] of engines) {
+      const isLiveEngine = typeKey === "ai-directional" || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
       const liveStats = getQuantStats(typeKey, "live");
       const paperStats = getQuantStats(typeKey, "paper");
-      liveBlock += sl(label, liveStats, typeKey, "live");
+      if (isLiveEngine) liveBlock += sl(label, liveStats, typeKey, "live");
       paperBlock += sl(label, paperStats, typeKey, "paper");
-      livePnlTotal += liveStats.totalPnl; paperPnlTotal += paperStats.totalPnl;
-      liveTrades += liveStats.totalTrades; paperTrades += paperStats.totalTrades;
+      paperPnlTotal += paperStats.totalPnl;
+      paperTrades += paperStats.totalTrades;
       const lk = makeKey(typeKey, "live"), pk = makeKey(typeKey, "paper");
-      liveUnrTotal += unrealizedByKey.get(lk) ?? 0;
       paperUnrTotal += unrealizedByKey.get(pk) ?? 0;
-      liveDepTotal += deployedByKey.get(lk) ?? 0;
       paperDepTotal += deployedByKey.get(pk) ?? 0;
-      liveOpenTotal += openCountByKey.get(lk) ?? 0;
       paperOpenTotal += openCountByKey.get(pk) ?? 0;
+      if (isLiveEngine) {
+        livePnlTotal += liveStats.totalPnl;
+        liveTrades += liveStats.totalTrades;
+        liveUnrTotal += unrealizedByKey.get(lk) ?? 0;
+        liveDepTotal += deployedByKey.get(lk) ?? 0;
+        liveOpenTotal += openCountByKey.get(lk) ?? 0;
+      }
     }
 
     if (liveBlock) {
