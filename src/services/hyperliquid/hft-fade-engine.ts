@@ -7,10 +7,13 @@ import {
   HFT_FADE_SL_PCT,
   HFT_FADE_DAILY_LOSS_LIMIT,
   HFT_FADE_MIN_VOLUME_24H,
+  HFT_FADE_LIVE_ENABLED,
   QUANT_TRADING_PAIRS,
 } from "../../config/constants.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition } from "./paper.js";
+import { lighterOpenPosition } from "../lighter/executor.js";
+import { isLighterInitialized } from "../lighter/client.js";
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
   OP: "OPUSDT",
@@ -115,6 +118,9 @@ async function runHftFadeCycle(): Promise<void> {
   }
   cycleRunning = true;
 
+  const goLive = HFT_FADE_LIVE_ENABLED && isLighterInitialized();
+  const mode = goLive ? "live" : "paper";
+
   let signals = 0;
   let opened = 0;
 
@@ -165,7 +171,7 @@ async function runHftFadeCycle(): Promise<void> {
         stopLoss: sl,
         regime: "ranging",
         strategy: "hft-fade",
-        mode: "paper",
+        mode,
         dailyLossLimit: HFT_FADE_DAILY_LOSS_LIMIT,
       });
       if (!gate.allowed) {
@@ -173,24 +179,41 @@ async function runHftFadeCycle(): Promise<void> {
         continue;
       }
 
-      const position = await paperOpenPosition(
-        pair,
-        direction,
-        HFT_FADE_POSITION_SIZE_USD,
-        HFT_FADE_LEVERAGE,
-        sl,
-        tp,
-        "hft-fade",
-        undefined,
-        entryPrice,
-        "lighter",
-      );
+      let position;
+      if (goLive) {
+        position = await lighterOpenPosition(
+          pair,
+          direction,
+          HFT_FADE_POSITION_SIZE_USD,
+          HFT_FADE_LEVERAGE,
+          sl,
+          tp,
+          "hft-fade",
+          undefined,
+          entryPrice,
+          true,  // allowMultiple: HFT can open multiple positions per pair
+          true,  // skipExchangeOrders: software SL via position monitor (saves rate limit)
+        );
+      } else {
+        position = await paperOpenPosition(
+          pair,
+          direction,
+          HFT_FADE_POSITION_SIZE_USD,
+          HFT_FADE_LEVERAGE,
+          sl,
+          tp,
+          "hft-fade",
+          undefined,
+          entryPrice,
+          "lighter",
+        );
+      }
 
       if (position) {
         opened++;
         const sign = returnPct > 0 ? "+" : "";
         console.log(
-          `[HFT-Fade] ${pair} ${direction.toUpperCase()} opened (candle return ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`,
+          `[HFT-Fade] ${pair} ${direction.toUpperCase()} ${mode} (candle return ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`,
         );
       }
     }
@@ -198,7 +221,7 @@ async function runHftFadeCycle(): Promise<void> {
     cycleRunning = false;
   }
 
-  console.log(`[HFT-Fade] Cycle complete: ${signals} signals, ${opened} opened`);
+  console.log(`[HFT-Fade] Cycle complete: ${signals} signals, ${opened} opened (${mode})`);
 }
 
 let hftInterval: ReturnType<typeof setInterval> | null = null;

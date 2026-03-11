@@ -148,9 +148,10 @@ async function cancelAndReplaceOrders(excludePair: string): Promise<void> {
     console.error(`[Lighter Executor] Cancel all orders error: ${err instanceof Error ? err.message : err}`);
     return;
   }
-  // Re-place stops/TPs for remaining positions
+  // Re-place stops/TPs for remaining positions (skip hft-fade — software SL only)
   for (const pos of getLighterLivePositions()) {
     if (pos.pair === excludePair) continue;
+    if (pos.tradeType === "hft-fade") continue;
     if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
     if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
   }
@@ -321,16 +322,20 @@ export async function lighterOpenPosition(
   tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
+  allowMultiple = false,
+  skipExchangeOrders = false,
 ): Promise<QuantPosition | null> {
   if (openingPairs.has(pair)) {
     console.log(`[Lighter Executor] Open already in progress for ${pair}`);
     return null;
   }
 
-  const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
-  if (existingLighter) {
-    console.log(`[Lighter Executor] ${pair} already open on Lighter, skipping`);
-    return null;
+  if (!allowMultiple) {
+    const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
+    if (existingLighter) {
+      console.log(`[Lighter Executor] ${pair} already open on Lighter, skipping`);
+      return null;
+    }
   }
 
   openingPairs.add(pair);
@@ -531,8 +536,10 @@ export async function lighterOpenPosition(
     });
 
     console.log(`[Lighter Executor] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice}`);
-    await placeExchangeStop(position);
-    await placeExchangeTP(position);
+    if (!skipExchangeOrders) {
+      await placeExchangeStop(position);
+      await placeExchangeTP(position);
+    }
     return position;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -690,7 +697,7 @@ export async function lighterClosePosition(
     });
     positionContext.delete(positionId);
 
-    if (reason === "stop-loss") {
+    if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
       recordStopLossCooldown(position.pair, position.direction);
     }
 
@@ -754,7 +761,7 @@ export async function lighterClosePosition(
             tradeType: position.tradeType ?? "directional",
           });
           positionContext.delete(positionId);
-          if (reason === "stop-loss") {
+          if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
             recordStopLossCooldown(position.pair, position.direction);
           }
           void notifyQuantTradeExit({
