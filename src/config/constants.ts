@@ -233,6 +233,7 @@ export const HFT_FADE_TRAIL_DISTANCE = 0.4; // 0.04% price × 10x
 export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000; // 15 minutes (3 bars)
 export const HFT_FADE_DAILY_LOSS_LIMIT = 10; // $10/day
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000; // $1M min 24h volume on Binance
+export const HFT_FADE_MAX_CONCURRENT = 10; // $100 virtual budget / $10 per trade
 export const HFT_FADE_LIVE_ENABLED = false;
 
 // Exchange routing per engine

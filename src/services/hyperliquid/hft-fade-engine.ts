@@ -8,10 +8,11 @@ import {
   HFT_FADE_DAILY_LOSS_LIMIT,
   HFT_FADE_MIN_VOLUME_24H,
   HFT_FADE_LIVE_ENABLED,
+  HFT_FADE_MAX_CONCURRENT,
   QUANT_TRADING_PAIRS,
 } from "../../config/constants.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
-import { paperOpenPosition } from "./paper.js";
+import { paperOpenPosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition } from "../lighter/executor.js";
 import { isLighterInitialized } from "../lighter/client.js";
 
@@ -163,6 +164,15 @@ async function runHftFadeCycle(): Promise<void> {
       } else {
         sl = entryPrice * (1 + HFT_FADE_SL_PCT / 100);
         tp = entryPrice * (1 - HFT_FADE_TP_PCT / 100);
+      }
+
+      // Enforce virtual budget cap in paper mode
+      if (!goLive) {
+        const openHftCount = getPaperPositions().filter(p => p.tradeType === "hft-fade").length;
+        if (openHftCount >= HFT_FADE_MAX_CONCURRENT) {
+          console.log(`[HFT-Fade] At max concurrent (${openHftCount}/${HFT_FADE_MAX_CONCURRENT}), skipping ${pair}`);
+          continue;
+        }
       }
 
       // Risk gate
