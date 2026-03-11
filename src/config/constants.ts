@@ -221,6 +221,17 @@ export const MACD_REVERSE_EXIT = 0;
 export const MACD_TRAIL_ACTIVATION = 20;
 export const MACD_TRAIL_DISTANCE = 5;
 
+// HFT Fade Engine
+export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+export const HFT_FADE_MIN_RETURN_PCT = 0.08; // 0.08% minimum candle return to trigger fade
+export const HFT_FADE_POSITION_SIZE_USD = 5; // fixed $5 per trade
+export const HFT_FADE_LEVERAGE = 10;
+export const HFT_FADE_TP_PCT = 0.10; // +0.10% take-profit
+export const HFT_FADE_SL_PCT = 0.15; // -0.15% stop-loss
+export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000; // 15 minutes (3 bars)
+export const HFT_FADE_DAILY_LOSS_LIMIT = 10; // $10/day
+export const HFT_FADE_MIN_VOLUME_24H = 1_000_000; // $1M min 24h volume on Binance
+
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
 
@@ -246,6 +257,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "inv-macd-directional": "lighter",
   "inv-zlemav2-directional": "lighter",
   "inv-schaffv2-directional": "lighter",
+  "hft-fade": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

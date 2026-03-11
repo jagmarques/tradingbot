@@ -24,6 +24,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "macd-directional",
   "zlemav2-directional",
   "schaffv2-directional",
+  "hft-fade",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();
