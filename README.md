@@ -71,15 +71,15 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 ### Hyperliquid Quant Trading
 
-Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX.
+Directional trades on 20 perpetual futures pairs via Lighter DEX (technical + AI).
 
-**Pairs:** BTC, ETH, SOL, XRP, DOGE, AVAX, LINK, ARB, BNB, OP, SUI, DOT, TIA, APT, WIF
+**Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, MKR, XRP, SUI, TON, UNI
 
-**10 decision engines:**
-- Technical 4h (7): PSAR, ZLEMA, Vortex, Schaff, DEMA, HMA, CCI (all on Lighter)
-- Technical 1h (2): HMA 1h, ZLEMA 1h (both on Lighter, 4h HTF filter)
+**11 decision engines:**
+- Technical 4h (8): PSAR, ZLEMA, Vortex, Schaff, DEMA, CCI, Aroon, MACD (all on Lighter)
+- Technical 4h v2 (2): ZLEMAv2, SchaffV2 (on Lighter)
 - AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime, and technical engine signals as context
-- Live (hybrid): HMA 4h, Schaff, DEMA on Lighter + AI on HL. Paper: all 9 technical engines
+- Live (hybrid): AI only on Lighter. Paper: all 10 technical engines
 
 **Execution:**
 - $10 fixed margin per trade, 10x leverage
@@ -99,14 +99,13 @@ Directional trades on 15 perpetual futures pairs via Hyperliquid and Lighter DEX
 |---|-------|--------|------|
 | Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
-| Quant AI engine (R1) | Paper | Live ($10 margin, HL) | Live |
-| Quant live engines (HMA 4h, Schaff, DEMA) | Paper | Live + Paper (Lighter) | Live |
-| Quant paper engines (ZLEMA 4h, HMA 1h, ZLEMA 1h, PSAR, Vortex, CCI) | Paper | Paper (Lighter) | Live |
+| Quant AI engine (R1) | Paper | Live ($10 margin, Lighter) | Live |
+| Quant technical engines (10) | Paper | Paper (Lighter) | Live |
 | Note: live engines also run paper for independent performance tracking ||||
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
-- Virtual $1250 quant bankroll ($125/engine x 10 engines)
+- Virtual $1250 quant bankroll ($125/engine x 10 technical engines)
 - Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
 - Simulated funding: accrued hourly from live predicted rates
 - Simulated liquidation: per-pair maintenance margin rates
