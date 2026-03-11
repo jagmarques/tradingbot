@@ -242,7 +242,8 @@ export function startHftFadeScheduler(): void {
     return;
   }
   const delay = msUntilNextCandle();
-  console.log(`[HFT-Fade] Started (paper mode) — first cycle in ${Math.round(delay / 1000)}s`);
+  const startMode = HFT_FADE_LIVE_ENABLED ? "live" : "paper";
+  console.log(`[HFT-Fade] Started (${startMode}) — first cycle in ${Math.round(delay / 1000)}s`);
   hftInitialTimeout = setTimeout(() => {
     void runHftFadeCycle();
     hftInterval = setInterval(() => {

@@ -233,7 +233,7 @@ async function checkPositionStops(): Promise<void> {
           ?? STAGNATION_TIMEOUT_MS;
         if (holdMs >= stagnationMs) {
           console.log(
-            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h (limit ${(stagnationMs / 3_600_000).toFixed(0)}h), P&L ${unrealizedPnlPct.toFixed(2)}%`,
+            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${stagnationMs < 3_600_000 ? `${Math.round(holdMs / 60_000)}m` : `${(holdMs / 3_600_000).toFixed(0)}h`} (limit ${stagnationMs < 3_600_000 ? `${Math.round(stagnationMs / 60_000)}m` : `${(stagnationMs / 3_600_000).toFixed(0)}h`}), P&L ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await tryClose(position, "stagnation");
           continue;
