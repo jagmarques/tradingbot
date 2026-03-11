@@ -186,6 +186,23 @@ function parseAIResponse(
 
 // --- Main analyzer function ---
 
+// True if ranging + no BB extreme → would always return flat, skip API
+function isRangingNoExtreme(analysis: PairAnalysis): boolean {
+  if (analysis.regime !== "ranging") return false;
+  const bb = analysis.indicators["1h"]?.bollingerBands;
+  const price = analysis.markPrice;
+  const upper = bb?.upper ?? null;
+  const lower = bb?.lower ?? null;
+  if (!upper || !lower || upper <= 0 || lower <= 0 || upper === lower) return true;
+  const range = upper - lower;
+  const fromUpper = (upper - price) / range;
+  const fromLower = (price - lower) / range;
+  if (fromUpper >= 0.10 && fromLower >= 0.10) return true; // not near either band
+  const rsi = analysis.indicators["1h"]?.rsi ?? 50;
+  const rsiConfirms = (fromLower < 0.10 && rsi < 32) || (fromUpper < 0.10 && rsi > 68);
+  return !rsiConfirms;
+}
+
 export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null, techSignals?: TechSignal[]): Promise<QuantAIDecision | null> {
   const { pair } = analysis;
 
@@ -193,6 +210,20 @@ export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTr
   if (cached) {
     console.log(`[QuantAI] Cache hit for ${pair}`);
     return cached;
+  }
+
+  // Ranging + no BB extreme → flat without API
+  if (isRangingNoExtreme(analysis)) {
+    const flat: QuantAIDecision = {
+      pair, direction: "flat", entryPrice: analysis.markPrice,
+      stopLoss: 0, takeProfit: 0, confidence: 0,
+      reasoning: "Ranging, no BB extreme",
+      regime: analysis.regime, suggestedSizeUsd: 0,
+      analyzedAt: new Date().toISOString(),
+    };
+    setCache(pair, flat);
+    console.log(`[QuantAI] ${pair}: ranging no-extreme → flat (skipped API)`);
+    return flat;
   }
 
   const prompt = buildQuantPrompt(analysis, dailyTrend, techSignals);
