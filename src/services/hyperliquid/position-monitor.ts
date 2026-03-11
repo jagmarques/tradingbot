@@ -37,8 +37,9 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "macd-directional": { activation: MACD_TRAIL_ACTIVATION, distance: MACD_TRAIL_DISTANCE },
   "zlemav2-directional": { activation: ZLEMAV2_TRAIL_ACTIVATION, distance: ZLEMAV2_TRAIL_DISTANCE },
   "schaffv2-directional": { activation: SCHAFFV2_TRAIL_ACTIVATION, distance: SCHAFFV2_TRAIL_DISTANCE },
+  "ai-directional": { activation: 20, distance: 5 },
 };
-const DEFAULT_TRAIL = { activation: 25, distance: 5 };
+const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
@@ -190,7 +191,10 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+      const trailBaseType = (position.tradeType ?? "").replace(/^inv-/, "");
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""]
+        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
+        ?? DEFAULT_TRAIL;
       if (peak > trailCfg.activation) {
         // Notify once when trail activates for live positions
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
@@ -222,7 +226,10 @@ async function checkPositionStops(): Promise<void> {
       // Stagnation exit for directional positions (funding positions hold indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
-        const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""] ?? STAGNATION_TIMEOUT_MS;
+        const baseType = (position.tradeType ?? "").replace(/^inv-/, "");
+        const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""]
+          ?? STAGNATION_MS_BY_TRADE_TYPE[baseType]
+          ?? STAGNATION_TIMEOUT_MS;
         if (holdMs >= stagnationMs) {
           console.log(
             `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${(holdMs / 3_600_000).toFixed(0)}h (limit ${(stagnationMs / 3_600_000).toFixed(0)}h), P&L ${unrealizedPnlPct.toFixed(2)}%`,
@@ -242,12 +249,13 @@ async function checkPositionStops(): Promise<void> {
         isFinite(position.takeProfit) &&
         position.takeProfit > 0;
 
-      // Cap SL
+      // Cap SL (skip inverted — their SL = normal's TP, which is intentionally far)
+      const isInvertedPos = (position.tradeType ?? "").startsWith("inv-");
       const maxSlFrac = QUANT_MAX_SL_PCT / 100;
       const rawSl = position.stopLoss ?? 0;
-      const cappedSl = position.direction === "long"
+      const cappedSl = isInvertedPos ? rawSl : (position.direction === "long"
         ? Math.max(rawSl, position.entryPrice * (1 - maxSlFrac))
-        : Math.min(rawSl, position.entryPrice * (1 + maxSlFrac));
+        : Math.min(rawSl, position.entryPrice * (1 + maxSlFrac)));
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       const stopLossBreached =

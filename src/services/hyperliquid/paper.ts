@@ -301,7 +301,7 @@ export async function paperClosePosition(
   lastFundingAccrual.delete(positionId);
   accumulatedFunding.delete(positionId);
 
-  if (reason === "stop-loss") {
+  if (reason === "stop-loss" && !position.tradeType?.startsWith("inv-")) {
     recordStopLossCooldown(position.pair, position.direction);
   }
 

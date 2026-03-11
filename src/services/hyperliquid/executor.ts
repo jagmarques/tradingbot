@@ -51,8 +51,9 @@ export async function openPosition(
     return null;
   }
 
-  // Cap SL to avoid liquidation
-  if (aiEntryPrice && aiEntryPrice > 0) {
+  // Cap SL to avoid liquidation (skip for inverted — SL = normal's TP, which is far away)
+  const isInverted = (tradeType as string).startsWith("inv-");
+  if (aiEntryPrice && aiEntryPrice > 0 && !isInverted) {
     const maxSlFrac = QUANT_MAX_SL_PCT / 100;
     if (direction === "long") {
       const floor = aiEntryPrice * (1 - maxSlFrac);

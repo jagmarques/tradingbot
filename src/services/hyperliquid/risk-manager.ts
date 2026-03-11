@@ -10,8 +10,8 @@ const dailyLossMap = new Map<string, number>();
 const lastLossTimestampMap = new Map<string, number>();
 
 export function strategyFromTradeType(tradeType: string): string {
-  // "psar-directional" -> "psar", "ai-directional" -> "ai"
-  return tradeType.replace(/-directional$/, "");
+  // "inv-psar-directional" -> "psar", "psar-directional" -> "psar"
+  return tradeType.replace(/^inv-/, "").replace(/-directional$/, "");
 }
 
 function resetIfStale(strategy: string): void {

@@ -5,6 +5,13 @@ import type { TradeType } from "../hyperliquid/types.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
 
+function quantTypeLabel(tradeType: string): string {
+  const inv = tradeType.startsWith("inv-");
+  const base = inv ? tradeType.slice(4) : tradeType;
+  const label = base === "funding" ? "Funding" : base === "psar-directional" ? "PSAR" : base === "zlema-directional" ? "ZLEMA" : base === "vortex-directional" ? "Vortex" : base === "schaff-directional" ? "Schaff" : base === "dema-directional" ? "DEMA" : base === "cci-directional" ? "CCI" : base === "aroon-directional" ? "Aroon" : base === "macd-directional" ? "MACD" : base === "zlemav2-directional" ? "ZLEMAv2" : base === "schaffv2-directional" ? "SchaffV2" : "AI";
+  return inv ? `inv-${label}` : label;
+}
+
 function formatDate(date: Date = new Date(), userId?: string): string {
   // Try user-specific timezone first, fall back to env default
   let timezone = loadEnv().TIMEZONE;
@@ -254,7 +261,7 @@ export async function notifyQuantTradeEntry(params: {
   if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
   const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
+  const typeLabel = quantTypeLabel(params.tradeType);
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -285,7 +292,7 @@ export async function notifyQuantTradeExit(params: {
   const indicator = params.pnl > 0 ? "+" : params.pnl < 0 ? "-" : "";
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const pnlPct = (params.pnl / params.size) * 100;
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
+  const typeLabel = quantTypeLabel(params.tradeType);
   const message =
     `${mode}<b>QUANT EXIT</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -310,7 +317,7 @@ export async function notifyTrailActivation(params: {
   tradeType: string;
 }): Promise<void> {
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
-  const typeLabel = params.tradeType === "funding" ? "Funding" : params.tradeType === "psar-directional" ? "PSAR" : params.tradeType === "zlema-directional" ? "ZLEMA" : params.tradeType === "vortex-directional" ? "Vortex" : params.tradeType === "schaff-directional" ? "Schaff" : params.tradeType === "dema-directional" ? "DEMA" : params.tradeType === "cci-directional" ? "CCI" : params.tradeType === "aroon-directional" ? "Aroon" : params.tradeType === "macd-directional" ? "MACD" : params.tradeType === "zlemav2-directional" ? "ZLEMAv2" : params.tradeType === "schaffv2-directional" ? "SchaffV2" : "AI";
+  const typeLabel = quantTypeLabel(params.tradeType);
   const message =
     `[LIVE] <b>TRAIL ACTIVATED</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
