@@ -2670,7 +2670,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     const isHybridOrLive = tradingMode === "hybrid" || tradingMode === "live";
     const livePositions = openPositions.filter(p => p.mode === "live");
-    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-"));
+    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-") && p.tradeType !== "hft-fade");
+    const hftPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType === "hft-fade");
     const invertedPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("inv-"));
 
     if (paperPositions.length > 0) {
@@ -2685,6 +2686,10 @@ async function handleQuant(ctx: Context): Promise<void> {
     if (invertedPositions.length > 0) {
       text += `\n<b>Inverted (${invertedPositions.length})</b>\n`;
       text += invertedPositions.map(formatPosLine).join("\n") + "\n";
+    }
+
+    if (hftPositions.length > 0) {
+      text += `\n<b>HFT (${hftPositions.length} open — see stats below)</b>\n`;
     }
 
     if (isHybridOrLive && livePositions.length > 0) {
@@ -2802,10 +2807,12 @@ async function handleQuant(ctx: Context): Promise<void> {
       liveOpenTotal += openCountByKey.get(lk) ?? 0;
     }
 
-    // Paper normal engines
-    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
+    // Paper normal engines (exclude AI and HFT which get own blocks)
+    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && t !== "hft-fade" && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
     // Paper inverted engines
     const inverted = renderEngineBlock(invertedEngines, "paper");
+    // HFT separate block
+    const hft = renderEngineBlock([["HFT", "hft-fade"]], "paper");
 
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;
@@ -2824,6 +2831,10 @@ async function handleQuant(ctx: Context): Promise<void> {
       text += inverted.block;
       const dep = inverted.depTotal > 0 ? ` | $${inverted.depTotal.toFixed(0)}` : "";
       text += `Total: ${fmtSign(inverted.pnlTotal, 1)} ${inverted.trades + inverted.openTotal}T${dep} | unr ${fmtUnr(inverted.unrTotal)}\n`;
+    }
+    if (hft.openTotal > 0 || hft.trades > 0) {
+      text += `\n<b>-- HFT --</b>\n`;
+      text += hft.block || `HFT: $0.0 ${hft.openTotal}/${hft.trades + hft.openTotal}T | unr ${fmtUnr(hft.unrTotal)}\n`;
     }
   } else {
     text += `\n`;
