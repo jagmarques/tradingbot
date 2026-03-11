@@ -192,7 +192,7 @@ async function runHftFadeCycle(): Promise<void> {
           undefined,
           entryPrice,
           true,  // allowMultiple
-          true,  // skipExchangeOrders: use software SL, saves rate limits
+          true,  // skipExchangeOrders
         );
       } else {
         position = await paperOpenPosition(
