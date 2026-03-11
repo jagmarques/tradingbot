@@ -19,7 +19,6 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "vortex-directional",
   "schaff-directional",
   "dema-directional",
-  "hma-directional",
   "cci-directional",
   "aroon-directional",
   "macd-directional",

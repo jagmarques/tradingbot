@@ -2628,7 +2628,6 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "vortex-directional" ? "[VO]" :
       pos.tradeType === "schaff-directional" ? "[SC]" :
       pos.tradeType === "dema-directional" ? "[DE]" :
-      pos.tradeType === "hma-directional" ? "[HM]" :
       pos.tradeType === "cci-directional" ? "[CC]" :
       pos.tradeType === "aroon-directional" ? "[AR]" :
       pos.tradeType === "macd-directional" ? "[MA]" :
@@ -2738,8 +2737,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["AI", "ai-directional"],
     ["PSAR", "psar-directional"], ["ZLEMA", "zlema-directional"],
     ["Vortex", "vortex-directional"], ["Schaff", "schaff-directional"],
-    ["DEMA", "dema-directional"], ["HMA", "hma-directional"],
-    ["CCI", "cci-directional"],
+    ["DEMA", "dema-directional"], ["CCI", "cci-directional"],
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
   ];

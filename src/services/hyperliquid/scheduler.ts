@@ -7,7 +7,6 @@ import { runZlemaDecisionEngine } from "./zlema-engine.js";
 import { runVortexDecisionEngine } from "./vortex-engine.js";
 import { runSchaffDecisionEngine } from "./schaff-engine.js";
 import { runDEMADecisionEngine } from "./dema-engine.js";
-import { runHMADecisionEngine } from "./hma-engine.js";
 import { runCCIDecisionEngine } from "./cci-engine.js";
 import { runAroonDecisionEngine } from "./aroon-engine.js";
 import { runMACDDecisionEngine } from "./macd-engine.js";
@@ -68,7 +67,6 @@ export async function runDirectionalCycle(): Promise<void> {
     const vortexDecisions = await runVortexDecisionEngine(analyses);
     const schaffDecisions = await runSchaffDecisionEngine(analyses);
     const demaDecisions = await runDEMADecisionEngine(analyses);
-    const hmaDecisions = await runHMADecisionEngine(analyses);
     const cciDecisions = await runCCIDecisionEngine(analyses);
     const aroonDecisions = await runAroonDecisionEngine(analyses);
     const macdDecisions = await runMACDDecisionEngine(analyses);
@@ -77,8 +75,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
     // Collect per-pair signals from ALL engines for AI context
     const techSignalsByPair = new Map<string, TechSignal[]>();
-    const signalSources: Array<{ engine: string; decisions: typeof hmaDecisions }> = [
-      { engine: "HMA 4h", decisions: hmaDecisions },
+    const signalSources: Array<{ engine: string; decisions: typeof demaDecisions }> = [
       { engine: "Schaff 4h", decisions: schaffDecisions },
       { engine: "DEMA 4h", decisions: demaDecisions },
       { engine: "ZLEMA 4h", decisions: zlemaDecisions },
@@ -97,7 +94,7 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // AI engine (DeepSeek, runs on Hyperliquid) - receives technical signals as context
+    // AI engine (Lighter)
     const aiDecisions: QuantAIDecision[] = [];
     const aiSignals = new Map<string, "long" | "short" | "flat">();
     for (const analysis of analyses) {
@@ -128,7 +125,7 @@ export async function runDirectionalCycle(): Promise<void> {
     // Separate live/paper pair tracking
     const liveOpenPairsByEngine = new Map<string, Set<string>>();
     const paperOpenPairsByEngine = new Map<string, Set<string>>();
-    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "hma-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional"]) {
+    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional"]) {
       liveOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "live").map(p => p.pair)));
       paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
@@ -190,7 +187,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-      const aiSize = hlCompoundSize;
+      const aiSize = lighterCompoundSize;
       const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
         aiExecuted++;
@@ -199,15 +196,14 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Live engines ordered by backtest profitability (best first)
+    // Live engines (must match QUANT_HYBRID_LIVE_ENGINES in constants.ts)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
-      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
-      { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
-      { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
+      { label: "ZLEMAv2", tradeType: "zlemav2-directional", decisions: zlemav2Decisions },
+      { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
     ];
 
-    // Track live positions for cross-engine limits (per-exchange)
-    const livePositions = openPositions.filter(p => p.mode === "live");
+    // Cross-engine limits (re-fetch includes AI positions opened above)
+    const livePositions = getOpenQuantPositions().filter(p => p.mode === "live");
     const liveByPairByExchange = new Map<string, Map<string, number>>();
     const liveByDirByExchange = new Map<string, Map<string, number>>();
     for (const p of livePositions) {
@@ -246,12 +242,11 @@ export async function runDirectionalCycle(): Promise<void> {
       executed.set(tradeType, count);
     }
 
-    // Paper engines: all 9 run independently for performance tracking
+    // Paper engines: all 10 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
       { label: "DEMA", tradeType: "dema-directional", decisions: demaDecisions },
-      { label: "HMA", tradeType: "hma-directional", decisions: hmaDecisions },
       { label: "PSAR", tradeType: "psar-directional", decisions: psarDecisions },
       { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
       { label: "CCI", tradeType: "cci-directional", decisions: cciDecisions },
@@ -282,7 +277,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, HMA ${eL("hma-directional", hmaDecisions)}L+${eP("hma-directional", hmaDecisions)}P, Schaff ${eL("schaff-directional", schaffDecisions)}L+${eP("schaff-directional", schaffDecisions)}P, DEMA ${eL("dema-directional", demaDecisions)}L+${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eL("zlemav2-directional", zlemav2Decisions)}L+${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eL("vortex-directional", vortexDecisions)}L+${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`,
     );
   } finally {
     cycleRunning = false;

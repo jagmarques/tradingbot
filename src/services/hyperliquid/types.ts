@@ -89,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "hma-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional";
+export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional";
 
 export interface FundingOpportunity {
   pair: string;

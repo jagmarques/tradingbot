@@ -59,7 +59,7 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 
 // Directional Trading Scheduler
 export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
-export const QUANT_MAX_PER_PAIR = 2;       // Max engines with open position on same pair
+export const QUANT_MAX_PER_PAIR = 1;       // Max engines with open position on same pair
 export const QUANT_MAX_PER_DIRECTION = 10; // Max positions in same direction across all engines
 
 // Paper Trading Validation
@@ -80,8 +80,8 @@ export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 export const PSAR_REVERSE_EXIT = 1;
 export const PSAR_ADX_NOT_DECL = 0;
-export const PSAR_TRAIL_ACTIVATION = 9;
-export const PSAR_TRAIL_DISTANCE = 2.5;
+export const PSAR_TRAIL_ACTIVATION = 25;
+export const PSAR_TRAIL_DISTANCE = 5;
 
 // ZLEMA
 export const ZLEMA_DAILY_SMA_PERIOD = 75;
@@ -95,8 +95,8 @@ export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMA_ADX_NOT_DECL = 0;
 export const ZLEMA_REVERSE_EXIT = 0;
-export const ZLEMA_TRAIL_ACTIVATION = 1;
-export const ZLEMA_TRAIL_DISTANCE = 2;
+export const ZLEMA_TRAIL_ACTIVATION = 25;
+export const ZLEMA_TRAIL_DISTANCE = 5;
 
 // Vortex
 export const VORTEX_DAILY_SMA_PERIOD = 50;
@@ -109,8 +109,8 @@ export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const VORTEX_ADX_NOT_DECL = 1;
 export const VORTEX_REVERSE_EXIT = 0;
-export const VORTEX_TRAIL_ACTIVATION = 6;
-export const VORTEX_TRAIL_DISTANCE = 3;
+export const VORTEX_TRAIL_ACTIVATION = 25;
+export const VORTEX_TRAIL_DISTANCE = 5;
 
 // Schaff (params from backtest-mixed +448%)
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
@@ -144,21 +144,6 @@ export const DEMA_REVERSE_EXIT = 0;
 export const DEMA_TRAIL_ACTIVATION = 25;
 export const DEMA_TRAIL_DISTANCE = 5;
 
-// HMA (params from backtest-mixed +448%)
-export const HMA_DAILY_SMA_PERIOD = 50;
-export const HMA_DAILY_ADX_MIN = 0;
-export const HMA_FAST = 3;
-export const HMA_SLOW = 50;
-export const HMA_STOP_ATR_MULT = 3.0;
-export const HMA_REWARD_RISK = 6.0;
-export const HMA_STAGNATION_BARS = 10;
-export const HMA_BASE_CONFIDENCE = 65;
-export const HMA_DAILY_LOOKBACK_DAYS = 150;
-export const HMA_ADX_NOT_DECL = 0;
-export const HMA_REVERSE_EXIT = 0;
-export const HMA_TRAIL_ACTIVATION = 25;
-export const HMA_TRAIL_DISTANCE = 5;
-
 // CCI
 export const CCI_DAILY_SMA_PERIOD = 50;
 export const CCI_DAILY_ADX_MIN = 8;
@@ -171,8 +156,8 @@ export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 30;
-export const CCI_TRAIL_DISTANCE = 4;
+export const CCI_TRAIL_ACTIVATION = 25;
+export const CCI_TRAIL_DISTANCE = 5;
 
 // ZLEMA v2 (clone of ZLEMA with different trail config from backtest sweep)
 export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
@@ -186,8 +171,8 @@ export const ZLEMAV2_BASE_CONFIDENCE = 65;
 export const ZLEMAV2_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMAV2_ADX_NOT_DECL = 0;
 export const ZLEMAV2_REVERSE_EXIT = 0;
-export const ZLEMAV2_TRAIL_ACTIVATION = 20;
-export const ZLEMAV2_TRAIL_DISTANCE = 6;
+export const ZLEMAV2_TRAIL_ACTIVATION = 25;
+export const ZLEMAV2_TRAIL_DISTANCE = 5;
 
 // Schaff v2 (clone of Schaff with SMA 75 from backtest sweep)
 export const SCHAFFV2_DAILY_SMA_PERIOD = 75;
@@ -245,17 +230,18 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "vortex-directional": "lighter",
   "schaff-directional": "lighter",
   "dema-directional": "lighter",
-  "hma-directional": "lighter",
   "cci-directional": "lighter",
   "aroon-directional": "lighter",
   "macd-directional": "lighter",
   "zlemav2-directional": "lighter",
   "schaffv2-directional": "lighter",
+  "ai-directional": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set([
-  "zlema-directional",
+  "zlemav2-directional",
+  "vortex-directional",
 ]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
