@@ -222,18 +222,18 @@ export const MACD_TRAIL_ACTIVATION = 20;
 export const MACD_TRAIL_DISTANCE = 5;
 
 // HFT Fade Engine
-export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-export const HFT_FADE_MIN_RETURN_PCT = 0.10; // min candle move to trigger fade
-export const HFT_FADE_POSITION_SIZE_USD = 10; // fixed $10 per trade
+export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000;
+export const HFT_FADE_MIN_RETURN_PCT = 0.10; // signal threshold %
+export const HFT_FADE_POSITION_SIZE_USD = 10;
 export const HFT_FADE_LEVERAGE = 10;
-export const HFT_FADE_TP_PCT = 0.30; // hard TP ceiling
-export const HFT_FADE_SL_PCT = 0.08; // stop-loss
-export const HFT_FADE_TRAIL_ACTIVATION = 0.8; // 0.08% price × 10x
-export const HFT_FADE_TRAIL_DISTANCE = 0.4; // 0.04% price × 10x
-export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000; // 15 minutes (3 bars)
-export const HFT_FADE_DAILY_LOSS_LIMIT = 10; // $10/day
-export const HFT_FADE_MIN_VOLUME_24H = 1_000_000; // $1M min 24h volume on Binance
-export const HFT_FADE_MAX_CONCURRENT = 10; // $100 virtual budget / $10 per trade
+export const HFT_FADE_TP_PCT = 0.30;
+export const HFT_FADE_SL_PCT = 0.08;
+export const HFT_FADE_TRAIL_ACTIVATION = 0.8; // position gain % to activate trail
+export const HFT_FADE_TRAIL_DISTANCE = 0.4; // trail pullback % from peak
+export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000; // 3 bars
+export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
+export const HFT_FADE_MIN_VOLUME_24H = 1_000_000; // min Binance 24h volume
+export const HFT_FADE_MAX_CONCURRENT = 10; // $100 budget / $10 per trade
 export const HFT_FADE_LIVE_ENABLED = false;
 
 // Exchange routing per engine
