@@ -395,8 +395,7 @@ OUTPUT JSON ONLY:
         console.log(`[AIBetting] LOG-ONLY: ${decision.side} ${market?.title} $${decision.recommendedSize.toFixed(2)} (edge=${(Math.abs(decision.edge) * 100).toFixed(1)}%)`);
       }
     } else {
-      const maxNewBets = config.maxPositions - openPositions.length;
-      for (const decision of decisions.slice(0, maxNewBets)) {
+      for (const decision of decisions) {
         try {
           const market = markets.find((m) => m.conditionId === decision.marketId);
           if (!market) continue;

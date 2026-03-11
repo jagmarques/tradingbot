@@ -300,26 +300,7 @@ export function evaluateAllOpportunities(
   // Limit correlated bets (max 1 per event group, accounting for existing positions)
   const decorrelated = limitCorrelatedBets(approved, markets, currentPositions);
 
-  // Apply position limit after ranking (best edges first)
-  const openPositionCount = currentPositions.filter(
-    (p) => p.status === "open"
-  ).length;
-  const slotsAvailable = Math.max(0, config.maxPositions - openPositionCount);
-
-  if (slotsAvailable === 0) {
-    console.log(
-      `[Evaluator] Max positions reached (${openPositionCount}/${config.maxPositions})`
-    );
-    return [];
-  }
-
-  if (decorrelated.length > slotsAvailable) {
-    console.log(
-      `[Evaluator] Position limit: keeping top ${slotsAvailable} of ${decorrelated.length} opportunities`
-    );
-  }
-
-  return decorrelated.slice(0, slotsAvailable);
+  return decorrelated;
 }
 
 export async function shouldExitPosition(
