@@ -57,8 +57,8 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-async function tryClose(position: QuantPosition, reason: string): Promise<void> {
-  const result = await closePosition(position.id, reason);
+async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = false): Promise<void> {
+  const result = await closePosition(position.id, reason, skipCancelReplace);
   if (result.success) {
     closeFailCounts.delete(position.id);
     return;
@@ -129,10 +129,13 @@ async function checkPositionStops(): Promise<void> {
 
     const activePairs = new Set(QUANT_TRADING_PAIRS);
 
+    let orphanClosed = false;
     for (const position of positions) {
       if (position.mode === "live" && !activePairs.has(position.pair)) {
+        if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
-        await tryClose(position, "orphan-pair-removed");
+        await tryClose(position, "orphan-pair-removed", true);
+        orphanClosed = true;
         continue;
       }
 

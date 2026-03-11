@@ -410,7 +410,7 @@ export async function lighterOpenPosition(
     const orderErr = getOrderError(orderResult);
     if (orderErr) {
       console.error(`[Lighter Executor] Order failed for ${pair}: ${orderErr}`);
-      if (orderErr.includes("nonce")) resetNonce();
+      if (orderErr.includes("nonce") || orderErr.includes("ratelimit") || orderErr.includes("Too Many")) resetNonce();
       const isMarginErr = orderErr.toLowerCase().includes("margin") || orderErr.toLowerCase().includes("insufficient");
       if (!isMarginErr) {
         void notifyCriticalError(`Lighter order failed: ${pair} ${direction} $${sizeUsd} — ${orderErr}`, "LighterExecutor");
@@ -562,6 +562,7 @@ export async function lighterOpenPosition(
 export async function lighterClosePosition(
   positionId: string,
   reason: string,
+  skipCancelReplace = false,
 ): Promise<{ success: boolean; pnl: number }> {
   if (closingSet.has(positionId)) {
     console.log(`[Lighter Executor] Close already in progress for ${positionId}`);
@@ -602,7 +603,9 @@ export async function lighterClosePosition(
     const client = getSignerClient();
 
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
-    await cancelAndReplaceOrders(position.pair);
+    if (!skipCancelReplace) {
+      await cancelAndReplaceOrders(position.pair);
+    }
 
     const closeResult = await withNonce(async (nonce) =>
       withTimeout(
@@ -617,7 +620,7 @@ export async function lighterClosePosition(
     const closeErr = getOrderError(closeResult);
     if (closeErr) {
       console.error(`[Lighter Executor] Close failed for ${position.pair}: ${closeErr}`);
-      if (closeErr.includes("nonce")) resetNonce();
+      if (closeErr.includes("nonce") || closeErr.includes("ratelimit") || closeErr.includes("Too Many")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
       void placeExchangeStop(position);
       void placeExchangeTP(position);

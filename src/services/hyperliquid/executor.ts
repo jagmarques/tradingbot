@@ -96,6 +96,7 @@ export async function openPosition(
 export async function closePosition(
   positionId: string,
   reason: string,
+  skipCancelReplace = false,
 ): Promise<{ success: boolean; pnl: number }> {
   const positions = getOpenQuantPositions();
   const pos = positions.find(p => p.id === positionId);
@@ -104,7 +105,7 @@ export async function closePosition(
   const isLighterLive = pos?.exchange === "lighter" && pos?.mode === "live";
   const isHLLive = pos?.mode === "live" && pos?.exchange !== "lighter";
   const result = isLighterLive
-    ? await lighterClosePosition(positionId, reason)
+    ? await lighterClosePosition(positionId, reason, skipCancelReplace)
     : isHLLive
       ? await liveClosePosition(positionId, reason)
       : await paperClosePosition(positionId, reason);
