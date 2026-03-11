@@ -2643,6 +2643,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "inv-macd-directional" ? "[iMA]" :
       pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
       pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
+      pos.tradeType === "hft-fade" ? "[HFT]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2756,6 +2757,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["DEMA", "dema-directional"], ["CCI", "cci-directional"],
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
+    ["HFT", "hft-fade"],
   ];
   const invertedEngines: [string, string][] = [
     ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],

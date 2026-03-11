@@ -293,10 +293,14 @@ export async function runDirectionalCycle(): Promise<void> {
       const invOpenPairs = paperOpenPairsByEngine.get(invType)!;
       for (const pos of normalPositions) {
         if (invOpenPairs.has(pos.pair)) continue;
+        if (!pos.takeProfit || pos.takeProfit <= 0 || !pos.stopLoss || pos.stopLoss <= 0) {
+          console.log(`[QuantScheduler] ${label}: Skip mirror ${pos.pair} — missing SL/TP on normal position`);
+          continue;
+        }
         const invDir = pos.direction === "long" ? "short" as const : "long" as const;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        const position = await openPosition(pos.pair, invDir, pos.size, 10, invSl ?? 0, invTp ?? 0, "trending", invType as TradeType, undefined, pos.entryPrice, true);
+        const position = await openPosition(pos.pair, invDir, pos.size, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
         if (position) {
           count++;
           invOpenPairs.add(pos.pair);

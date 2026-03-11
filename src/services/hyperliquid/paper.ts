@@ -302,7 +302,7 @@ export async function paperClosePosition(
   lastFundingAccrual.delete(positionId);
   accumulatedFunding.delete(positionId);
 
-  if (reason === "stop-loss" && !position.tradeType?.startsWith("inv-")) {
+  if (reason === "stop-loss" && !position.tradeType?.startsWith("inv-") && position.tradeType !== "hft-fade") {
     recordStopLossCooldown(position.pair, position.direction);
   }
 
