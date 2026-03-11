@@ -59,8 +59,8 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 
 // Directional Trading Scheduler
 export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
-export const QUANT_MAX_PER_PAIR = 1;       // Max engines with open position on same pair
-export const QUANT_MAX_PER_DIRECTION = 10; // Max positions in same direction across all engines
+export const QUANT_MAX_PER_PAIR = 1;
+export const QUANT_MAX_PER_DIRECTION = 999;
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14;
@@ -239,9 +239,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set([
-  "zlemav2-directional",
-  "vortex-directional",
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>([
 ]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {

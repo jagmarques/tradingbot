@@ -198,8 +198,6 @@ export async function runDirectionalCycle(): Promise<void> {
 
     // Live engines (must match QUANT_HYBRID_LIVE_ENGINES in constants.ts)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
-      { label: "ZLEMAv2", tradeType: "zlemav2-directional", decisions: zlemav2Decisions },
-      { label: "Vortex", tradeType: "vortex-directional", decisions: vortexDecisions },
     ];
 
     // Cross-engine limits (re-fetch includes AI positions opened above)
@@ -274,10 +272,9 @@ export async function runDirectionalCycle(): Promise<void> {
       paperExecuted.set(tradeType, count);
     }
 
-    const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eL("zlemav2-directional", zlemav2Decisions)}L+${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eL("vortex-directional", vortexDecisions)}L+${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`,
+      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`,
     );
   } finally {
     cycleRunning = false;
