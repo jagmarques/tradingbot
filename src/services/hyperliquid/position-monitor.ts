@@ -85,10 +85,9 @@ async function checkPositionStops(): Promise<void> {
       return;
     }
 
-    // Kill switch blocks new opens (via risk gates), but we keep monitoring
-    // stops to protect existing positions.
+    // Kill switch blocks opens, not monitoring.
 
-    // Accrue funding for paper positions (even in live mode, technical engines are paper)
+    // Accrue funding for paper positions
     const hasPaperPositions = positions.some(p => p.mode === "paper");
     if (hasPaperPositions) {
       await accrueFundingIncome();
@@ -155,7 +154,7 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      // Paper liquidation check (live positions are liquidated by exchange)
+      // Paper liquidation check
       if (position.mode === "paper") {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
@@ -178,7 +177,7 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Trailing stop (leveraged P&L to match backtest)
+      // Trailing stop
       const pricePct =
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
@@ -223,7 +222,7 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Stagnation exit for directional positions (funding positions hold indefinitely)
+      // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
         const baseType = (position.tradeType ?? "").replace(/^inv-/, "");
@@ -249,7 +248,7 @@ async function checkPositionStops(): Promise<void> {
         isFinite(position.takeProfit) &&
         position.takeProfit > 0;
 
-      // Cap SL (skip inverted — their SL = normal's TP, which is intentionally far)
+      // Cap SL; skip inverted (SL = normal's TP)
       const isInvertedPos = (position.tradeType ?? "").startsWith("inv-");
       const maxSlFrac = QUANT_MAX_SL_PCT / 100;
       const rawSl = position.stopLoss ?? 0;
@@ -298,7 +297,7 @@ async function checkPositionStops(): Promise<void> {
     if (msg.includes("timed out") || msg.includes("ECONNR") || msg.includes("fetch failed")) {
       resetConnection();
     }
-    // Alert if live positions exist but monitor can't check them
+    // Alert if live positions are unprotected
     const liveCount = getOpenQuantPositions().filter(p => p.mode === "live").length;
     if (liveCount > 0) {
       throttledCriticalAlert(`Monitor failed: ${liveCount} live position(s) unprotected: ${msg}`, "PositionMonitor");

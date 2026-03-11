@@ -32,7 +32,7 @@ export async function openPosition(
   aiEntryPrice?: number,
   forcePaper?: boolean,
 ): Promise<QuantPosition | null> {
-  // Funding positions bypass volatile regime check (they're regime-agnostic)
+  // Funding bypasses volatile regime check
   const effectiveRegime = tradeType === "funding" ? "ranging" : regime;
   const mode = getTradingMode();
   const exchange = getEngineExchange(tradeType);
@@ -51,7 +51,7 @@ export async function openPosition(
     return null;
   }
 
-  // Cap SL to avoid liquidation (skip for inverted — SL = normal's TP, which is far away)
+  // Cap SL; skip for inverted (their SL = normal's TP)
   const isInverted = (tradeType as string).startsWith("inv-");
   if (aiEntryPrice && aiEntryPrice > 0 && !isInverted) {
     const maxSlFrac = QUANT_MAX_SL_PCT / 100;
@@ -120,7 +120,7 @@ export async function closePosition(
 }
 
 export function getOpenQuantPositions(): QuantPosition[] {
-  // Always include live positions so monitor can protect them even after mode switch
+  // Include live positions even after mode switch
   const live = getLivePositions();
   const lighterLive = getLighterLivePositions();
   const paper = getPaperPositions();
@@ -135,7 +135,6 @@ export function getOpenQuantPositions(): QuantPosition[] {
 }
 
 export function getVirtualBalance(tradeType?: TradeType): number {
-  // Both modes return same notional balance for Kelly gate math.
-  // Actual sizing uses QUANT_FIXED_POSITION_SIZE_USD, not this value.
+  // Same balance for Kelly math; actual sizing is fixed USD.
   return getPaperBalance(tradeType);
 }

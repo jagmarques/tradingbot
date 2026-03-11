@@ -109,7 +109,7 @@ export async function accrueFundingIncome(): Promise<void> {
       const fundingInfo = await fetchFundingRate(position.pair);
       if (!fundingInfo) continue;
 
-      // Funding: shorts collect positive rate, longs collect negative rate
+      // Shorts collect +rate, longs collect -rate
       const rate = fundingInfo.currentRate;
       let fundingPayment: number;
 
@@ -164,7 +164,7 @@ export async function paperOpenPosition(
   const isInverted = tradeType.startsWith("inv-");
   const entryPrice = isInverted && aiEntryPrice && aiEntryPrice > 0 ? aiEntryPrice : price;
 
-  // Rebase stop/TP to fill price (inverted: SL/TP already in normal's price space)
+  // Rebase stops to fill price (skip for inverted)
   let adjStop = stopLoss;
   let adjTP = takeProfit;
   if (!isInverted && aiEntryPrice && aiEntryPrice > 0) {
@@ -245,7 +245,7 @@ export async function paperClosePosition(
         position.size *
         position.leverage;
 
-  // Lighter has zero fees; Hyperliquid Tier 0 taker 0.045% on entry + exit
+  // Lighter: 0 fees; HL: 0.045% per side
   const fees = posExchange === "lighter" ? 0 : position.size * position.leverage * 0.00045 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
 
