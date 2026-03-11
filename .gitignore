@@ -39,8 +39,11 @@ coverage/
 *.sqlite
 *.sqlite3
 
-# Test scripts
+# Test & backtest scripts
 scripts/test-*.ts
+scripts/backtest-*.ts
+scripts/run-sweep.sh
+scripts/sweep-all.sh
 
 # Prompt spec (internal)
 PROMPT.md
