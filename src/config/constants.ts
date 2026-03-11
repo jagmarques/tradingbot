@@ -231,7 +231,7 @@ export const HFT_FADE_SL_PCT = 0.15; // -0.15% stop-loss
 export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000; // 15 minutes (3 bars)
 export const HFT_FADE_DAILY_LOSS_LIMIT = 10; // $10/day
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000; // $1M min 24h volume on Binance
-export const HFT_FADE_LIVE_ENABLED = false; // flip to true when paper results are good
+export const HFT_FADE_LIVE_ENABLED = false;
 
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";

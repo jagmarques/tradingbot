@@ -148,7 +148,7 @@ async function cancelAndReplaceOrders(excludePair: string): Promise<void> {
     console.error(`[Lighter Executor] Cancel all orders error: ${err instanceof Error ? err.message : err}`);
     return;
   }
-  // Re-place stops/TPs for remaining positions (skip hft-fade — software SL only)
+  // Re-place stops/TPs for remaining positions
   for (const pos of getLighterLivePositions()) {
     if (pos.pair === excludePair) continue;
     if (pos.tradeType === "hft-fade") continue;

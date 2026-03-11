@@ -191,8 +191,8 @@ async function runHftFadeCycle(): Promise<void> {
           "hft-fade",
           undefined,
           entryPrice,
-          true,  // allowMultiple: HFT can open multiple positions per pair
-          true,  // skipExchangeOrders: software SL via position monitor (saves rate limit)
+          true,  // allowMultiple
+          true,  // skipExchangeOrders: use software SL, saves rate limits
         );
       } else {
         position = await paperOpenPosition(
