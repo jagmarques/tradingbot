@@ -272,7 +272,8 @@ export async function runDirectionalCycle(): Promise<void> {
       paperExecuted.set(tradeType, count);
     }
 
-    // Inverted engines: mirror actual open positions of normal engines (same pair, opposite direction)
+    // Re-fetch to include positions opened this cycle
+    const currentPositions = getOpenQuantPositions();
     const invertedPairs: Array<{ label: string; normalType: string; invType: string }> = [
       { label: "iSchaff", normalType: "schaff-directional", invType: "inv-schaff-directional" },
       { label: "iZLEMA", normalType: "zlema-directional", invType: "inv-zlema-directional" },
@@ -288,7 +289,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
     for (const { label, normalType, invType } of invertedPairs) {
       let count = 0;
-      const normalPositions = openPositions.filter(p => p.tradeType === normalType && p.mode === "paper");
+      const normalPositions = currentPositions.filter(p => p.tradeType === normalType && p.mode === "paper");
       const invOpenPairs = paperOpenPairsByEngine.get(invType)!;
       for (const pos of normalPositions) {
         if (invOpenPairs.has(pos.pair)) continue;
