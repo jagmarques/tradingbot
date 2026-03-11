@@ -40,7 +40,7 @@ export function recordDailyLoss(loss: number, strategy: string, mode: "live" | "
   dailyLossMap.set(key, prev + loss);
   lastLossTimestampMap.set(key, Date.now());
   console.log(
-    `[RiskManager] ${strategy}(${mode}) rolling 24h loss: $${(prev + loss).toFixed(2)} / $${QUANT_DAILY_DRAWDOWN_LIMIT}`,
+    `[RiskManager] ${strategy}(${mode}) rolling 24h loss: $${(prev + loss).toFixed(2)}`,
   );
 }
 
