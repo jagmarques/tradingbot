@@ -114,13 +114,18 @@ const BINANCE_SYMBOL_MAP: Record<string, string> = {
   ENA: "ENAUSDT",
   LDO: "LDOUSDT",
   SEI: "SEIUSDT",
-  ONDO: "ONDOUSDT",
-  JUP: "JUPUSDT",
   WLD: "WLDUSDT",
-  TIA: "TIAUSDT",
   APT: "APTUSDT",
   DOT: "DOTUSDT",
   SUI: "SUIUSDT",
+  TRUMP: "TRUMPUSDT",
+  DASH: "DASHUSDT",
+  MKR: "MKRUSDT",
+  TON: "TONUSDT",
+  ADA: "ADAUSDT",
+  XRP: "XRPUSDT",
+  UNI: "UNIUSDT",
+  WIF: "WIFUSDT",
 };
 
 export async function fetchBinanceLongShortRatio(pair: string): Promise<LongShortRatio | null> {

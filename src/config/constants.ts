@@ -41,7 +41,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "JUP", "ONDO", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "ETH", "XRP", "SUI", "LTC", "UNI"];
+export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "MKR", "XRP", "SUI", "TON", "UNI"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -264,11 +264,12 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   ENA: 0.05,    // 10x max
   LDO: 0.05,    // 10x max
   SEI: 0.05,    // 10x max
-  ONDO: 0.05,   // 10x max
-  JUP: 0.05,    // 10x max
+  TRUMP: 0.05,  // 10x Lighter
+  DASH: 0.05,   // 10x Lighter
   WLD: 0.05,    // 10x max
   ADA: 0.05,    // 10x max
   SUI: 0.05,    // 10x max
-  LTC: 0.05,    // 10x max
+  MKR: 0.05,    // 10x Lighter
   UNI: 0.05,    // 10x max
+  TON: 0.05,    // 20x Lighter
 };
