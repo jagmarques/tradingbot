@@ -2741,69 +2741,86 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
   ];
+  const invertedEngines: [string, string][] = [
+    ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
+    ["iVortex", "inv-vortex-directional"], ["iSchaff", "inv-schaff-directional"],
+    ["iDEMA", "inv-dema-directional"], ["iCCI", "inv-cci-directional"],
+    ["iAroon", "inv-aroon-directional"], ["iMACD", "inv-macd-directional"],
+    ["iZLEMAv2", "inv-zlemav2-directional"], ["iSchaffV2", "inv-schaffv2-directional"],
+  ];
 
   const hasLive = openPositions.some(p => p.mode === "live");
   const hasPaper = openPositions.some(p => p.mode !== "live");
   const isHybrid = tradingMode === "hybrid" || (hasLive && hasPaper);
 
-  if (isHybrid) {
-    let liveBlock = "";
-    let paperBlock = "";
-    let livePnlTotal = 0, paperPnlTotal = 0;
-    let liveTrades = 0, paperTrades = 0;
-    let liveUnrTotal = 0, paperUnrTotal = 0;
-    let liveDepTotal = 0, paperDepTotal = 0;
-    let liveOpenTotal = 0, paperOpenTotal = 0;
+  const renderEngineBlock = (list: [string, string][], mode: "live" | "paper") => {
+    let block = "", pnlTotal = 0, trades = 0, unrTotal = 0, depTotal = 0, openTotal = 0;
+    for (const [label, typeKey] of list) {
+      const stats = getQuantStats(typeKey, mode);
+      block += sl(label, stats, typeKey, mode);
+      pnlTotal += stats.totalPnl;
+      trades += stats.totalTrades;
+      const k = makeKey(typeKey, mode);
+      unrTotal += unrealizedByKey.get(k) ?? 0;
+      depTotal += deployedByKey.get(k) ?? 0;
+      openTotal += openCountByKey.get(k) ?? 0;
+    }
+    return { block, pnlTotal, trades, unrTotal, depTotal, openTotal };
+  };
 
+  if (isHybrid) {
+    // Live engines (AI + any live technical)
+    let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
     for (const [label, typeKey] of engines) {
       const isLiveEngine = typeKey === "ai-directional" || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
-      const liveStats = getQuantStats(typeKey, "live");
-      const paperStats = getQuantStats(typeKey, "paper");
-      if (isLiveEngine) liveBlock += sl(label, liveStats, typeKey, "live");
-      paperBlock += sl(label, paperStats, typeKey, "paper");
-      paperPnlTotal += paperStats.totalPnl;
-      paperTrades += paperStats.totalTrades;
-      const lk = makeKey(typeKey, "live"), pk = makeKey(typeKey, "paper");
-      paperUnrTotal += unrealizedByKey.get(pk) ?? 0;
-      paperDepTotal += deployedByKey.get(pk) ?? 0;
-      paperOpenTotal += openCountByKey.get(pk) ?? 0;
-      if (isLiveEngine) {
-        livePnlTotal += liveStats.totalPnl;
-        liveTrades += liveStats.totalTrades;
-        liveUnrTotal += unrealizedByKey.get(lk) ?? 0;
-        liveDepTotal += deployedByKey.get(lk) ?? 0;
-        liveOpenTotal += openCountByKey.get(lk) ?? 0;
-      }
+      if (!isLiveEngine) continue;
+      const stats = getQuantStats(typeKey, "live");
+      liveBlock += sl(label, stats, typeKey, "live");
+      livePnlTotal += stats.totalPnl;
+      liveTrades += stats.totalTrades;
+      const lk = makeKey(typeKey, "live");
+      liveUnrTotal += unrealizedByKey.get(lk) ?? 0;
+      liveDepTotal += deployedByKey.get(lk) ?? 0;
+      liveOpenTotal += openCountByKey.get(lk) ?? 0;
     }
+
+    // Paper normal engines
+    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
+    // Paper inverted engines
+    const inverted = renderEngineBlock(invertedEngines, "paper");
 
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;
       text += liveBlock;
-      const fmt = fmtSign(livePnlTotal, 1);
       const dep = liveDepTotal > 0 ? ` | $${liveDepTotal.toFixed(0)}` : "";
-      text += `Total: ${fmt} ${liveTrades + liveOpenTotal}T${dep} | unr ${fmtUnr(liveUnrTotal)}\n`;
+      text += `Total: ${fmtSign(livePnlTotal, 1)} ${liveTrades + liveOpenTotal}T${dep} | unr ${fmtUnr(liveUnrTotal)}\n`;
     }
-    if (paperBlock) {
+    if (paper.block) {
       text += `\n<b>-- Paper --</b>\n`;
-      text += paperBlock;
-      const fmt = fmtSign(paperPnlTotal, 1);
-      const dep = paperDepTotal > 0 ? ` | $${paperDepTotal.toFixed(0)}` : "";
-      text += `Total: ${fmt} ${paperTrades + paperOpenTotal}T${dep} | unr ${fmtUnr(paperUnrTotal)}\n`;
+      text += paper.block;
+      const dep = paper.depTotal > 0 ? ` | $${paper.depTotal.toFixed(0)}` : "";
+      text += `Total: ${fmtSign(paper.pnlTotal, 1)} ${paper.trades + paper.openTotal}T${dep} | unr ${fmtUnr(paper.unrTotal)}\n`;
+    }
+    if (inverted.block) {
+      text += `\n<b>-- Inverted --</b>\n`;
+      text += inverted.block;
+      const dep = inverted.depTotal > 0 ? ` | $${inverted.depTotal.toFixed(0)}` : "";
+      text += `Total: ${fmtSign(inverted.pnlTotal, 1)} ${inverted.trades + inverted.openTotal}T${dep} | unr ${fmtUnr(inverted.unrTotal)}\n`;
     }
   } else {
     text += `\n`;
-    for (const [label, typeKey] of engines) {
+    const allEngines = [...engines, ...invertedEngines];
+    for (const [label, typeKey] of allEngines) {
       const stats = getQuantStats(typeKey);
       text += sl(label, stats, typeKey, tradingMode === "paper" ? "paper" : "live");
     }
-    const totalPnl = engines.reduce((s, [, t]) => s + getQuantStats(t).totalPnl, 0);
+    const totalPnl = allEngines.reduce((s, [, t]) => s + getQuantStats(t).totalPnl, 0);
     let totalUnr = 0, totalDeployed = 0;
     for (const v of unrealizedByKey.values()) totalUnr += v;
     for (const v of deployedByKey.values()) totalDeployed += v;
-    const fmtTotal = fmtSign(totalPnl, 1);
-    const totalOps = engines.reduce((s, [, t]) => s + getQuantStats(t).totalTrades, 0) + openPositions.length;
+    const totalOps = allEngines.reduce((s, [, t]) => s + getQuantStats(t).totalTrades, 0) + openPositions.length;
     const deployedTotal = totalDeployed > 0 ? ` | $${totalDeployed.toFixed(0)}` : "";
-    text += `\nTotal: ${fmtTotal} ${totalOps}T${deployedTotal} | unr ${fmtUnr(totalUnr)}\n`;
+    text += `\nTotal: ${fmtSign(totalPnl, 1)} ${totalOps}T${deployedTotal} | unr ${fmtUnr(totalUnr)}\n`;
   }
 
   const buttons: { text: string; callback_data: string }[][] = [];
