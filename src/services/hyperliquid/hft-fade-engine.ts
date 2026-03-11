@@ -41,7 +41,7 @@ interface VolumeCache {
 }
 
 const volumeCache = new Map<string, VolumeCache>();
-const VOLUME_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (volume doesn't change meaningfully per cycle)
 
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
@@ -204,18 +204,28 @@ async function runHftFadeCycle(): Promise<void> {
 let hftInterval: ReturnType<typeof setInterval> | null = null;
 let hftInitialTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// Returns ms until the next Binance 5m candle close + 3s buffer
+function msUntilNextCandle(): number {
+  const now = Date.now();
+  const cycleMs = HFT_FADE_INTERVAL_MS; // 5 * 60 * 1000
+  const buffer = 3_000; // 3s after candle close to ensure it's settled
+  const nextClose = Math.ceil((now - buffer) / cycleMs) * cycleMs + buffer;
+  return Math.max(0, nextClose - now);
+}
+
 export function startHftFadeScheduler(): void {
   if (hftInterval !== null) {
     console.log("[HFT-Fade] Already running, skipping start");
     return;
   }
-  console.log("[HFT-Fade] Started (5m interval, paper mode)");
+  const delay = msUntilNextCandle();
+  console.log(`[HFT-Fade] Started (paper mode) — first cycle in ${Math.round(delay / 1000)}s`);
   hftInitialTimeout = setTimeout(() => {
     void runHftFadeCycle();
     hftInterval = setInterval(() => {
       void runHftFadeCycle();
     }, HFT_FADE_INTERVAL_MS);
-  }, 30_000);
+  }, delay);
 }
 
 export function stopHftFadeScheduler(): void {
