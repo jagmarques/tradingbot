@@ -2659,7 +2659,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     const isHybridOrLive = tradingMode === "hybrid" || tradingMode === "live";
     const livePositions = openPositions.filter(p => p.mode === "live");
-    const paperPositions = openPositions.filter(p => p.mode !== "live");
+    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-"));
+    const invertedPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("inv-"));
 
     if (paperPositions.length > 0) {
       if (isHybridOrLive) {
@@ -2668,6 +2669,11 @@ async function handleQuant(ctx: Context): Promise<void> {
         text += `\n`;
       }
       text += paperPositions.map(formatPosLine).join("\n") + "\n";
+    }
+
+    if (invertedPositions.length > 0) {
+      text += `\n<b>Inverted (${invertedPositions.length})</b>\n`;
+      text += invertedPositions.map(formatPosLine).join("\n") + "\n";
     }
 
     if (isHybridOrLive && livePositions.length > 0) {
