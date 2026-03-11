@@ -240,20 +240,6 @@ export async function runDirectionalCycle(): Promise<void> {
       executed.set(tradeType, count);
     }
 
-    // Invert decisions: flip direction, swap SL/TP
-    function invertDecisions(decisions: QuantAIDecision[]): QuantAIDecision[] {
-      return decisions.filter(d => d.direction !== "flat").map(d => {
-        const invDir = d.direction === "long" ? "short" as const : "long" as const;
-        return {
-          ...d,
-          direction: invDir,
-          stopLoss: d.takeProfit,   // old TP becomes new SL
-          takeProfit: d.stopLoss,   // old SL becomes new TP
-          reasoning: `[INV] ${d.reasoning}`,
-        };
-      });
-    }
-
     // Paper engines: all 10 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
@@ -266,17 +252,6 @@ export async function runDirectionalCycle(): Promise<void> {
       { label: "MACD", tradeType: "macd-directional", decisions: macdDecisions },
       { label: "ZLEMAv2", tradeType: "zlemav2-directional", decisions: zlemav2Decisions },
       { label: "SchaffV2", tradeType: "schaffv2-directional", decisions: schaffv2Decisions },
-      // Inverted engines: same signals but flipped direction, swapped SL/TP
-      { label: "iSchaff", tradeType: "inv-schaff-directional", decisions: invertDecisions(schaffDecisions) },
-      { label: "iZLEMA", tradeType: "inv-zlema-directional", decisions: invertDecisions(zlemaDecisions) },
-      { label: "iDEMA", tradeType: "inv-dema-directional", decisions: invertDecisions(demaDecisions) },
-      { label: "iPSAR", tradeType: "inv-psar-directional", decisions: invertDecisions(psarDecisions) },
-      { label: "iVortex", tradeType: "inv-vortex-directional", decisions: invertDecisions(vortexDecisions) },
-      { label: "iCCI", tradeType: "inv-cci-directional", decisions: invertDecisions(cciDecisions) },
-      { label: "iAroon", tradeType: "inv-aroon-directional", decisions: invertDecisions(aroonDecisions) },
-      { label: "iMACD", tradeType: "inv-macd-directional", decisions: invertDecisions(macdDecisions) },
-      { label: "iZLEMAv2", tradeType: "inv-zlemav2-directional", decisions: invertDecisions(zlemav2Decisions) },
-      { label: "iSchaffV2", tradeType: "inv-schaffv2-directional", decisions: invertDecisions(schaffv2Decisions) },
     ];
 
     const paperExecuted = new Map<string, number>();
@@ -295,6 +270,39 @@ export async function runDirectionalCycle(): Promise<void> {
         }
       }
       paperExecuted.set(tradeType, count);
+    }
+
+    // Inverted engines: mirror actual open positions of normal engines (same pair, opposite direction)
+    const invertedPairs: Array<{ label: string; normalType: string; invType: string }> = [
+      { label: "iSchaff", normalType: "schaff-directional", invType: "inv-schaff-directional" },
+      { label: "iZLEMA", normalType: "zlema-directional", invType: "inv-zlema-directional" },
+      { label: "iDEMA", normalType: "dema-directional", invType: "inv-dema-directional" },
+      { label: "iPSAR", normalType: "psar-directional", invType: "inv-psar-directional" },
+      { label: "iVortex", normalType: "vortex-directional", invType: "inv-vortex-directional" },
+      { label: "iCCI", normalType: "cci-directional", invType: "inv-cci-directional" },
+      { label: "iAroon", normalType: "aroon-directional", invType: "inv-aroon-directional" },
+      { label: "iMACD", normalType: "macd-directional", invType: "inv-macd-directional" },
+      { label: "iZLEMAv2", normalType: "zlemav2-directional", invType: "inv-zlemav2-directional" },
+      { label: "iSchaffV2", normalType: "schaffv2-directional", invType: "inv-schaffv2-directional" },
+    ];
+
+    for (const { label, normalType, invType } of invertedPairs) {
+      let count = 0;
+      const normalPositions = openPositions.filter(p => p.tradeType === normalType && p.mode === "paper");
+      const invOpenPairs = paperOpenPairsByEngine.get(invType)!;
+      for (const pos of normalPositions) {
+        if (invOpenPairs.has(pos.pair)) continue;
+        const invDir = pos.direction === "long" ? "short" as const : "long" as const;
+        const invSl = pos.takeProfit;
+        const invTp = pos.stopLoss;
+        const position = await openPosition(pos.pair, invDir, pos.size, 10, invSl ?? 0, invTp ?? 0, "trending", invType as TradeType, undefined, pos.entryPrice, true);
+        if (position) {
+          count++;
+          invOpenPairs.add(pos.pair);
+          console.log(`[QuantScheduler] ${label}(paper): Mirror-opened ${pos.pair} ${invDir} $${pos.size.toFixed(2)} @ ${pos.entryPrice}`);
+        }
+      }
+      paperExecuted.set(invType, count);
     }
 
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
