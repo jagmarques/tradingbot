@@ -125,7 +125,7 @@ export async function runDirectionalCycle(): Promise<void> {
     // Separate live/paper pair tracking
     const liveOpenPairsByEngine = new Map<string, Set<string>>();
     const paperOpenPairsByEngine = new Map<string, Set<string>>();
-    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional"]) {
+    for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional", "inv-psar-directional", "inv-zlema-directional", "inv-vortex-directional", "inv-schaff-directional", "inv-dema-directional", "inv-cci-directional", "inv-aroon-directional", "inv-macd-directional", "inv-zlemav2-directional", "inv-schaffv2-directional"]) {
       liveOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "live").map(p => p.pair)));
       paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
@@ -240,6 +240,20 @@ export async function runDirectionalCycle(): Promise<void> {
       executed.set(tradeType, count);
     }
 
+    // Invert decisions: flip direction, swap SL/TP
+    function invertDecisions(decisions: QuantAIDecision[]): QuantAIDecision[] {
+      return decisions.filter(d => d.direction !== "flat").map(d => {
+        const invDir = d.direction === "long" ? "short" as const : "long" as const;
+        return {
+          ...d,
+          direction: invDir,
+          stopLoss: d.takeProfit,   // old TP becomes new SL
+          takeProfit: d.stopLoss,   // old SL becomes new TP
+          reasoning: `[INV] ${d.reasoning}`,
+        };
+      });
+    }
+
     // Paper engines: all 10 run independently for performance tracking
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
@@ -252,6 +266,17 @@ export async function runDirectionalCycle(): Promise<void> {
       { label: "MACD", tradeType: "macd-directional", decisions: macdDecisions },
       { label: "ZLEMAv2", tradeType: "zlemav2-directional", decisions: zlemav2Decisions },
       { label: "SchaffV2", tradeType: "schaffv2-directional", decisions: schaffv2Decisions },
+      // Inverted engines: same signals but flipped direction, swapped SL/TP
+      { label: "iSchaff", tradeType: "inv-schaff-directional", decisions: invertDecisions(schaffDecisions) },
+      { label: "iZLEMA", tradeType: "inv-zlema-directional", decisions: invertDecisions(zlemaDecisions) },
+      { label: "iDEMA", tradeType: "inv-dema-directional", decisions: invertDecisions(demaDecisions) },
+      { label: "iPSAR", tradeType: "inv-psar-directional", decisions: invertDecisions(psarDecisions) },
+      { label: "iVortex", tradeType: "inv-vortex-directional", decisions: invertDecisions(vortexDecisions) },
+      { label: "iCCI", tradeType: "inv-cci-directional", decisions: invertDecisions(cciDecisions) },
+      { label: "iAroon", tradeType: "inv-aroon-directional", decisions: invertDecisions(aroonDecisions) },
+      { label: "iMACD", tradeType: "inv-macd-directional", decisions: invertDecisions(macdDecisions) },
+      { label: "iZLEMAv2", tradeType: "inv-zlemav2-directional", decisions: invertDecisions(zlemav2Decisions) },
+      { label: "iSchaffV2", tradeType: "inv-schaffv2-directional", decisions: invertDecisions(schaffv2Decisions) },
     ];
 
     const paperExecuted = new Map<string, number>();
@@ -273,9 +298,10 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
-    console.log(
-      `[QuantScheduler] Cycle complete: AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`,
-    );
+    const normalLog = `AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
+    const invLog = `iZLEMAv2 ${eP("inv-zlemav2-directional", zlemav2Decisions)}P, iVortex ${eP("inv-vortex-directional", vortexDecisions)}P, iSchaff ${eP("inv-schaff-directional", schaffDecisions)}P, iDEMA ${eP("inv-dema-directional", demaDecisions)}P, iZLEMA ${eP("inv-zlema-directional", zlemaDecisions)}P, iPSAR ${eP("inv-psar-directional", psarDecisions)}P, iCCI ${eP("inv-cci-directional", cciDecisions)}P, iAroon ${eP("inv-aroon-directional", aroonDecisions)}P, iMACD ${eP("inv-macd-directional", macdDecisions)}P, iSchaffV2 ${eP("inv-schaffv2-directional", schaffv2Decisions)}P`;
+    console.log(`[QuantScheduler] Cycle complete: ${normalLog}`);
+    console.log(`[QuantScheduler] Inverted: ${invLog}`);
   } finally {
     cycleRunning = false;
   }

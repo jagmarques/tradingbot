@@ -236,6 +236,16 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "zlemav2-directional": "lighter",
   "schaffv2-directional": "lighter",
   "ai-directional": "lighter",
+  "inv-psar-directional": "lighter",
+  "inv-zlema-directional": "lighter",
+  "inv-vortex-directional": "lighter",
+  "inv-schaff-directional": "lighter",
+  "inv-dema-directional": "lighter",
+  "inv-cci-directional": "lighter",
+  "inv-aroon-directional": "lighter",
+  "inv-macd-directional": "lighter",
+  "inv-zlemav2-directional": "lighter",
+  "inv-schaffv2-directional": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
