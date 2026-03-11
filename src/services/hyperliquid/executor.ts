@@ -52,7 +52,7 @@ export async function openPosition(
   }
 
   // Cap SL; skip for inverted (their SL = normal's TP)
-  const isInverted = (tradeType as string).startsWith("inv-");
+  const isInverted = tradeType.startsWith("inv-");
   if (aiEntryPrice && aiEntryPrice > 0 && !isInverted) {
     const maxSlFrac = QUANT_MAX_SL_PCT / 100;
     if (direction === "long") {

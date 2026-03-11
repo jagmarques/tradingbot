@@ -198,7 +198,8 @@ function isRangingNoExtreme(analysis: PairAnalysis): boolean {
   const fromUpper = (upper - price) / range;
   const fromLower = (price - lower) / range;
   if (fromUpper >= 0.10 && fromLower >= 0.10) return true; // not near either band
-  const rsi = analysis.indicators["1h"]?.rsi ?? 50;
+  const rsi = analysis.indicators["1h"]?.rsi;
+  if (rsi == null) return false; // RSI unavailable at band extreme → call API
   const rsiConfirms = (fromLower < 0.10 && rsi < 32) || (fromUpper < 0.10 && rsi > 68);
   return !rsiConfirms;
 }
