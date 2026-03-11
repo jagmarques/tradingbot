@@ -2633,6 +2633,16 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "macd-directional" ? "[MA]" :
       pos.tradeType === "zlemav2-directional" ? "[Z2]" :
       pos.tradeType === "schaffv2-directional" ? "[S2]" :
+      pos.tradeType === "inv-psar-directional" ? "[iPS]" :
+      pos.tradeType === "inv-zlema-directional" ? "[iZL]" :
+      pos.tradeType === "inv-vortex-directional" ? "[iVO]" :
+      pos.tradeType === "inv-schaff-directional" ? "[iSC]" :
+      pos.tradeType === "inv-dema-directional" ? "[iDE]" :
+      pos.tradeType === "inv-cci-directional" ? "[iCC]" :
+      pos.tradeType === "inv-aroon-directional" ? "[iAR]" :
+      pos.tradeType === "inv-macd-directional" ? "[iMA]" :
+      pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
+      pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
