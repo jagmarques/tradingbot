@@ -198,6 +198,8 @@ export async function runDirectionalCycle(): Promise<void> {
 
     // Live engines (must match QUANT_HYBRID_LIVE_ENGINES in constants.ts)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
+      { label: "SchaffV2", tradeType: "schaffv2-directional", decisions: schaffv2Decisions },
+      { label: "Aroon", tradeType: "aroon-directional", decisions: aroonDecisions },
     ];
 
     // Cross-engine limits (re-fetch includes AI positions opened above)
