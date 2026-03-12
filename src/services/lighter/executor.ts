@@ -132,7 +132,9 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
     console.log(`[Lighter Executor] All orders cancelled`);
   } catch (err) {
     if (err instanceof TimeoutError) resetNonce();
-    console.error(`[Lighter Executor] Cancel all orders error: ${err instanceof Error ? err.message : err}`);
+    const cancelMsg = err instanceof Error ? err.message : String(err);
+    if (cancelMsg.includes("nonce") || cancelMsg.includes("ratelimit") || cancelMsg.includes("Too Many")) resetNonce();
+    console.error(`[Lighter Executor] Cancel all orders error: ${cancelMsg}`);
     return;
   }
   // Re-place stops/TPs for all remaining positions except the one being closed
@@ -165,7 +167,10 @@ export function initLighterEngine(): void {
       exchangeStops.clear();
       exchangeTPs.clear();
       console.log("[Lighter Executor] Cleared stale orders");
-    } catch { /* best effort */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
+    }
     for (const pos of getLighterLivePositions()) {
       if (pos.tradeType?.startsWith("hft-")) continue;
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
@@ -381,7 +386,7 @@ export async function lighterOpenPosition(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Lighter Executor] Leverage failed for ${pair}: ${msg}`);
-      if (err instanceof TimeoutError) resetNonce();
+      if (err instanceof TimeoutError || msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
       return null;
     }
 
