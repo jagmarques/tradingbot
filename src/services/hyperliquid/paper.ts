@@ -231,11 +231,11 @@ export async function paperClosePosition(
   }
   closingSet.add(positionId);
 
+  try {
   const posExchange = position.exchange ?? "hyperliquid";
   const currentPrice = await fetchMidPriceForExchange(position.pair, posExchange);
   if (!currentPrice) {
     console.error(`[Quant Paper] Could not fetch price for ${position.pair}`);
-    closingSet.delete(positionId);
     return { success: false, pnl: 0 };
   }
 
@@ -320,8 +320,10 @@ export async function paperClosePosition(
     `[Quant Paper] ${position.tradeType ?? "directional"}: CLOSE ${position.pair} pnl=${realizedPnl >= 0 ? "+" : ""}$${realizedPnl.toFixed(2)} (${reason})${fundingStr}`,
   );
 
-  closingSet.delete(positionId);
   return { success: true, pnl };
+  } finally {
+    closingSet.delete(positionId);
+  }
 }
 
 export function deductLiquidationPenalty(positionId: string, penaltyUsd: number): void {
