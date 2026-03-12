@@ -321,9 +321,9 @@ export async function lighterOpenPosition(
   }
 
   if (!allowMultiple) {
-    const existingLighter = getLighterLivePositions().find(p => p.pair === pair && p.tradeType === tradeType);
+    const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
     if (existingLighter) {
-      console.log(`[Lighter Executor] ${pair} already open for ${tradeType}, skipping`);
+      console.log(`[Lighter Executor] ${pair} already has live position (${existingLighter.tradeType}), skipping ${tradeType}`);
       return null;
     }
   }
