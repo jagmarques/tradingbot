@@ -146,7 +146,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
-      // Skip if Lighter inverted has opposite live (same exchange nets)
+      // Skip if Lighter inverted has opposite live (netting)
       const invConflict = openPositions.find(p => p.mode === "live" && p.exchange === "lighter" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
       if (invConflict) {
         console.log(`[QuantScheduler] AI: Skip ${decision.pair} — ${invConflict.tradeType} has opposite live`);
@@ -223,7 +223,7 @@ export async function runDirectionalCycle(): Promise<void> {
         if (isInStopLossCooldown(pos.pair, invDir, invType)) continue;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        // Live engines: live+paper; others: paper. Skip live if AI Lighter has opposite (same exchange nets)
+        // Skip live if AI has Lighter opposite (netting)
         if (QUANT_HYBRID_LIVE_ENGINES.has(invType)) {
           const aiConflict = currentPositions.find(p => p.tradeType === "ai-directional" && p.mode === "live" && p.exchange === "lighter" && p.pair === pos.pair && p.direction !== invDir);
           if (!aiConflict) {
