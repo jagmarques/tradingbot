@@ -222,7 +222,7 @@ export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000;
 export const HFT_FADE_MIN_RETURN_PCT = 0.08;
 export const HFT_FADE_POSITION_SIZE_USD = 10;
 export const HFT_FADE_LEVERAGE = 10;
-export const HFT_FADE_TP_PCT = 0.50;
+export const HFT_FADE_TP_PCT = 0.40;
 export const HFT_FADE_SL_PCT = 0.05;
 export const HFT_FADE_TRAIL_ACTIVATION = 9999; // disabled
 export const HFT_FADE_TRAIL_DISTANCE = 0.4;
@@ -231,6 +231,27 @@ export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
 export const HFT_FADE_MAX_CONCURRENT = 10;
 export const HFT_FADE_LIVE_ENABLED = false;
+
+// HFT Fade Variant B
+export const HFT_FADE_B_THRESHOLD_PCT = 0.08;
+export const HFT_FADE_B_TP_PCT = 0.40;
+export const HFT_FADE_B_SL_PCT = 0.03;
+// HFT Fade Variant C
+export const HFT_FADE_C_THRESHOLD_PCT = 0.10;
+export const HFT_FADE_C_TP_PCT = 0.35;
+export const HFT_FADE_C_SL_PCT = 0.04;
+// HFT Fade Variant D
+export const HFT_FADE_D_THRESHOLD_PCT = 0.08;
+export const HFT_FADE_D_TP_PCT = 0.35;
+export const HFT_FADE_D_SL_PCT = 0.04;
+// HFT Fade Variant E
+export const HFT_FADE_E_THRESHOLD_PCT = 0.08;
+export const HFT_FADE_E_TP_PCT = 0.25;
+export const HFT_FADE_E_SL_PCT = 0.05;
+// HFT Fade Variant F
+export const HFT_FADE_F_THRESHOLD_PCT = 0.08;
+export const HFT_FADE_F_TP_PCT = 0.30;
+export const HFT_FADE_F_SL_PCT = 0.05;
 
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
@@ -258,6 +279,11 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "inv-zlemav2-directional": "lighter",
   "inv-schaffv2-directional": "lighter",
   "hft-fade": "lighter",
+  "hft-fade-b": "lighter",
+  "hft-fade-c": "lighter",
+  "hft-fade-d": "lighter",
+  "hft-fade-e": "lighter",
+  "hft-fade-f": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

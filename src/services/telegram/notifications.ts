@@ -8,7 +8,7 @@ import { formatPrice } from "../../utils/format.js";
 function quantTypeLabel(tradeType: string): string {
   const inv = tradeType.startsWith("inv-");
   const base = inv ? tradeType.slice(4) : tradeType;
-  const label = base === "funding" ? "Funding" : base === "hft-fade" ? "HFT" : base === "psar-directional" ? "PSAR" : base === "zlema-directional" ? "ZLEMA" : base === "vortex-directional" ? "Vortex" : base === "schaff-directional" ? "Schaff" : base === "dema-directional" ? "DEMA" : base === "cci-directional" ? "CCI" : base === "aroon-directional" ? "Aroon" : base === "macd-directional" ? "MACD" : base === "zlemav2-directional" ? "ZLEMAv2" : base === "schaffv2-directional" ? "SchaffV2" : "AI";
+  const label = base === "funding" ? "Funding" : base === "hft-fade" ? "HFT" : base === "hft-fade-b" ? "HFT-B" : base === "hft-fade-c" ? "HFT-C" : base === "hft-fade-d" ? "HFT-D" : base === "hft-fade-e" ? "HFT-E" : base === "hft-fade-f" ? "HFT-F" : base === "psar-directional" ? "PSAR" : base === "zlema-directional" ? "ZLEMA" : base === "vortex-directional" ? "Vortex" : base === "schaff-directional" ? "Schaff" : base === "dema-directional" ? "DEMA" : base === "cci-directional" ? "CCI" : base === "aroon-directional" ? "Aroon" : base === "macd-directional" ? "MACD" : base === "zlemav2-directional" ? "ZLEMAv2" : base === "schaffv2-directional" ? "SchaffV2" : "AI";
   return inv ? `inv-${label}` : label;
 }
 

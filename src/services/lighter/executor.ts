@@ -136,7 +136,7 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
   // Re-place stops/TPs for all remaining positions except the one being closed
   for (const pos of getLighterLivePositions()) {
     if (pos.id === closingPositionId) continue;
-    if (pos.tradeType === "hft-fade") continue;
+    if (pos.tradeType?.startsWith("hft-")) continue;
     if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
     if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
   }
@@ -159,7 +159,7 @@ export function initLighterEngine(): void {
       console.log("[Lighter Executor] Cleared stale orders");
     } catch { /* best effort */ }
     for (const pos of getLighterLivePositions()) {
-      if (pos.tradeType === "hft-fade") continue;
+      if (pos.tradeType?.startsWith("hft-")) continue;
       if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
       if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
     }

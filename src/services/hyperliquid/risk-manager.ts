@@ -51,7 +51,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["ai", "psar", "zlema", "vortex", "schaff", "dema", "cci", "aroon", "macd", "zlemav2", "schaffv2", "hft-fade"];
+  const strategies = ["ai", "psar", "zlema", "vortex", "schaff", "dema", "cci", "aroon", "macd", "zlemav2", "schaffv2", "hft-fade", "hft-fade-b", "hft-fade-c", "hft-fade-d", "hft-fade-e", "hft-fade-f"];
   const modes: Array<"live" | "paper"> = ["live", "paper"];
   for (const mode of modes) {
     for (const strategy of strategies) {

@@ -169,8 +169,8 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      // Paper liquidation check (skip hft-fade)
-      if (position.mode === "paper" && position.tradeType !== "hft-fade") {
+      // Paper liquidation check (skip hft-*)
+      if (position.mode === "paper" && !position.tradeType?.startsWith("hft-")) {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;
@@ -283,7 +283,7 @@ async function checkPositionStops(): Promise<void> {
           ? currentPrice >= (position.takeProfit ?? 0)
           : currentPrice <= (position.takeProfit ?? 0));
 
-      if (position.tradeType === "hft-fade") continue; // handled by 2s HFT monitor
+      if (position.tradeType?.startsWith("hft-")) continue; // handled by 2s HFT monitor
 
       // Stop-loss takes priority over take-profit
       if (stopLossBreached) {

@@ -2058,6 +2058,11 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
       pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
       pos.tradeType === "hft-fade" ? "[HFT]" :
+      pos.tradeType === "hft-fade-b" ? "[HFT-B]" :
+      pos.tradeType === "hft-fade-c" ? "[HFT-C]" :
+      pos.tradeType === "hft-fade-d" ? "[HFT-D]" :
+      pos.tradeType === "hft-fade-e" ? "[HFT-E]" :
+      pos.tradeType === "hft-fade-f" ? "[HFT-F]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2084,8 +2089,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     const isHybridOrLive = tradingMode === "hybrid" || tradingMode === "live";
     const livePositions = openPositions.filter(p => p.mode === "live");
-    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-") && p.tradeType !== "hft-fade");
-    const hftPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType === "hft-fade");
+    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-") && !p.tradeType?.startsWith("hft-"));
+    const hftPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("hft-"));
     const invertedPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("inv-"));
 
     if (paperPositions.length > 0) {
@@ -2177,6 +2182,11 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
     ["HFT", "hft-fade"],
+    ["HFT-B", "hft-fade-b"],
+    ["HFT-C", "hft-fade-c"],
+    ["HFT-D", "hft-fade-d"],
+    ["HFT-E", "hft-fade-e"],
+    ["HFT-F", "hft-fade-f"],
   ];
   const invertedEngines: [string, string][] = [
     ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
@@ -2222,11 +2232,11 @@ async function handleQuant(ctx: Context): Promise<void> {
     }
 
     // Paper normal engines (exclude AI and HFT which get own blocks)
-    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && t !== "hft-fade" && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
+    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && !t.startsWith("hft-") && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
     // Paper inverted engines
     const inverted = renderEngineBlock(invertedEngines, "paper");
-    // HFT separate block
-    const hft = renderEngineBlock([["HFT", "hft-fade"]], "paper");
+    // HFT separate block (all hft-* variants)
+    const hft = renderEngineBlock(engines.filter(([, t]) => t.startsWith("hft-")), "paper");
 
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;

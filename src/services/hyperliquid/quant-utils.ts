@@ -53,7 +53,7 @@ export function inferExitReason(
 
 // True if SL close should record cooldown; inv-* and hft-fade exempt
 export function shouldRecordSlCooldown(tradeType: string): boolean {
-  return !tradeType.startsWith("inv-") && tradeType !== "hft-fade";
+  return !tradeType.startsWith("inv-") && !tradeType.startsWith("hft-");
 }
 
 // Rebase SL/TP from expected entry to actual fill (preserves % offset)

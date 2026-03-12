@@ -89,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional" | "inv-psar-directional" | "inv-zlema-directional" | "inv-vortex-directional" | "inv-schaff-directional" | "inv-dema-directional" | "inv-cci-directional" | "inv-aroon-directional" | "inv-macd-directional" | "inv-zlemav2-directional" | "inv-schaffv2-directional" | "hft-fade";
+export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional" | "inv-psar-directional" | "inv-zlema-directional" | "inv-vortex-directional" | "inv-schaff-directional" | "inv-dema-directional" | "inv-cci-directional" | "inv-aroon-directional" | "inv-macd-directional" | "inv-zlemav2-directional" | "inv-schaffv2-directional" | "hft-fade" | "hft-fade-b" | "hft-fade-c" | "hft-fade-d" | "hft-fade-e" | "hft-fade-f";
 
 export interface FundingOpportunity {
   pair: string;
