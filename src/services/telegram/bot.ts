@@ -11,20 +11,16 @@ import {
 import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
 import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
-import {
-  getSettings,
-  toggleAutoCopy,
-  updateSetting,
-} from "../settings/settings.js";
+import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache, setLogOnlyMode, isLogOnlyMode } from "../aibetting/scheduler.js";
+import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
-import { getOpenQuantPositions, setQuantKilled, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
+import { getOpenQuantPositions, isQuantKilled, getDailyLossTotal } from "../hyperliquid/index.js";
 import { getClient } from "../hyperliquid/client.js";
 import { getQuantStats, getQuantValidationMetrics } from "../database/quant.js";
 
@@ -85,12 +81,6 @@ const MAIN_MENU_BUTTONS = [
     { text: "🎲 Bettors", callback_data: "bettors" },
   ],
   [
-    { text: "⚙️ Mode", callback_data: "mode" },
-    { text: "🔧 Settings", callback_data: "settings" },
-  ],
-  [
-    { text: "⏸️ Stop", callback_data: "stop" },
-    { text: "▶️ Resume", callback_data: "resume" },
     { text: "🗂 Manage", callback_data: "manage" },
   ],
 ];
@@ -106,12 +96,9 @@ export async function startBot(): Promise<void> {
   bot.command("pnl", handlePnl);
   bot.command("trades", handleTrades);
   bot.command("timezone", handleTimezone);
-  bot.command("stop", handleStop);
-  bot.command("resume", handleResume);
   bot.command("ai", handleAI);
   bot.command("clearcopies", handleClearCopies);
   bot.command("resetpaper", handleReset);
-  bot.command("mode", handleMode);
   bot.command("insiders", async (ctx) => {
     try {
       await handleInsiders(ctx, "wallets");
@@ -185,34 +172,6 @@ export async function startBot(): Promise<void> {
     } catch (err) {
       console.error("[Telegram] Callback error (timezone):", err);
       await ctx.reply("Failed to update timezone. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("stop", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleStop(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (stop):", err);
-      await ctx.reply("Failed to stop bot. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("resume", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleResume(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (resume):", err);
-      await ctx.reply("Failed to resume bot. Try again.").catch(() => {});
       await ctx.answerCallbackQuery().catch(() => {});
     } finally {
       callbackProcessing = false;
@@ -365,118 +324,6 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
 
-  bot.callbackQuery("settings", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSettings(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (settings):", err);
-      await ctx.reply("Failed to load settings. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("toggle_autocopy", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleToggleAutoCopy(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (toggle_autocopy):", err);
-      await ctx.reply("Failed to toggle auto-copy. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_min_score", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetMinScore(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_min_score):", err);
-      await ctx.reply("Failed to update min score. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_max_daily", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetMaxDaily(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_max_daily):", err);
-      await ctx.reply("Failed to update max daily. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_copy_eth", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetCopyAmount(ctx, "copy_eth");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_copy_eth):", err);
-      await ctx.reply("Failed to update ETH copy amount. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_copy_matic", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetCopyAmount(ctx, "copy_matic");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_copy_matic):", err);
-      await ctx.reply("Failed to update MATIC copy amount. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_copy_default", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetCopyAmount(ctx, "copy_default");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_copy_default):", err);
-      await ctx.reply("Failed to update default copy amount. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("set_copy_poly", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleSetCopyAmount(ctx, "copy_poly");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (set_copy_poly):", err);
-      await ctx.reply("Failed to update Polymarket copy amount. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
   bot.callbackQuery("main_menu", async (ctx) => {
     activeOpId++;
     callbackProcessing = false;
@@ -569,62 +416,6 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     } catch (err) {
       console.error("[Telegram] Callback error (cancel_resetpaper):", err);
       await ctx.reply("Failed to cancel reset. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("mode", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleMode(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (mode):", err);
-      await ctx.reply("Failed to load mode settings. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("mode_switch_live", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleModeSwitchLive(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (mode_switch_live):", err);
-      await ctx.reply("Failed to switch to live mode. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("mode_confirm_live", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleModeConfirmLive(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (mode_confirm_live):", err);
-      await ctx.reply("Failed to confirm live mode. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("mode_switch_paper", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleModeSwitchPaper(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (mode_switch_paper):", err);
-      await ctx.reply("Failed to switch to paper mode. Try again.").catch(() => {});
       await ctx.answerCallbackQuery().catch(() => {});
     } finally {
       callbackProcessing = false;
@@ -1725,32 +1516,6 @@ async function handleCloseAllCopies(ctx: Context): Promise<void> {
   }
 }
 
-async function handleStop(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /stop from user ${ctx.from?.id}`);
-    return;
-  }
-
-  setLogOnlyMode(true);
-  setQuantKilled(true);
-  console.log("[Telegram] Trading paused (log-only + quant killed) by user");
-  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("All trading paused - AI bets log-only, quant trading halted.", backButton);
-}
-
-async function handleResume(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /resume from user ${ctx.from?.id}`);
-    return;
-  }
-
-  setLogOnlyMode(false);
-  setQuantKilled(false);
-  console.log("[Telegram] Trading resumed (log-only off + quant active) by user");
-  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-  await sendDataMessage("All trading resumed - bets and quant active.", backButton);
-}
-
 async function handleTimezone(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /timezone from user ${ctx.from?.id}`);
@@ -2081,128 +1846,6 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
   }
 }
 
-async function handleMode(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /mode from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const currentMode = getTradingMode().toUpperCase();
-    const logOnly = isLogOnlyMode();
-
-    let message = `<b>Trading Mode</b>\n\n`;
-    message += `Mode: <b>${currentMode}</b>\n`;
-    if (logOnly) {
-      message += `Status: <b>Paused</b> (analyzing only)\n`;
-    }
-
-    const buttons: { text: string; callback_data: string }[][] = [];
-
-    const mode = getTradingMode();
-    if (mode === "paper") {
-      buttons.push([{ text: "Switch to HYBRID (quant AI live)", callback_data: "mode_switch_live" }]);
-    } else {
-      buttons.push([{ text: "Switch to PAPER", callback_data: "mode_switch_paper" }]);
-    }
-
-    buttons.push([{ text: "Back", callback_data: "main_menu" }]);
-
-    await sendDataMessage(message, buttons);
-  } catch (err) {
-    console.error("[Telegram] Mode error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to load mode", backButton);
-  }
-}
-
-async function handleModeSwitchLive(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  let message = `<b>Switch to HYBRID Mode</b>\n\n`;
-  message += `This will:\n`;
-  message += `- Delete ALL paper trade data\n`;
-  message += `- Quant AI trades with REAL money\n`;
-  message += `- Technical engines stay paper\n\n`;
-  message += `<b>Are you sure?</b>`;
-
-  const buttons = [
-    [{ text: "Confirm - Switch to HYBRID", callback_data: "mode_confirm_live" }],
-    [{ text: "Cancel", callback_data: "mode" }],
-  ];
-
-  await sendDataMessage(message, buttons);
-}
-
-async function handleModeConfirmLive(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  try {
-    // Delete all paper positions/trades (same logic as handleResetConfirm)
-    const db = (await import("../database/db.js")).getDb();
-
-    deleteAllPositions();
-    deleteAllAnalyses();
-    clearAllPositions();
-    clearAnalysisCache();
-
-    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-    clearAllCopiedPositions();
-
-    db.prepare("DELETE FROM crypto_copy_positions").run();
-    db.prepare("DELETE FROM insider_copy_trades WHERE status = 'open'").run();
-    db.prepare("DELETE FROM trades").run();
-    db.prepare("DELETE FROM positions").run();
-    db.prepare("DELETE FROM daily_stats").run();
-    db.prepare("DELETE FROM arbitrage_positions").run();
-    // copy_outcomes preserved for scoring history
-    db.prepare("DELETE FROM calibration_predictions").run();
-    db.prepare("DELETE FROM calibration_scores").run();
-    db.prepare("DELETE FROM calibration_log").run();
-    db.prepare("DELETE FROM whale_trades").run();
-    // Only clear paper quant data, preserve live trades/positions
-    db.prepare("DELETE FROM quant_trades WHERE mode != 'live'").run();
-    db.prepare("DELETE FROM quant_positions WHERE mode != 'live'").run();
-
-    // Clear all in-memory caches
-    const { clearCryptoCopyMemory } = await import("../copy/executor.js");
-    const { clearWatcherMemory } = await import("../traders/watcher.js");
-    const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
-    const { clearPaperMemory, resetDailyDrawdown } = await import("../hyperliquid/index.js");
-    clearCryptoCopyMemory();
-    clearWatcherMemory();
-    clearCopyPriceFailures();
-    clearPaperMemory();
-    resetDailyDrawdown();
-
-    setTradingMode("hybrid");
-    const { initLiveEngine: initLive } = await import("../hyperliquid/live-executor.js");
-    initLive();
-    console.log("[Telegram] Switched to HYBRID mode, paper data cleared");
-
-    await handleMode(ctx);
-  } catch (err) {
-    console.error("[Telegram] Mode switch error:", err);
-    const backButton = [[{ text: "Back", callback_data: "mode" }]];
-    await sendDataMessage("Failed to switch mode. Check logs.", backButton);
-  }
-}
-
-async function handleModeSwitchPaper(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  const liveCount = getOpenQuantPositions().filter(p => p.mode === "live").length;
-  if (liveCount > 0) {
-    await sendDataMessage(`Cannot switch to paper: ${liveCount} live position(s) still open. Close them first.`);
-    return;
-  }
-
-  setTradingMode("paper");
-  console.log("[Telegram] Switched to PAPER mode");
-
-  await handleMode(ctx);
-}
-
 async function handleTextInput(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     return;
@@ -2215,119 +1858,6 @@ async function handleTextInput(ctx: Context): Promise<void> {
   }
 
   const input = ctx.message.text.trim();
-
-  // Handle settings input mode
-  if (settingsInputMode) {
-    const numValue = parseFloat(input);
-
-    if (isNaN(numValue)) {
-      await ctx.reply("Please enter a valid number");
-      return;
-    }
-
-    if (settingsInputMode === "min_score") {
-      if (numValue < 0 || numValue > 100) {
-        await ctx.reply("Min score must be between 0 and 100");
-        return;
-      }
-      updateSetting(userId, "minTraderScore", numValue);
-      console.log(`[Telegram] Min score set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "max_daily") {
-      if (numValue < 1 || numValue > 50) {
-        await ctx.reply("Max daily must be between 1 and 50");
-        return;
-      }
-      updateSetting(userId, "maxCopyPerDay", numValue);
-      console.log(`[Telegram] Max daily set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "copy_eth") {
-      if (numValue <= 0 || numValue > 0.1) {
-        await ctx.reply("ETH amount must be between 0 and 0.1");
-        return;
-      }
-      updateSetting(userId, "copyAmountEth", numValue);
-      console.log(`[Telegram] Copy ETH amount set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "copy_matic") {
-      if (numValue <= 0 || numValue > 100) {
-        await ctx.reply("MATIC amount must be between 0 and 100");
-        return;
-      }
-      updateSetting(userId, "copyAmountMatic", numValue);
-      console.log(`[Telegram] Copy MATIC amount set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "copy_default") {
-      if (numValue <= 0 || numValue > 1) {
-        await ctx.reply("Default amount must be between 0 and 1");
-        return;
-      }
-      updateSetting(userId, "copyAmountDefault", numValue);
-      console.log(`[Telegram] Copy default amount set to ${numValue} by user ${userId}`);
-    } else if (settingsInputMode === "copy_poly") {
-      if (numValue <= 0 || numValue > 100) {
-        await ctx.reply("Polymarket amount must be between $0 and $100");
-        return;
-      }
-      updateSetting(userId, "polymarketCopyUsd", numValue);
-      console.log(`[Telegram] Polymarket copy amount set to $${numValue} by user ${userId}`);
-    }
-
-    settingsInputMode = null;
-
-    // Delete user's message and prompt message
-    if (chatId) {
-      await bot?.api.deleteMessage(chatId, ctx.message.message_id).catch(() => {});
-      if (lastPromptMessageId) {
-        await bot?.api.deleteMessage(chatId, lastPromptMessageId).catch(() => {});
-        lastPromptMessageId = null;
-      }
-    }
-
-    // Create a mock context for handleSettings
-    const settings = getSettings(userId);
-    const env = loadEnv();
-    const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
-
-    const aiEnabled = env.AIBETTING_ENABLED === "true";
-    const aiBettingSection = aiEnabled
-      ? `\n\n<b>AI BETTING</b>\n` +
-        `Max Bet: $${env.AIBETTING_MAX_BET} | Max Exposure: $${env.AIBETTING_MAX_EXPOSURE}\n` +
-        `Min Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Min Confidence: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%\n` +
-        `Bayesian Weight: ${(env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0)}% market / ${((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0)}% AI\n` +
-        `Take Profit: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | Stop Loss: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%\n` +
-        `Hold to Resolution: ${env.AIBETTING_HOLD_RESOLUTION_DAYS} days`
-      : `\n\n<b>AI BETTING</b>\nDisabled`;
-
-    const message =
-      `<b>Settings</b>\n\n` +
-      `<b>AUTO-COPY [${copyStatus}]</b>\n` +
-      `Copy trades from profitable wallets (all chains)\n\n` +
-      `Min Score: ${settings.minTraderScore}  |  Max/Day: ${settings.maxCopyPerDay}\n` +
-      `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay} copies\n\n` +
-      `<b>Copy Amounts (fixed per trade):</b>\n` +
-      `ETH: ${settings.copyAmountEth}\n` +
-      `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}\n` +
-      `Polymarket: $${settings.polymarketCopyUsd}` +
-      aiBettingSection;
-
-    const keyboard = [
-      [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
-      [
-        { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
-        { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
-      ],
-      [
-        { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
-      ],
-      [
-        { text: `MATIC: ${settings.copyAmountMatic}`, callback_data: "set_copy_matic" },
-        { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
-      ],
-      [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
-      [{ text: "Timezone", callback_data: "timezone" }],
-      [{ text: "Back", callback_data: "main_menu" }],
-    ];
-
-    await sendDataMessage(message, keyboard);
-    return;
-  }
 
   // Handle time input for timezone detection
   if (input.match(/^(\d{1,2}):(\d{2})$/)) {
@@ -2386,122 +1916,6 @@ async function handleTextInput(ctx: Context): Promise<void> {
     console.error("[Telegram] Text input error:", err);
     await ctx.reply("Error processing input. Try again.").catch(() => {});
   }
-}
-
-// Settings state for multi-step input
-let settingsInputMode: "min_score" | "max_daily" | "copy_eth" | "copy_matic" | "copy_default" | "copy_poly" | null = null;
-
-async function handleSettings(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /settings from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const userId = ctx.from?.id?.toString();
-    if (!userId) return;
-
-    const settings = getSettings(userId);
-    const env = loadEnv();
-
-    const copyStatus = settings.autoCopyEnabled ? "ON" : "OFF";
-    const aiEnabled = env.AIBETTING_ENABLED === "true";
-    const bayMkt = (env.AIBETTING_BAYESIAN_WEIGHT * 100).toFixed(0);
-    const bayAI = ((1 - env.AIBETTING_BAYESIAN_WEIGHT) * 100).toFixed(0);
-
-    const settingsLines = [
-      `Copy: ${copyStatus}`,
-      `Score: ${settings.minTraderScore} | Max/Day: ${settings.maxCopyPerDay}`,
-      `Today: ${settings.dailyCopyCount}/${settings.maxCopyPerDay}`,
-      ``,
-      `ETH: ${settings.copyAmountEth}`,
-      `MATIC: ${settings.copyAmountMatic} | Other: ${settings.copyAmountDefault}`,
-      `Poly: $${settings.polymarketCopyUsd}`,
-    ];
-
-    if (aiEnabled) {
-      settingsLines.push(``);
-      settingsLines.push(`AI Bets: ON`);
-      settingsLines.push(`MaxBet: $${env.AIBETTING_MAX_BET} | MaxExp: $${env.AIBETTING_MAX_EXPOSURE}`);
-      settingsLines.push(`Edge: ${(env.AIBETTING_MIN_EDGE * 100).toFixed(0)}% | Conf: ${(env.AIBETTING_MIN_CONFIDENCE * 100).toFixed(0)}%`);
-      settingsLines.push(`Bayesian: ${bayMkt}/${bayAI}`);
-      settingsLines.push(`TP: +${(env.AIBETTING_TAKE_PROFIT * 100).toFixed(0)}% | SL: -${(env.AIBETTING_STOP_LOSS * 100).toFixed(0)}%`);
-      settingsLines.push(`Hold: ${env.AIBETTING_HOLD_RESOLUTION_DAYS}d`);
-    } else {
-      settingsLines.push(``);
-      settingsLines.push(`AI Bets: OFF`);
-    }
-
-    const message = `<b>Settings</b>\n\n${settingsLines.join("\n")}`;
-
-    const keyboard = [
-      [{ text: `Auto-Copy: ${copyStatus}`, callback_data: "toggle_autocopy" }],
-      [
-        { text: `Min Score: ${settings.minTraderScore}`, callback_data: "set_min_score" },
-        { text: `Max/Day: ${settings.maxCopyPerDay}`, callback_data: "set_max_daily" },
-      ],
-      [
-        { text: `ETH: ${settings.copyAmountEth}`, callback_data: "set_copy_eth" },
-      ],
-      [
-        { text: `MATIC: ${settings.copyAmountMatic}`, callback_data: "set_copy_matic" },
-        { text: `Other: ${settings.copyAmountDefault}`, callback_data: "set_copy_default" },
-      ],
-      [{ text: `Polymarket: $${settings.polymarketCopyUsd}`, callback_data: "set_copy_poly" }],
-      [{ text: "Timezone", callback_data: "timezone" }],
-      [{ text: "Back", callback_data: "main_menu" }],
-    ];
-
-    await sendDataMessage(message, keyboard);
-  } catch (err) {
-    console.error("[Telegram] Settings error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to load settings", backButton);
-  }
-}
-
-async function handleToggleAutoCopy(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  const userId = ctx.from?.id?.toString();
-  if (!userId) return;
-
-  const newValue = toggleAutoCopy(userId);
-  console.log(`[Telegram] Auto-copy toggled to ${newValue} by user ${userId}`);
-
-  await handleSettings(ctx);
-}
-
-async function handleSetMinScore(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  settingsInputMode = "min_score";
-  const msg = await ctx.reply("Enter minimum trader score (0-100):");
-  lastPromptMessageId = msg.message_id;
-}
-
-async function handleSetMaxDaily(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  settingsInputMode = "max_daily";
-  const msg = await ctx.reply("Enter max copies per day (1-50):");
-  lastPromptMessageId = msg.message_id;
-}
-
-async function handleSetCopyAmount(ctx: Context, mode: "copy_eth" | "copy_matic" | "copy_default" | "copy_poly"): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  settingsInputMode = mode;
-
-  const prompts: Record<typeof mode, string> = {
-    copy_eth: "Enter ETH amount per copy trade (e.g., 0.001):",
-    copy_matic: "Enter MATIC amount per copy trade (e.g., 2):",
-    copy_default: "Enter default amount for other chains (e.g., 0.005):",
-    copy_poly: "Enter Polymarket copy amount in USD (e.g., 5):",
-  };
-
-  const msg = await ctx.reply(prompts[mode]);
-  lastPromptMessageId = msg.message_id;
 }
 
 function findTimezoneForOffset(offsetHours: number): string | null {
