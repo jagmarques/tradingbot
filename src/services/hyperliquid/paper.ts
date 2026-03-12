@@ -78,7 +78,10 @@ export function getPaperPositions(): QuantPosition[] {
   );
 }
 
-async function fetchMidPrice(pair: string): Promise<number | null> {
+async function fetchMidPriceForExchange(pair: string, exchange: "hyperliquid" | "lighter" = "hyperliquid"): Promise<number | null> {
+  if (exchange === "lighter") {
+    return getLighterMidPrice(pair);
+  }
   try {
     const sdk = getClient();
     const mids = await sdk.info.getAllMids(true) as Record<string, string>;
@@ -91,13 +94,6 @@ async function fetchMidPrice(pair: string): Promise<number | null> {
     console.error(`[Quant Paper] Failed to fetch mid price for ${pair}: ${msg}`);
     return null;
   }
-}
-
-async function fetchMidPriceForExchange(pair: string, exchange: "hyperliquid" | "lighter" = "hyperliquid"): Promise<number | null> {
-  if (exchange === "lighter") {
-    return getLighterMidPrice(pair);
-  }
-  return fetchMidPrice(pair);
 }
 
 // Accrue funding income for arb positions (1h settle)

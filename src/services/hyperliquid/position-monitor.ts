@@ -108,15 +108,18 @@ async function checkPositionStops(): Promise<void> {
     }
 
     let mids: Record<string, string> = {};
-    try {
-      const sdk = getClient();
-      mids = await withTimeout(
-        sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-        API_PRICE_TIMEOUT_MS, "HL getAllMids",
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
+    const hlPositions = positions.filter(p => p.exchange !== "lighter");
+    if (hlPositions.length > 0) {
+      try {
+        const sdk = getClient();
+        mids = await withTimeout(
+          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+          API_PRICE_TIMEOUT_MS, "HL getAllMids",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
+      }
     }
 
     let lighterMids: Record<string, string> = {};
