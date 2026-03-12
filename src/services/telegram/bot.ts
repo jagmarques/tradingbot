@@ -2057,17 +2057,17 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "inv-macd-directional" ? "[iMA]" :
       pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
       pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
-      pos.tradeType === "hft-fade" ? "[HFT]" :
-      pos.tradeType === "hft-t8-tp40-sl3" ? "[HFT-t8-tp40-sl3]" :
-      pos.tradeType === "hft-t10-tp35-sl4" ? "[HFT-t10-tp35-sl4]" :
-      pos.tradeType === "hft-t8-tp35-sl4" ? "[HFT-t8-tp35-sl4]" :
-      pos.tradeType === "hft-t8-tp25-sl5" ? "[HFT-t8-tp25-sl5]" :
-      pos.tradeType === "hft-t8-tp30-sl5" ? "[HFT-t8-tp30-sl5]" :
-      pos.tradeType === "hft-t12-tp40-sl3" ? "[HFT-t12-tp40-sl3]" :
-      pos.tradeType === "hft-t10-tp40-sl3" ? "[HFT-t10-tp40-sl3]" :
-      pos.tradeType === "hft-t8-tp30-sl3" ? "[HFT-t8-tp30-sl3]" :
-      pos.tradeType === "hft-t8-tp35-sl3" ? "[HFT-t8-tp35-sl3]" :
-      pos.tradeType === "hft-t8-tp25-sl3" ? "[HFT-t8-tp25-sl3]" :
+      pos.tradeType === "hft-fade" ? "[HFT-0]" :
+      pos.tradeType === "hft-t8-tp40-sl3" ? "[HFT-1]" :
+      pos.tradeType === "hft-t10-tp35-sl4" ? "[HFT-2]" :
+      pos.tradeType === "hft-t8-tp35-sl4" ? "[HFT-3]" :
+      pos.tradeType === "hft-t8-tp25-sl5" ? "[HFT-4]" :
+      pos.tradeType === "hft-t8-tp30-sl5" ? "[HFT-5]" :
+      pos.tradeType === "hft-t12-tp40-sl3" ? "[HFT-6]" :
+      pos.tradeType === "hft-t10-tp40-sl3" ? "[HFT-7]" :
+      pos.tradeType === "hft-t8-tp30-sl3" ? "[HFT-8]" :
+      pos.tradeType === "hft-t8-tp35-sl3" ? "[HFT-9]" :
+      pos.tradeType === "hft-t8-tp25-sl3" ? "[HFT-10]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2186,17 +2186,17 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["DEMA", "dema-directional"], ["CCI", "cci-directional"],
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
-    ["HFT", "hft-fade"],
-    ["HFT-t8-tp40-sl3", "hft-t8-tp40-sl3"],
-    ["HFT-t10-tp35-sl4", "hft-t10-tp35-sl4"],
-    ["HFT-t8-tp35-sl4", "hft-t8-tp35-sl4"],
-    ["HFT-t8-tp25-sl5", "hft-t8-tp25-sl5"],
-    ["HFT-t8-tp30-sl5", "hft-t8-tp30-sl5"],
-    ["HFT-t12-tp40-sl3", "hft-t12-tp40-sl3"],
-    ["HFT-t10-tp40-sl3", "hft-t10-tp40-sl3"],
-    ["HFT-t8-tp30-sl3", "hft-t8-tp30-sl3"],
-    ["HFT-t8-tp35-sl3", "hft-t8-tp35-sl3"],
-    ["HFT-t8-tp25-sl3", "hft-t8-tp25-sl3"],
+    ["HFT-0", "hft-fade"],
+    ["HFT-1", "hft-t8-tp40-sl3"],
+    ["HFT-2", "hft-t10-tp35-sl4"],
+    ["HFT-3", "hft-t8-tp35-sl4"],
+    ["HFT-4", "hft-t8-tp25-sl5"],
+    ["HFT-5", "hft-t8-tp30-sl5"],
+    ["HFT-6", "hft-t12-tp40-sl3"],
+    ["HFT-7", "hft-t10-tp40-sl3"],
+    ["HFT-8", "hft-t8-tp30-sl3"],
+    ["HFT-9", "hft-t8-tp35-sl3"],
+    ["HFT-10", "hft-t8-tp25-sl3"],
   ];
   const invertedEngines: [string, string][] = [
     ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
