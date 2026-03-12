@@ -66,6 +66,7 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
       ),
     );
     if (err) {
+      if (err.includes("nonce") || err.includes("ratelimit") || err.includes("Too Many")) resetNonce();
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
       exchangeStops.add(position.id);
@@ -107,6 +108,7 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
       ),
     );
     if (err) {
+      if (err.includes("nonce") || err.includes("ratelimit") || err.includes("Too Many")) resetNonce();
       console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
     } else {
       exchangeTPs.add(position.id);
