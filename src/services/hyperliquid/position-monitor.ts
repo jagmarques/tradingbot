@@ -41,17 +41,17 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "schaffv2-directional": { activation: SCHAFFV2_TRAIL_ACTIVATION, distance: SCHAFFV2_TRAIL_DISTANCE },
   "ai-directional": { activation: 20, distance: 5 },
   "hft-fade": { activation: HFT_FADE_TRAIL_ACTIVATION, distance: HFT_FADE_TRAIL_DISTANCE },
-  // Inverted: tighter trail for mean-reversion
-  "inv-psar-directional": { activation: 10, distance: 3 },
-  "inv-zlema-directional": { activation: 10, distance: 3 },
-  "inv-vortex-directional": { activation: 10, distance: 3 },
-  "inv-schaff-directional": { activation: 10, distance: 3 },
-  "inv-dema-directional": { activation: 10, distance: 3 },
-  "inv-cci-directional": { activation: 10, distance: 3 },
-  "inv-aroon-directional": { activation: 10, distance: 3 },
-  "inv-macd-directional": { activation: 10, distance: 3 },
-  "inv-zlemav2-directional": { activation: 10, distance: 3 },
-  "inv-schaffv2-directional": { activation: 10, distance: 3 },
+  // Inverted: activate earlier to lock in profits faster
+  "inv-psar-directional": { activation: 5, distance: 3 },
+  "inv-zlema-directional": { activation: 5, distance: 3 },
+  "inv-vortex-directional": { activation: 5, distance: 3 },
+  "inv-schaff-directional": { activation: 5, distance: 3 },
+  "inv-dema-directional": { activation: 5, distance: 3 },
+  "inv-cci-directional": { activation: 5, distance: 3 },
+  "inv-aroon-directional": { activation: 5, distance: 3 },
+  "inv-macd-directional": { activation: 5, distance: 3 },
+  "inv-zlemav2-directional": { activation: 5, distance: 3 },
+  "inv-schaffv2-directional": { activation: 5, distance: 3 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
