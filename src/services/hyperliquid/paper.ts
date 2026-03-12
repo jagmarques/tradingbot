@@ -8,7 +8,7 @@ import {
   loadOpenQuantPositions,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
-import { calcPnl, shouldRecordSlCooldown } from "./quant-utils.js";
+import { calcPnl, shouldRecordSlCooldown, rebaseStops } from "./quant-utils.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
@@ -180,10 +180,9 @@ export async function paperOpenPosition(
   let adjStop = stopLoss;
   let adjTP = takeProfit;
   if (!isInverted && aiEntryPrice && aiEntryPrice > 0) {
-    const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
-    const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
-    adjStop = price * (1 + stopPct);
-    adjTP = price * (1 + tpPct);
+    const rebased = rebaseStops(stopLoss, takeProfit, aiEntryPrice, price);
+    adjStop = rebased.stopLoss;
+    adjTP = rebased.takeProfit;
     if (Math.abs(price - aiEntryPrice) / aiEntryPrice > 0.001) {
       console.log(
         `[Quant Paper] Rebased stops for ${pair}: entry ${aiEntryPrice}->${price}, stop ${stopLoss.toPrecision(5)}->${adjStop.toPrecision(5)}`,

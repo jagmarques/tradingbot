@@ -66,3 +66,21 @@ export function inferExitReason(
 export function shouldRecordSlCooldown(tradeType: string): boolean {
   return !tradeType.startsWith("inv-") && tradeType !== "hft-fade";
 }
+
+/**
+ * Rebase stop-loss and take-profit from AI entry price to actual fill price.
+ * Preserves the percentage distance from entry.
+ */
+export function rebaseStops(
+  stopLoss: number,
+  takeProfit: number,
+  aiEntryPrice: number,
+  fillPrice: number,
+): { stopLoss: number; takeProfit: number } {
+  const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
+  const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
+  return {
+    stopLoss: fillPrice * (1 + stopPct),
+    takeProfit: fillPrice * (1 + tpPct),
+  };
+}

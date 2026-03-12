@@ -11,7 +11,7 @@ import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
 
 const MAX_SLIPPAGE = 0.005;
 
@@ -479,10 +479,9 @@ export async function liveOpenPosition(
     let adjStop = stopLoss;
     let adjTP = takeProfit;
     if (aiEntryPrice && aiEntryPrice > 0) {
-      const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
-      const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
-      adjStop = fillPrice * (1 + stopPct);
-      adjTP = fillPrice * (1 + tpPct);
+      const rebased = rebaseStops(stopLoss, takeProfit, aiEntryPrice, fillPrice);
+      adjStop = rebased.stopLoss;
+      adjTP = rebased.takeProfit;
     }
 
     const position: QuantPosition = {

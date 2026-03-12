@@ -24,7 +24,7 @@ import { recordStopLossCooldown } from "../hyperliquid/scheduler.js";
 import { SignerClient } from "zklighter-sdk";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
 
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
@@ -455,10 +455,9 @@ export async function lighterOpenPosition(
     let adjStop = stopLoss;
     let adjTP = takeProfit;
     if (aiEntryPrice && aiEntryPrice > 0) {
-      const stopPct = (stopLoss - aiEntryPrice) / aiEntryPrice;
-      const tpPct = (takeProfit - aiEntryPrice) / aiEntryPrice;
-      adjStop = fillPrice * (1 + stopPct);
-      adjTP = fillPrice * (1 + tpPct);
+      const rebased = rebaseStops(stopLoss, takeProfit, aiEntryPrice, fillPrice);
+      adjStop = rebased.stopLoss;
+      adjTP = rebased.takeProfit;
     }
 
     const position: QuantPosition = {
