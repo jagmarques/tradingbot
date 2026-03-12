@@ -71,7 +71,7 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = false): Promise<void> {
+async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = true): Promise<void> {
   const result = await closePosition(position.id, reason, skipCancelReplace);
   if (result.success) {
     closeFailCounts.delete(position.id);

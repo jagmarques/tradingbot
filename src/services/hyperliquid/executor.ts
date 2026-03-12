@@ -41,8 +41,7 @@ export async function openPosition(
   // forcePaper bypasses live routing
   const useLive = !forcePaper && (
     mode === "live" ||
-    (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)) ||
-    (mode === "hybrid" && tradeType === "ai-directional"));
+    (mode === "hybrid" && QUANT_HYBRID_LIVE_ENGINES.has(tradeType)));
 
   const posMode: "live" | "paper" = useLive ? "live" : "paper";
   const strategy = strategyFromTradeType(tradeType);
