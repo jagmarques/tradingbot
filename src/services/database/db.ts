@@ -387,6 +387,9 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added exchange column");
   }
 
+  // Reset peak for inverted positions so new trailing config applies cleanly
+  db.exec(`UPDATE quant_positions SET max_unrealized_pnl_pct = NULL WHERE status = 'open' AND trade_type LIKE 'inv-%'`);
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }
