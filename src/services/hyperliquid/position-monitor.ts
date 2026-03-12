@@ -40,7 +40,7 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "schaffv2-directional": { activation: SCHAFFV2_TRAIL_ACTIVATION, distance: SCHAFFV2_TRAIL_DISTANCE },
   "ai-directional": { activation: 20, distance: 5 },
   "hft-fade": { activation: HFT_FADE_TRAIL_ACTIVATION, distance: HFT_FADE_TRAIL_DISTANCE },
-  // Inverted engines: tighter trail to lock in mean-reversion gains faster
+  // Inverted: tighter trail for mean-reversion
   "inv-psar-directional": { activation: 10, distance: 3 },
   "inv-zlema-directional": { activation: 10, distance: 3 },
   "inv-vortex-directional": { activation: 10, distance: 3 },
