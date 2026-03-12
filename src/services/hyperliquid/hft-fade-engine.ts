@@ -53,6 +53,19 @@ export interface HftVariantConfig {
   thresholdPct: number;
   tpPct: number;
   slPct: number;
+  regimeAdaptive?: boolean;
+}
+
+interface OhlcCandle {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+interface OhlcCache {
+  candles: OhlcCandle[];
+  expiresAt: number;
 }
 
 const HFT_VARIANTS: HftVariantConfig[] = [
@@ -67,6 +80,7 @@ const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-t8-tp30-sl3", label: "HFT-t8-tp30-sl3", thresholdPct: HFT_T8_TP30_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP30_SL3_TP_PCT, slPct: HFT_T8_TP30_SL3_SL_PCT },
   { tradeType: "hft-t8-tp35-sl3", label: "HFT-t8-tp35-sl3", thresholdPct: HFT_T8_TP35_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP35_SL3_TP_PCT, slPct: HFT_T8_TP35_SL3_SL_PCT },
   { tradeType: "hft-t8-tp25-sl3", label: "HFT-t8-tp25-sl3", thresholdPct: HFT_T8_TP25_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP25_SL3_TP_PCT, slPct: HFT_T8_TP25_SL3_SL_PCT },
+  { tradeType: "hft-regime", label: "HFT-Regime", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true },
 ];
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
@@ -99,6 +113,9 @@ interface VolumeCache {
 const volumeCache = new Map<string, VolumeCache>();
 const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (volume doesn't change meaningfully per cycle)
 
+const ohlcCache = new Map<string, OhlcCache>();
+const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min TTL
+
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
   if (cached && Date.now() < cached.expiresAt) {
@@ -126,6 +143,67 @@ async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | null> {
+  const cached = ohlcCache.get(symbol);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.candles;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=22`;
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) {
+      console.error(`[HFT-Regime] Binance klines error for ${symbol}: HTTP ${resp.status}`);
+      return null;
+    }
+    const data = (await resp.json()) as unknown[][];
+    if (!Array.isArray(data) || data.length < 1) return null;
+    // Exclude last candle (current/open), take first 21 closed candles
+    const closed = data.slice(0, 21);
+    const candles: OhlcCandle[] = [];
+    for (const kline of closed) {
+      if (!Array.isArray(kline) || kline.length < 5) continue;
+      const open = parseFloat(kline[1] as string);
+      const high = parseFloat(kline[2] as string);
+      const low = parseFloat(kline[3] as string);
+      const close = parseFloat(kline[4] as string);
+      if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
+      candles.push({ open, high, low, close });
+    }
+    if (!candles.length) return null;
+    ohlcCache.set(symbol, { candles, expiresAt: Date.now() + OHLC_CACHE_TTL_MS });
+    return candles;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[HFT-Regime] Binance klines fetch failed for ${symbol}: ${msg}`);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function computeRegimeParams(candles: OhlcCandle[]): { skip: boolean; thresholdPct: number; tpPct: number; slPct: number } {
+  const last20 = candles.slice(-20);
+  const sumSigned = last20.reduce((acc, c) => acc + (c.close - c.open), 0);
+  const sumAbs = last20.reduce((acc, c) => acc + Math.abs(c.close - c.open), 0);
+  const trendStrength = sumAbs === 0 ? 0 : Math.abs(sumSigned) / sumAbs;
+
+  if (trendStrength > 0.5) {
+    return { skip: true, thresholdPct: 0, tpPct: 0, slPct: 0 };
+  }
+
+  const last14 = candles.slice(-14);
+  const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
+
+  if (atrPct > 0.15) {
+    return { skip: false, thresholdPct: 0.12, tpPct: 0.40, slPct: 0.05 };
+  }
+
+  return { skip: false, thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03 };
 }
 
 interface Candle5m {
@@ -193,13 +271,30 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         continue;
       }
 
+      let effectiveThreshold = config.thresholdPct;
+      let effectiveTp = config.tpPct;
+      let effectiveSl = config.slPct;
+
+      if (config.regimeAdaptive) {
+        const ohlcCandles = await fetchBinanceOhlcCandles(symbol);
+        if (!ohlcCandles) continue;
+        const regime = computeRegimeParams(ohlcCandles);
+        if (regime.skip) {
+          console.log(`[${config.label}] ${pair} skipped: trending (strength > 0.5)`);
+          continue;
+        }
+        effectiveThreshold = regime.thresholdPct;
+        effectiveTp = regime.tpPct;
+        effectiveSl = regime.slPct;
+      }
+
       // Fetch closed 5m candle
       const candle = await fetchBinance5mCandle(symbol);
       if (!candle) continue;
 
       // Compute return
       const returnPct = ((candle.close - candle.open) / candle.open) * 100;
-      if (Math.abs(returnPct) < config.thresholdPct) continue;
+      if (Math.abs(returnPct) < effectiveThreshold) continue;
 
       signals++;
 
@@ -211,11 +306,11 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       let sl: number;
       let tp: number;
       if (direction === "long") {
-        sl = entryPrice * (1 - config.slPct / 100);
-        tp = entryPrice * (1 + config.tpPct / 100);
+        sl = entryPrice * (1 - effectiveSl / 100);
+        tp = entryPrice * (1 + effectiveTp / 100);
       } else {
-        sl = entryPrice * (1 + config.slPct / 100);
-        tp = entryPrice * (1 - config.tpPct / 100);
+        sl = entryPrice * (1 + effectiveSl / 100);
+        tp = entryPrice * (1 - effectiveTp / 100);
       }
 
       // Concurrent cap
