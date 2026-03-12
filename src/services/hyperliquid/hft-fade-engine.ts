@@ -187,23 +187,16 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
 }
 
 function computeRegimeParams(candles: OhlcCandle[]): { skip: boolean; thresholdPct: number; tpPct: number; slPct: number } {
-  const last20 = candles.slice(-20);
-  const sumSigned = last20.reduce((acc, c) => acc + (c.close - c.open), 0);
-  const sumAbs = last20.reduce((acc, c) => acc + Math.abs(c.close - c.open), 0);
-  const trendStrength = sumAbs === 0 ? 0 : Math.abs(sumSigned) / sumAbs;
-
-  if (trendStrength > 0.5) {
-    return { skip: true, thresholdPct: 0, tpPct: 0, slPct: 0 };
-  }
-
   const last14 = candles.slice(-14);
   const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
 
-  if (atrPct > 0.15) {
-    return { skip: false, thresholdPct: 0.12, tpPct: 0.40, slPct: 0.05 };
+  // High-vol (ATR > 0.60%): wider candles → standard params
+  if (atrPct > 0.60) {
+    return { skip: false, thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03 };
   }
 
-  return { skip: false, thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03 };
+  // Ranging (ATR <= 0.60%): tight candles → tighter entry/exit
+  return { skip: false, thresholdPct: 0.06, tpPct: 0.20, slPct: 0.02 };
 }
 
 interface Candle5m {
@@ -278,10 +271,6 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         const ohlcCandles = await fetchBinanceOhlcCandles(symbol);
         if (!ohlcCandles) continue;
         const regime = computeRegimeParams(ohlcCandles);
-        if (regime.skip) {
-          console.log(`[${config.label}] ${pair} skipped: trending (strength > 0.5)`);
-          continue;
-        }
         effectiveThreshold = regime.thresholdPct;
         effectiveTp = regime.tpPct;
         effectiveSl = regime.slPct;
