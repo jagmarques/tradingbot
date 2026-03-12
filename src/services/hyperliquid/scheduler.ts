@@ -14,7 +14,7 @@ import { runZlemaV2DecisionEngine } from "./zlema-v2-engine.js";
 import { runSchaffV2DecisionEngine } from "./schaff-v2-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 import type { TechSignal } from "./prompt.js";
 
@@ -58,7 +58,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const analyses = await runMarketDataPipeline();
 
-    // Technical engines first (feed signals to AI)
+    // Technical engines first (signals fed to AI)
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
     const vortexDecisions = await runVortexDecisionEngine(analyses);
@@ -70,7 +70,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const zlemav2Decisions = await runZlemaV2DecisionEngine(analyses);
     const schaffv2Decisions = await runSchaffV2DecisionEngine(analyses);
 
-    // Collect per-pair signals for AI context
+    // Per-pair signals for AI
     const techSignalsByPair = new Map<string, TechSignal[]>();
     const signalSources: Array<{ engine: string; decisions: typeof demaDecisions }> = [
       { engine: "Schaff 4h", decisions: schaffDecisions },
@@ -91,7 +91,7 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // AI engine
+    // AI
     const aiDecisions: QuantAIDecision[] = [];
     const aiSignals = new Map<string, "long" | "short" | "flat">();
     for (const analysis of analyses) {
@@ -119,13 +119,13 @@ export async function runDirectionalCycle(): Promise<void> {
     const aiOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType).map(p => p.pair),
     );
-    // Per-engine open pair tracking (paper only)
+    // Open pairs per engine (paper)
     const paperOpenPairsByEngine = new Map<string, Set<string>>();
     for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional", "inv-psar-directional", "inv-zlema-directional", "inv-vortex-directional", "inv-schaff-directional", "inv-dema-directional", "inv-cci-directional", "inv-aroon-directional", "inv-macd-directional", "inv-zlemav2-directional", "inv-schaffv2-directional"]) {
       paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
 
-    // AI signal flip exits
+    // AI flip exits
     const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
     for (const pos of aiPositions) {
       const signal = aiSignals.get(pos.pair);
@@ -146,6 +146,12 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
+      // Skip if inverted has opposite live (Lighter nets)
+      const invConflict = openPositions.find(p => p.mode === "live" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
+      if (invConflict) {
+        console.log(`[QuantScheduler] AI: Skip ${decision.pair} — ${invConflict.tradeType} has opposite live`);
+        continue;
+      }
       const aiSize = QUANT_FIXED_POSITION_SIZE_USD;
       const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
@@ -156,7 +162,7 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
 
-    // Paper engines (all 10)
+    // Paper engines
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
@@ -188,7 +194,7 @@ export async function runDirectionalCycle(): Promise<void> {
       paperExecuted.set(tradeType, count);
     }
 
-    // Re-fetch includes positions opened this cycle
+    // Re-fetch (includes positions opened this cycle)
     const currentPositions = getOpenQuantPositions();
     const invertedPairs: Array<{ label: string; normalType: string; invType: string }> = [
       { label: "iSchaff", normalType: "schaff-directional", invType: "inv-schaff-directional" },
@@ -214,17 +220,23 @@ export async function runDirectionalCycle(): Promise<void> {
           continue;
         }
         const invDir = pos.direction === "long" ? "short" as const : "long" as const;
+        if (isInStopLossCooldown(pos.pair, invDir, invType)) continue;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        // Live + paper for inv-dema; paper only for all others
-        if (invType === "inv-dema-directional") {
-          await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false);
+        // Live engines: live+paper; others: paper. Skip live if AI holds opposite (Lighter nets)
+        if (QUANT_HYBRID_LIVE_ENGINES.has(invType)) {
+          const aiConflict = currentPositions.find(p => p.tradeType === "ai-directional" && p.mode === "live" && p.pair === pos.pair && p.direction !== invDir);
+          if (!aiConflict) {
+            await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false);
+          } else {
+            console.log(`[QuantScheduler] ${label}: Skip live ${pos.pair} — AI has opposite live position`);
+          }
         }
         const position = await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
         if (position) {
           count++;
           invOpenPairs.add(pos.pair);
-          const mode = invType === "inv-dema-directional" ? "live+paper" : "paper";
+          const mode = QUANT_HYBRID_LIVE_ENGINES.has(invType) ? "live+paper" : "paper";
           console.log(`[QuantScheduler] ${label}(${mode}): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
         }
       }
@@ -232,8 +244,9 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
+    const eI = (tt: string, d: { length: number }) => `${eP(tt, d)}${QUANT_HYBRID_LIVE_ENGINES.has(tt) ? "L+P" : "P"}`;
     const normalLog = `AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
-    const invLog = `iZLEMAv2 ${eP("inv-zlemav2-directional", zlemav2Decisions)}P, iVortex ${eP("inv-vortex-directional", vortexDecisions)}P, iSchaff ${eP("inv-schaff-directional", schaffDecisions)}P, iDEMA ${eP("inv-dema-directional", demaDecisions)}P, iZLEMA ${eP("inv-zlema-directional", zlemaDecisions)}P, iPSAR ${eP("inv-psar-directional", psarDecisions)}P, iCCI ${eP("inv-cci-directional", cciDecisions)}P, iAroon ${eP("inv-aroon-directional", aroonDecisions)}P, iMACD ${eP("inv-macd-directional", macdDecisions)}P, iSchaffV2 ${eP("inv-schaffv2-directional", schaffv2Decisions)}P`;
+    const invLog = `iZLEMAv2 ${eI("inv-zlemav2-directional", zlemav2Decisions)}, iVortex ${eI("inv-vortex-directional", vortexDecisions)}, iSchaff ${eI("inv-schaff-directional", schaffDecisions)}, iDEMA ${eI("inv-dema-directional", demaDecisions)}, iZLEMA ${eI("inv-zlema-directional", zlemaDecisions)}, iPSAR ${eI("inv-psar-directional", psarDecisions)}, iCCI ${eI("inv-cci-directional", cciDecisions)}, iAroon ${eI("inv-aroon-directional", aroonDecisions)}, iMACD ${eI("inv-macd-directional", macdDecisions)}, iSchaffV2 ${eI("inv-schaffv2-directional", schaffv2Decisions)}`;
     console.log(`[QuantScheduler] Cycle complete: ${normalLog}`);
     console.log(`[QuantScheduler] Inverted: ${invLog}`);
   } finally {

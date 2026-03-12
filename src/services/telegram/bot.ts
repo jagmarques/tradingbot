@@ -2792,9 +2792,9 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   if (isHybrid) {
-    // Live engines (AI + any live technical)
+    // Live engines (AI + any live technical + any live inverted)
     let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
-    for (const [label, typeKey] of engines) {
+    for (const [label, typeKey] of [...engines, ...invertedEngines]) {
       const isLiveEngine = typeKey === "ai-directional" || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
       if (!isLiveEngine) continue;
       const stats = getQuantStats(typeKey, "live");

@@ -57,8 +57,6 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 
 // Directional Trading Scheduler
 export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
-export const QUANT_MAX_PER_PAIR = 1;
-export const QUANT_MAX_PER_DIRECTION = 999;
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14;
@@ -78,8 +76,8 @@ export const PSAR_BASE_CONFIDENCE = 65;
 export const PSAR_DAILY_LOOKBACK_DAYS = 150;
 export const PSAR_REVERSE_EXIT = 1;
 export const PSAR_ADX_NOT_DECL = 0;
-export const PSAR_TRAIL_ACTIVATION = 20;
-export const PSAR_TRAIL_DISTANCE = 5;
+export const PSAR_TRAIL_ACTIVATION = 5;
+export const PSAR_TRAIL_DISTANCE = 3;
 
 // ZLEMA
 export const ZLEMA_DAILY_SMA_PERIOD = 75;
@@ -93,8 +91,8 @@ export const ZLEMA_BASE_CONFIDENCE = 65;
 export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMA_ADX_NOT_DECL = 0;
 export const ZLEMA_REVERSE_EXIT = 0;
-export const ZLEMA_TRAIL_ACTIVATION = 20;
-export const ZLEMA_TRAIL_DISTANCE = 5;
+export const ZLEMA_TRAIL_ACTIVATION = 5;
+export const ZLEMA_TRAIL_DISTANCE = 3;
 
 // Vortex
 export const VORTEX_DAILY_SMA_PERIOD = 75;
@@ -107,8 +105,8 @@ export const VORTEX_BASE_CONFIDENCE = 65;
 export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
 export const VORTEX_ADX_NOT_DECL = 1;
 export const VORTEX_REVERSE_EXIT = 0;
-export const VORTEX_TRAIL_ACTIVATION = 20;
-export const VORTEX_TRAIL_DISTANCE = 5;
+export const VORTEX_TRAIL_ACTIVATION = 5;
+export const VORTEX_TRAIL_DISTANCE = 3;
 
 // Schaff
 export const SCHAFF_DAILY_SMA_PERIOD = 50;
@@ -124,8 +122,8 @@ export const SCHAFF_BASE_CONFIDENCE = 65;
 export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFF_ADX_NOT_DECL = 0;
 export const SCHAFF_REVERSE_EXIT = 0;
-export const SCHAFF_TRAIL_ACTIVATION = 20;
-export const SCHAFF_TRAIL_DISTANCE = 5;
+export const SCHAFF_TRAIL_ACTIVATION = 5;
+export const SCHAFF_TRAIL_DISTANCE = 3;
 
 // DEMA
 export const DEMA_DAILY_SMA_PERIOD = 75;
@@ -139,8 +137,8 @@ export const DEMA_BASE_CONFIDENCE = 65;
 export const DEMA_DAILY_LOOKBACK_DAYS = 150;
 export const DEMA_ADX_NOT_DECL = 0;
 export const DEMA_REVERSE_EXIT = 0;
-export const DEMA_TRAIL_ACTIVATION = 20;
-export const DEMA_TRAIL_DISTANCE = 5;
+export const DEMA_TRAIL_ACTIVATION = 5;
+export const DEMA_TRAIL_DISTANCE = 3;
 
 // CCI
 export const CCI_DAILY_SMA_PERIOD = 75;
@@ -154,8 +152,8 @@ export const CCI_BASE_CONFIDENCE = 65;
 export const CCI_DAILY_LOOKBACK_DAYS = 150;
 export const CCI_ADX_NOT_DECL = 0;
 export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 20;
-export const CCI_TRAIL_DISTANCE = 5;
+export const CCI_TRAIL_ACTIVATION = 5;
+export const CCI_TRAIL_DISTANCE = 3;
 
 // ZLEMA v2
 export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
@@ -169,8 +167,8 @@ export const ZLEMAV2_BASE_CONFIDENCE = 65;
 export const ZLEMAV2_DAILY_LOOKBACK_DAYS = 150;
 export const ZLEMAV2_ADX_NOT_DECL = 0;
 export const ZLEMAV2_REVERSE_EXIT = 0;
-export const ZLEMAV2_TRAIL_ACTIVATION = 20;
-export const ZLEMAV2_TRAIL_DISTANCE = 5;
+export const ZLEMAV2_TRAIL_ACTIVATION = 5;
+export const ZLEMAV2_TRAIL_DISTANCE = 3;
 
 // Schaff v2
 export const SCHAFFV2_DAILY_SMA_PERIOD = 75;
@@ -186,8 +184,8 @@ export const SCHAFFV2_BASE_CONFIDENCE = 65;
 export const SCHAFFV2_DAILY_LOOKBACK_DAYS = 150;
 export const SCHAFFV2_ADX_NOT_DECL = 0;
 export const SCHAFFV2_REVERSE_EXIT = 0;
-export const SCHAFFV2_TRAIL_ACTIVATION = 20;
-export const SCHAFFV2_TRAIL_DISTANCE = 5;
+export const SCHAFFV2_TRAIL_ACTIVATION = 5;
+export const SCHAFFV2_TRAIL_DISTANCE = 3;
 
 // Aroon
 export const AROON_DAILY_SMA_PERIOD = 75;
@@ -200,8 +198,8 @@ export const AROON_BASE_CONFIDENCE = 65;
 export const AROON_DAILY_LOOKBACK_DAYS = 150;
 export const AROON_ADX_NOT_DECL = 0;
 export const AROON_REVERSE_EXIT = 0;
-export const AROON_TRAIL_ACTIVATION = 20;
-export const AROON_TRAIL_DISTANCE = 5;
+export const AROON_TRAIL_ACTIVATION = 5;
+export const AROON_TRAIL_DISTANCE = 3;
 
 // MACD
 export const MACD_DAILY_SMA_PERIOD = 75;
@@ -216,8 +214,8 @@ export const MACD_BASE_CONFIDENCE = 65;
 export const MACD_DAILY_LOOKBACK_DAYS = 150;
 export const MACD_ADX_NOT_DECL = 0;
 export const MACD_REVERSE_EXIT = 0;
-export const MACD_TRAIL_ACTIVATION = 20;
-export const MACD_TRAIL_DISTANCE = 5;
+export const MACD_TRAIL_ACTIVATION = 5;
+export const MACD_TRAIL_DISTANCE = 3;
 
 // HFT Fade Engine
 export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000;
@@ -226,8 +224,8 @@ export const HFT_FADE_POSITION_SIZE_USD = 10;
 export const HFT_FADE_LEVERAGE = 10;
 export const HFT_FADE_TP_PCT = 0.40;
 export const HFT_FADE_SL_PCT = 0.05;
-export const HFT_FADE_TRAIL_ACTIVATION = 0.3;
-export const HFT_FADE_TRAIL_DISTANCE = 0.1;
+export const HFT_FADE_TRAIL_ACTIVATION = 0.8;
+export const HFT_FADE_TRAIL_DISTANCE = 0.4;
 export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000;
 export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
@@ -263,7 +261,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["inv-dema-directional"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["inv-dema-directional", "inv-schaff-directional", "inv-macd-directional", "inv-aroon-directional"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";
