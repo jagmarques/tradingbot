@@ -58,8 +58,7 @@ const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
 
-// Track positions that already fired trail activation notification
-const trailActivatedIds = new Set<string>();
+const trailActivatedIds = new Set<string>(); // trail alert dedup
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -127,8 +126,7 @@ async function checkPositionStops(): Promise<void> {
     if (lighterPositions.length > 0 && isLighterInitialized()) {
       const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
       try {
-        // Each individual call inside getLighterAllMids already has its own timeout.
-        // Outer timeout must account for N sequential calls + 200ms inter-request delays.
+        // outer = N * (per-call timeout + inter-request delay)
         const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
@@ -212,7 +210,7 @@ async function checkPositionStops(): Promise<void> {
         ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
         ?? DEFAULT_TRAIL;
       if (peak > trailCfg.activation) {
-        // Notify once when trail activates for live positions
+        // alert once per live position
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
           trailActivatedIds.add(position.id);
           console.log(

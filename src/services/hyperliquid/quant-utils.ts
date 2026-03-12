@@ -1,9 +1,6 @@
 import { QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
-/**
- * Cap a stop-loss price to QUANT_MAX_SL_PCT from entry.
- * Inverted engines skip capping (their SL = normal engine's TP).
- */
+// Cap SL to max %; inverted skip (their SL = normal's TP)
 export function capStopLoss(
   entryPrice: number,
   stopLoss: number,
@@ -21,10 +18,7 @@ export function capStopLoss(
   }
 }
 
-/**
- * Calculate realized PnL for a closed position.
- * notional = size * leverage
- */
+// Realized PnL: (exit-entry)/entry * notional - fees
 export function calcPnl(
   direction: "long" | "short",
   entryPrice: number,
@@ -41,10 +35,7 @@ export function calcPnl(
   return rawPnl - fees;
 }
 
-/**
- * Infer why an exchange-triggered close happened.
- * Uses 0.5% tolerance for slippage.
- */
+// Classify exchange close: SL, TP, or generic (0.5% tolerance)
 export function inferExitReason(
   pos: { direction: "long" | "short"; entryPrice: number; stopLoss?: number; takeProfit?: number },
   exitPrice: number,
@@ -59,18 +50,12 @@ export function inferExitReason(
   return "exchange-close";
 }
 
-/**
- * Returns true if a stop-loss close should record a SL cooldown for the engine.
- * Inverted engines and hft-fade never record cooldowns.
- */
+// True if SL close should record cooldown; inv-* and hft-fade exempt
 export function shouldRecordSlCooldown(tradeType: string): boolean {
   return !tradeType.startsWith("inv-") && tradeType !== "hft-fade";
 }
 
-/**
- * Rebase stop-loss and take-profit from AI entry price to actual fill price.
- * Preserves the percentage distance from entry.
- */
+// Rebase SL/TP from expected entry to actual fill (preserves % offset)
 export function rebaseStops(
   stopLoss: number,
   takeProfit: number,

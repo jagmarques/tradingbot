@@ -40,16 +40,9 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
 
 const paperPositions = new Map<string, QuantPosition>();
 
-// Context per position
-const positionContext = new Map<string, {
-  indicatorsAtEntry?: string;
-}>();
-
-// Track last funding accrual per position
-const lastFundingAccrual = new Map<string, number>();
-
-// Accumulated funding income per position
-const accumulatedFunding = new Map<string, number>();
+const positionContext = new Map<string, { indicatorsAtEntry?: string }>();
+const lastFundingAccrual = new Map<string, number>(); // last accrual ms per position
+const accumulatedFunding = new Map<string, number>(); // accumulated funding per position
 
 export function initPaperEngine(): void {
   paperPositions.clear();
