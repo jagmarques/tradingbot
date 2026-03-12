@@ -146,8 +146,8 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
-      // Skip if inverted has opposite live (Lighter nets)
-      const invConflict = openPositions.find(p => p.mode === "live" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
+      // Skip if Lighter inverted has opposite live (same exchange nets)
+      const invConflict = openPositions.find(p => p.mode === "live" && p.exchange === "lighter" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
       if (invConflict) {
         console.log(`[QuantScheduler] AI: Skip ${decision.pair} — ${invConflict.tradeType} has opposite live`);
         continue;
@@ -223,9 +223,9 @@ export async function runDirectionalCycle(): Promise<void> {
         if (isInStopLossCooldown(pos.pair, invDir, invType)) continue;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        // Live engines: live+paper; others: paper. Skip live if AI holds opposite (Lighter nets)
+        // Live engines: live+paper; others: paper. Skip live if AI Lighter has opposite (same exchange nets)
         if (QUANT_HYBRID_LIVE_ENGINES.has(invType)) {
-          const aiConflict = currentPositions.find(p => p.tradeType === "ai-directional" && p.mode === "live" && p.pair === pos.pair && p.direction !== invDir);
+          const aiConflict = currentPositions.find(p => p.tradeType === "ai-directional" && p.mode === "live" && p.exchange === "lighter" && p.pair === pos.pair && p.direction !== invDir);
           if (!aiConflict) {
             await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false);
           } else {
