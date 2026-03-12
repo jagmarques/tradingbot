@@ -221,12 +221,12 @@ export const MACD_TRAIL_DISTANCE = 5;
 
 // HFT Fade Engine
 export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000;
-export const HFT_FADE_MIN_RETURN_PCT = 0.10;
+export const HFT_FADE_MIN_RETURN_PCT = 0.08;
 export const HFT_FADE_POSITION_SIZE_USD = 10;
 export const HFT_FADE_LEVERAGE = 10;
-export const HFT_FADE_TP_PCT = 0.50;
-export const HFT_FADE_SL_PCT = 0.03;
-export const HFT_FADE_TRAIL_ACTIVATION = 0.8;
+export const HFT_FADE_TP_PCT = 0.40;
+export const HFT_FADE_SL_PCT = 0.05;
+export const HFT_FADE_TRAIL_ACTIVATION = 0.3;
 export const HFT_FADE_TRAIL_DISTANCE = 0.1;
 export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000;
 export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
