@@ -283,6 +283,30 @@ async function reconcileLighter(): Promise<void> {
     if (exchangePositions.length > 0 || tracked.length > 0) {
       console.log(`[Lighter Executor] Reconcile: ${exchangePositions.length} exchange, ${tracked.length} DB`);
     }
+
+    // Refresh stops/TPs every cycle
+    const liveWithStops = getLighterLivePositions().filter(
+      p => !p.tradeType?.startsWith("hft-") && !closingSet.has(p.id) && p.stopLoss && isFinite(p.stopLoss),
+    );
+    if (liveWithStops.length > 0) {
+      try {
+        await withNonce(async (nonce) => getSignerClient().cancel_all_orders(0, 0, nonce));
+        exchangeStops.clear();
+        exchangeTPs.clear();
+      } catch (cancelErr) {
+        const msg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+        if (msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
+        console.error(`[Lighter Executor] Reconcile cancel orders failed: ${msg}`);
+      }
+      for (const pos of liveWithStops) {
+        await placeExchangeStop(pos, true);
+        await new Promise(r => setTimeout(r, 300));
+        if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) {
+          await placeExchangeTP(pos, true);
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Lighter Executor] Reconciliation failed: ${msg}`);
