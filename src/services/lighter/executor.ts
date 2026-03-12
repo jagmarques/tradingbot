@@ -56,19 +56,15 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
       priceDecimals,
     );
     const isAsk = position.direction === "long";
-    // Lighter SL triggers above (for shorts), TP triggers below (for longs)
-    const [, , err] = await withNonce(async (nonce) => {
-      const createOrder = position.direction === "long"
-        ? getSignerClient().create_tp_order(
-            marketIndex, Date.now() % 1_000_000_000, baseAmount,
-            triggerPrice, limitPrice, isAsk, true, nonce,
-          )
-        : getSignerClient().create_sl_order(
-            marketIndex, Date.now() % 1_000_000_000, baseAmount,
-            triggerPrice, limitPrice, isAsk, true, nonce,
-          );
-      return withTimeout(createOrder, API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop");
-    });
+    const [, , err] = await withNonce(async (nonce) =>
+      withTimeout(
+        getSignerClient().create_sl_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        ),
+        API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop",
+      ),
+    );
     if (err) {
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
@@ -101,19 +97,15 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
       priceDecimals,
     );
     const isAsk = position.direction === "long";
-    // TP: longs trigger above (SL order), shorts trigger below (TP order) - opposite of SL
-    const [, , err] = await withNonce(async (nonce) => {
-      const createOrder = position.direction === "long"
-        ? getSignerClient().create_sl_order(
-            marketIndex, Date.now() % 1_000_000_000, baseAmount,
-            triggerPrice, limitPrice, isAsk, true, nonce,
-          )
-        : getSignerClient().create_tp_order(
-            marketIndex, Date.now() % 1_000_000_000, baseAmount,
-            triggerPrice, limitPrice, isAsk, true, nonce,
-          );
-      return withTimeout(createOrder, API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP");
-    });
+    const [, , err] = await withNonce(async (nonce) =>
+      withTimeout(
+        getSignerClient().create_tp_order(
+          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          triggerPrice, limitPrice, isAsk, true, nonce,
+        ),
+        API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP",
+      ),
+    );
     if (err) {
       console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
     } else {
@@ -403,8 +395,8 @@ export async function lighterOpenPosition(
     }
 
     let filledPos: { size: number; entryPrice: number } | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await new Promise(r => setTimeout(r, 2000));
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(r => setTimeout(r, 3000));
       try {
         const exchangePositions = await getLighterOpenPositions();
         const match = exchangePositions.find(p => p.symbol === pair);
