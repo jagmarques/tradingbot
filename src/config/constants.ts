@@ -309,6 +309,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "hft-t8-tp30-sl3": "lighter",
   "hft-t8-tp35-sl3": "lighter",
   "hft-t8-tp25-sl3": "lighter",
+  "hft-regime": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
