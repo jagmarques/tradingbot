@@ -8,7 +8,7 @@ import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
-import { startHftFadeScheduler, stopHftFadeScheduler } from "./hft-fade-engine.js";
+import { startAllHftSchedulers, stopAllHftSchedulers } from "./hft-fade-engine.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -51,7 +51,7 @@ export function initQuant(): number {
   seedDailyLossFromDb();
   startPositionMonitor();
   startQuantScheduler();
-  startHftFadeScheduler();
+  startAllHftSchedulers();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
   console.log(`[Quant] Initialized (${getTradingMode()} mode), ${count} open positions`);
@@ -86,7 +86,7 @@ async function verifyLighterConnection(): Promise<void> {
 
 export function stopQuant(): void {
   stopQuantScheduler();
-  stopHftFadeScheduler();
+  stopAllHftSchedulers();
   stopPositionMonitor();
   console.log("[Quant] Stopped");
 }
@@ -139,5 +139,5 @@ export { runCCIDecisionEngine } from "./cci-engine.js";
 export { getLighterLivePositions } from "../lighter/executor.js";
 
 // HFT Fade Engine
-export { startHftFadeScheduler, stopHftFadeScheduler } from "./hft-fade-engine.js";
+export { startAllHftSchedulers, stopAllHftSchedulers } from "./hft-fade-engine.js";
 

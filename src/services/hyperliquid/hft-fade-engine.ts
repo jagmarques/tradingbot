@@ -8,13 +8,46 @@ import {
   HFT_FADE_MIN_VOLUME_24H,
   HFT_FADE_LIVE_ENABLED,
   HFT_FADE_MAX_CONCURRENT,
+  HFT_FADE_B_THRESHOLD_PCT,
+  HFT_FADE_B_TP_PCT,
+  HFT_FADE_B_SL_PCT,
+  HFT_FADE_C_THRESHOLD_PCT,
+  HFT_FADE_C_TP_PCT,
+  HFT_FADE_C_SL_PCT,
+  HFT_FADE_D_THRESHOLD_PCT,
+  HFT_FADE_D_TP_PCT,
+  HFT_FADE_D_SL_PCT,
+  HFT_FADE_E_THRESHOLD_PCT,
+  HFT_FADE_E_TP_PCT,
+  HFT_FADE_E_SL_PCT,
+  HFT_FADE_F_THRESHOLD_PCT,
+  HFT_FADE_F_TP_PCT,
+  HFT_FADE_F_SL_PCT,
   QUANT_TRADING_PAIRS,
 } from "../../config/constants.js";
+import type { TradeType } from "./types.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition } from "../lighter/executor.js";
 import { isLighterInitialized } from "../lighter/client.js";
 import { loadOpenQuantPositions } from "../database/quant.js";
+
+export interface HftVariantConfig {
+  tradeType: TradeType;
+  label: string;
+  thresholdPct: number;
+  tpPct: number;
+  slPct: number;
+}
+
+const HFT_VARIANTS: HftVariantConfig[] = [
+  { tradeType: "hft-fade", label: "HFT-Fade", thresholdPct: HFT_FADE_MIN_RETURN_PCT, tpPct: HFT_FADE_TP_PCT, slPct: HFT_FADE_SL_PCT },
+  { tradeType: "hft-fade-b", label: "HFT-B", thresholdPct: HFT_FADE_B_THRESHOLD_PCT, tpPct: HFT_FADE_B_TP_PCT, slPct: HFT_FADE_B_SL_PCT },
+  { tradeType: "hft-fade-c", label: "HFT-C", thresholdPct: HFT_FADE_C_THRESHOLD_PCT, tpPct: HFT_FADE_C_TP_PCT, slPct: HFT_FADE_C_SL_PCT },
+  { tradeType: "hft-fade-d", label: "HFT-D", thresholdPct: HFT_FADE_D_THRESHOLD_PCT, tpPct: HFT_FADE_D_TP_PCT, slPct: HFT_FADE_D_SL_PCT },
+  { tradeType: "hft-fade-e", label: "HFT-E", thresholdPct: HFT_FADE_E_THRESHOLD_PCT, tpPct: HFT_FADE_E_TP_PCT, slPct: HFT_FADE_E_SL_PCT },
+  { tradeType: "hft-fade-f", label: "HFT-F", thresholdPct: HFT_FADE_F_THRESHOLD_PCT, tpPct: HFT_FADE_F_TP_PCT, slPct: HFT_FADE_F_SL_PCT },
+];
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
   OP: "OPUSDT",
@@ -108,17 +141,17 @@ async function fetchBinance5mCandle(symbol: string): Promise<Candle5m | null> {
   }
 }
 
-let cycleRunning = false;
+const cycleRunning = new Map<string, boolean>();
 
-async function runHftFadeCycle(): Promise<void> {
+async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
   if (isQuantKilled()) return;
-  if (cycleRunning) {
-    console.log("[HFT-Fade] Cycle already running, skipping");
+  if (cycleRunning.get(config.tradeType)) {
+    console.log(`[${config.label}] Cycle already running, skipping`);
     return;
   }
-  cycleRunning = true;
+  cycleRunning.set(config.tradeType, true);
 
-  const goLive = HFT_FADE_LIVE_ENABLED && isLighterInitialized();
+  const goLive = HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade" && isLighterInitialized();
   const mode = goLive ? "live" : "paper";
 
   let signals = 0;
@@ -135,7 +168,7 @@ async function runHftFadeCycle(): Promise<void> {
       const volume24h = await fetchBinance24hVolume(symbol);
       if (volume24h === null || volume24h < HFT_FADE_MIN_VOLUME_24H) {
         if (volume24h !== null) {
-          console.log(`[HFT-Fade] ${pair} skipped: 24h volume $${volume24h.toFixed(0)} < $${HFT_FADE_MIN_VOLUME_24H}`);
+          console.log(`[${config.label}] ${pair} skipped: 24h volume $${volume24h.toFixed(0)} < $${HFT_FADE_MIN_VOLUME_24H}`);
         }
         continue;
       }
@@ -146,7 +179,7 @@ async function runHftFadeCycle(): Promise<void> {
 
       // Compute return
       const returnPct = ((candle.close - candle.open) / candle.open) * 100;
-      if (Math.abs(returnPct) < HFT_FADE_MIN_RETURN_PCT) continue;
+      if (Math.abs(returnPct) < config.thresholdPct) continue;
 
       signals++;
 
@@ -158,19 +191,19 @@ async function runHftFadeCycle(): Promise<void> {
       let sl: number;
       let tp: number;
       if (direction === "long") {
-        sl = entryPrice * (1 - HFT_FADE_SL_PCT / 100);
-        tp = entryPrice * (1 + HFT_FADE_TP_PCT / 100);
+        sl = entryPrice * (1 - config.slPct / 100);
+        tp = entryPrice * (1 + config.tpPct / 100);
       } else {
-        sl = entryPrice * (1 + HFT_FADE_SL_PCT / 100);
-        tp = entryPrice * (1 - HFT_FADE_TP_PCT / 100);
+        sl = entryPrice * (1 + config.slPct / 100);
+        tp = entryPrice * (1 - config.tpPct / 100);
       }
 
       // Concurrent cap
       const openHftCount = goLive
-        ? loadOpenQuantPositions().filter(p => p.tradeType === "hft-fade" && p.mode === "live").length
-        : getPaperPositions().filter(p => p.tradeType === "hft-fade").length;
+        ? loadOpenQuantPositions().filter(p => p.tradeType === config.tradeType && p.mode === "live").length
+        : getPaperPositions().filter(p => p.tradeType === config.tradeType).length;
       if (openHftCount >= HFT_FADE_MAX_CONCURRENT) {
-        console.log(`[HFT-Fade] At max concurrent (${openHftCount}/${HFT_FADE_MAX_CONCURRENT}), skipping ${pair}`);
+        console.log(`[${config.label}] At max concurrent (${openHftCount}/${HFT_FADE_MAX_CONCURRENT}), skipping ${pair}`);
         continue;
       }
 
@@ -179,12 +212,12 @@ async function runHftFadeCycle(): Promise<void> {
         leverage: HFT_FADE_LEVERAGE,
         stopLoss: sl,
         regime: "ranging",
-        strategy: "hft-fade",
+        strategy: config.tradeType,
         mode,
         dailyLossLimit: Infinity,
       });
       if (!gate.allowed) {
-        console.log(`[HFT-Fade] ${pair} blocked by risk gate: ${gate.reason}`);
+        console.log(`[${config.label}] ${pair} blocked by risk gate: ${gate.reason}`);
         continue;
       }
 
@@ -197,7 +230,7 @@ async function runHftFadeCycle(): Promise<void> {
           HFT_FADE_LEVERAGE,
           sl,
           tp,
-          "hft-fade",
+          config.tradeType,
           undefined,
           entryPrice,
           true,  // allowMultiple
@@ -211,7 +244,7 @@ async function runHftFadeCycle(): Promise<void> {
           HFT_FADE_LEVERAGE,
           sl,
           tp,
-          "hft-fade",
+          config.tradeType,
           undefined,
           entryPrice,
           "lighter",
@@ -222,20 +255,16 @@ async function runHftFadeCycle(): Promise<void> {
         opened++;
         const sign = returnPct > 0 ? "+" : "";
         console.log(
-          `[HFT-Fade] ${pair} ${direction.toUpperCase()} ${mode} (candle return ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`,
+          `[${config.label}] ${pair} ${direction.toUpperCase()} ${mode} (candle return ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`,
         );
       }
     }
   } finally {
-    cycleRunning = false;
+    cycleRunning.set(config.tradeType, false);
   }
 
-  console.log(`[HFT-Fade] Cycle complete: ${signals} signals, ${opened} opened (${mode})`);
+  console.log(`[${config.label}] Cycle complete: ${signals} signals, ${opened} opened (${mode})`);
 }
-
-let hftInterval: ReturnType<typeof setInterval> | null = null;
-let hftInitialTimeout: ReturnType<typeof setTimeout> | null = null;
-let hftMonitorInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number>> {
   const prices = new Map<string, number>();
@@ -254,8 +283,8 @@ async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number
   return prices;
 }
 
-async function runHftMonitor(): Promise<void> {
-  const positions = getPaperPositions().filter(p => p.tradeType === "hft-fade" && p.status === "open");
+async function runHftMonitor(config: HftVariantConfig): Promise<void> {
+  const positions = getPaperPositions().filter(p => p.tradeType === config.tradeType && p.status === "open");
   if (!positions.length) return;
 
   const symbols = [...new Set(positions.map(p => BINANCE_SYMBOL_MAP[p.pair]).filter(Boolean))];
@@ -284,35 +313,38 @@ function msUntilNextCandle(): number {
   return Math.max(0, nextClose - now);
 }
 
-export function startHftFadeScheduler(): void {
-  if (hftInterval !== null) {
-    console.log("[HFT-Fade] Already running, skipping start");
-    return;
+const hftIntervals = new Map<string, ReturnType<typeof setInterval>>();
+const hftInitialTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const hftMonitorIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+export function startAllHftSchedulers(): void {
+  for (const config of HFT_VARIANTS) {
+    if (hftIntervals.has(config.tradeType)) {
+      console.log(`[${config.label}] Already running, skipping start`);
+      continue;
+    }
+    const delay = msUntilNextCandle();
+    const startMode = HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade" ? "live" : "paper";
+    console.log(`[${config.label}] Started (${startMode}) — first cycle in ${Math.round(delay / 1000)}s`);
+    const timeout = setTimeout(() => {
+      void runHftFadeCycle(config);
+      const interval = setInterval(() => {
+        void runHftFadeCycle(config);
+      }, HFT_FADE_INTERVAL_MS);
+      hftIntervals.set(config.tradeType, interval);
+    }, delay);
+    hftInitialTimeouts.set(config.tradeType, timeout);
+    const monitorInterval = setInterval(() => { void runHftMonitor(config); }, 2_000);
+    hftMonitorIntervals.set(config.tradeType, monitorInterval);
   }
-  const delay = msUntilNextCandle();
-  const startMode = HFT_FADE_LIVE_ENABLED ? "live" : "paper";
-  console.log(`[HFT-Fade] Started (${startMode}) — first cycle in ${Math.round(delay / 1000)}s`);
-  hftInitialTimeout = setTimeout(() => {
-    void runHftFadeCycle();
-    hftInterval = setInterval(() => {
-      void runHftFadeCycle();
-    }, HFT_FADE_INTERVAL_MS);
-  }, delay);
-  hftMonitorInterval = setInterval(() => { void runHftMonitor(); }, 2_000);
 }
 
-export function stopHftFadeScheduler(): void {
-  if (hftInitialTimeout !== null) {
-    clearTimeout(hftInitialTimeout);
-    hftInitialTimeout = null;
-  }
-  if (hftInterval !== null) {
-    clearInterval(hftInterval);
-    hftInterval = null;
-  }
-  if (hftMonitorInterval !== null) {
-    clearInterval(hftMonitorInterval);
-    hftMonitorInterval = null;
-  }
-  console.log("[HFT-Fade] Stopped");
+export function stopAllHftSchedulers(): void {
+  for (const timeout of hftInitialTimeouts.values()) clearTimeout(timeout);
+  hftInitialTimeouts.clear();
+  for (const interval of hftIntervals.values()) clearInterval(interval);
+  hftIntervals.clear();
+  for (const interval of hftMonitorIntervals.values()) clearInterval(interval);
+  hftMonitorIntervals.clear();
+  console.log("[HFT] All schedulers stopped");
 }
