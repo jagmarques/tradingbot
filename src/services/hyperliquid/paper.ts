@@ -333,4 +333,5 @@ export function clearPaperMemory(): void {
   positionContext.clear();
   lastFundingAccrual.clear();
   accumulatedFunding.clear();
+  closingSet.clear();
 }

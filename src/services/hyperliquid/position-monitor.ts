@@ -283,6 +283,8 @@ async function checkPositionStops(): Promise<void> {
           ? currentPrice >= (position.takeProfit ?? 0)
           : currentPrice <= (position.takeProfit ?? 0));
 
+      if (position.tradeType === "hft-fade") continue; // handled by 2s HFT monitor
+
       // Stop-loss takes priority over take-profit
       if (stopLossBreached) {
         console.log(
