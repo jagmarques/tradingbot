@@ -178,11 +178,11 @@ export async function runDirectionalCycle(): Promise<void> {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
         if (isInStopLossCooldown(decision.pair, decision.direction, tradeType)) continue;
-        const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice, true);
+        const position = await openPosition(decision.pair, decision.direction, QUANT_FIXED_POSITION_SIZE_USD, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice, true);
         if (position) {
           count++;
           openPairs.add(decision.pair);
-          console.log(`[QuantScheduler] ${label}(paper): Opened ${decision.pair} ${decision.direction} $${decision.suggestedSizeUsd.toFixed(2)} @ ${decision.entryPrice}`);
+          console.log(`[QuantScheduler] ${label}(paper): Opened ${decision.pair} ${decision.direction} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${decision.entryPrice}`);
         }
       }
       paperExecuted.set(tradeType, count);
@@ -216,11 +216,11 @@ export async function runDirectionalCycle(): Promise<void> {
         const invDir = pos.direction === "long" ? "short" as const : "long" as const;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        const position = await openPosition(pos.pair, invDir, pos.size, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
+        const position = await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
         if (position) {
           count++;
           invOpenPairs.add(pos.pair);
-          console.log(`[QuantScheduler] ${label}(paper): Mirror-opened ${pos.pair} ${invDir} $${pos.size.toFixed(2)} @ ${pos.entryPrice}`);
+          console.log(`[QuantScheduler] ${label}(paper): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
         }
       }
       paperExecuted.set(invType, count);
