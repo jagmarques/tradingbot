@@ -14,6 +14,7 @@ import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition } from "../lighter/executor.js";
 import { isLighterInitialized } from "../lighter/client.js";
+import { loadOpenQuantPositions } from "../database/quant.js";
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
   OP: "OPUSDT",
@@ -165,13 +166,13 @@ async function runHftFadeCycle(): Promise<void> {
         tp = entryPrice * (1 - HFT_FADE_TP_PCT / 100);
       }
 
-      // Enforce virtual budget cap in paper mode
-      if (!goLive) {
-        const openHftCount = getPaperPositions().filter(p => p.tradeType === "hft-fade").length;
-        if (openHftCount >= HFT_FADE_MAX_CONCURRENT) {
-          console.log(`[HFT-Fade] At max concurrent (${openHftCount}/${HFT_FADE_MAX_CONCURRENT}), skipping ${pair}`);
-          continue;
-        }
+      // Concurrent cap
+      const openHftCount = goLive
+        ? loadOpenQuantPositions().filter(p => p.tradeType === "hft-fade" && p.mode === "live").length
+        : getPaperPositions().filter(p => p.tradeType === "hft-fade").length;
+      if (openHftCount >= HFT_FADE_MAX_CONCURRENT) {
+        console.log(`[HFT-Fade] At max concurrent (${openHftCount}/${HFT_FADE_MAX_CONCURRENT}), skipping ${pair}`);
+        continue;
       }
 
       // Risk gate
