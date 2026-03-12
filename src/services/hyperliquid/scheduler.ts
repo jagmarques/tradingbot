@@ -61,7 +61,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const analyses = await runMarketDataPipeline();
 
-    // Technical engines run FIRST so we can feed signals to AI
+    // Technical engines first (feed signals to AI)
     const psarDecisions = await runPsarDecisionEngine(analyses);
     const zlemaDecisions = await runZlemaDecisionEngine(analyses);
     const vortexDecisions = await runVortexDecisionEngine(analyses);
@@ -73,7 +73,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const zlemav2Decisions = await runZlemaV2DecisionEngine(analyses);
     const schaffv2Decisions = await runSchaffV2DecisionEngine(analyses);
 
-    // Collect per-pair signals from ALL engines for AI context
+    // Collect per-pair signals for AI context
     const techSignalsByPair = new Map<string, TechSignal[]>();
     const signalSources: Array<{ engine: string; decisions: typeof demaDecisions }> = [
       { engine: "Schaff 4h", decisions: schaffDecisions },
@@ -94,7 +94,7 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // AI engine (Lighter)
+    // AI engine
     const aiDecisions: QuantAIDecision[] = [];
     const aiSignals = new Map<string, "long" | "short" | "flat">();
     for (const analysis of analyses) {
@@ -122,7 +122,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const aiOpenPairs = new Set(
       openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType).map(p => p.pair),
     );
-    // Separate live/paper pair tracking
+    // Per-engine open pair tracking
     const liveOpenPairsByEngine = new Map<string, Set<string>>();
     const paperOpenPairsByEngine = new Map<string, Set<string>>();
     for (const tt of ["psar-directional", "zlema-directional", "vortex-directional", "schaff-directional", "dema-directional", "cci-directional", "aroon-directional", "macd-directional", "zlemav2-directional", "schaffv2-directional", "inv-psar-directional", "inv-zlema-directional", "inv-vortex-directional", "inv-schaff-directional", "inv-dema-directional", "inv-cci-directional", "inv-aroon-directional", "inv-macd-directional", "inv-zlemav2-directional", "inv-schaffv2-directional"]) {
@@ -130,7 +130,7 @@ export async function runDirectionalCycle(): Promise<void> {
       paperOpenPairsByEngine.set(tt, new Set(openPositions.filter(p => p.tradeType === tt && p.mode === "paper").map(p => p.pair)));
     }
 
-    // Close AI positions if signal flips
+    // AI signal flip exits
     const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
     for (const pos of aiPositions) {
       const signal = aiSignals.get(pos.pair);
@@ -146,7 +146,7 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Compound sizing: per-exchange (2.5% of each exchange's equity)
+    // Compound sizing (paper engines only)
     let lighterCompoundSize = QUANT_COMPOUND_MIN_SIZE;
     try {
       const acct = await getLighterAccountInfo();
@@ -196,13 +196,13 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Live engines (must match QUANT_HYBRID_LIVE_ENGINES in constants.ts)
+    // Live engines (sync with QUANT_HYBRID_LIVE_ENGINES)
     const liveEngines: Array<{ label: string; tradeType: string; decisions: typeof demaDecisions }> = [
       { label: "SchaffV2", tradeType: "schaffv2-directional", decisions: schaffv2Decisions },
       { label: "Aroon", tradeType: "aroon-directional", decisions: aroonDecisions },
     ];
 
-    // Each live engine runs independently — no cross-engine limits
+    // Each engine independent, no cross-engine limits
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
@@ -221,7 +221,7 @@ export async function runDirectionalCycle(): Promise<void> {
       executed.set(tradeType, count);
     }
 
-    // Paper engines: all 10 run independently for performance tracking
+    // Paper engines (all 10)
     const paperEngines: Array<{ label: string; tradeType: string; decisions: typeof psarDecisions }> = [
       { label: "Schaff", tradeType: "schaff-directional", decisions: schaffDecisions },
       { label: "ZLEMA", tradeType: "zlema-directional", decisions: zlemaDecisions },
@@ -253,7 +253,7 @@ export async function runDirectionalCycle(): Promise<void> {
       paperExecuted.set(tradeType, count);
     }
 
-    // Re-fetch to include positions opened this cycle
+    // Re-fetch includes positions opened this cycle
     const currentPositions = getOpenQuantPositions();
     const invertedPairs: Array<{ label: string; normalType: string; invType: string }> = [
       { label: "iSchaff", normalType: "schaff-directional", invType: "inv-schaff-directional" },
