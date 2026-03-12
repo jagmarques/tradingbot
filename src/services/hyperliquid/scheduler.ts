@@ -14,7 +14,7 @@ import { runZlemaV2DecisionEngine } from "./zlema-v2-engine.js";
 import { runSchaffV2DecisionEngine } from "./schaff-v2-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_MAX_PER_PAIR, QUANT_MAX_PER_DIRECTION, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE, getEngineExchange } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE } from "../../config/constants.js";
 import { getLighterAccountInfo } from "../lighter/client.js";
 import { ensureConnected, getClient } from "./client.js";
 import { loadEnv } from "../../config/env.js";
@@ -187,7 +187,7 @@ export async function runDirectionalCycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-      const aiSize = lighterCompoundSize;
+      const aiSize = QUANT_FIXED_POSITION_SIZE_USD;
       const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
         aiExecuted++;
@@ -202,41 +202,20 @@ export async function runDirectionalCycle(): Promise<void> {
       { label: "Aroon", tradeType: "aroon-directional", decisions: aroonDecisions },
     ];
 
-    // Cross-engine limits (re-fetch includes AI positions opened above)
-    const livePositions = getOpenQuantPositions().filter(p => p.mode === "live");
-    const liveByPairByExchange = new Map<string, Map<string, number>>();
-    const liveByDirByExchange = new Map<string, Map<string, number>>();
-    for (const p of livePositions) {
-      const ex = p.exchange ?? getEngineExchange(p.tradeType ?? "");
-      if (!liveByPairByExchange.has(ex)) liveByPairByExchange.set(ex, new Map());
-      if (!liveByDirByExchange.has(ex)) liveByDirByExchange.set(ex, new Map());
-      const pairMap = liveByPairByExchange.get(ex)!;
-      const dirMap = liveByDirByExchange.get(ex)!;
-      pairMap.set(p.pair, (pairMap.get(p.pair) ?? 0) + 1);
-      dirMap.set(p.direction, (dirMap.get(p.direction) ?? 0) + 1);
-    }
-
+    // Each live engine runs independently — no cross-engine limits
     const executed = new Map<string, number>();
     for (const { label, tradeType, decisions } of liveEngines) {
       let count = 0;
       const openPairs = liveOpenPairsByEngine.get(tradeType)!;
-      const ex = getEngineExchange(tradeType);
-      const liveByPair = liveByPairByExchange.get(ex) ?? new Map<string, number>();
-      const liveByDir = liveByDirByExchange.get(ex) ?? new Map<string, number>();
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
         if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
-        if ((liveByPair.get(decision.pair) ?? 0) >= QUANT_MAX_PER_PAIR) continue;
-        if ((liveByDir.get(decision.direction) ?? 0) >= QUANT_MAX_PER_DIRECTION) continue;
-        const liveSize = lighterCompoundSize;
-        const position = await openPosition(decision.pair, decision.direction, liveSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
+        const position = await openPosition(decision.pair, decision.direction, QUANT_FIXED_POSITION_SIZE_USD, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
         if (position) {
           count++;
           openPairs.add(decision.pair);
-          liveByPair.set(decision.pair, (liveByPair.get(decision.pair) ?? 0) + 1);
-          liveByDir.set(decision.direction, (liveByDir.get(decision.direction) ?? 0) + 1);
-          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${liveSize.toFixed(2)} @ ${decision.entryPrice}`);
+          console.log(`[QuantScheduler] ${label}: Opened ${decision.pair} ${decision.direction} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${decision.entryPrice}`);
         }
       }
       executed.set(tradeType, count);
