@@ -452,7 +452,8 @@ export async function lighterOpenPosition(
         );
         console.log(`[Lighter Executor] Tiny partial fill closed for ${pair}`);
       } catch (closeErr) {
-        if (closeErr instanceof TimeoutError) resetNonce();
+        const closeMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
+        if (closeErr instanceof TimeoutError || closeMsg.includes("nonce") || closeMsg.includes("ratelimit") || closeMsg.includes("Too Many")) resetNonce();
         void notifyCriticalError(`Tiny partial fill ${pair} ($${actualNotional.toFixed(2)}) — close failed`, "LighterExecutor");
       }
       return null;
@@ -510,7 +511,8 @@ export async function lighterOpenPosition(
         );
         console.log(`[Lighter Executor] Auto-closed orphan ${pair} after DB failure`);
       } catch (closeErr) {
-        if (closeErr instanceof TimeoutError) resetNonce();
+        const closeMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
+        if (closeErr instanceof TimeoutError || closeMsg.includes("nonce") || closeMsg.includes("ratelimit") || closeMsg.includes("Too Many")) resetNonce();
         void notifyCriticalError(`Lighter DB write failed + auto-close failed: ${pair} — ORPHAN on exchange. Manual close required.`, "LighterExecutor");
       }
       return null;
