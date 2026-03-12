@@ -263,7 +263,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>([]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["inv-dema-directional"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

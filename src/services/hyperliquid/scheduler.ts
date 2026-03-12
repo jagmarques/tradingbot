@@ -216,11 +216,16 @@ export async function runDirectionalCycle(): Promise<void> {
         const invDir = pos.direction === "long" ? "short" as const : "long" as const;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
+        // Live + paper for inv-dema; paper only for all others
+        if (invType === "inv-dema-directional") {
+          await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false);
+        }
         const position = await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
         if (position) {
           count++;
           invOpenPairs.add(pos.pair);
-          console.log(`[QuantScheduler] ${label}(paper): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
+          const mode = invType === "inv-dema-directional" ? "live+paper" : "paper";
+          console.log(`[QuantScheduler] ${label}(${mode}): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
         }
       }
       paperExecuted.set(invType, count);
