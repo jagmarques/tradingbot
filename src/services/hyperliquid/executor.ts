@@ -1,5 +1,6 @@
 import { getTradingMode } from "../../config/env.js";
-import { getEngineExchange, QUANT_HYBRID_LIVE_ENGINES, QUANT_MAX_SL_PCT } from "../../config/constants.js";
+import { getEngineExchange, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
+import { capStopLoss } from "./quant-utils.js";
 import {
   paperOpenPosition,
   paperClosePosition,
@@ -53,20 +54,11 @@ export async function openPosition(
 
   // Cap SL; skip for inverted (their SL = normal's TP)
   const isInverted = tradeType.startsWith("inv-");
-  if (aiEntryPrice && aiEntryPrice > 0 && !isInverted) {
-    const maxSlFrac = QUANT_MAX_SL_PCT / 100;
-    if (direction === "long") {
-      const floor = aiEntryPrice * (1 - maxSlFrac);
-      if (stopLoss < floor) {
-        console.log(`[Quant Executor] Capped ${pair} SL ${stopLoss.toFixed(4)}->${floor.toFixed(4)} (${QUANT_MAX_SL_PCT}%)`);
-        stopLoss = floor;
-      }
-    } else {
-      const ceil = aiEntryPrice * (1 + maxSlFrac);
-      if (stopLoss > ceil) {
-        console.log(`[Quant Executor] Capped ${pair} SL ${stopLoss.toFixed(4)}->${ceil.toFixed(4)} (${QUANT_MAX_SL_PCT}%)`);
-        stopLoss = ceil;
-      }
+  if (aiEntryPrice && aiEntryPrice > 0) {
+    const capped = capStopLoss(aiEntryPrice, stopLoss, direction, isInverted);
+    if (capped !== stopLoss) {
+      console.log(`[Quant Executor] Capped ${pair} SL ${stopLoss.toFixed(4)}->${capped.toFixed(4)}`);
+      stopLoss = capped;
     }
   }
 

@@ -23,7 +23,8 @@ import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from
 import { recordStopLossCooldown } from "../hyperliquid/scheduler.js";
 import { SignerClient } from "zklighter-sdk";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
-import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS, QUANT_MAX_SL_PCT } from "../../config/constants.js";
+import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
+import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown } from "../hyperliquid/quant-utils.js";
 
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
@@ -40,16 +41,8 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
   if (!force && exchangeStops.has(position.pair)) return;
   exchangeStops.delete(position.pair);
   try {
-    // Cap SL
-    const maxSlFrac = QUANT_MAX_SL_PCT / 100;
-    let sl = position.stopLoss;
-    if (position.direction === "long") {
-      const floor = position.entryPrice * (1 - maxSlFrac);
-      if (sl < floor) sl = floor;
-    } else {
-      const ceil = position.entryPrice * (1 + maxSlFrac);
-      if (sl > ceil) sl = ceil;
-    }
+    const isInverted = (position.tradeType ?? "").startsWith("inv-");
+    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction, isInverted);
     const marketIndex = await getMarketIndex(position.pair);
     if (marketIndex === null) return;
     const sizeDecimals = await getMarketSizeDecimals(marketIndex);
@@ -182,25 +175,10 @@ export function initLighterEngine(): void {
   setInterval(() => void reconcileLighter(), 5 * 60 * 1000);
 }
 
-function inferExitReason(pos: QuantPosition, exitPrice: number): string {
-  const sl = pos.stopLoss;
-  const tp = pos.takeProfit;
-  const tol = pos.entryPrice * 0.005; // 0.5% tolerance for slippage
-  if (sl && pos.direction === "long" && exitPrice <= sl + tol) return "exchange-sl";
-  if (sl && pos.direction === "short" && exitPrice >= sl - tol) return "exchange-sl";
-  if (tp && pos.direction === "long" && exitPrice >= tp - tol) return "exchange-tp";
-  if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "exchange-tp";
-  return "exchange-close";
-}
-
 async function closePhantom(pos: QuantPosition): Promise<void> {
   const exitPrice = await getLighterMidPrice(pos.pair).catch(() => null) ?? pos.entryPrice;
-  const notional = pos.size * pos.leverage;
-  const rawPnl = pos.direction === "long"
-    ? ((exitPrice - pos.entryPrice) / pos.entryPrice) * notional
-    : ((pos.entryPrice - exitPrice) / pos.entryPrice) * notional;
   const fees = 0; // Lighter: zero fees
-  const pnl = rawPnl - fees;
+  const pnl = calcPnl(pos.direction, pos.entryPrice, exitPrice, pos.size, pos.leverage, fees);
   const now = new Date().toISOString();
   const reason = inferExitReason(pos, exitPrice);
 
@@ -670,12 +648,8 @@ export async function lighterClosePosition(
       void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
-    const rawPnl =
-      position.direction === "long"
-        ? ((exitPrice - position.entryPrice) / position.entryPrice) * notional
-        : ((position.entryPrice - exitPrice) / position.entryPrice) * notional;
     const fees = 0; // Lighter: zero fees
-    const pnl = rawPnl - fees;
+    const pnl = calcPnl(position.direction, position.entryPrice, exitPrice, position.size, position.leverage, fees);
 
     const now = new Date().toISOString();
     const closedPosition: QuantPosition = {
@@ -713,7 +687,7 @@ export async function lighterClosePosition(
     });
     positionContext.delete(positionId);
 
-    if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
+    if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
       recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
     }
 
@@ -743,11 +717,8 @@ export async function lighterClosePosition(
           const now = new Date().toISOString();
           const exitReason = `${reason} (timeout-reconciled)`;
           const reconPrice = await getLighterMidPrice(position.pair).catch(() => null) ?? position.entryPrice;
-          const notional = position.size * position.leverage;
           const fees = 0; // Lighter: zero fees
-          const estPnl = (position.direction === "long"
-            ? ((reconPrice - position.entryPrice) / position.entryPrice) * notional
-            : ((position.entryPrice - reconPrice) / position.entryPrice) * notional) - fees;
+          const estPnl = calcPnl(position.direction, position.entryPrice, reconPrice, position.size, position.leverage, fees);
           const reconciled: QuantPosition = {
             ...position,
             status: "closed",
@@ -780,7 +751,7 @@ export async function lighterClosePosition(
             tradeType: position.tradeType ?? "directional",
           });
           positionContext.delete(positionId);
-          if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
+          if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
             recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           }
           void notifyQuantTradeExit({

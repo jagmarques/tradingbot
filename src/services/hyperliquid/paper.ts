@@ -8,6 +8,7 @@ import {
   loadOpenQuantPositions,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
+import { calcPnl, shouldRecordSlCooldown } from "./quant-utils.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
@@ -247,18 +248,10 @@ export async function paperClosePosition(
     return { success: false, pnl: 0 };
   }
 
-  const rawPnl =
-    position.direction === "long"
-      ? ((currentPrice - position.entryPrice) / position.entryPrice) *
-        position.size *
-        position.leverage
-      : ((position.entryPrice - currentPrice) / position.entryPrice) *
-        position.size *
-        position.leverage;
-
   // Lighter: 0 fees; HL: 0.045% per side
   const fees = posExchange === "lighter" ? 0 : position.size * position.leverage * 0.00045 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
+  const rawPnl = calcPnl(position.direction, position.entryPrice, currentPrice, position.size, position.leverage, 0);
 
   let spotPnl = 0;
   if (position.spotHedgePrice && position.spotHedgePrice > 0) {
@@ -312,7 +305,7 @@ export async function paperClosePosition(
   lastFundingAccrual.delete(positionId);
   accumulatedFunding.delete(positionId);
 
-  if (reason === "stop-loss" && !position.tradeType?.startsWith("inv-") && position.tradeType !== "hft-fade") {
+  if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
     recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
   }
 
