@@ -39,6 +39,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
 ];
 
 const paperPositions = new Map<string, QuantPosition>();
+const closingSet = new Set<string>();
 
 const positionContext = new Map<string, { indicatorsAtEntry?: string }>();
 const lastFundingAccrual = new Map<string, number>(); // last accrual ms per position
@@ -223,15 +224,18 @@ export async function paperClosePosition(
   positionId: string,
   reason: string,
 ): Promise<{ success: boolean; pnl: number }> {
+  if (closingSet.has(positionId)) return { success: false, pnl: 0 };
   const position = paperPositions.get(positionId);
   if (!position || position.status !== "open") {
     return { success: false, pnl: 0 };
   }
+  closingSet.add(positionId);
 
   const posExchange = position.exchange ?? "hyperliquid";
   const currentPrice = await fetchMidPriceForExchange(position.pair, posExchange);
   if (!currentPrice) {
     console.error(`[Quant Paper] Could not fetch price for ${position.pair}`);
+    closingSet.delete(positionId);
     return { success: false, pnl: 0 };
   }
 
@@ -316,6 +320,7 @@ export async function paperClosePosition(
     `[Quant Paper] ${position.tradeType ?? "directional"}: CLOSE ${position.pair} pnl=${realizedPnl >= 0 ? "+" : ""}$${realizedPnl.toFixed(2)} (${reason})${fundingStr}`,
   );
 
+  closingSet.delete(positionId);
   return { success: true, pnl };
 }
 

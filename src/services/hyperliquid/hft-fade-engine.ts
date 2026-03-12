@@ -11,7 +11,7 @@ import {
   QUANT_TRADING_PAIRS,
 } from "../../config/constants.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
-import { paperOpenPosition, getPaperPositions } from "./paper.js";
+import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition } from "../lighter/executor.js";
 import { isLighterInitialized } from "../lighter/client.js";
 import { loadOpenQuantPositions } from "../database/quant.js";
@@ -235,6 +235,45 @@ async function runHftFadeCycle(): Promise<void> {
 
 let hftInterval: ReturnType<typeof setInterval> | null = null;
 let hftInitialTimeout: ReturnType<typeof setTimeout> | null = null;
+let hftMonitorInterval: ReturnType<typeof setInterval> | null = null;
+
+async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  if (!symbols.length) return prices;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3_000);
+  try {
+    const url = `https://api.binance.com/api/v3/ticker/price?symbols=${JSON.stringify(symbols)}`;
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) return prices;
+    const data = (await resp.json()) as { symbol: string; price: string }[];
+    for (const item of data) prices.set(item.symbol, parseFloat(item.price));
+  } catch { /* best effort */ } finally {
+    clearTimeout(timeoutId);
+  }
+  return prices;
+}
+
+async function runHftMonitor(): Promise<void> {
+  const positions = getPaperPositions().filter(p => p.tradeType === "hft-fade" && p.status === "open");
+  if (!positions.length) return;
+
+  const symbols = [...new Set(positions.map(p => BINANCE_SYMBOL_MAP[p.pair]).filter(Boolean))];
+  const prices = await fetchBinancePrices(symbols);
+
+  for (const pos of positions) {
+    const symbol = BINANCE_SYMBOL_MAP[pos.pair];
+    if (!symbol) continue;
+    const price = prices.get(symbol);
+    if (!price) continue;
+    const sl = pos.stopLoss;
+    const tp = pos.takeProfit;
+    const slHit = sl && (pos.direction === "long" ? price <= sl : price >= sl);
+    const tpHit = tp && (pos.direction === "long" ? price >= tp : price <= tp);
+    if (slHit) await paperClosePosition(pos.id, "stop-loss");
+    else if (tpHit) await paperClosePosition(pos.id, "take-profit");
+  }
+}
 
 // Returns ms until the next Binance 5m candle close + 3s buffer
 function msUntilNextCandle(): number {
@@ -259,6 +298,7 @@ export function startHftFadeScheduler(): void {
       void runHftFadeCycle();
     }, HFT_FADE_INTERVAL_MS);
   }, delay);
+  hftMonitorInterval = setInterval(() => { void runHftMonitor(); }, 2_000);
 }
 
 export function stopHftFadeScheduler(): void {
@@ -269,6 +309,10 @@ export function stopHftFadeScheduler(): void {
   if (hftInterval !== null) {
     clearInterval(hftInterval);
     hftInterval = null;
+  }
+  if (hftMonitorInterval !== null) {
+    clearInterval(hftMonitorInterval);
+    hftMonitorInterval = null;
   }
   console.log("[HFT-Fade] Stopped");
 }
