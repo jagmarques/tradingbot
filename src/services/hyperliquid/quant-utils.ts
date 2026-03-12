@@ -47,7 +47,10 @@ export function inferExitReason(
   if (sl && pos.direction === "short" && exitPrice >= sl - tol) return "exchange-sl";
   if (tp && pos.direction === "long" && exitPrice >= tp - tol) return "exchange-tp";
   if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "exchange-tp";
-  return "exchange-close";
+  const pctFromEntry = ((exitPrice - pos.entryPrice) / pos.entryPrice * 100).toFixed(3);
+  const slStr = sl ? `sl=${sl.toPrecision(6)}` : "sl=none";
+  const tpStr = tp ? `tp=${tp.toPrecision(6)}` : "tp=none";
+  return `exchange-close (${parseFloat(pctFromEntry) >= 0 ? "+" : ""}${pctFromEntry}% from entry, ${slStr}, ${tpStr})`;
 }
 
 // True if SL close should record cooldown; inv-* and hft-fade exempt

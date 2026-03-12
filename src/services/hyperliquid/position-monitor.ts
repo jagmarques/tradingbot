@@ -169,8 +169,8 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      // Paper liquidation check
-      if (position.mode === "paper") {
+      // Paper liquidation check (skip hft-fade)
+      if (position.mode === "paper" && position.tradeType !== "hft-fade") {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;

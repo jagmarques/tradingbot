@@ -38,8 +38,8 @@ const positionContext = new Map<string, {
 
 async function placeExchangeStop(position: QuantPosition, force = false): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
-  if (!force && exchangeStops.has(position.pair)) return;
-  exchangeStops.delete(position.pair);
+  if (!force && exchangeStops.has(position.id)) return;
+  exchangeStops.delete(position.id);
   try {
     const isInverted = (position.tradeType ?? "").startsWith("inv-");
     const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction, isInverted);
@@ -68,7 +68,7 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
     if (err) {
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
-      exchangeStops.add(position.pair);
+      exchangeStops.add(position.id);
       console.log(`[Lighter Executor] Exchange stop placed for ${position.pair} @ ${sl}`);
     }
   } catch (err) {
@@ -80,8 +80,8 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
 
 async function placeExchangeTP(position: QuantPosition, force = false): Promise<void> {
   if (!position.takeProfit || !isFinite(position.takeProfit) || position.takeProfit <= 0) return;
-  if (!force && exchangeTPs.has(position.pair)) return;
-  exchangeTPs.delete(position.pair);
+  if (!force && exchangeTPs.has(position.id)) return;
+  exchangeTPs.delete(position.id);
   try {
     const marketIndex = await getMarketIndex(position.pair);
     if (marketIndex === null) return;
@@ -109,7 +109,7 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
     if (err) {
       console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
     } else {
-      exchangeTPs.add(position.pair);
+      exchangeTPs.add(position.id);
       console.log(`[Lighter Executor] Exchange TP placed for ${position.pair} @ ${tp}`);
     }
   } catch (err) {

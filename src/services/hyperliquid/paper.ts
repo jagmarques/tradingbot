@@ -162,13 +162,10 @@ export async function paperOpenPosition(
     return null;
   }
 
-  const isInverted = tradeType.startsWith("inv-");
-  const entryPrice = isInverted && aiEntryPrice && aiEntryPrice > 0 ? aiEntryPrice : price;
-
-  // Rebase stops to fill price (skip for inverted)
+  // Rebase stops to fill price
   let adjStop = stopLoss;
   let adjTP = takeProfit;
-  if (!isInverted && aiEntryPrice && aiEntryPrice > 0) {
+  if (aiEntryPrice && aiEntryPrice > 0) {
     const rebased = rebaseStops(stopLoss, takeProfit, aiEntryPrice, price);
     adjStop = rebased.stopLoss;
     adjTP = rebased.takeProfit;
@@ -178,6 +175,8 @@ export async function paperOpenPosition(
       );
     }
   }
+
+  const entryPrice = price;
 
   const position: QuantPosition = {
     id: generateQuantId(),

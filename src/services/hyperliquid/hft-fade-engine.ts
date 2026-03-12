@@ -32,7 +32,6 @@ const BINANCE_SYMBOL_MAP: Record<string, string> = {
   LINK: "LINKUSDT",
   ADA: "ADAUSDT",
   WLD: "WLDUSDT",
-  MKR: "MKRUSDT",
   XRP: "XRPUSDT",
   SUI: "SUIUSDT",
   TON: "TONUSDT",
