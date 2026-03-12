@@ -8,6 +8,7 @@ import {
   HFT_FADE_MIN_VOLUME_24H,
   HFT_FADE_LIVE_ENABLED,
   HFT_FADE_MAX_CONCURRENT,
+  HFT_FADE_DAILY_LOSS_LIMIT,
   HFT_T8_TP40_SL3_THRESHOLD_PCT,
   HFT_T8_TP40_SL3_TP_PCT,
   HFT_T8_TP40_SL3_SL_PCT,
@@ -186,14 +187,14 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
   }
 }
 
-function computeRegimeParams(candles: OhlcCandle[]): { skip: boolean; thresholdPct: number; tpPct: number; slPct: number } {
+function computeRegimeParams(candles: OhlcCandle[]): { thresholdPct: number; tpPct: number; slPct: number } {
   const last14 = candles.slice(-14);
   const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
 
   if (atrPct > 0.60) {
-    return { skip: false, thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 }; // high-vol: wider TP
+    return { thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 }; // high-vol: wider TP
   }
-  return { skip: false, thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 }; // ranging: tight TP
+  return { thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 }; // ranging: tight TP
 }
 
 interface Candle5m {
@@ -308,7 +309,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         regime: "ranging",
         strategy: config.tradeType,
         mode,
-        dailyLossLimit: Infinity,
+        dailyLossLimit: HFT_FADE_DAILY_LOSS_LIMIT,
       });
       if (!gate.allowed) {
         console.log(`[${config.label}] ${pair} blocked by risk gate: ${gate.reason}`);
@@ -340,7 +341,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           tp,
           config.tradeType,
           undefined,
-          entryPrice,
+          undefined,
           "lighter",
         );
       }
