@@ -63,6 +63,7 @@ interface OhlcCandle {
   high: number;
   low: number;
   close: number;
+  volume: number;
 }
 
 interface OhlcCache {
@@ -119,50 +120,6 @@ const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 const ohlcCache = new Map<string, OhlcCache>();
 const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
 
-const rsi1hCache = new Map<string, { rsi: number; expiresAt: number }>();
-const RSI1H_CACHE_TTL_MS = 10 * 60 * 1000; // 10min
-
-function computeRsi14(closes: number[]): number | null {
-  if (closes.length < 15) return null;
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 1; i <= 14; i++) {
-    const d = closes[i] - closes[i - 1];
-    if (d > 0) avgGain += d; else avgLoss -= d;
-  }
-  avgGain /= 14;
-  avgLoss /= 14;
-  for (let i = 15; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    avgGain = (avgGain * 13 + Math.max(d, 0)) / 14;
-    avgLoss = (avgLoss * 13 + Math.max(-d, 0)) / 14;
-  }
-  if (avgLoss === 0) return 100;
-  return 100 - 100 / (1 + avgGain / avgLoss);
-}
-
-async function fetchRsi1h(symbol: string): Promise<number | null> {
-  const cached = rsi1hCache.get(symbol);
-  if (cached && Date.now() < cached.expiresAt) return cached.rsi;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=20`;
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as unknown[][];
-    if (!Array.isArray(data) || data.length < 15) return null;
-    // Exclude current open candle (last entry)
-    const closes = data.slice(0, -1).map(k => parseFloat((k as string[])[4])).filter(v => !isNaN(v));
-    if (closes.length < 15) return null;
-    const rsi = computeRsi14(closes);
-    if (rsi !== null) rsi1hCache.set(symbol, { rsi, expiresAt: Date.now() + RSI1H_CACHE_TTL_MS });
-    return rsi;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
@@ -219,8 +176,9 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
       const high = parseFloat(kline[2] as string);
       const low = parseFloat(kline[3] as string);
       const close = parseFloat(kline[4] as string);
+      const volume = parseFloat(kline[5] as string);
       if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
-      candles.push({ open, high, low, close });
+      candles.push({ open, high, low, close, volume: isNaN(volume) ? 0 : volume });
     }
     if (!candles.length) return null;
     ohlcCache.set(symbol, { candles, expiresAt: Date.now() + OHLC_CACHE_TTL_MS });
@@ -242,6 +200,92 @@ function computeRegimeParams(candles: OhlcCandle[]): { thresholdPct: number; tpP
     return { thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 }; // high-vol: wider TP
   }
   return { thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 }; // ranging: tight TP
+}
+
+function computeRsiN(closes: number[], period: number): number | null {
+  if (closes.length < period + 1) return null;
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) avgGain += d; else avgLoss -= d;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  return 100 - 100 / (1 + avgGain / avgLoss);
+}
+
+function computeEma(values: number[], period: number): number[] {
+  if (values.length < period) return [];
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const result: number[] = [ema];
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+    result.push(ema);
+  }
+  return result;
+}
+
+// Multi-signal AI score (0-4). Enter only at ≥ 3.
+// Signal 1: RSI(7) extreme — fast momentum exhaustion (>75 short, <25 long)
+// Signal 2: Bollinger Band breach — price outside 20-period 2σ band
+// Signal 3: Volume surge — current candle volume > 1.5x 20-period mean
+// Signal 4: EMA(21) flat — not in a strong trend (slope < 0.15% over 2 candles)
+function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { score: number; label: string } {
+  const closes = candles.map(c => c.close);
+  const current = candles[candles.length - 1];
+  let score = 0;
+  const parts: string[] = [];
+
+  // RSI(7)
+  const rsi7 = computeRsiN(closes, 7);
+  if (rsi7 !== null) {
+    if ((direction === "short" && rsi7 > 75) || (direction === "long" && rsi7 < 25)) {
+      score++;
+      parts.push(`RSI7=${rsi7.toFixed(0)}`);
+    }
+  }
+
+  // Bollinger Bands (20-period, 2σ)
+  if (closes.length >= 20) {
+    const window = closes.slice(-20);
+    const mean = window.reduce((a, b) => a + b, 0) / 20;
+    const std = Math.sqrt(window.reduce((a, b) => a + (b - mean) ** 2, 0) / 20);
+    if ((direction === "short" && current.close > mean + 2 * std) ||
+        (direction === "long" && current.close < mean - 2 * std)) {
+      score++;
+      parts.push("BB");
+    }
+  }
+
+  // Volume surge (1.5x 20-period mean)
+  if (candles.length >= 21 && current.volume > 0) {
+    const avgVol = candles.slice(-21, -1).reduce((a, c) => a + c.volume, 0) / 20;
+    if (avgVol > 0 && current.volume > avgVol * 1.5) {
+      score++;
+      parts.push(`Vol=${(current.volume / avgVol).toFixed(1)}x`);
+    }
+  }
+
+  // EMA(21) flat — not trending
+  if (closes.length >= 21) {
+    const ema = computeEma(closes, 21);
+    if (ema.length >= 3) {
+      const slopePct = Math.abs(ema[ema.length - 1] - ema[ema.length - 3]) / ema[ema.length - 3] * 100;
+      if (slopePct < 0.15) {
+        score++;
+        parts.push("flat");
+      }
+    }
+  }
+
+  return { score, label: parts.join(",") };
 }
 
 interface Candle5m {
@@ -311,14 +355,17 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       let effectiveThreshold = config.thresholdPct;
       let effectiveTp = config.tpPct;
       let effectiveSl = config.slPct;
+      let ohlcCandles: OhlcCandle[] | null = null;
 
-      if (config.regimeAdaptive) {
-        const ohlcCandles = await fetchBinanceOhlcCandles(symbol);
+      if (config.regimeAdaptive || config.aiFilter) {
+        ohlcCandles = await fetchBinanceOhlcCandles(symbol);
         if (!ohlcCandles) continue;
-        const regime = computeRegimeParams(ohlcCandles);
-        effectiveThreshold = regime.thresholdPct;
-        effectiveTp = regime.tpPct;
-        effectiveSl = regime.slPct;
+        if (config.regimeAdaptive) {
+          const regime = computeRegimeParams(ohlcCandles);
+          effectiveThreshold = regime.thresholdPct;
+          effectiveTp = regime.tpPct;
+          effectiveSl = regime.slPct;
+        }
       }
 
       const candle = await fetchBinance5mCandle(symbol);
@@ -330,12 +377,9 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       const direction: "long" | "short" = returnPct > 0 ? "short" : "long";
 
       if (config.aiFilter) {
-        const rsi = await fetchRsi1h(symbol);
-        if (rsi === null) continue;
-        // Only fade when RSI confirms the move is extended
-        if (direction === "short" && rsi < 55) continue;
-        if (direction === "long" && rsi > 45) continue;
-        console.log(`[${config.label}] ${pair} RSI1h=${rsi.toFixed(1)} confirms ${direction} fade`);
+        const { score, label } = computeAiScore(ohlcCandles!, direction);
+        if (score < 3) continue;
+        console.log(`[${config.label}] ${pair} score=${score}/4 [${label}] → ${direction}`);
       }
 
       signals++;
