@@ -111,10 +111,10 @@ interface VolumeCache {
 }
 
 const volumeCache = new Map<string, VolumeCache>();
-const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (volume doesn't change meaningfully per cycle)
+const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
 const ohlcCache = new Map<string, OhlcCache>();
-const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min TTL
+const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
 
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
@@ -162,7 +162,7 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
     }
     const data = (await resp.json()) as unknown[][];
     if (!Array.isArray(data) || data.length < 1) return null;
-    // Exclude last candle (current/open), take first 21 closed candles
+    // skip current open candle
     const closed = data.slice(0, 21);
     const candles: OhlcCandle[] = [];
     for (const kline of closed) {
@@ -222,7 +222,7 @@ async function fetchBinance5mCandle(symbol: string): Promise<Candle5m | null> {
       return null;
     }
     const data = (await resp.json()) as unknown[][];
-    // limit=2 gives [closed_candle, current_candle]; index 0 = just-closed candle
+    // index 0 = just-closed candle
     if (!Array.isArray(data) || data.length < 1) return null;
     const candle = data[0];
     if (!Array.isArray(candle) || candle.length < 5) return null;
@@ -262,7 +262,6 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       const symbol = BINANCE_SYMBOL_MAP[pair];
       if (!symbol) continue;
 
-      // Volume check
       const volume24h = await fetchBinance24hVolume(symbol);
       if (volume24h === null || volume24h < HFT_FADE_MIN_VOLUME_24H) {
         if (volume24h !== null) {
@@ -288,21 +287,17 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         effectiveSl = regime.slPct;
       }
 
-      // Fetch closed 5m candle
       const candle = await fetchBinance5mCandle(symbol);
       if (!candle) continue;
 
-      // Compute return
       const returnPct = ((candle.close - candle.open) / candle.open) * 100;
       if (Math.abs(returnPct) < effectiveThreshold) continue;
 
       signals++;
 
-      // Fade direction: bullish candle -> go SHORT; bearish -> go LONG
       const direction: "long" | "short" = returnPct > 0 ? "short" : "long";
       const entryPrice = candle.close;
 
-      // SL and TP
       let sl: number;
       let tp: number;
       if (direction === "long") {
@@ -313,7 +308,6 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         tp = entryPrice * (1 - effectiveTp / 100);
       }
 
-      // Concurrent cap
       const openHftCount = goLive
         ? loadOpenQuantPositions().filter(p => p.tradeType === config.tradeType && p.mode === "live").length
         : getPaperPositions().filter(p => p.tradeType === config.tradeType).length;
@@ -322,7 +316,6 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         continue;
       }
 
-      // Risk gate
       const gate = validateRiskGates({
         leverage: HFT_FADE_LEVERAGE,
         stopLoss: sl,
@@ -419,11 +412,11 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
   }
 }
 
-// Returns ms until the next Binance 5m candle close + 3s buffer
+// ms until next 5m candle close + 3s buffer
 function msUntilNextCandle(): number {
   const now = Date.now();
-  const cycleMs = HFT_FADE_INTERVAL_MS; // 5 * 60 * 1000
-  const buffer = 3_000; // 3s after candle close to ensure it's settled
+  const cycleMs = HFT_FADE_INTERVAL_MS;
+  const buffer = 3_000;
   const nextClose = Math.ceil((now - buffer) / cycleMs) * cycleMs + buffer;
   return Math.max(0, nextClose - now);
 }
