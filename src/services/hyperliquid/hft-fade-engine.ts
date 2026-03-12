@@ -190,13 +190,10 @@ function computeRegimeParams(candles: OhlcCandle[]): { skip: boolean; thresholdP
   const last14 = candles.slice(-14);
   const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
 
-  // High-vol (ATR > 0.60%): wider candles → wider TP to let winners run
   if (atrPct > 0.60) {
-    return { skip: false, thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 };
+    return { skip: false, thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 }; // high-vol: wider TP
   }
-
-  // Ranging (ATR <= 0.60%): tight candles → tighter TP to lock in gains quickly
-  return { skip: false, thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 };
+  return { skip: false, thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 }; // ranging: tight TP
 }
 
 interface Candle5m {
