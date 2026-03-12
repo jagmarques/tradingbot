@@ -124,7 +124,8 @@ async function checkPositionStops(): Promise<void> {
     let lighterMids: Record<string, string> = {};
     const lighterPositions = positions.filter(p => p.exchange === "lighter");
     if (lighterPositions.length > 0 && isLighterInitialized()) {
-      const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
+      // HFT has its own 2s monitor, skip here
+      const lighterPairs = [...new Set(lighterPositions.filter(p => !p.tradeType?.startsWith("hft-")).map(p => p.pair))];
       try {
         // outer = N * (per-call timeout + inter-request delay)
         const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
