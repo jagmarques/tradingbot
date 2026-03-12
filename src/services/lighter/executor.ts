@@ -734,8 +734,11 @@ export async function lighterClosePosition(
       resetNonce();
       try {
         const exchangePositions = await getLighterOpenPositions();
-        const stillOpen = exchangePositions.find(p => p.symbol === position.pair);
-        if (!stillOpen) {
+        const postEntry = exchangePositions.find(p => p.symbol === position.pair);
+        const otherSamePairTimeout = getLighterLivePositions().filter(p => p.pair === position.pair && p.id !== positionId && !closingSet.has(p.id));
+        const expectedRemainingTimeout = otherSamePairTimeout.reduce((sum, p) => sum + (p.size * p.leverage) / p.entryPrice, 0);
+        const timeoutClosed = !postEntry || (otherSamePairTimeout.length > 0 && Math.abs((postEntry.size) - expectedRemainingTimeout) / Math.max(expectedRemainingTimeout, 0.001) < 0.2);
+        if (timeoutClosed) {
           console.log(`[Lighter Executor] ${position.pair} closed on exchange despite timeout`);
           const now = new Date().toISOString();
           const exitReason = `${reason} (timeout-reconciled)`;
@@ -778,7 +781,7 @@ export async function lighterClosePosition(
           });
           positionContext.delete(positionId);
           if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
-            recordStopLossCooldown(position.pair, position.direction);
+            recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           }
           void notifyQuantTradeExit({
             pair: position.pair, direction: position.direction,
