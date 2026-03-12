@@ -24,6 +24,16 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "macd-directional",
   "zlemav2-directional",
   "schaffv2-directional",
+  "inv-psar-directional",
+  "inv-zlema-directional",
+  "inv-vortex-directional",
+  "inv-schaff-directional",
+  "inv-dema-directional",
+  "inv-cci-directional",
+  "inv-aroon-directional",
+  "inv-macd-directional",
+  "inv-zlemav2-directional",
+  "inv-schaffv2-directional",
   "hft-fade",
 ];
 
