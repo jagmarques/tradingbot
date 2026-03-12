@@ -94,7 +94,7 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
     const tp = position.takeProfit;
     const triggerPrice = toPriceUnits(tp, priceDecimals);
     const limitPrice = toPriceUnits(
-      position.direction === "long" ? tp * 0.95 : tp * 1.05,
+      position.direction === "long" ? tp : tp * 1.05,
       priceDecimals,
     );
     const isAsk = position.direction === "long";
