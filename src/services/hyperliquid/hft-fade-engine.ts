@@ -55,6 +55,7 @@ export interface HftVariantConfig {
   tpPct: number;
   slPct: number;
   regimeAdaptive?: boolean;
+  aiFilter?: boolean;
 }
 
 interface OhlcCandle {
@@ -82,6 +83,7 @@ const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-t8-tp35-sl3", label: "HFT-t8-tp35-sl3", thresholdPct: HFT_T8_TP35_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP35_SL3_TP_PCT, slPct: HFT_T8_TP35_SL3_SL_PCT },
   { tradeType: "hft-t8-tp25-sl3", label: "HFT-t8-tp25-sl3", thresholdPct: HFT_T8_TP25_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP25_SL3_TP_PCT, slPct: HFT_T8_TP25_SL3_SL_PCT },
   { tradeType: "hft-regime", label: "HFT-Regime", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true },
+  { tradeType: "hft-ai", label: "HFT-AI", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true },
 ];
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
@@ -116,6 +118,51 @@ const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
 const ohlcCache = new Map<string, OhlcCache>();
 const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
+
+const rsi1hCache = new Map<string, { rsi: number; expiresAt: number }>();
+const RSI1H_CACHE_TTL_MS = 10 * 60 * 1000; // 10min
+
+function computeRsi14(closes: number[]): number | null {
+  if (closes.length < 15) return null;
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= 14; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) avgGain += d; else avgLoss -= d;
+  }
+  avgGain /= 14;
+  avgLoss /= 14;
+  for (let i = 15; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgGain = (avgGain * 13 + Math.max(d, 0)) / 14;
+    avgLoss = (avgLoss * 13 + Math.max(-d, 0)) / 14;
+  }
+  if (avgLoss === 0) return 100;
+  return 100 - 100 / (1 + avgGain / avgLoss);
+}
+
+async function fetchRsi1h(symbol: string): Promise<number | null> {
+  const cached = rsi1hCache.get(symbol);
+  if (cached && Date.now() < cached.expiresAt) return cached.rsi;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=20`;
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as unknown[][];
+    if (!Array.isArray(data) || data.length < 15) return null;
+    // Exclude current open candle (last entry)
+    const closes = data.slice(0, -1).map(k => parseFloat((k as string[])[4])).filter(v => !isNaN(v));
+    if (closes.length < 15) return null;
+    const rsi = computeRsi14(closes);
+    if (rsi !== null) rsi1hCache.set(symbol, { rsi, expiresAt: Date.now() + RSI1H_CACHE_TTL_MS });
+    return rsi;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
@@ -280,9 +327,18 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       const returnPct = ((candle.close - candle.open) / candle.open) * 100;
       if (Math.abs(returnPct) < effectiveThreshold) continue;
 
-      signals++;
-
       const direction: "long" | "short" = returnPct > 0 ? "short" : "long";
+
+      if (config.aiFilter) {
+        const rsi = await fetchRsi1h(symbol);
+        if (rsi === null) continue;
+        // Only fade when RSI confirms the move is extended
+        if (direction === "short" && rsi < 55) continue;
+        if (direction === "long" && rsi > 45) continue;
+        console.log(`[${config.label}] ${pair} RSI1h=${rsi.toFixed(1)} confirms ${direction} fade`);
+      }
+
+      signals++;
       const entryPrice = candle.close;
 
       let sl: number;

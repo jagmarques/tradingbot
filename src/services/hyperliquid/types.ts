@@ -89,7 +89,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional" | "inv-psar-directional" | "inv-zlema-directional" | "inv-vortex-directional" | "inv-schaff-directional" | "inv-dema-directional" | "inv-cci-directional" | "inv-aroon-directional" | "inv-macd-directional" | "inv-zlemav2-directional" | "inv-schaffv2-directional" | "hft-fade" | "hft-t8-tp40-sl3" | "hft-t10-tp35-sl4" | "hft-t8-tp35-sl4" | "hft-t8-tp25-sl5" | "hft-t8-tp30-sl5" | "hft-t12-tp40-sl3" | "hft-t10-tp40-sl3" | "hft-t8-tp30-sl3" | "hft-t8-tp35-sl3" | "hft-t8-tp25-sl3" | "hft-regime";
+export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional" | "inv-psar-directional" | "inv-zlema-directional" | "inv-vortex-directional" | "inv-schaff-directional" | "inv-dema-directional" | "inv-cci-directional" | "inv-aroon-directional" | "inv-macd-directional" | "inv-zlemav2-directional" | "inv-schaffv2-directional" | "hft-fade" | "hft-t8-tp40-sl3" | "hft-t10-tp35-sl4" | "hft-t8-tp35-sl4" | "hft-t8-tp25-sl5" | "hft-t8-tp30-sl5" | "hft-t12-tp40-sl3" | "hft-t10-tp40-sl3" | "hft-t8-tp30-sl3" | "hft-t8-tp35-sl3" | "hft-t8-tp25-sl3" | "hft-regime" | "hft-ai";
 
 export interface FundingOpportunity {
   pair: string;
