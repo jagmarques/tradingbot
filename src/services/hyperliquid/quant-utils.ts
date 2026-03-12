@@ -43,14 +43,12 @@ export function inferExitReason(
   const sl = pos.stopLoss;
   const tp = pos.takeProfit;
   const tol = pos.entryPrice * 0.005;
-  if (sl && pos.direction === "long" && exitPrice <= sl + tol) return "exchange-sl";
-  if (sl && pos.direction === "short" && exitPrice >= sl - tol) return "exchange-sl";
-  if (tp && pos.direction === "long" && exitPrice >= tp - tol) return "exchange-tp";
-  if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "exchange-tp";
-  const pctFromEntry = ((exitPrice - pos.entryPrice) / pos.entryPrice * 100).toFixed(3);
-  const slStr = sl ? `sl=${sl.toPrecision(6)}` : "sl=none";
-  const tpStr = tp ? `tp=${tp.toPrecision(6)}` : "tp=none";
-  return `exchange-close (${parseFloat(pctFromEntry) >= 0 ? "+" : ""}${pctFromEntry}% from entry, ${slStr}, ${tpStr})`;
+  if (sl && pos.direction === "long" && exitPrice <= sl + tol) return "SL hit";
+  if (sl && pos.direction === "short" && exitPrice >= sl - tol) return "SL hit";
+  if (tp && pos.direction === "long" && exitPrice >= tp - tol) return "TP hit";
+  if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "TP hit";
+  const pct = ((exitPrice - pos.entryPrice) / pos.entryPrice) * 100;
+  return `closed ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
 // True if SL close should record cooldown; inv-* and hft-fade exempt
