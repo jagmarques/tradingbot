@@ -14,10 +14,7 @@ import { runZlemaV2DecisionEngine } from "./zlema-v2-engine.js";
 import { runSchaffV2DecisionEngine } from "./schaff-v2-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_COMPOUND_SIZE_PCT, QUANT_COMPOUND_MIN_SIZE } from "../../config/constants.js";
-import { getLighterAccountInfo } from "../lighter/client.js";
-import { ensureConnected, getClient } from "./client.js";
-import { loadEnv } from "../../config/env.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD } from "../../config/constants.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 import type { TechSignal } from "./prompt.js";
 
@@ -29,14 +26,14 @@ let cycleRunning = false;
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 const stopLossCooldowns = new Map<string, number>(); // `${pair}:${direction}` -> timestamp
 
-export function recordStopLossCooldown(pair: string, direction: string): void {
-  const key = `${pair}:${direction}`;
+export function recordStopLossCooldown(pair: string, direction: string, tradeType = "directional"): void {
+  const key = `${pair}:${direction}:${tradeType}`;
   stopLossCooldowns.set(key, Date.now());
-  console.log(`[QuantScheduler] Stop-loss cooldown set for ${pair} ${direction} (2h)`);
+  console.log(`[QuantScheduler] SL cooldown: ${pair} ${direction} (${tradeType}, 2h)`);
 }
 
-function isInStopLossCooldown(pair: string, direction: string): boolean {
-  const key = `${pair}:${direction}`;
+function isInStopLossCooldown(pair: string, direction: string, tradeType = "directional"): boolean {
+  const key = `${pair}:${direction}:${tradeType}`;
   const ts = stopLossCooldowns.get(key);
   if (!ts) return false;
   if (Date.now() - ts > STOP_LOSS_COOLDOWN_MS) {
@@ -146,47 +143,11 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Compound sizing (paper engines only)
-    let lighterCompoundSize = QUANT_COMPOUND_MIN_SIZE;
-    try {
-      const acct = await getLighterAccountInfo();
-      const raw = Math.floor(acct.equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
-      lighterCompoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
-      console.log(`[QuantScheduler] Lighter compound: $${lighterCompoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${acct.equity.toFixed(2)} equity)`);
-    } catch (err) {
-      console.error(`[QuantScheduler] Failed to fetch Lighter equity for compound sizing, using $${lighterCompoundSize}`);
-    }
-
-    let hlCompoundSize = QUANT_COMPOUND_MIN_SIZE;
-    try {
-      await ensureConnected();
-      const sdk = getClient();
-      const env = loadEnv();
-      const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
-      if (wallet) {
-        const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
-        let equity = parseFloat(state.marginSummary.accountValue) || 0;
-        const marginUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
-        if (equity <= marginUsed) {
-          try {
-            const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
-            const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
-            if (usdcBal) equity = parseFloat(usdcBal.total) || 0;
-          } catch { /* spot check optional */ }
-        }
-        const raw = Math.floor(equity * QUANT_COMPOUND_SIZE_PCT * 100) / 100;
-        hlCompoundSize = Math.max(QUANT_COMPOUND_MIN_SIZE, raw);
-        console.log(`[QuantScheduler] HL compound: $${hlCompoundSize.toFixed(2)} (${(QUANT_COMPOUND_SIZE_PCT * 100).toFixed(1)}% of $${equity.toFixed(2)} equity)`);
-      }
-    } catch (err) {
-      console.error(`[QuantScheduler] Failed to fetch HL equity for compound sizing, using $${hlCompoundSize}`);
-    }
-
     let aiExecuted = 0;
     for (const decision of aiDecisions) {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
-      if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+      if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
       const aiSize = QUANT_FIXED_POSITION_SIZE_USD;
       const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
       if (position) {
@@ -210,7 +171,7 @@ export async function runDirectionalCycle(): Promise<void> {
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
-        if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+        if (isInStopLossCooldown(decision.pair, decision.direction, tradeType)) continue;
         const position = await openPosition(decision.pair, decision.direction, QUANT_FIXED_POSITION_SIZE_USD, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice);
         if (position) {
           count++;
@@ -242,7 +203,7 @@ export async function runDirectionalCycle(): Promise<void> {
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
-        if (isInStopLossCooldown(decision.pair, decision.direction)) continue;
+        if (isInStopLossCooldown(decision.pair, decision.direction, tradeType)) continue;
         const position = await openPosition(decision.pair, decision.direction, decision.suggestedSizeUsd, 10, decision.stopLoss, decision.takeProfit, decision.regime, tradeType as TradeType, undefined, decision.entryPrice, true);
         if (position) {
           count++;
@@ -292,7 +253,9 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
-    const normalLog = `AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
+    const eL = (tt: string, d: { length: number }) => `${executed.get(tt) ?? 0}/${d.length}`;
+    const liveLog = `SchaffV2 ${eL("schaffv2-directional", schaffv2Decisions)}L, Aroon ${eL("aroon-directional", aroonDecisions)}L`;
+    const normalLog = `AI ${aiExecuted}/${aiDecisions.length}, ${liveLog}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
     const invLog = `iZLEMAv2 ${eP("inv-zlemav2-directional", zlemav2Decisions)}P, iVortex ${eP("inv-vortex-directional", vortexDecisions)}P, iSchaff ${eP("inv-schaff-directional", schaffDecisions)}P, iDEMA ${eP("inv-dema-directional", demaDecisions)}P, iZLEMA ${eP("inv-zlema-directional", zlemaDecisions)}P, iPSAR ${eP("inv-psar-directional", psarDecisions)}P, iCCI ${eP("inv-cci-directional", cciDecisions)}P, iAroon ${eP("inv-aroon-directional", aroonDecisions)}P, iMACD ${eP("inv-macd-directional", macdDecisions)}P, iSchaffV2 ${eP("inv-schaffv2-directional", schaffv2Decisions)}P`;
     console.log(`[QuantScheduler] Cycle complete: ${normalLog}`);
     console.log(`[QuantScheduler] Inverted: ${invLog}`);

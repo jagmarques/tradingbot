@@ -715,7 +715,7 @@ export async function liveClosePosition(
     positionContext.delete(positionId);
 
     if (reason === "stop-loss") {
-      recordStopLossCooldown(position.pair, position.direction);
+      recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
     }
 
     void notifyQuantTradeExit({

@@ -303,7 +303,7 @@ export async function paperClosePosition(
   accumulatedFunding.delete(positionId);
 
   if (reason === "stop-loss" && !position.tradeType?.startsWith("inv-") && position.tradeType !== "hft-fade") {
-    recordStopLossCooldown(position.pair, position.direction);
+    recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
   }
 
   void notifyQuantTradeExit({

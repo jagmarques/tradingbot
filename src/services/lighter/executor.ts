@@ -135,22 +135,22 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
 }
 
 // Cancel all exchange orders, then re-place stops/TPs for remaining open positions
-async function cancelAndReplaceOrders(excludePair: string): Promise<void> {
+async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> {
   try {
     await withNonce(async (nonce) =>
       withTimeout(getSignerClient().cancel_all_orders(0, 0, nonce), API_ORDER_TIMEOUT_MS, "Lighter cancelAllOrders"),
     );
     exchangeStops.clear();
     exchangeTPs.clear();
-    console.log(`[Lighter Executor] All orders cancelled (closing ${excludePair})`);
+    console.log(`[Lighter Executor] All orders cancelled`);
   } catch (err) {
     if (err instanceof TimeoutError) resetNonce();
     console.error(`[Lighter Executor] Cancel all orders error: ${err instanceof Error ? err.message : err}`);
     return;
   }
-  // Re-place stops/TPs for remaining positions
+  // Re-place stops/TPs for all remaining positions except the one being closed
   for (const pos of getLighterLivePositions()) {
-    if (pos.pair === excludePair) continue;
+    if (pos.id === closingPositionId) continue;
     if (pos.tradeType === "hft-fade") continue;
     if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
     if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
@@ -332,9 +332,9 @@ export async function lighterOpenPosition(
   }
 
   if (!allowMultiple) {
-    const existingLighter = getLighterLivePositions().find(p => p.pair === pair);
+    const existingLighter = getLighterLivePositions().find(p => p.pair === pair && p.tradeType === tradeType);
     if (existingLighter) {
-      console.log(`[Lighter Executor] ${pair} already open on Lighter, skipping`);
+      console.log(`[Lighter Executor] ${pair} already open for ${tradeType}, skipping`);
       return null;
     }
   }
@@ -612,7 +612,7 @@ export async function lighterClosePosition(
 
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
     if (!skipCancelReplace) {
-      await cancelAndReplaceOrders(position.pair);
+      await cancelAndReplaceOrders(positionId);
     }
 
     const closeResult = await withNonce(async (nonce) =>
@@ -699,7 +699,7 @@ export async function lighterClosePosition(
     positionContext.delete(positionId);
 
     if (reason === "stop-loss" && position.tradeType !== "hft-fade") {
-      recordStopLossCooldown(position.pair, position.direction);
+      recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
     }
 
     void notifyQuantTradeExit({

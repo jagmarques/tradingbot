@@ -70,12 +70,12 @@ export async function openPosition(
     }
   }
 
-  // One live position per pair per exchange
+  // One live position per pair per engine
   if (useLive) {
     const allPositions = getOpenQuantPositions();
-    const existingLive = allPositions.find(p => p.pair === pair && p.exchange === exchange && p.mode === "live");
+    const existingLive = allPositions.find(p => p.pair === pair && p.exchange === exchange && p.mode === "live" && p.tradeType === tradeType);
     if (existingLive) {
-      console.log(`[Quant Executor] ${pair} already open live on ${exchange}, skipping`);
+      console.log(`[Quant Executor] ${pair} already open live for ${tradeType}, skipping`);
       return null;
     }
   }
