@@ -319,8 +319,8 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     const tp = pos.takeProfit;
     const slHit = sl && (pos.direction === "long" ? price <= sl : price >= sl);
     const tpHit = tp && (pos.direction === "long" ? price >= tp : price <= tp);
-    if (slHit) await paperClosePosition(pos.id, "stop-loss");
-    else if (tpHit) await paperClosePosition(pos.id, "take-profit");
+    if (slHit) await paperClosePosition(pos.id, "stop-loss", sl);
+    else if (tpHit) await paperClosePosition(pos.id, "take-profit", tp);
   }
 }
 

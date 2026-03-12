@@ -233,6 +233,7 @@ export async function paperOpenPosition(
 export async function paperClosePosition(
   positionId: string,
   reason: string,
+  exitPrice?: number,
 ): Promise<{ success: boolean; pnl: number }> {
   if (closingSet.has(positionId)) return { success: false, pnl: 0 };
   const position = paperPositions.get(positionId);
@@ -243,7 +244,7 @@ export async function paperClosePosition(
 
   try {
   const posExchange = position.exchange ?? "hyperliquid";
-  const currentPrice = await fetchMidPriceForExchange(position.pair, posExchange);
+  const currentPrice = exitPrice ?? await fetchMidPriceForExchange(position.pair, posExchange);
   if (!currentPrice) {
     console.error(`[Quant Paper] Could not fetch price for ${position.pair}`);
     return { success: false, pnl: 0 };
