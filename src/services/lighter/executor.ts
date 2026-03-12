@@ -610,6 +610,10 @@ export async function lighterClosePosition(
 
     const client = getSignerClient();
 
+    // Other engines' open positions on same pair (exclude this one and any concurrently closing)
+    const otherSamePair = getLighterLivePositions().filter(p => p.pair === position.pair && p.id !== positionId && !closingSet.has(p.id));
+    const expectedRemainingCoins = otherSamePair.reduce((sum, p) => sum + (p.size * p.leverage) / p.entryPrice, 0);
+
     console.log(`[Lighter Executor] Closing ${position.pair} ${position.direction} (${reason})`);
     if (!skipCancelReplace) {
       await cancelAndReplaceOrders(positionId);
@@ -640,9 +644,20 @@ export async function lighterClosePosition(
       await new Promise(r => setTimeout(r, 2000));
       try {
         const postClosePositions = await getLighterOpenPositions();
-        if (!postClosePositions.find(p => p.symbol === position.pair)) {
+        const postCloseEntry = postClosePositions.find(p => p.symbol === position.pair);
+        if (!postCloseEntry) {
+          // Pair completely gone from exchange
           closeFilled = true;
           break;
+        }
+        // Pair still exists — success if remaining size matches other engines' expected size (multi-engine same-pair)
+        if (otherSamePair.length > 0) {
+          const remainingSize = postCloseEntry.size;
+          const tolerance = 0.2;
+          if (Math.abs(remainingSize - expectedRemainingCoins) / Math.max(expectedRemainingCoins, 0.001) < tolerance) {
+            closeFilled = true;
+            break;
+          }
         }
       } catch (verifyErr) {
         console.error(`[Lighter Executor] Close verify failed: ${verifyErr instanceof Error ? verifyErr.message : verifyErr}`);
