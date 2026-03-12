@@ -139,8 +139,14 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
   for (const pos of getLighterLivePositions()) {
     if (pos.id === closingPositionId) continue;
     if (pos.tradeType?.startsWith("hft-")) continue;
-    if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
-    if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
+    if (pos.stopLoss && isFinite(pos.stopLoss)) {
+      await placeExchangeStop(pos, true);
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) {
+      await placeExchangeTP(pos, true);
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
 }
 
@@ -162,8 +168,14 @@ export function initLighterEngine(): void {
     } catch { /* best effort */ }
     for (const pos of getLighterLivePositions()) {
       if (pos.tradeType?.startsWith("hft-")) continue;
-      if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos, true);
-      if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos, true);
+      if (pos.stopLoss && isFinite(pos.stopLoss)) {
+        await placeExchangeStop(pos, true);
+        await new Promise(r => setTimeout(r, 500));
+      }
+      if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) {
+        await placeExchangeTP(pos, true);
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
   }, 30_000);
   setInterval(() => void reconcileLighter(), 5 * 60 * 1000);
