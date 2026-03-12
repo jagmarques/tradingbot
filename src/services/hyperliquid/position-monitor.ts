@@ -147,6 +147,9 @@ async function checkPositionStops(): Promise<void> {
 
     let orphanClosed = false;
     for (const position of positions) {
+      // HFT has its own 2s monitor
+      if (position.tradeType?.startsWith("hft-")) continue;
+
       if (position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
