@@ -223,21 +223,25 @@ export async function runDirectionalCycle(): Promise<void> {
         if (isInStopLossCooldown(pos.pair, invDir, invType)) continue;
         const invSl = pos.takeProfit;
         const invTp = pos.stopLoss;
-        // Skip live if AI has Lighter opposite (netting)
         if (QUANT_HYBRID_LIVE_ENGINES.has(invType)) {
-          const aiConflict = currentPositions.find(p => p.tradeType === "ai-directional" && p.mode === "live" && p.exchange === "lighter" && p.pair === pos.pair && p.direction !== invDir);
-          if (!aiConflict) {
-            await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false);
-          } else {
-            console.log(`[QuantScheduler] ${label}: Skip live ${pos.pair} — AI has opposite live position`);
+          // Open live and paper simultaneously for direct comparison
+          const [, paperPos] = await Promise.all([
+            openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, false),
+            openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true),
+          ]);
+          if (paperPos) {
+            count++;
+            invOpenPairs.add(pos.pair);
+            const mode = "live+paper";
+            console.log(`[QuantScheduler] ${label}(${mode}): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
           }
-        }
-        const position = await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
-        if (position) {
-          count++;
-          invOpenPairs.add(pos.pair);
-          const mode = QUANT_HYBRID_LIVE_ENGINES.has(invType) ? "live+paper" : "paper";
-          console.log(`[QuantScheduler] ${label}(${mode}): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
+        } else {
+          const position = await openPosition(pos.pair, invDir, QUANT_FIXED_POSITION_SIZE_USD, 10, invSl, invTp, "trending", invType as TradeType, undefined, pos.entryPrice, true);
+          if (position) {
+            count++;
+            invOpenPairs.add(pos.pair);
+            console.log(`[QuantScheduler] ${label}(paper): Mirror-opened ${pos.pair} ${invDir} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${pos.entryPrice}`);
+          }
         }
       }
       paperExecuted.set(invType, count);
