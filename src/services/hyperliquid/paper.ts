@@ -46,6 +46,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "hft-t8-tp30-sl3",
   "hft-t8-tp35-sl3",
   "hft-t8-tp25-sl3",
+  "hft-regime",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

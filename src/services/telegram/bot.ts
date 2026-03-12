@@ -2068,6 +2068,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "hft-t8-tp30-sl3" ? "[HFT-8]" :
       pos.tradeType === "hft-t8-tp35-sl3" ? "[HFT-9]" :
       pos.tradeType === "hft-t8-tp25-sl3" ? "[HFT-10]" :
+      pos.tradeType === "hft-regime" ? "[HFT-11]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2197,6 +2198,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["HFT-8", "hft-t8-tp30-sl3"],
     ["HFT-9", "hft-t8-tp35-sl3"],
     ["HFT-10", "hft-t8-tp25-sl3"],
+    ["HFT-11", "hft-regime"],
   ];
   const invertedEngines: [string, string][] = [
     ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
