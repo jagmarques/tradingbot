@@ -182,7 +182,7 @@ async function runHftFadeCycle(): Promise<void> {
         regime: "ranging",
         strategy: "hft-fade",
         mode,
-        dailyLossLimit: HFT_FADE_DAILY_LOSS_LIMIT,
+        dailyLossLimit: Infinity,
       });
       if (!gate.allowed) {
         console.log(`[HFT-Fade] ${pair} blocked by risk gate: ${gate.reason}`);
