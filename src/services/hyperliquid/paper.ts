@@ -36,11 +36,16 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "inv-zlemav2-directional",
   "inv-schaffv2-directional",
   "hft-fade",
-  "hft-fade-b",
-  "hft-fade-c",
-  "hft-fade-d",
-  "hft-fade-e",
-  "hft-fade-f",
+  "hft-t8-tp40-sl3",
+  "hft-t10-tp35-sl4",
+  "hft-t8-tp35-sl4",
+  "hft-t8-tp25-sl5",
+  "hft-t8-tp30-sl5",
+  "hft-t12-tp40-sl3",
+  "hft-t10-tp40-sl3",
+  "hft-t8-tp30-sl3",
+  "hft-t8-tp35-sl3",
+  "hft-t8-tp25-sl3",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

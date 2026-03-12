@@ -232,26 +232,46 @@ export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
 export const HFT_FADE_MAX_CONCURRENT = 10;
 export const HFT_FADE_LIVE_ENABLED = false;
 
-// HFT Fade Variant B
-export const HFT_FADE_B_THRESHOLD_PCT = 0.08;
-export const HFT_FADE_B_TP_PCT = 0.40;
-export const HFT_FADE_B_SL_PCT = 0.03;
-// HFT Fade Variant C
-export const HFT_FADE_C_THRESHOLD_PCT = 0.10;
-export const HFT_FADE_C_TP_PCT = 0.35;
-export const HFT_FADE_C_SL_PCT = 0.04;
-// HFT Fade Variant D
-export const HFT_FADE_D_THRESHOLD_PCT = 0.08;
-export const HFT_FADE_D_TP_PCT = 0.35;
-export const HFT_FADE_D_SL_PCT = 0.04;
-// HFT Fade Variant E
-export const HFT_FADE_E_THRESHOLD_PCT = 0.08;
-export const HFT_FADE_E_TP_PCT = 0.25;
-export const HFT_FADE_E_SL_PCT = 0.05;
-// HFT Fade Variant F
-export const HFT_FADE_F_THRESHOLD_PCT = 0.08;
-export const HFT_FADE_F_TP_PCT = 0.30;
-export const HFT_FADE_F_SL_PCT = 0.05;
+// HFT Fade Variant t8-tp40-sl3
+export const HFT_T8_TP40_SL3_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP40_SL3_TP_PCT = 0.40;
+export const HFT_T8_TP40_SL3_SL_PCT = 0.03;
+// HFT Fade Variant t10-tp35-sl4
+export const HFT_T10_TP35_SL4_THRESHOLD_PCT = 0.10;
+export const HFT_T10_TP35_SL4_TP_PCT = 0.35;
+export const HFT_T10_TP35_SL4_SL_PCT = 0.04;
+// HFT Fade Variant t8-tp35-sl4
+export const HFT_T8_TP35_SL4_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP35_SL4_TP_PCT = 0.35;
+export const HFT_T8_TP35_SL4_SL_PCT = 0.04;
+// HFT Fade Variant t8-tp25-sl5
+export const HFT_T8_TP25_SL5_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP25_SL5_TP_PCT = 0.25;
+export const HFT_T8_TP25_SL5_SL_PCT = 0.05;
+// HFT Fade Variant t8-tp30-sl5
+export const HFT_T8_TP30_SL5_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP30_SL5_TP_PCT = 0.30;
+export const HFT_T8_TP30_SL5_SL_PCT = 0.05;
+// HFT Fade Variant t12-tp40-sl3
+export const HFT_T12_TP40_SL3_THRESHOLD_PCT = 0.12;
+export const HFT_T12_TP40_SL3_TP_PCT = 0.40;
+export const HFT_T12_TP40_SL3_SL_PCT = 0.03;
+// HFT Fade Variant t10-tp40-sl3
+export const HFT_T10_TP40_SL3_THRESHOLD_PCT = 0.10;
+export const HFT_T10_TP40_SL3_TP_PCT = 0.40;
+export const HFT_T10_TP40_SL3_SL_PCT = 0.03;
+// HFT Fade Variant t8-tp30-sl3
+export const HFT_T8_TP30_SL3_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP30_SL3_TP_PCT = 0.30;
+export const HFT_T8_TP30_SL3_SL_PCT = 0.03;
+// HFT Fade Variant t8-tp35-sl3
+export const HFT_T8_TP35_SL3_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP35_SL3_TP_PCT = 0.35;
+export const HFT_T8_TP35_SL3_SL_PCT = 0.03;
+// HFT Fade Variant t8-tp25-sl3
+export const HFT_T8_TP25_SL3_THRESHOLD_PCT = 0.08;
+export const HFT_T8_TP25_SL3_TP_PCT = 0.25;
+export const HFT_T8_TP25_SL3_SL_PCT = 0.03;
 
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
@@ -279,11 +299,16 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "inv-zlemav2-directional": "lighter",
   "inv-schaffv2-directional": "lighter",
   "hft-fade": "lighter",
-  "hft-fade-b": "lighter",
-  "hft-fade-c": "lighter",
-  "hft-fade-d": "lighter",
-  "hft-fade-e": "lighter",
-  "hft-fade-f": "lighter",
+  "hft-t8-tp40-sl3": "lighter",
+  "hft-t10-tp35-sl4": "lighter",
+  "hft-t8-tp35-sl4": "lighter",
+  "hft-t8-tp25-sl5": "lighter",
+  "hft-t8-tp30-sl5": "lighter",
+  "hft-t12-tp40-sl3": "lighter",
+  "hft-t10-tp40-sl3": "lighter",
+  "hft-t8-tp30-sl3": "lighter",
+  "hft-t8-tp35-sl3": "lighter",
+  "hft-t8-tp25-sl3": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

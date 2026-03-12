@@ -2058,11 +2058,16 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
       pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
       pos.tradeType === "hft-fade" ? "[HFT]" :
-      pos.tradeType === "hft-fade-b" ? "[HFT-B]" :
-      pos.tradeType === "hft-fade-c" ? "[HFT-C]" :
-      pos.tradeType === "hft-fade-d" ? "[HFT-D]" :
-      pos.tradeType === "hft-fade-e" ? "[HFT-E]" :
-      pos.tradeType === "hft-fade-f" ? "[HFT-F]" :
+      pos.tradeType === "hft-t8-tp40-sl3" ? "[HFT-t8-tp40-sl3]" :
+      pos.tradeType === "hft-t10-tp35-sl4" ? "[HFT-t10-tp35-sl4]" :
+      pos.tradeType === "hft-t8-tp35-sl4" ? "[HFT-t8-tp35-sl4]" :
+      pos.tradeType === "hft-t8-tp25-sl5" ? "[HFT-t8-tp25-sl5]" :
+      pos.tradeType === "hft-t8-tp30-sl5" ? "[HFT-t8-tp30-sl5]" :
+      pos.tradeType === "hft-t12-tp40-sl3" ? "[HFT-t12-tp40-sl3]" :
+      pos.tradeType === "hft-t10-tp40-sl3" ? "[HFT-t10-tp40-sl3]" :
+      pos.tradeType === "hft-t8-tp30-sl3" ? "[HFT-t8-tp30-sl3]" :
+      pos.tradeType === "hft-t8-tp35-sl3" ? "[HFT-t8-tp35-sl3]" :
+      pos.tradeType === "hft-t8-tp25-sl3" ? "[HFT-t8-tp25-sl3]" :
       "[AI]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2182,11 +2187,16 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
     ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
     ["HFT", "hft-fade"],
-    ["HFT-B", "hft-fade-b"],
-    ["HFT-C", "hft-fade-c"],
-    ["HFT-D", "hft-fade-d"],
-    ["HFT-E", "hft-fade-e"],
-    ["HFT-F", "hft-fade-f"],
+    ["HFT-t8-tp40-sl3", "hft-t8-tp40-sl3"],
+    ["HFT-t10-tp35-sl4", "hft-t10-tp35-sl4"],
+    ["HFT-t8-tp35-sl4", "hft-t8-tp35-sl4"],
+    ["HFT-t8-tp25-sl5", "hft-t8-tp25-sl5"],
+    ["HFT-t8-tp30-sl5", "hft-t8-tp30-sl5"],
+    ["HFT-t12-tp40-sl3", "hft-t12-tp40-sl3"],
+    ["HFT-t10-tp40-sl3", "hft-t10-tp40-sl3"],
+    ["HFT-t8-tp30-sl3", "hft-t8-tp30-sl3"],
+    ["HFT-t8-tp35-sl3", "hft-t8-tp35-sl3"],
+    ["HFT-t8-tp25-sl3", "hft-t8-tp25-sl3"],
   ];
   const invertedEngines: [string, string][] = [
     ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
