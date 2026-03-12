@@ -42,6 +42,7 @@ import {
   QUANT_TRADING_PAIRS,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
+import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition } from "../lighter/executor.js";
@@ -56,6 +57,7 @@ export interface HftVariantConfig {
   slPct: number;
   regimeAdaptive?: boolean;
   aiFilter?: boolean;
+  llmFilter?: boolean;
 }
 
 interface OhlcCandle {
@@ -84,7 +86,8 @@ const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-t8-tp35-sl3", label: "HFT-t8-tp35-sl3", thresholdPct: HFT_T8_TP35_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP35_SL3_TP_PCT, slPct: HFT_T8_TP35_SL3_SL_PCT },
   { tradeType: "hft-t8-tp25-sl3", label: "HFT-t8-tp25-sl3", thresholdPct: HFT_T8_TP25_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP25_SL3_TP_PCT, slPct: HFT_T8_TP25_SL3_SL_PCT },
   { tradeType: "hft-regime", label: "HFT-Regime", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true },
-  { tradeType: "hft-ai", label: "HFT-AI", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true },
+  { tradeType: "hft-smart", label: "HFT-Smart", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true },
+  { tradeType: "hft-ai", label: "HFT-AI", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true, llmFilter: true },
 ];
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
@@ -120,6 +123,85 @@ const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 const ohlcCache = new Map<string, OhlcCache>();
 const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
 
+interface LlmRegime {
+  regime: "trending" | "ranging" | "volatile";
+  bias: "long" | "short" | "neutral";
+  skipFades: boolean;
+}
+
+interface LlmRegimeEntry {
+  data: LlmRegime;
+  expiresAt: number;
+}
+
+const llmRegimeCache = new Map<string, LlmRegimeEntry>();
+const LLM_REGIME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+
+async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmRegime | null> {
+  try {
+    const cached = llmRegimeCache.get(pair);
+    if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+    const closes = candles.map(c => c.close);
+    const last14 = candles.slice(-14);
+
+    // RSI7
+    const rsi7 = computeRsiN(closes, 7) ?? 50;
+
+    // BB position
+    let bbPos = "inside";
+    if (closes.length >= 20) {
+      const win = closes.slice(-20);
+      const mean = win.reduce((a, b) => a + b, 0) / 20;
+      const std = Math.sqrt(win.reduce((a, b) => a + (b - mean) ** 2, 0) / 20);
+      const last = closes[closes.length - 1];
+      if (last > mean + 2 * std) bbPos = "above";
+      else if (last < mean - 2 * std) bbPos = "below";
+    }
+
+    // EMA21 slope
+    let emaSlope = "flat";
+    if (closes.length >= 21) {
+      const ema = computeEma(closes, 21);
+      if (ema.length >= 3) {
+        const slopePct = (ema[ema.length - 1] - ema[ema.length - 3]) / ema[ema.length - 3] * 100;
+        if (slopePct > 0.1) emaSlope = "up";
+        else if (slopePct < -0.1) emaSlope = "down";
+      }
+    }
+
+    // ATR%
+    const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
+
+    // Last 5 closes
+    const last5 = closes.slice(-5).map(c => c.toFixed(2)).join(",");
+
+    const prompt = `${pair} 5m: RSI7=${rsi7.toFixed(0)}, BB=${bbPos}, EMA21=${emaSlope}, ATR=${atrPct.toFixed(2)}%, closes=[${last5}].\nClassify: {"regime":"trending"|"ranging"|"volatile","bias":"long"|"short"|"neutral","skipFades":boolean}`;
+
+    const raw = await callDeepSeek(prompt, "deepseek-chat", "Return JSON only", 0.1, "hft-llm");
+
+    // Parse JSON from response
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) {
+      console.warn(`[HFT-AI] LLM no JSON for ${pair}`);
+      return null;
+    }
+    const parsed = JSON.parse(match[0]) as Partial<LlmRegime>;
+    const validRegimes = ["trending", "ranging", "volatile"];
+    const validBias = ["long", "short", "neutral"];
+    if (!validRegimes.includes(parsed.regime ?? "") || !validBias.includes(parsed.bias ?? "") || typeof parsed.skipFades !== "boolean") {
+      console.warn(`[HFT-AI] LLM invalid fields for ${pair}`);
+      return null;
+    }
+    const result: LlmRegime = { regime: parsed.regime!, bias: parsed.bias!, skipFades: parsed.skipFades };
+    llmRegimeCache.set(pair, { data: result, expiresAt: Date.now() + LLM_REGIME_CACHE_TTL_MS });
+    return result;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[HFT-AI] LLM call failed for ${pair}: ${msg}`);
+    return null;
+  }
+}
 
 async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
   const cached = volumeCache.get(symbol);
@@ -380,6 +462,24 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         const { score, label } = computeAiScore(ohlcCandles!, direction);
         if (score < 3) continue;
         console.log(`[${config.label}] ${pair} score=${score}/4 [${label}] → ${direction}`);
+      }
+
+      if (config.llmFilter) {
+        const llm = await fetchLlmRegime(pair, ohlcCandles!);
+        if (!llm) continue;
+        if (llm.skipFades) {
+          console.log(`[${config.label}] ${pair} skipped: LLM skipFades`);
+          continue;
+        }
+        if (llm.bias === "long" && direction !== "long") {
+          console.log(`[${config.label}] ${pair} skipped: LLM bias=long, signal=${direction}`);
+          continue;
+        }
+        if (llm.bias === "short" && direction !== "short") {
+          console.log(`[${config.label}] ${pair} skipped: LLM bias=short, signal=${direction}`);
+          continue;
+        }
+        console.log(`[${config.label}] ${pair} LLM: regime=${llm.regime} bias=${llm.bias}`);
       }
 
       signals++;
