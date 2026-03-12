@@ -243,7 +243,7 @@ async function checkPositionStops(): Promise<void> {
         const baseType = (position.tradeType ?? "").replace(/^inv-/, "");
         const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""]
           ?? STAGNATION_MS_BY_TRADE_TYPE[baseType]
-          ?? STAGNATION_TIMEOUT_MS;
+          ?? ((position.tradeType ?? "").startsWith("hft-") ? HFT_FADE_STAGNATION_MS : STAGNATION_TIMEOUT_MS);
         if (holdMs >= stagnationMs) {
           console.log(
             `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${stagnationMs < 3_600_000 ? `${Math.round(holdMs / 60_000)}m` : `${(holdMs / 3_600_000).toFixed(0)}h`} (limit ${stagnationMs < 3_600_000 ? `${Math.round(stagnationMs / 60_000)}m` : `${(stagnationMs / 3_600_000).toFixed(0)}h`}), P&L ${unrealizedPnlPct.toFixed(2)}%`,
