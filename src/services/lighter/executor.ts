@@ -352,6 +352,10 @@ export function getLighterLivePositions(): QuantPosition[] {
   return Array.from(lighterPositions.values()).filter(p => p.status === "open");
 }
 
+export function isLighterPositionClosing(id: string): boolean {
+  return closingSet.has(id);
+}
+
 export function hasExchangeStop(id: string): boolean {
   return exchangeStops.has(id);
 }

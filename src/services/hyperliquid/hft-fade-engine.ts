@@ -48,7 +48,7 @@ import type { TradeType } from "./types.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
-import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP } from "../lighter/executor.js";
+import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP, isLighterPositionClosing } from "../lighter/executor.js";
 import { isLighterInitialized, getLighterMidPrice } from "../lighter/client.js";
 import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
 
@@ -614,9 +614,9 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // Lighter prices; in-flight sharing deduplicates concurrent variant calls
+  // Lighter prices; in-flight sharing deduplicates concurrent variant calls; cached price used on 429/error
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
-  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair, true) })));
+  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair) })));
   const lighterPrices = new Map<string, number>();
   for (const { pair, price } of priceResults) {
     if (price !== null) lighterPrices.set(pair, price);
@@ -638,7 +638,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   for (const pos of livePositions) {
     const price = lighterPrices.get(pos.pair);
-    if (!price) continue;
+    if (!price || isLighterPositionClosing(pos.id)) continue;
     const exchangeStopActive = hasExchangeStop(pos.id);
     const exchangeTpActive = hasExchangeTP(pos.id);
     const sl = pos.stopLoss;
