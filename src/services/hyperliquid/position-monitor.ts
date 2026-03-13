@@ -415,7 +415,7 @@ async function checkTrailActivePositions(): Promise<void> {
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
           : ((position.entryPrice - currentPrice) / position.entryPrice);
-      // Lighter has zero fees so mid-price P&L is exact; no exchange API call needed
+      // Lighter fees=0, mid-price is exact
       const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
