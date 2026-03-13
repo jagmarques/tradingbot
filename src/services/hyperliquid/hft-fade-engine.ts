@@ -40,6 +40,7 @@ import {
   HFT_T8_TP25_SL3_TP_PCT,
   HFT_T8_TP25_SL3_SL_PCT,
   QUANT_TRADING_PAIRS,
+  HFT_PAPER_SPREAD_PCT,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
 import { callDeepSeek } from "../shared/llm.js";
@@ -533,6 +534,10 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           true,  // skipExchangeOrders
         );
       } else {
+        // Entry at ask/bid
+        const spreadEntry = direction === "long"
+          ? entryPrice * (1 + HFT_PAPER_SPREAD_PCT)
+          : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
         position = await paperOpenPosition(
           pair,
           direction,
@@ -542,7 +547,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           tp,
           config.tradeType,
           undefined,
-          entryPrice,
+          spreadEntry,
           "lighter",
         );
       }
@@ -595,8 +600,12 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     const tp = pos.takeProfit;
     const slHit = sl && (pos.direction === "long" ? price <= sl : price >= sl);
     const tpHit = tp && (pos.direction === "long" ? price >= tp : price <= tp);
-    if (slHit) await paperClosePosition(pos.id, "stop-loss", sl);
-    else if (tpHit) await paperClosePosition(pos.id, "take-profit", tp);
+    // Exit at bid/ask
+    const spreadExit = (p: number) => pos.direction === "long"
+      ? p * (1 - HFT_PAPER_SPREAD_PCT)
+      : p * (1 + HFT_PAPER_SPREAD_PCT);
+    if (slHit) await paperClosePosition(pos.id, "stop-loss", spreadExit(sl));
+    else if (tpHit) await paperClosePosition(pos.id, "take-profit", spreadExit(tp));
   }
 }
 

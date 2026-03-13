@@ -231,6 +231,7 @@ export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
 export const HFT_FADE_MAX_CONCURRENT = 10;
 export const HFT_FADE_LIVE_ENABLED = false;
+export const HFT_PAPER_SPREAD_PCT = 0.0002; // 0.02% per side
 
 // HFT Fade Variant t8-tp40-sl3
 export const HFT_T8_TP40_SL3_THRESHOLD_PCT = 0.08;

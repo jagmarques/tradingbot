@@ -73,13 +73,21 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 Directional trades on 20 perpetual futures pairs via Lighter DEX (technical + AI).
 
-**Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, MKR, XRP, SUI, TON, UNI
+**Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, XRP, SUI, TON, UNI
 
-**11 decision engines:**
+**11 directional engines (15m cycle):**
 - Technical 4h (8): PSAR, ZLEMA, Vortex, Schaff, DEMA, CCI, Aroon, MACD (all on Lighter)
 - Technical 4h v2 (2): ZLEMAv2, SchaffV2 (on Lighter)
 - AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime, and technical engine signals as context
 - Live (hybrid): AI only on Lighter. Paper: all 10 technical engines
+- 10 inverted engines mirror the technical engines in the opposite direction (4 live: iDEMA, iSchaff, iMACD, iAroon)
+
+**13 HFT fade engines (5m cycle, all paper):**
+- HFT-0 to HFT-10: mean-reversion on overbought/oversold 5m candle closes, parameter variants (TP 0.25–0.40%, SL 0.03–0.05%)
+- HFT-11 (Regime): ATR-adaptive params (TP 0.20–0.35% based on volatility)
+- HFT-12 (Smart): Regime + multi-signal AI score filter (RSI7 extreme + BB breach + volume surge + EMA flat, ≥3/4 required)
+- HFT-13 (AI): Smart + hourly LLM filter per pair (DeepSeek-chat: regime/bias/skipFades, cached 1h)
+- Paper spread simulation: 0.02% per side on entry and exit to model live conditions
 
 **Execution:**
 - $10 fixed margin per trade, 10x leverage
