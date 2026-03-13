@@ -241,7 +241,7 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5_000);
   try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=22`;
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=35`;
     const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) {
       console.error(`[HFT-Regime] Binance klines error for ${symbol}: HTTP ${resp.status}`);
@@ -250,7 +250,7 @@ async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | n
     const data = (await resp.json()) as unknown[][];
     if (!Array.isArray(data) || data.length < 1) return null;
     // skip current open candle
-    const closed = data.slice(0, 21);
+    const closed = data.slice(0, 34);
     const candles: OhlcCandle[] = [];
     for (const kline of closed) {
       if (!Array.isArray(kline) || kline.length < 5) continue;
