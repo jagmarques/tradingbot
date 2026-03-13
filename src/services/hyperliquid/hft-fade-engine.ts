@@ -176,9 +176,10 @@ async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmR
     // Last 5 closes
     const last5 = closes.slice(-5).map(c => c.toFixed(2)).join(",");
 
-    const prompt = `${pair} 5m: RSI7=${rsi7.toFixed(0)}, BB=${bbPos}, EMA21=${emaSlope}, ATR=${atrPct.toFixed(2)}%, closes=[${last5}].\nClassify: {"regime":"trending"|"ranging"|"volatile","bias":"long"|"short"|"neutral","skipFades":boolean}`;
+    const prompt = `${pair} 5m mean-reversion fade: RSI7=${rsi7.toFixed(0)}, BB=${bbPos}, EMA21=${emaSlope}, ATR=${atrPct.toFixed(2)}%, closes=[${last5}]. skipFades:true ONLY if strong momentum trending where fade will fail (e.g. RSI climbing fast on news/breakout). skipFades:false if ranging, oscillating, or at typical reversion point.\n{"regime":"trending"|"ranging"|"volatile","bias":"long"|"short"|"neutral","skipFades":boolean}`;
 
-    const raw = await callDeepSeek(prompt, "deepseek-chat", "Return JSON only", 0.1, "hft-llm");
+    const raw = await callDeepSeek(prompt, "deepseek-chat", "Return JSON only.", 0.1, "hft-llm");
+    console.log(`[HFT-AI] LLM raw for ${pair}: ${raw.slice(0, 200)}`);
 
     // Parse JSON from response
     const match = raw.match(/\{[\s\S]*\}/);
