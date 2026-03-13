@@ -118,17 +118,10 @@ export interface OrderbookImbalance {
   spreadBps: number; // Spread in basis points
 }
 
-export interface LongShortRatio {
-  global: number; // Global accounts L/S ratio (>1 = more longs)
-  topTraders: number; // Top trader L/S ratio
-  globalTrend: "rising" | "falling" | "stable"; // Direction over last 5 periods
-}
-
 export interface MicrostructureData {
-  longShortRatio: LongShortRatio | null;
   orderbookImbalance: OrderbookImbalance | null;
-  oiDelta: number | null; // OI change since last cycle (positive = new positions opening)
-  oiDeltaPct: number | null; // OI change as percentage
+  oiDelta: number | null;
+  oiDeltaPct: number | null;
 }
 
 export interface PairAnalysis {

@@ -49,7 +49,7 @@ import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP, isLighterPositionClosing } from "../lighter/executor.js";
-import { isLighterInitialized, getLighterMidPrice, getLighterCandles } from "../lighter/client.js";
+import { isLighterInitialized, getLighterCandles } from "../lighter/client.js";
 import { getStreamPrice, startLighterPriceStream } from "../lighter/price-stream.js";
 import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
 
@@ -494,15 +494,11 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // Stream price (real-time WebSocket) first, REST fallback on miss
+  // Stream prices only; no price = close live position
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
-  const priceResults = await Promise.all(allPairs.map(async pair => {
-    const stream = getStreamPrice(pair);
-    const price = stream ?? await getLighterMidPrice(pair, 500);
-    return { pair, price };
-  }));
   const lighterPrices = new Map<string, number>();
-  for (const { pair, price } of priceResults) {
+  for (const pair of allPairs) {
+    const price = getStreamPrice(pair);
     if (price !== null) lighterPrices.set(pair, price);
   }
 
@@ -521,8 +517,13 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
   }
 
   for (const pos of livePositions) {
+    if (isLighterPositionClosing(pos.id)) continue;
     const price = lighterPrices.get(pos.pair);
-    if (!price || isLighterPositionClosing(pos.id)) continue;
+    if (!price) {
+      console.warn(`[${config.label}] ${pos.pair} no stream price — closing live position`);
+      await lighterClosePosition(pos.id, "no-price");
+      continue;
+    }
     const exchangeStopActive = hasExchangeStop(pos.id);
     const exchangeTpActive = hasExchangeTP(pos.id);
     const sl = pos.stopLoss;

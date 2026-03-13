@@ -47,16 +47,7 @@ function formatMicrostructure(ms: MicrostructureData | undefined): string {
     return "Microstructure data unavailable this cycle.";
   }
 
-  const ls = ms.longShortRatio;
   const ob = ms.orderbookImbalance;
-
-  const lsSection = ls
-    ? [
-        `  Global accounts: ${ls.global.toFixed(3)} (${ls.globalTrend} trend)`,
-        `  Top traders: ${ls.topTraders.toFixed(3)}`,
-        `  [Interpretation: >1 = more longs in market, <1 = more shorts. Extreme readings (>2 or <0.5) suggest crowded positioning - potential contrarian signal.]`,
-      ].join("\n")
-    : "  n/a (data unavailable)";
 
   const obSection = ob
     ? [
@@ -79,9 +70,6 @@ function formatMicrostructure(ms: MicrostructureData | undefined): string {
   }
 
   return [
-    `Long/Short Ratio (1h):`,
-    lsSection,
-    ``,
     `Orderbook Depth (Hyperliquid, within 2% of mid):`,
     obSection,
     ``,
