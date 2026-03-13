@@ -62,6 +62,7 @@ let fastPollRunning = false;
 
 const trailActivatedIds = new Set<string>(); // trail alert dedup
 const closingInProgress = new Set<string>(); // prevent double-close across loops
+const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -301,6 +302,41 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
+      // Near-SL recovery exit
+      if (hasValidStopLoss && !position.tradeType?.startsWith("hft-")) {
+        const slDistance = Math.abs(position.entryPrice - effectiveSl);
+        const priceDistanceTowardSl =
+          position.direction === "long"
+            ? position.entryPrice - currentPrice   // long: price falling toward SL
+            : currentPrice - position.entryPrice;  // short: price rising toward SL
+
+        const nearSlThreshold = 0.75 * slDistance;
+        const recoveryThreshold = 0.20 * slDistance;
+
+        if (priceDistanceTowardSl >= nearSlThreshold) {
+          if (!nearSlIds.has(position.id)) {
+            nearSlIds.set(position.id, currentPrice);
+            console.log(
+              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (entry ${position.entryPrice}, SL ${effectiveSl.toPrecision(6)}, 75% threshold ${(position.direction === "long" ? position.entryPrice - nearSlThreshold : position.entryPrice + nearSlThreshold).toPrecision(6)})`
+            );
+          }
+        } else if (nearSlIds.has(position.id)) {
+          const priceAtEntry = nearSlIds.get(position.id)!;
+          const recovery =
+            position.direction === "long"
+              ? currentPrice - priceAtEntry   // long: price rising back up
+              : priceAtEntry - currentPrice;  // short: price falling back down
+          if (recovery >= recoveryThreshold) {
+            console.log(
+              `[PositionMonitor] Near-SL recovery exit: ${position.pair} ${position.direction} @ ${currentPrice} (recovered ${recovery.toPrecision(4)} of ${slDistance.toPrecision(4)} SL distance)`
+            );
+            nearSlIds.delete(position.id);
+            await tryClose(position, "near-sl-recovery");
+            continue;
+          }
+        }
+      }
+
       const stopLossBreached =
         hasValidStopLoss &&
         (position.direction === "long"
@@ -336,6 +372,9 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of closeFailCounts.keys()) {
       if (!openIds.has(id)) closeFailCounts.delete(id);
+    }
+    for (const id of nearSlIds.keys()) {
+      if (!openIds.has(id)) nearSlIds.delete(id);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
