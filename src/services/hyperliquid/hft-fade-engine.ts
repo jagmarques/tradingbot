@@ -122,16 +122,28 @@ interface VolumeCache {
 const volumeCache = new Map<string, VolumeCache>();
 const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
-// Shared 150ms Lighter price cache — deduplicates calls across concurrent HFT variants
+// Shared Lighter price cache — deduplicates calls across all concurrent HFT variants
+// In-flight map shares the same Promise so simultaneous callers don't fire duplicate requests
 const hftLighterPriceCache = new Map<string, { price: number; at: number }>();
+const hftLighterPending = new Map<string, Promise<number | null>>();
 const HFT_LIGHTER_CACHE_MS = 150;
 
-async function getLighterPriceForHft(pair: string): Promise<number | null> {
+function getLighterPriceForHft(pair: string): Promise<number | null> {
   const cached = hftLighterPriceCache.get(pair);
-  if (cached && Date.now() - cached.at < HFT_LIGHTER_CACHE_MS) return cached.price;
-  const price = await getLighterMidPrice(pair, true);
-  if (price !== null) hftLighterPriceCache.set(pair, { price, at: Date.now() });
-  return price;
+  if (cached && Date.now() - cached.at < HFT_LIGHTER_CACHE_MS) return Promise.resolve(cached.price);
+  let pending = hftLighterPending.get(pair);
+  if (!pending) {
+    pending = getLighterMidPrice(pair, true).then(price => {
+      if (price !== null) hftLighterPriceCache.set(pair, { price, at: Date.now() });
+      hftLighterPending.delete(pair);
+      return price;
+    }).catch(err => {
+      hftLighterPending.delete(pair);
+      throw err;
+    });
+    hftLighterPending.set(pair, pending);
+  }
+  return pending;
 }
 
 const ohlcCache = new Map<string, OhlcCache>();
@@ -606,22 +618,6 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
   console.log(`[${config.label}] Cycle complete: ${signals} signals, ${opened} opened (${mode})`);
 }
 
-async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number>> {
-  const prices = new Map<string, number>();
-  if (!symbols.length) return prices;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3_000);
-  try {
-    const url = `https://api.binance.com/api/v3/ticker/price?symbols=${JSON.stringify(symbols)}`;
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) return prices;
-    const data = (await resp.json()) as { symbol: string; price: string }[];
-    for (const item of data) prices.set(item.symbol, parseFloat(item.price));
-  } catch { /* best effort */ } finally {
-    clearTimeout(timeoutId);
-  }
-  return prices;
-}
 
 async function runHftMonitor(config: HftVariantConfig): Promise<void> {
   const paperPositions = getPaperPositions().filter(p => p.tradeType === config.tradeType && p.status === "open");
@@ -629,25 +625,16 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // Paper: Binance prices
-  const paperPairs = new Set(paperPositions.map(p => p.pair));
-  const paperSymbols = [...paperPairs].map(p => BINANCE_SYMBOL_MAP[p]).filter(Boolean);
-  const binancePrices = await fetchBinancePrices(paperSymbols);
-
-  // Live: Lighter prices (150ms cache)
-  const livePrices = new Map<string, number>();
-  if (livePositions.length) {
-    const livePairs = [...new Set(livePositions.map(p => p.pair))];
-    const results = await Promise.all(livePairs.map(async pair => ({ pair, price: await getLighterPriceForHft(pair) })));
-    for (const { pair, price } of results) {
-      if (price !== null) livePrices.set(pair, price);
-    }
+  // All positions use Lighter prices (shared in-flight cache deduplicates across variants)
+  const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
+  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterPriceForHft(pair) })));
+  const lighterPrices = new Map<string, number>();
+  for (const { pair, price } of priceResults) {
+    if (price !== null) lighterPrices.set(pair, price);
   }
 
   for (const pos of paperPositions) {
-    const symbol = BINANCE_SYMBOL_MAP[pos.pair];
-    if (!symbol) continue;
-    const price = binancePrices.get(symbol);
+    const price = lighterPrices.get(pos.pair);
     if (!price) continue;
     const sl = pos.stopLoss;
     const tp = pos.takeProfit;
@@ -661,7 +648,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
   }
 
   for (const pos of livePositions) {
-    const price = livePrices.get(pos.pair);
+    const price = lighterPrices.get(pos.pair);
     if (!price) continue;
     const exchangeStopActive = hasExchangeStop(pos.id);
     const exchangeTpActive = hasExchangeTP(pos.id);
