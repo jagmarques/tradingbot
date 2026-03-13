@@ -34,8 +34,9 @@ export async function startLighterPriceStream(pairs: string[]): Promise<void> {
     if (marketToPair.size === 0) throw new Error("No market IDs resolved");
     console.log(`[LighterStream] Resolved ${marketToPair.size}/${pairs.length} pairs`);
   } catch (err) {
-    console.error(`[LighterStream] Init failed: ${err instanceof Error ? err.message : String(err)}`);
-    started = false; // allow retry
+    console.error(`[LighterStream] Init failed: ${err instanceof Error ? err.message : String(err)}, retrying in 30s`);
+    started = false;
+    setTimeout(() => void startLighterPriceStream(pairs), 30_000);
     return;
   }
 

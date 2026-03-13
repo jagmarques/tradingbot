@@ -524,7 +524,9 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     if (isLighterPositionClosing(pos.id)) continue;
     const price = lighterPrices.get(pos.pair);
     if (!price) {
-      if (Date.now() - hftStartedAt < HFT_STREAM_WARMUP_MS) continue; // stream warming up
+      if (Date.now() - hftStartedAt < HFT_STREAM_WARMUP_MS) continue;
+      if (Date.now() - (closeAttemptedAt.get(pos.id) ?? 0) < HFT_CLOSE_RETRY_MS) continue;
+      closeAttemptedAt.set(pos.id, Date.now());
       console.warn(`[${config.label}] ${pos.pair} no stream price — closing live position`);
       await lighterClosePosition(pos.id, "no-price");
       continue;
@@ -559,6 +561,8 @@ const hftInitialTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const hftMonitorIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
 const HFT_STREAM_WARMUP_MS = 30_000;
+const HFT_CLOSE_RETRY_MS = 10_000;
+const closeAttemptedAt = new Map<string, number>();
 let hftStartedAt = 0;
 
 export function startAllHftSchedulers(): void {
