@@ -61,6 +61,7 @@ let fastPollInterval: ReturnType<typeof setInterval> | null = null;
 let fastPollRunning = false;
 
 const trailActivatedIds = new Set<string>(); // trail alert dedup
+const closingInProgress = new Set<string>(); // prevent double-close across loops
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -74,19 +75,25 @@ function throttledCriticalAlert(msg: string, context: string): void {
 }
 
 async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = true): Promise<void> {
-  const result = await closePosition(position.id, reason, skipCancelReplace);
-  if (result.success) {
-    closeFailCounts.delete(position.id);
-    return;
-  }
-  if (position.mode !== "live") return;
-  const fails = (closeFailCounts.get(position.id) ?? 0) + 1;
-  closeFailCounts.set(position.id, fails);
-  if (fails >= 3) {
-    throttledCriticalAlert(
-      `CLOSE FAILED ${fails}x: ${position.pair} ${position.direction} (${reason})`,
-      "PositionMonitor",
-    );
+  if (closingInProgress.has(position.id)) return;
+  closingInProgress.add(position.id);
+  try {
+    const result = await closePosition(position.id, reason, skipCancelReplace);
+    if (result.success) {
+      closeFailCounts.delete(position.id);
+      return;
+    }
+    if (position.mode !== "live") return;
+    const fails = (closeFailCounts.get(position.id) ?? 0) + 1;
+    closeFailCounts.set(position.id, fails);
+    if (fails >= 3) {
+      throttledCriticalAlert(
+        `CLOSE FAILED ${fails}x: ${position.pair} ${position.direction} (${reason})`,
+        "PositionMonitor",
+      );
+    }
+  } finally {
+    closingInProgress.delete(position.id);
   }
 }
 

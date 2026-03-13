@@ -281,9 +281,9 @@ function computeRegimeParams(candles: OhlcCandle[]): { thresholdPct: number; tpP
   const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
 
   if (atrPct > 0.60) {
-    return { thresholdPct: 0.06, tpPct: 0.35, slPct: 0.03 }; // high-vol: wider TP
+    return { thresholdPct: 0.06, tpPct: 0.40, slPct: 0.03 }; // high-vol
   }
-  return { thresholdPct: 0.06, tpPct: 0.20, slPct: 0.03 }; // ranging: tight TP
+  return { thresholdPct: 0.06, tpPct: 0.30, slPct: 0.03 }; // ranging
 }
 
 function computeRsiN(closes: number[], period: number): number | null {
