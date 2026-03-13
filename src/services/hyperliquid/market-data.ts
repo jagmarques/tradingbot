@@ -1,5 +1,5 @@
 import { ensureConnected, getClient } from "./client.js";
-import type { FundingInfo, LongShortRatio, OrderbookImbalance } from "./types.js";
+import type { FundingInfo, OrderbookImbalance } from "./types.js";
 
 const FUNDING_PERIODS_PER_YEAR = 24 * 365; // 1-hour funding periods (Hyperliquid)
 
@@ -102,89 +102,6 @@ export async function fetchMarketContext(pair: string): Promise<{
   }
 }
 
-const BINANCE_SYMBOL_MAP: Record<string, string> = {
-  BTC: "BTCUSDT",
-  ETH: "ETHUSDT",
-  SOL: "SOLUSDT",
-  DOGE: "DOGEUSDT",
-  AVAX: "AVAXUSDT",
-  LINK: "LINKUSDT",
-  ARB: "ARBUSDT",
-  OP: "OPUSDT",
-  ENA: "ENAUSDT",
-  LDO: "LDOUSDT",
-  SEI: "SEIUSDT",
-  WLD: "WLDUSDT",
-  APT: "APTUSDT",
-  DOT: "DOTUSDT",
-  SUI: "SUIUSDT",
-  TRUMP: "TRUMPUSDT",
-  DASH: "DASHUSDT",
-  MKR: "MKRUSDT",
-  TON: "TONUSDT",
-  ADA: "ADAUSDT",
-  XRP: "XRPUSDT",
-  UNI: "UNIUSDT",
-  WIF: "WIFUSDT",
-};
-
-export async function fetchBinanceLongShortRatio(pair: string): Promise<LongShortRatio | null> {
-  const symbol = BINANCE_SYMBOL_MAP[pair] ?? `${pair}USDT`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-  try {
-    const [globalRes, topRes] = await Promise.all([
-      fetch(
-        `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=5`,
-        { signal: controller.signal },
-      ),
-      fetch(
-        `https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=${symbol}&period=1h&limit=5`,
-        { signal: controller.signal },
-      ),
-    ]);
-
-    if (!globalRes.ok || !topRes.ok) {
-      console.warn(`[Binance] Non-OK response for ${pair}: global=${globalRes.status} top=${topRes.status}`);
-      return null;
-    }
-
-    const globalData = (await globalRes.json()) as Array<{ longShortRatio: string }>;
-    const topData = (await topRes.json()) as Array<{ longShortRatio: string }>;
-
-    if (!Array.isArray(globalData) || globalData.length === 0 || !Array.isArray(topData) || topData.length === 0) {
-      console.warn(`[Binance] Empty long/short data for ${pair}`);
-      return null;
-    }
-
-    const globalLatest = parseFloat(globalData[globalData.length - 1].longShortRatio);
-    const topLatest = parseFloat(topData[topData.length - 1].longShortRatio);
-    const globalFirst = parseFloat(globalData[0].longShortRatio);
-
-    let globalTrend: "rising" | "falling" | "stable";
-    const trendDiff = globalLatest - globalFirst;
-    if (trendDiff > 0.05) {
-      globalTrend = "rising";
-    } else if (trendDiff < -0.05) {
-      globalTrend = "falling";
-    } else {
-      globalTrend = "stable";
-    }
-
-    console.log(
-      `[Binance] Long/short ratio for ${pair}: global=${globalLatest.toFixed(3)}, top=${topLatest.toFixed(3)}, trend=${globalTrend}`,
-    );
-
-    return { global: globalLatest, topTraders: topLatest, globalTrend };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[Binance] Failed to fetch long/short ratio for ${pair}: ${msg}`);
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
 
 export async function fetchOrderbookDepth(pair: string, markPrice: number): Promise<OrderbookImbalance | null> {
   try {

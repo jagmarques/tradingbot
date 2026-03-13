@@ -49,7 +49,8 @@ import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP, isLighterPositionClosing } from "../lighter/executor.js";
-import { isLighterInitialized, getLighterMidPrice } from "../lighter/client.js";
+import { isLighterInitialized, getLighterMidPrice, getLighterCandles } from "../lighter/client.js";
+import { getStreamPrice, startLighterPriceStream } from "../lighter/price-stream.js";
 import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
 
 export interface HftVariantConfig {
@@ -93,38 +94,8 @@ const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-ai", label: "HFT-AI", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true, llmFilter: true },
 ];
 
-const BINANCE_SYMBOL_MAP: Record<string, string> = {
-  OP: "OPUSDT",
-  ARB: "ARBUSDT",
-  LDO: "LDOUSDT",
-  AVAX: "AVAXUSDT",
-  TRUMP: "TRUMPUSDT",
-  DASH: "DASHUSDT",
-  DOT: "DOTUSDT",
-  ENA: "ENAUSDT",
-  DOGE: "DOGEUSDT",
-  APT: "APTUSDT",
-  SEI: "SEIUSDT",
-  LINK: "LINKUSDT",
-  ADA: "ADAUSDT",
-  WLD: "WLDUSDT",
-  XRP: "XRPUSDT",
-  SUI: "SUIUSDT",
-  TON: "TONUSDT",
-  UNI: "UNIUSDT",
-};
-
-interface VolumeCache {
-  value: number;
-  expiresAt: number;
-}
-
-const volumeCache = new Map<string, VolumeCache>();
-const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
-
-
 const ohlcCache = new Map<string, OhlcCache>();
-const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
+const OHLC_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface LlmRegime {
   regime: "trending" | "ranging" | "volatile";
@@ -207,74 +178,22 @@ async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmR
   }
 }
 
-async function fetchBinance24hVolume(symbol: string): Promise<number | null> {
-  const cached = volumeCache.get(symbol);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.value;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+// Fetches 35 closed 5m candles from Lighter; cached 5 min per pair
+async function fetchCandlesForPair(pair: string): Promise<OhlcCandle[] | null> {
+  const cached = ohlcCache.get(pair);
+  if (cached && Date.now() < cached.expiresAt) return cached.candles;
   try {
-    const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) {
-      console.error(`[HFT-Fade] Binance 24hr ticker error for ${symbol}: HTTP ${resp.status}`);
-      return null;
-    }
-    const data = (await resp.json()) as { quoteVolume?: string };
-    const volume = parseFloat(data.quoteVolume ?? "0");
-    if (isNaN(volume)) return null;
-    volumeCache.set(symbol, { value: volume, expiresAt: Date.now() + VOLUME_CACHE_TTL_MS });
-    return volume;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HFT-Fade] Binance 24hr ticker fetch failed for ${symbol}: ${msg}`);
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function fetchBinanceOhlcCandles(symbol: string): Promise<OhlcCandle[] | null> {
-  const cached = ohlcCache.get(symbol);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.candles;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=35`;
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) {
-      console.error(`[HFT-Regime] Binance klines error for ${symbol}: HTTP ${resp.status}`);
-      return null;
-    }
-    const data = (await resp.json()) as unknown[][];
-    if (!Array.isArray(data) || data.length < 1) return null;
-    // skip current open candle
-    const closed = data.slice(0, 34);
-    const candles: OhlcCandle[] = [];
-    for (const kline of closed) {
-      if (!Array.isArray(kline) || kline.length < 5) continue;
-      const open = parseFloat(kline[1] as string);
-      const high = parseFloat(kline[2] as string);
-      const low = parseFloat(kline[3] as string);
-      const close = parseFloat(kline[4] as string);
-      const volume = parseFloat(kline[5] as string);
-      if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
-      candles.push({ open, high, low, close, volume: isNaN(volume) ? 0 : volume });
-    }
-    if (!candles.length) return null;
-    ohlcCache.set(symbol, { candles, expiresAt: Date.now() + OHLC_CACHE_TTL_MS });
+    const raw = await getLighterCandles(pair, 35);
+    if (!raw?.length) return null;
+    const candles: OhlcCandle[] = raw.map(c => ({
+      open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume1,
+    }));
+    ohlcCache.set(pair, { candles, expiresAt: Date.now() + OHLC_CACHE_TTL_MS });
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HFT-Regime] Binance klines fetch failed for ${symbol}: ${msg}`);
+    console.error(`[HFT] Candle fetch failed for ${pair}: ${msg}`);
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -374,39 +293,6 @@ function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { s
   return { score, label: parts.join(",") };
 }
 
-interface Candle5m {
-  open: number;
-  close: number;
-}
-
-async function fetchBinance5mCandle(symbol: string): Promise<Candle5m | null> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=5m&limit=2`;
-    const resp = await fetch(url, { signal: controller.signal });
-    if (!resp.ok) {
-      console.error(`[HFT-Fade] Binance klines error for ${symbol}: HTTP ${resp.status}`);
-      return null;
-    }
-    const data = (await resp.json()) as unknown[][];
-    // index 0 = just-closed candle
-    if (!Array.isArray(data) || data.length < 1) return null;
-    const candle = data[0];
-    if (!Array.isArray(candle) || candle.length < 5) return null;
-    const open = parseFloat(candle[1] as string);
-    const close = parseFloat(candle[4] as string);
-    if (isNaN(open) || isNaN(close)) return null;
-    return { open, close };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HFT-Fade] Binance klines fetch failed for ${symbol}: ${msg}`);
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 // Counts trades opened since this deployment only
 let hftRegimeBaseline = -1;
 
@@ -438,49 +324,43 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
     for (const pair of QUANT_TRADING_PAIRS) {
       if (isQuantKilled()) break;
 
-      const symbol = BINANCE_SYMBOL_MAP[pair];
-      if (!symbol) continue;
+      // Fetch 35 closed 5m candles from Lighter (cached 5 min)
+      const ohlcCandles = await fetchCandlesForPair(pair);
+      if (!ohlcCandles || ohlcCandles.length < 2) continue;
 
-      const volume24h = await fetchBinance24hVolume(symbol);
-      if (volume24h === null || volume24h < HFT_FADE_MIN_VOLUME_24H) {
-        if (volume24h !== null) {
-          console.log(`[${config.label}] ${pair} skipped: 24h volume $${volume24h.toFixed(0)} < $${HFT_FADE_MIN_VOLUME_24H}`);
-        }
+      // Volume: sum all candles' quote volume as 24h proxy
+      const volume24h = ohlcCandles.reduce((s, c) => s + c.volume, 0);
+      if (volume24h < HFT_FADE_MIN_VOLUME_24H) {
+        console.log(`[${config.label}] ${pair} skipped: volume $${volume24h.toFixed(0)} < $${HFT_FADE_MIN_VOLUME_24H}`);
         continue;
       }
 
       let effectiveThreshold = config.thresholdPct;
       let effectiveTp = config.tpPct;
       let effectiveSl = config.slPct;
-      let ohlcCandles: OhlcCandle[] | null = null;
 
-      if (config.regimeAdaptive || config.aiFilter) {
-        ohlcCandles = await fetchBinanceOhlcCandles(symbol);
-        if (!ohlcCandles) continue;
-        if (config.regimeAdaptive) {
-          const regime = computeRegimeParams(ohlcCandles);
-          effectiveThreshold = regime.thresholdPct;
-          effectiveTp = regime.tpPct;
-          effectiveSl = regime.slPct;
-        }
+      if (config.regimeAdaptive) {
+        const regime = computeRegimeParams(ohlcCandles);
+        effectiveThreshold = regime.thresholdPct;
+        effectiveTp = regime.tpPct;
+        effectiveSl = regime.slPct;
       }
 
-      const candle = await fetchBinance5mCandle(symbol);
-      if (!candle) continue;
-
+      // Last candle = just-closed 5m candle (signal source)
+      const candle = ohlcCandles[ohlcCandles.length - 1];
       const returnPct = ((candle.close - candle.open) / candle.open) * 100;
       if (Math.abs(returnPct) < effectiveThreshold) continue;
 
       const direction: "long" | "short" = returnPct > 0 ? "short" : "long";
 
       if (config.aiFilter) {
-        const { score, label } = computeAiScore(ohlcCandles!, direction);
+        const { score, label } = computeAiScore(ohlcCandles, direction);
         if (score < 3) continue;
         console.log(`[${config.label}] ${pair} score=${score}/4 [${label}] → ${direction}`);
       }
 
       if (config.llmFilter) {
-        const llm = await fetchLlmRegime(pair, ohlcCandles!);
+        const llm = await fetchLlmRegime(pair, ohlcCandles);
         if (!llm) continue;
         if (llm.skipFades) {
           console.log(`[${config.label}] ${pair} skipped: LLM skipFades`);
@@ -614,9 +494,13 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // 500ms max age: fresh for tight stops, avoids 429s; falls back to stale on error
+  // Stream price (real-time WebSocket) first, REST fallback on miss
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
-  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair, 500) })));
+  const priceResults = await Promise.all(allPairs.map(async pair => {
+    const stream = getStreamPrice(pair);
+    const price = stream ?? await getLighterMidPrice(pair, 500);
+    return { pair, price };
+  }));
   const lighterPrices = new Map<string, number>();
   for (const { pair, price } of priceResults) {
     if (price !== null) lighterPrices.set(pair, price);
@@ -669,6 +553,8 @@ const hftInitialTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const hftMonitorIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
 export function startAllHftSchedulers(): void {
+  void startLighterPriceStream(QUANT_TRADING_PAIRS);
+
   for (const config of HFT_VARIANTS) {
     if (hftIntervals.has(config.tradeType)) {
       console.log(`[${config.label}] Already running, skipping start`);

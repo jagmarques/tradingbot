@@ -79,7 +79,7 @@ function formatMicrostructure(ms: MicrostructureData | undefined): string {
   }
 
   return [
-    `Long/Short Ratio (Binance, 1h):`,
+    `Long/Short Ratio (1h):`,
     lsSection,
     ``,
     `Orderbook Depth (Hyperliquid, within 2% of mid):`,

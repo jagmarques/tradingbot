@@ -1,5 +1,5 @@
 import { fetchAllCandles } from "./candles.js";
-import { fetchMarketContext, fetchBinanceLongShortRatio, fetchOrderbookDepth, computeOIDelta } from "./market-data.js";
+import { fetchMarketContext, fetchOrderbookDepth, computeOIDelta } from "./market-data.js";
 import { computeIndicators } from "./indicators.js";
 import { classifyRegime } from "./regime.js";
 import type { CandleInterval, PairAnalysis, MicrostructureData } from "./types.js";
@@ -41,11 +41,8 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
   const regimeIndicators = indicatorsByInterval[REGIME_INTERVAL];
   const regime = classifyRegime(regimeIndicators, `${pair} ${REGIME_INTERVAL}`);
 
-  // Fetch microstructure data (non-critical, failures return null)
-  const [longShortRatio, orderbookImbalance] = await Promise.all([
-    fetchBinanceLongShortRatio(pair),
-    fetchOrderbookDepth(pair, marketCtx.markPrice),
-  ]);
+  const longShortRatio = null;
+  const orderbookImbalance = await fetchOrderbookDepth(pair, marketCtx.markPrice);
 
   const oiResult = computeOIDelta(pair, marketCtx.openInterest);
 
@@ -59,7 +56,7 @@ async function _analyzePairInternal(pair: string): Promise<PairAnalysis> {
   console.log(
     `[Pipeline] ${pair}: regime=${regime}, mark=$${marketCtx.markPrice.toFixed(2)}, ` +
     `oi=${marketCtx.openInterest.toFixed(0)}, funding=${(marketCtx.fundingRate * 100).toFixed(4)}%, ` +
-    `ls_ratio=${longShortRatio?.global?.toFixed(2) ?? 'n/a'}, ` +
+    `ls_ratio=n/a, ` +
     `ob_imbal=${orderbookImbalance?.imbalanceRatio?.toFixed(3) ?? 'n/a'}, ` +
     `oi_delta=${oiResult?.oiDeltaPct?.toFixed(2) ?? 'first_cycle'}%`,
   );
