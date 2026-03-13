@@ -42,16 +42,16 @@ import {
   QUANT_TRADING_PAIRS,
   HFT_PAPER_SPREAD_PCT,
   HFT_REGIME_LIVE_ENABLED,
-  HFT_REGIME_LIVE_TEST_LIMIT,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP, isLighterPositionClosing } from "../lighter/executor.js";
-import { isLighterInitialized } from "../lighter/client.js";
+import { isLighterInitialized, getLighterAccountInfo } from "../lighter/client.js";
 import { getStreamPrice, startLighterPriceStream, getLighterStreamCandles } from "../lighter/price-stream.js";
-import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
+import { loadOpenQuantPositions } from "../database/quant.js";
+import { sendMessage } from "../telegram/bot.js";
 
 export interface HftVariantConfig {
   tradeType: TradeType;
@@ -272,16 +272,8 @@ function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { s
   return { score, label: parts.join(",") };
 }
 
-// Counts trades opened since this deployment only
-let hftRegimeBaseline = -1;
-
-function hftRegimeNewTradeCount(): number {
-  if (hftRegimeBaseline < 0) {
-    hftRegimeBaseline = countQuantPositionsByType("hft-regime", "live");
-    console.log(`[HFT-Regime] Baseline: ${hftRegimeBaseline} pre-existing live trades`);
-  }
-  return countQuantPositionsByType("hft-regime", "live") - hftRegimeBaseline;
-}
+const HFT_MIN_BALANCE_USD = 200;
+let hftBalanceHalted = false;
 
 const cycleRunning = new Map<string, boolean>();
 
@@ -298,6 +290,32 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
 
   let signals = 0;
   let opened = 0;
+
+  // Balance guard: check once per cycle, auto-reset when balance recovers
+  let cycleBalanceOk = true;
+  if (goLive) {
+    try {
+      const { equity } = await getLighterAccountInfo();
+      if (equity < HFT_MIN_BALANCE_USD) {
+        if (!hftBalanceHalted) {
+          hftBalanceHalted = true;
+          const msg = `⛔ HFT LIVE STOPPED\n\nLighter balance $${equity.toFixed(2)} is below the $${HFT_MIN_BALANCE_USD} safety threshold.\n\nLive trading will automatically resume when balance recovers above $${HFT_MIN_BALANCE_USD}.`;
+          console.error(`[${config.label}] Balance $${equity.toFixed(2)} < $${HFT_MIN_BALANCE_USD} — halting live trading`);
+          void sendMessage(msg);
+        } else {
+          console.log(`[${config.label}] Balance $${equity.toFixed(2)} still below $${HFT_MIN_BALANCE_USD} — live trading halted`);
+        }
+        cycleBalanceOk = false;
+      } else if (hftBalanceHalted) {
+        hftBalanceHalted = false;
+        console.log(`[${config.label}] Balance recovered to $${equity.toFixed(2)} — resuming live trading`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[${config.label}] Balance check failed: ${errMsg} — skipping live trades this cycle`);
+      cycleBalanceOk = false;
+    }
+  }
 
   try {
     for (const pair of QUANT_TRADING_PAIRS) {
@@ -404,16 +422,13 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
       let position;
       if (goLive) {
+        if (!cycleBalanceOk) {
+          console.log(`[${config.label}] ${pair} skipped: balance guard active`);
+          continue;
+        }
         if (getStreamPrice(pair) === null) {
           console.log(`[${config.label}] ${pair} skipped: no stream price`);
           continue;
-        }
-        if (config.tradeType === "hft-regime") {
-          const sessionCount = hftRegimeNewTradeCount();
-          if (sessionCount >= HFT_REGIME_LIVE_TEST_LIMIT) {
-            console.log(`[${config.label}] Test limit reached (${sessionCount}/${HFT_REGIME_LIVE_TEST_LIMIT} this session) — live paused`);
-            continue;
-          }
         }
         position = await lighterOpenPosition(
           pair,
@@ -430,11 +445,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         );
         if (position) {
           if (config.tradeType === "hft-regime") {
-            const sessionCount = hftRegimeNewTradeCount();
-            console.log(`[${config.label}] Live trade ${sessionCount}/${HFT_REGIME_LIVE_TEST_LIMIT} this session | ${pair} ${direction} | entry=${position.entryPrice} SL=${position.stopLoss?.toFixed(5)} TP=${position.takeProfit?.toFixed(5)} candle=${returnPct > 0 ? "+" : ""}${returnPct.toFixed(3)}%`);
-            if (sessionCount >= HFT_REGIME_LIVE_TEST_LIMIT) {
-              console.log(`[${config.label}] *** TEST LIMIT REACHED — live trading stopped. Analyse DB: SELECT * FROM quant_trades WHERE trade_type='hft-regime' ORDER BY created_at; ***`);
-            }
+            console.log(`[${config.label}] Live trade | ${pair} ${direction} | entry=${position.entryPrice} SL=${position.stopLoss?.toFixed(5)} TP=${position.takeProfit?.toFixed(5)} candle=${returnPct > 0 ? "+" : ""}${returnPct.toFixed(3)}%`);
           }
           await paperOpenPosition(pair, direction, HFT_FADE_POSITION_SIZE_USD, HFT_FADE_LEVERAGE, sl, tp, config.tradeType, undefined, spreadEntry, "lighter");
         }
