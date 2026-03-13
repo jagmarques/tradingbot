@@ -145,7 +145,7 @@ async function checkPositionStops(): Promise<void> {
       }
     }
 
-    // Exchange P&L map for live Lighter positions (mark price-based, accurate)
+    // Exchange P&L for live Lighter
     const lighterExchangePnl = new Map<string, number>(); // key: `${pair}:${direction}`
     const liveLighterNonHft = lighterPositions.filter(p => p.mode === "live" && !p.tradeType?.startsWith("hft-"));
     if (liveLighterNonHft.length > 0 && isLighterInitialized()) {
@@ -212,7 +212,7 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Trailing stop — use exchange mark-price P&L for live Lighter positions
+      // Trailing stop
       const pricePct =
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
@@ -352,7 +352,7 @@ async function checkTrailActivePositions(): Promise<void> {
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
-    // Only process non-HFT positions that are trail-active (peak > activation) or already in the set
+    // Non-HFT trail-active positions only
     const trailCandidates = positions.filter(p => {
       if (p.tradeType?.startsWith("hft-")) return false; // HFT has its own 2s monitor
       const trailBaseType = (p.tradeType ?? "").replace(/^inv-/, "");
@@ -364,7 +364,7 @@ async function checkTrailActivePositions(): Promise<void> {
 
     if (trailCandidates.length === 0) return;
 
-    // Fetch prices only for pairs of trail-active positions
+    // Prices for trail-active pairs only
     let mids: Record<string, string> = {};
     const hlCandidates = trailCandidates.filter(p => p.exchange !== "lighter");
     if (hlCandidates.length > 0) {
@@ -396,7 +396,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
     }
 
-    // Exchange P&L for live Lighter candidates (mark price-based, accurate)
+    // Exchange P&L for live Lighter
     const lighterExchangePnl = new Map<string, number>();
     const liveLighterCandidates = lighterCandidates.filter(p => p.mode === "live");
     if (liveLighterCandidates.length > 0 && isLighterInitialized()) {

@@ -317,10 +317,10 @@ function computeEma(values: number[], period: number): number[] {
 }
 
 // Multi-signal AI score (0-4). Enter only at ≥ 3.
-// Signal 1: RSI(7) extreme — fast momentum exhaustion (>75 short, <25 long)
-// Signal 2: Bollinger Band breach — price outside 20-period 2σ band
-// Signal 3: Volume calm -- current candle volume < 1.0x 20-period mean (consolidating)
-// Signal 4: EMA(21) flat — not in a strong trend (slope < 0.15% over 2 candles)
+// Signal 1: RSI(7) extreme (>75 short, <25 long)
+// Signal 2: BB breach (outside 2σ)
+// Signal 3: Volume calm (< avg = consolidating)
+// Signal 4: EMA(21) flat (slope < 0.15%)
 function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { score: number; label: string } {
   const closes = candles.map(c => c.close);
   const current = candles[candles.length - 1];
@@ -348,7 +348,7 @@ function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { s
     }
   }
 
-  // Volume calm (< 1.0x 20-period mean = consolidating, good for reversion)
+  // Volume calm
   if (candles.length >= 21 && current.volume > 0) {
     const avgVol = candles.slice(-21, -1).reduce((a, c) => a + c.volume, 0) / 20;
     if (avgVol > 0 && current.volume < avgVol) {
