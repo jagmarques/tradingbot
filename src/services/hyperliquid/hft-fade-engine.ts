@@ -93,7 +93,6 @@ const HFT_VARIANTS: HftVariantConfig[] = [
 
 const BINANCE_SYMBOL_MAP: Record<string, string> = {
   OP: "OPUSDT",
-  WIF: "WIFUSDT",
   ARB: "ARBUSDT",
   LDO: "LDOUSDT",
   AVAX: "AVAXUSDT",
