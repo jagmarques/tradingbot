@@ -2,12 +2,9 @@ import {
   Configuration,
   OrderApi,
   AccountApi,
-  CandlestickApi,
-  CandlesticksResolutionEnum,
   OrderBooksFilterEnum,
   SignerClient,
   type OrderBook,
-  type Candlestick,
 } from "zklighter-sdk";
 import { withTimeout } from "../../utils/timeout.js";
 import { API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
@@ -18,7 +15,6 @@ let config: Configuration | null = null;
 let signerClient: SignerClient | null = null;
 let orderApi: OrderApi | null = null;
 let accountApi: AccountApi | null = null;
-let candleApi: CandlestickApi | null = null;
 let storedApiKeyIndex = 3;
 let storedAccountIndex = 0;
 
@@ -57,7 +53,6 @@ export function initLighter(
   config = new Configuration({ basePath: LIGHTER_BASE_PATH });
   orderApi = new OrderApi(config);
   accountApi = new AccountApi(config);
-  candleApi = new CandlestickApi(config);
   storedApiKeyIndex = apiKeyIndex;
   storedAccountIndex = accountIndex;
 
@@ -321,22 +316,6 @@ export async function getLighterAccountInfo(): Promise<{ equity: number; marginU
   }
   const equity = free + marginUsed + unrealizedPnl;
   return { equity, marginUsed };
-}
-
-export type { Candlestick };
-
-// Closed 5m candles, excludes current open candle
-export async function getLighterCandles(pair: string, limit = 35): Promise<Candlestick[] | null> {
-  const marketId = await getMarketIndex(pair);
-  if (marketId === null) return null;
-  if (!candleApi) return null;
-  const now = Math.floor(Date.now() / 1000);
-  const resp = await withTimeout(
-    candleApi.candlesticks(marketId, CandlesticksResolutionEnum._5m, now - 300 * (limit + 2), now - 60, limit),
-    API_PRICE_TIMEOUT_MS, "Lighter candlesticks",
-  );
-  const candles = resp.data.candlesticks;
-  return candles?.length ? candles : null;
 }
 
 // Unrealized P&L per pair

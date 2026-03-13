@@ -49,8 +49,8 @@ import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP, isLighterPositionClosing } from "../lighter/executor.js";
-import { isLighterInitialized, getLighterCandles } from "../lighter/client.js";
-import { getStreamPrice, startLighterPriceStream } from "../lighter/price-stream.js";
+import { isLighterInitialized } from "../lighter/client.js";
+import { getStreamPrice, startLighterPriceStream, getLighterStreamCandles } from "../lighter/price-stream.js";
 import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
 
 export interface HftVariantConfig {
@@ -72,11 +72,6 @@ interface OhlcCandle {
   volume: number;
 }
 
-interface OhlcCache {
-  candles: OhlcCandle[];
-  expiresAt: number;
-}
-
 const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-fade", label: "HFT-Fade", thresholdPct: HFT_FADE_MIN_RETURN_PCT, tpPct: HFT_FADE_TP_PCT, slPct: HFT_FADE_SL_PCT },
   { tradeType: "hft-t8-tp40-sl3", label: "HFT-t8-tp40-sl3", thresholdPct: HFT_T8_TP40_SL3_THRESHOLD_PCT, tpPct: HFT_T8_TP40_SL3_TP_PCT, slPct: HFT_T8_TP40_SL3_SL_PCT },
@@ -93,9 +88,6 @@ const HFT_VARIANTS: HftVariantConfig[] = [
   { tradeType: "hft-smart", label: "HFT-Smart", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true },
   { tradeType: "hft-ai", label: "HFT-AI", thresholdPct: 0.08, tpPct: 0.40, slPct: 0.03, regimeAdaptive: true, aiFilter: true, llmFilter: true },
 ];
-
-const ohlcCache = new Map<string, OhlcCache>();
-const OHLC_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface LlmRegime {
   regime: "trending" | "ranging" | "volatile";
@@ -178,23 +170,11 @@ async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmR
   }
 }
 
-// 35 closed 5m candles from Lighter, cached 5 min
-async function fetchCandlesForPair(pair: string): Promise<OhlcCandle[] | null> {
-  const cached = ohlcCache.get(pair);
-  if (cached && Date.now() < cached.expiresAt) return cached.candles;
-  try {
-    const raw = await getLighterCandles(pair, 35);
-    if (!raw?.length) return null;
-    const candles: OhlcCandle[] = raw.map(c => ({
-      open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume1,
-    }));
-    ohlcCache.set(pair, { candles, expiresAt: Date.now() + OHLC_CACHE_TTL_MS });
-    return candles;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[HFT] Candle fetch failed for ${pair}: ${msg}`);
-    return null;
-  }
+// 35 closed 5m candles built from Lighter trade stream
+function fetchCandlesForPair(pair: string): OhlcCandle[] | null {
+  const raw = getLighterStreamCandles(pair, 35);
+  if (!raw?.length) return null;
+  return raw.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }));
 }
 
 function computeRegimeParams(candles: OhlcCandle[]): { thresholdPct: number; tpPct: number; slPct: number } {
@@ -325,7 +305,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
       if (isQuantKilled()) break;
 
       // Cached 5m candles
-      const ohlcCandles = await fetchCandlesForPair(pair);
+      const ohlcCandles = fetchCandlesForPair(pair);
       if (!ohlcCandles || ohlcCandles.length < 2) continue;
 
       // Volume: sum quote volume across all candles (~175 min window)
