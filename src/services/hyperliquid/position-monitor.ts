@@ -398,9 +398,10 @@ async function checkTrailActivePositions(): Promise<void> {
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
-    // Non-HFT trail-active positions only
+    // Non-HFT trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
-      if (p.tradeType?.startsWith("hft-")) return false; // HFT has its own 2s monitor
+      if (p.tradeType?.startsWith("hft-")) return false;
+      if (nearSlIds.has(p.id)) return true;
       const trailBaseType = (p.tradeType ?? "").replace(/^inv-/, "");
       const trailCfg = TRAIL_CONFIG_BY_ENGINE[p.tradeType ?? ""]
         ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
@@ -491,6 +492,35 @@ async function checkTrailActivePositions(): Promise<void> {
             `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await tryClose(position, "trailing-stop");
+          continue;
+        }
+      }
+
+      // Near-SL recovery
+      const sl = position.stopLoss;
+      if (sl && isFinite(sl) && sl > 0) {
+        const slDistance = Math.abs(position.entryPrice - sl);
+        const priceDistanceTowardSl =
+          position.direction === "long"
+            ? position.entryPrice - currentPrice
+            : currentPrice - position.entryPrice;
+        const nearSlThreshold = 0.75 * slDistance;
+        if (priceDistanceTowardSl >= nearSlThreshold) {
+          if (!nearSlIds.has(position.id)) {
+            nearSlIds.set(position.id, currentPrice);
+            console.log(`[PositionMonitor] Near-SL (fast): ${position.pair} ${position.direction} @ ${currentPrice}`);
+          }
+        } else if (nearSlIds.has(position.id)) {
+          const priceAtNearSl = nearSlIds.get(position.id)!;
+          const recovery =
+            position.direction === "long"
+              ? currentPrice - priceAtNearSl
+              : priceAtNearSl - currentPrice;
+          if (recovery >= 0.20 * slDistance) {
+            console.log(`[PositionMonitor] Near-SL recovery exit (fast): ${position.pair} ${position.direction} @ ${currentPrice}`);
+            nearSlIds.delete(position.id);
+            await tryClose(position, "near-sl-recovery");
+          }
         }
       }
     }
@@ -510,7 +540,7 @@ export function startPositionMonitor(): void {
   monitorInterval = setInterval(() => {
     void checkPositionStops();
   }, QUANT_POSITION_MONITOR_INTERVAL_MS);
-  console.log(`[PositionMonitor] Fast-poll started (interval: ${QUANT_TRAIL_FAST_POLL_MS}ms, trail-active only)`);
+  console.log(`[PositionMonitor] Fast-poll started (${QUANT_TRAIL_FAST_POLL_MS}ms)`);
   fastPollInterval = setInterval(() => {
     void checkTrailActivePositions();
   }, QUANT_TRAIL_FAST_POLL_MS);
