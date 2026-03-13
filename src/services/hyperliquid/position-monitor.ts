@@ -152,7 +152,9 @@ async function checkPositionStops(): Promise<void> {
         for (const ep of exchangePositions) {
           lighterExchangePnl.set(`${ep.symbol}:${ep.side}`, ep.unrealizedPnlPct);
         }
-      } catch { /* fall through to mid-price calculation */ }
+      } catch (err) {
+        console.warn(`[PositionMonitor] Exchange P&L fetch failed, falling back to mid-price: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     const activePairs = new Set(QUANT_TRADING_PAIRS);
