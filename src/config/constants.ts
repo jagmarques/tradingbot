@@ -41,7 +41,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "MKR", "XRP", "SUI", "TON", "UNI"];
+export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "XRP", "SUI", "TON", "UNI"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 

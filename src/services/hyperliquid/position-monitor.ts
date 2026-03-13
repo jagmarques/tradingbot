@@ -1,5 +1,5 @@
 import { getClient, resetConnection } from "./client.js";
-import { getLighterAllMids, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
+import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, PSAR_TRAIL_ACTIVATION, PSAR_TRAIL_DISTANCE, ZLEMA_STAGNATION_BARS, ZLEMA_TRAIL_ACTIVATION, ZLEMA_TRAIL_DISTANCE, VORTEX_STAGNATION_BARS, VORTEX_TRAIL_ACTIVATION, VORTEX_TRAIL_DISTANCE, SCHAFF_STAGNATION_BARS, SCHAFF_TRAIL_ACTIVATION, SCHAFF_TRAIL_DISTANCE, DEMA_STAGNATION_BARS, DEMA_TRAIL_ACTIVATION, DEMA_TRAIL_DISTANCE, CCI_STAGNATION_BARS, CCI_TRAIL_ACTIVATION, CCI_TRAIL_DISTANCE, AROON_STAGNATION_BARS, AROON_TRAIL_ACTIVATION, AROON_TRAIL_DISTANCE, MACD_STAGNATION_BARS, MACD_TRAIL_ACTIVATION, MACD_TRAIL_DISTANCE, ZLEMAV2_STAGNATION_BARS, ZLEMAV2_TRAIL_ACTIVATION, ZLEMAV2_TRAIL_DISTANCE, SCHAFFV2_STAGNATION_BARS, SCHAFFV2_TRAIL_ACTIVATION, SCHAFFV2_TRAIL_DISTANCE, HFT_FADE_STAGNATION_MS, HFT_FADE_TRAIL_ACTIVATION, HFT_FADE_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
@@ -143,6 +143,18 @@ async function checkPositionStops(): Promise<void> {
       }
     }
 
+    // Exchange P&L map for live Lighter positions (mark price-based, accurate)
+    const lighterExchangePnl = new Map<string, number>(); // key: `${pair}:${direction}`
+    const liveLighterNonHft = lighterPositions.filter(p => p.mode === "live" && !p.tradeType?.startsWith("hft-"));
+    if (liveLighterNonHft.length > 0 && isLighterInitialized()) {
+      try {
+        const exchangePositions = await getLighterOpenPositions();
+        for (const ep of exchangePositions) {
+          lighterExchangePnl.set(`${ep.symbol}:${ep.side}`, ep.unrealizedPnlPct);
+        }
+      } catch { /* fall through to mid-price calculation */ }
+    }
+
     const activePairs = new Set(QUANT_TRADING_PAIRS);
 
     let orphanClosed = false;
@@ -196,12 +208,15 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Trailing stop
+      // Trailing stop — use exchange mark-price P&L for live Lighter positions
       const pricePct =
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
           : ((position.entryPrice - currentPrice) / position.entryPrice);
-      const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
+      const exchangePnlPct = position.exchange === "lighter" && position.mode === "live"
+        ? lighterExchangePnl.get(`${position.pair}:${position.direction}`)
+        : undefined;
+      const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;

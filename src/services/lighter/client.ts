@@ -271,7 +271,7 @@ export async function getLighterAllMids(pairs: string[]): Promise<Record<string,
   return results;
 }
 
-export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number }[]> {
+export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number; unrealizedPnlPct: number }[]> {
   const api = getAccountApi();
   const resp = await withTimeout(
     api.account("index" as any, storedAccountIndex.toString()),
@@ -281,13 +281,18 @@ export async function getLighterOpenPositions(): Promise<{ marketId: number; sym
   if (!account?.positions) return [];
   return account.positions
     .filter((p: any) => parseFloat(p.position) !== 0)
-    .map((p: any) => ({
-      marketId: p.market_id,
-      symbol: p.symbol?.split("_")[0] ?? "",
-      size: Math.abs(parseFloat(p.position)),
-      side: (p.sign === 1 ? "long" : "short") as "long" | "short",
-      entryPrice: parseFloat(p.avg_entry_price ?? "0"),
-    }));
+    .map((p: any) => {
+      const allocMargin = parseFloat(p.allocated_margin ?? "0");
+      const unrealPnl = parseFloat(p.unrealized_pnl ?? "0");
+      return {
+        marketId: p.market_id,
+        symbol: p.symbol?.split("_")[0] ?? "",
+        size: Math.abs(parseFloat(p.position)),
+        side: (p.sign === 1 ? "long" : "short") as "long" | "short",
+        entryPrice: parseFloat(p.avg_entry_price ?? "0"),
+        unrealizedPnlPct: allocMargin > 0 ? (unrealPnl / allocMargin) * 100 : 0,
+      };
+    });
 }
 
 // Account equity and margin used
