@@ -219,7 +219,7 @@ const midPriceCache = new Map<string, { price: number; at: number }>();
 const midPricePending = new Map<string, Promise<number | null>>();
 const MID_PRICE_CACHE_MS = 5_000;
 
-// noCache=true skips result cache but still shares in-flight requests
+// noCache=true bypasses result cache; still shares in-flight
 export function getLighterMidPrice(pair: string, noCache = false): Promise<number | null> {
   const cached = midPriceCache.get(pair);
   if (!noCache && cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return Promise.resolve(cached.price);

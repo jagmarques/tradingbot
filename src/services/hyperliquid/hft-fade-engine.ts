@@ -551,7 +551,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           undefined,
           entryPrice,
           true,
-          true, // skip exchange SL/TP — software monitor at 100ms, exchange orders cause slippage
+          true, // no exchange SL/TP — software monitor closes
         );
         if (position) {
           if (config.tradeType === "hft-regime") {
@@ -602,7 +602,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // All positions use Lighter prices (in-flight sharing in client.ts deduplicates concurrent variant calls)
+  // Lighter prices; in-flight sharing deduplicates concurrent variant calls
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
   const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair, true) })));
   const lighterPrices = new Map<string, number>();
