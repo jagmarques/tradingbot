@@ -788,7 +788,7 @@ async function handlePnl(ctx: Context): Promise<void> {
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
         let ltMids: Record<string, string> = {};
         // Exchange unrealized P&L
-        let hlExUpnl: Record<string, number> = {};
+        const hlExUpnl: Record<string, number> = {};
         let ltExUpnl: Record<string, number> = {};
         const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
         if (wallet) {
@@ -882,9 +882,13 @@ async function handlePnl(ctx: Context): Promise<void> {
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
       const { getOpenQuantPositions: getQPos } = await import("../hyperliquid/executor.js");
       const qOpen = getQPos();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hlOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange !== "lighter");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ltOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange === "lighter");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const hlDep = hlOpen.reduce((s: number, p: any) => s + p.size, 0);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ltDep = ltOpen.reduce((s: number, p: any) => s + p.size, 0);
       // Fetch margin info from exchanges
       let hlMarginLine = "";
@@ -899,6 +903,7 @@ async function handlePnl(ctx: Context): Promise<void> {
           if (hlEq <= hlUsed) {
             try {
               const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
               if (usdcBal) hlEq = parseFloat(usdcBal.total) || 0;
             } catch { /* ignore */ }
@@ -919,7 +924,9 @@ async function handlePnl(ctx: Context): Promise<void> {
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
       message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}/${hlClosedQ.cnt + hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lastHl = hlOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lastLt = ltOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
       if (hlMarginLine || ltMarginLine) message += "\n";
       if (hlMarginLine) message += hlMarginLine;
@@ -1978,7 +1985,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
   // Exchange unrealized P&L
-  let hlExchangeUpnl: Record<string, number> = {};
+  const hlExchangeUpnl: Record<string, number> = {};
   let ltExchangeUpnl: Record<string, number> = {};
   if (openPositions.length > 0) {
     try {
@@ -2134,7 +2141,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   }
 
   // Aggregate stats per strategy+mode
-  const makeKey = (type: string, mode: string) => `${type}:${mode}`;
+  const makeKey = (type: string, mode: string): string => `${type}:${mode}`;
   const unrealizedByKey = new Map<string, number>();
   const openCountByKey = new Map<string, number>();
   const deployedByKey = new Map<string, number>();
@@ -2216,7 +2223,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const hasPaper = openPositions.some(p => p.mode !== "live");
   const isHybrid = tradingMode === "hybrid" || (hasLive && hasPaper);
 
-  const renderEngineBlock = (list: [string, string][], mode: "live" | "paper") => {
+  const renderEngineBlock = (list: [string, string][], mode: "live" | "paper"): { block: string; pnlTotal: number; trades: number; unrTotal: number; depTotal: number; openTotal: number } => {
     let block = "", pnlTotal = 0, trades = 0, unrTotal = 0, depTotal = 0, openTotal = 0;
     for (const [label, typeKey] of list) {
       const stats = getQuantStats(typeKey, mode);

@@ -319,7 +319,7 @@ async function checkPositionStops(): Promise<void> {
             );
           }
         } else if (nearSlIds.has(position.id)) {
-          const priceAtEntry = nearSlIds.get(position.id)!;
+          const priceAtEntry = nearSlIds.get(position.id) ?? currentPrice;
           const recovery =
             position.direction === "long"
               ? currentPrice - priceAtEntry   // long: price rising back up
@@ -512,7 +512,7 @@ async function checkTrailActivePositions(): Promise<void> {
             console.log(`[PositionMonitor] Near-SL (fast): ${position.pair} ${position.direction} @ ${currentPrice}`);
           }
         } else if (nearSlIds.has(position.id)) {
-          const priceAtNearSl = nearSlIds.get(position.id)!;
+          const priceAtNearSl = nearSlIds.get(position.id) ?? currentPrice;
           const recovery =
             position.direction === "long"
               ? currentPrice - priceAtNearSl

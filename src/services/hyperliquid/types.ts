@@ -48,17 +48,6 @@ export interface QuantAccountState {
   positions: QuantPosition[];
 }
 
-export interface QuantHyperliquidConfig {
-  walletAddress: string;
-  enableWs: boolean;
-}
-
-export interface OrderResult {
-  success: boolean;
-  orderId: string | undefined;
-  error: string | undefined;
-}
-
 export type CandleInterval = "15m" | "1h" | "4h" | "1d";
 
 export interface OhlcvCandle {
@@ -71,17 +60,6 @@ export interface OhlcvCandle {
   trades: number;
 }
 
-export interface MarketDataSnapshot {
-  pair: string;
-  candles: Record<CandleInterval, OhlcvCandle[]>;
-  fundingRate: number;
-  openInterest: number;
-  markPrice: number;
-  oraclePrice: number;
-  dayVolume: number;
-  fetchedAt: string;
-}
-
 export interface FundingInfo {
   pair: string;
   currentRate: number;
@@ -90,15 +68,6 @@ export interface FundingInfo {
 }
 
 export type TradeType = "directional" | "funding" | "ai-directional" | "psar-directional" | "zlema-directional" | "vortex-directional" | "schaff-directional" | "dema-directional" | "cci-directional" | "aroon-directional" | "macd-directional" | "zlemav2-directional" | "schaffv2-directional" | "inv-psar-directional" | "inv-zlema-directional" | "inv-vortex-directional" | "inv-schaff-directional" | "inv-dema-directional" | "inv-cci-directional" | "inv-aroon-directional" | "inv-macd-directional" | "inv-zlemav2-directional" | "inv-schaffv2-directional" | "hft-fade" | "hft-t8-tp40-sl3" | "hft-t10-tp35-sl4" | "hft-t8-tp35-sl4" | "hft-t8-tp25-sl5" | "hft-t8-tp30-sl5" | "hft-t12-tp40-sl3" | "hft-t10-tp40-sl3" | "hft-t8-tp30-sl3" | "hft-t8-tp35-sl3" | "hft-t8-tp25-sl3" | "hft-regime" | "hft-smart" | "hft-ai";
-
-export interface FundingOpportunity {
-  pair: string;
-  currentRate: number; // per-period rate (8h)
-  annualizedRate: number; // annualized APR (rate * 3 * 365)
-  direction: "long" | "short"; // short if positive rate (shorts collect), long if negative
-  nextFundingTime: number; // unix ms
-  markPrice: number; // current mid price from getAllMids, used for stop-loss/take-profit calc
-}
 
 export type MarketRegime = "trending" | "ranging" | "volatile";
 
@@ -151,6 +120,3 @@ export interface QuantAIDecision {
   analyzedAt: string; // ISO timestamp
 }
 
-export interface QuantAIPromptData extends PairAnalysis {
-  candles: Record<CandleInterval, OhlcvCandle[]>;
-}

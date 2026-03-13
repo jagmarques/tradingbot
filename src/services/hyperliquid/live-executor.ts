@@ -45,7 +45,7 @@ async function fetchMeta(): Promise<void> {
 
 async function getSzDecimals(): Promise<Map<string, number>> {
   await fetchMeta();
-  return szDecimalsMap!;
+  return szDecimalsMap ?? new Map<string, number>();
 }
 
 function getMaxLeverage(pair: string): number {
@@ -217,7 +217,9 @@ async function reconcileWithExchange(): Promise<void> {
 
     const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
     const exchangePositions = state.assetPositions
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((ap: any) => parseFloat(ap.position.szi) !== 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const exchangeCoins = new Set(exchangePositions.map((ap: any) => ap.position.coin as string));
 
     const trackedPairs = new Set(getLivePositions().map(p => p.pair));
@@ -241,6 +243,7 @@ async function reconcileWithExchange(): Promise<void> {
       if (exchangeCoins.has(pos.pair) || closingSet.has(pos.id)) continue;
       await new Promise(r => setTimeout(r, 2000));
       const recheck = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const recheckCoins = new Set(recheck.assetPositions.filter((ap: any) => parseFloat(ap.position.szi) !== 0).map((ap: any) => ap.position.coin as string));
       if (recheckCoins.has(pos.pair)) continue;
 
@@ -347,6 +350,7 @@ export async function liveOpenPosition(
         if (equity <= marginUsed) {
           try {
             const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
             if (usdcBal) equity = parseFloat(usdcBal.total) || 0;
           } catch { /* spot check optional */ }
@@ -517,7 +521,7 @@ export async function liveOpenPosition(
       try {
         await sdk.custom.marketClose(pair, undefined, undefined, MAX_SLIPPAGE);
         console.log(`[Quant Live] Auto-closed orphan ${pair} after DB failure`);
-      } catch (closeErr) {
+      } catch {
         void notifyCriticalError(`DB write failed + auto-close failed: ${pair} — ORPHAN on exchange`, "liveOpenPosition");
       }
       return null;
@@ -550,6 +554,7 @@ export async function liveOpenPosition(
           await ensureConnected();
           const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
           const orphan = state.assetPositions.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (ap: any) => ap.position.coin === pair && parseFloat(ap.position.szi) !== 0,
           );
           if (orphan) {
@@ -619,6 +624,7 @@ export async function liveClosePosition(
         try {
           const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
           const stillOpen = state.assetPositions.some(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (ap: any) => ap.position.coin === position.pair && parseFloat(ap.position.szi) !== 0,
           );
           if (!stillOpen) {
@@ -643,7 +649,7 @@ export async function liveClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    const exitPrice = parseFloat(status!.filled!.avgPx);
+    const exitPrice = parseFloat(status?.filled?.avgPx ?? "0");
 
     if (!isFinite(exitPrice) || exitPrice <= 0) {
       console.error(`[Quant Live] Invalid exit price for ${position.pair}`);
@@ -717,6 +723,7 @@ export async function liveClosePosition(
         if (wallet2) {
           const state2 = await sdk2.info.perpetuals.getClearinghouseState(wallet2, true);
           const stillOpen = state2.assetPositions.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (ap: any) => ap.position.coin === position.pair && parseFloat(ap.position.szi) !== 0,
           );
           if (!stillOpen) {
@@ -784,6 +791,7 @@ export async function getLiveBalance(): Promise<number> {
 
     // Unified account fallback
     const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const usdcBalance = spotState.balances?.find((b: any) => b.coin === "USDC");
     return usdcBalance ? parseFloat(usdcBalance.total) : 0;
   } catch (err) {

@@ -11,6 +11,7 @@ export async function getAccountBalance(walletAddress: string): Promise<{
     const sdk = getClient();
     const [state, spotState] = await Promise.all([
       sdk.info.perpetuals.getClearinghouseState(walletAddress, true),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sdk.info.spot.getSpotClearinghouseState(walletAddress, true).catch(() => ({ balances: [] as any[] })),
     ]);
 
@@ -19,6 +20,7 @@ export async function getAccountBalance(walletAddress: string): Promise<{
 
     // Unified account: spot USDC is the real portfolio value
     if (perpsEquity <= totalMarginUsed) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
       if (usdcBal) perpsEquity = parseFloat(usdcBal.total) || 0;
     }

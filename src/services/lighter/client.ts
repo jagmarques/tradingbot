@@ -34,7 +34,7 @@ let currentNonce = -1;
 let nonceInitPromise: Promise<void> | null = null;
 let nonceGeneration = 0;
 
-// Serializes nonce-consuming writes to prevent out-of-order arrival at server
+// Serializes writes to prevent nonce reordering
 let writeQueue: Promise<unknown> = Promise.resolve();
 
 export function withNonce<T>(fn: (nonce: number) => Promise<T>): Promise<T> {
@@ -94,14 +94,18 @@ export function getAccountApi(): AccountApi {
   return accountApi;
 }
 
+interface LighterApiKey { api_key_index: number; nonce: number }
+interface LighterPosition { market_id: number; symbol: string; position: string; sign: number; avg_entry_price: string; allocated_margin: string; unrealized_pnl: string }
+interface LighterAccount { available_balance: string; positions: LighterPosition[] }
+
 // Fetch nonce from server
 async function fetchAndSetNonce(): Promise<void> {
   const gen = nonceGeneration;
   const api = getAccountApi();
   const resp = await withTimeout(api.apikeys(storedAccountIndex, 255), API_PRICE_TIMEOUT_MS, "Lighter nonce fetch");
   if (gen !== nonceGeneration) return; // stale fetch, discard
-  const keys = (resp.data as any).api_keys;
-  const ourKey = keys?.find((k: any) => k.api_key_index === storedApiKeyIndex);
+  const keys = (resp.data as { api_keys: LighterApiKey[] }).api_keys;
+  const ourKey = keys?.find((k: LighterApiKey) => k.api_key_index === storedApiKeyIndex);
   if (ourKey) {
     currentNonce = ourKey.nonce + 1;
     console.log(`[Lighter] Nonce synced: next=${currentNonce}`);
@@ -143,7 +147,7 @@ async function refreshMarketIndex(): Promise<void> {
   }
 
   if (!marketIndexPromise) {
-    marketIndexPromise = (async () => {
+    marketIndexPromise = (async (): Promise<void> => {
       try {
         const api = getOrderApi();
         const resp = await withTimeout(api.orderBooks(undefined, OrderBooksFilterEnum.Perp), API_PRICE_TIMEOUT_MS, "Lighter orderBooks");
@@ -165,6 +169,7 @@ async function refreshMarketIndex(): Promise<void> {
 
         // Fetch max leverage from orderBookDetails
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const detailResp = await withTimeout(api.orderBookDetails(undefined, "perp" as any), API_PRICE_TIMEOUT_MS, "Lighter orderBookDetails");
           for (const d of detailResp.data.order_book_details ?? []) {
             const base = d.symbol.split("_")[0];
@@ -224,14 +229,14 @@ const midPriceCache = new Map<string, { price: number; at: number }>();
 const midPricePending = new Map<string, Promise<number | null>>();
 const MID_PRICE_CACHE_MS = 5_000;
 
-// maxAgeMs: cache TTL; on error returns stale cached price, never null
+// On error, returns stale cached price (never null if cache exists)
 export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS): Promise<number | null> {
   const cached = midPriceCache.get(pair);
   if (cached && Date.now() - cached.at < maxAgeMs) return Promise.resolve(cached.price);
 
   let pending = midPricePending.get(pair);
   if (!pending) {
-    pending = (async () => {
+    pending = (async (): Promise<number | null> => {
       try {
         const marketId = await getMarketIndex(pair);
         if (marketId === null) {
@@ -264,8 +269,6 @@ export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS):
   return pending;
 }
 
-export const INTER_REQUEST_DELAY_MS = 200; // kept for backward compat
-
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   const entries = await Promise.all(pairs.map(async pair => {
     try {
@@ -281,15 +284,13 @@ export async function getLighterAllMids(pairs: string[]): Promise<Record<string,
 
 export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number; unrealizedPnlPct: number }[]> {
   const api = getAccountApi();
-  const resp = await withTimeout(
-    api.account("index" as any, storedAccountIndex.toString()),
-    API_PRICE_TIMEOUT_MS, "Lighter account positions",
-  );
-  const account = (resp.data as any).accounts?.[0];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp = await withTimeout(api.account("index" as any, storedAccountIndex.toString()), API_PRICE_TIMEOUT_MS, "Lighter account positions");
+  const account = (resp.data as { accounts: LighterAccount[] }).accounts?.[0];
   if (!account?.positions) return [];
   return account.positions
-    .filter((p: any) => parseFloat(p.position) !== 0)
-    .map((p: any) => {
+    .filter((p: LighterPosition) => parseFloat(p.position) !== 0)
+    .map((p: LighterPosition) => {
       const allocMargin = parseFloat(p.allocated_margin ?? "0");
       const unrealPnl = parseFloat(p.unrealized_pnl ?? "0");
       return {
@@ -306,11 +307,9 @@ export async function getLighterOpenPositions(): Promise<{ marketId: number; sym
 // Account equity and margin used
 export async function getLighterAccountInfo(): Promise<{ equity: number; marginUsed: number }> {
   const api = getAccountApi();
-  const resp = await withTimeout(
-    api.account("index" as any, storedAccountIndex.toString()),
-    API_PRICE_TIMEOUT_MS, "Lighter account info",
-  );
-  const account = (resp.data as any).accounts?.[0];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp = await withTimeout(api.account("index" as any, storedAccountIndex.toString()), API_PRICE_TIMEOUT_MS, "Lighter account info");
+  const account = (resp.data as { accounts: LighterAccount[] }).accounts?.[0];
   if (!account) return { equity: 0, marginUsed: 0 };
   const free = parseFloat(account.available_balance ?? "0") || 0;
   let marginUsed = 0;
@@ -326,7 +325,7 @@ export async function getLighterAccountInfo(): Promise<{ equity: number; marginU
 
 export type { Candlestick };
 
-// Fetch closed 5m candles for a pair (excludes current open candle)
+// Closed 5m candles, excludes current open candle
 export async function getLighterCandles(pair: string, limit = 35): Promise<Candlestick[] | null> {
   const marketId = await getMarketIndex(pair);
   if (marketId === null) return null;
@@ -343,11 +342,9 @@ export async function getLighterCandles(pair: string, limit = 35): Promise<Candl
 // Unrealized P&L per pair
 export async function getLighterUnrealizedPnl(): Promise<Record<string, number>> {
   const api = getAccountApi();
-  const resp = await withTimeout(
-    api.account("index" as any, storedAccountIndex.toString()),
-    API_PRICE_TIMEOUT_MS, "Lighter unrealized PnL",
-  );
-  const account = (resp.data as any).accounts?.[0];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp = await withTimeout(api.account("index" as any, storedAccountIndex.toString()), API_PRICE_TIMEOUT_MS, "Lighter unrealized PnL");
+  const account = (resp.data as { accounts: LighterAccount[] }).accounts?.[0];
   if (!account?.positions) return {};
   const result: Record<string, number> = {};
   for (const p of account.positions) {

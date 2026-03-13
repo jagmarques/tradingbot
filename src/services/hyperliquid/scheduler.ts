@@ -87,7 +87,7 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const { engine, decisions } of signalSources) {
       for (const d of decisions) {
         if (!techSignalsByPair.has(d.pair)) techSignalsByPair.set(d.pair, []);
-        techSignalsByPair.get(d.pair)!.push({ engine, direction: d.direction });
+        (techSignalsByPair.get(d.pair) ?? []).push({ engine, direction: d.direction });
       }
     }
 
@@ -185,7 +185,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const paperExecuted = new Map<string, number>();
     for (const { label, tradeType, decisions } of paperEngines) {
       let count = 0;
-      const openPairs = paperOpenPairsByEngine.get(tradeType)!;
+      const openPairs = paperOpenPairsByEngine.get(tradeType) ?? new Set<string>();
       for (const decision of decisions) {
         if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
         if (openPairs.has(decision.pair)) continue;
@@ -218,7 +218,7 @@ export async function runDirectionalCycle(): Promise<void> {
     for (const { label, normalType, invType } of invertedPairs) {
       let count = 0;
       const normalPositions = currentPositions.filter(p => p.tradeType === normalType && p.mode === "paper");
-      const invOpenPairs = paperOpenPairsByEngine.get(invType)!;
+      const invOpenPairs = paperOpenPairsByEngine.get(invType) ?? new Set<string>();
       for (const pos of normalPositions) {
         if (invOpenPairs.has(pos.pair)) continue;
         if (!pos.takeProfit || pos.takeProfit <= 0 || !pos.stopLoss || pos.stopLoss <= 0) {
@@ -253,8 +253,8 @@ export async function runDirectionalCycle(): Promise<void> {
       paperExecuted.set(invType, count);
     }
 
-    const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
-    const eI = (tt: string, d: { length: number }) => `${eP(tt, d)}${QUANT_HYBRID_LIVE_ENGINES.has(tt) ? "L+P" : "P"}`;
+    const eP = (tt: string, d: { length: number }): string => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
+    const eI = (tt: string, d: { length: number }): string => `${eP(tt, d)}${QUANT_HYBRID_LIVE_ENGINES.has(tt) ? "L+P" : "P"}`;
     const aiLog = QUANT_AI_DIRECTIONAL_ENABLED ? `AI ${aiExecuted}/${aiDecisions.length}` : "AI OFF";
     const normalLog = `${aiLog}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
     const invLog = `iZLEMAv2 ${eI("inv-zlemav2-directional", zlemav2Decisions)}, iVortex ${eI("inv-vortex-directional", vortexDecisions)}, iSchaff ${eI("inv-schaff-directional", schaffDecisions)}, iDEMA ${eI("inv-dema-directional", demaDecisions)}, iZLEMA ${eI("inv-zlema-directional", zlemaDecisions)}, iPSAR ${eI("inv-psar-directional", psarDecisions)}, iCCI ${eI("inv-cci-directional", cciDecisions)}, iAroon ${eI("inv-aroon-directional", aroonDecisions)}, iMACD ${eI("inv-macd-directional", macdDecisions)}, iSchaffV2 ${eI("inv-schaffv2-directional", schaffv2Decisions)}`;

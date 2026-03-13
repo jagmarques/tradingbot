@@ -149,7 +149,7 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
 
   if (!stopInfo && !tpInfo) return;
 
-  const marketIndex = stopInfo?.marketIndex ?? tpInfo!.marketIndex;
+  const marketIndex = stopInfo?.marketIndex ?? tpInfo?.marketIndex ?? 0;
   const activeOrders = await fetchActiveOrders(marketIndex);
 
   if (stopInfo) {
@@ -364,7 +364,7 @@ export function hasExchangeTP(id: string): boolean {
   return exchangeTPs.has(id);
 }
 
-function getOrderError(result: [any, any, string | null]): string | null {
+function getOrderError(result: [unknown, { code: number; message?: string } | null, string | null]): string | null {
   if (result[2]) return result[2];
   const resp = result[1];
   if (resp && resp.code !== 0 && resp.code !== 200) {

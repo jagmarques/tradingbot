@@ -20,10 +20,11 @@ export async function fetchDailyCandles(
 ): Promise<DailyCandle[]> {
   const nowHour = Math.floor(Date.now() / 3_600_000);
 
-  if (!dailyCandleCache.has(pair)) {
-    dailyCandleCache.set(pair, new Map());
+  let pairCache = dailyCandleCache.get(pair);
+  if (!pairCache) {
+    pairCache = new Map();
+    dailyCandleCache.set(pair, pairCache);
   }
-  const pairCache = dailyCandleCache.get(pair)!;
   const cached = pairCache.get(lookbackDays);
   if (cached && cached.fetchedAtHour === nowHour) return cached.candles;
 

@@ -168,7 +168,7 @@ async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmR
       console.warn(`[HFT-AI] LLM invalid fields for ${pair}`);
       return null;
     }
-    const result: LlmRegime = { regime: parsed.regime!, bias: parsed.bias!, skipFades: parsed.skipFades };
+    const result: LlmRegime = { regime: parsed.regime as LlmRegime["regime"], bias: parsed.bias as LlmRegime["bias"], skipFades: parsed.skipFades };
     llmRegimeCache.set(pair, { data: result, expiresAt: Date.now() + LLM_REGIME_CACHE_TTL_MS });
     return result;
   } catch (err) {
@@ -178,7 +178,7 @@ async function fetchLlmRegime(pair: string, candles: OhlcCandle[]): Promise<LlmR
   }
 }
 
-// Fetches 35 closed 5m candles from Lighter; cached 5 min per pair
+// 35 closed 5m candles from Lighter, cached 5 min
 async function fetchCandlesForPair(pair: string): Promise<OhlcCandle[] | null> {
   const cached = ohlcCache.get(pair);
   if (cached && Date.now() < cached.expiresAt) return cached.candles;
@@ -324,11 +324,11 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
     for (const pair of QUANT_TRADING_PAIRS) {
       if (isQuantKilled()) break;
 
-      // Fetch 35 closed 5m candles from Lighter (cached 5 min)
+      // Cached 5m candles
       const ohlcCandles = await fetchCandlesForPair(pair);
       if (!ohlcCandles || ohlcCandles.length < 2) continue;
 
-      // Volume: sum all candles' quote volume as 24h proxy
+      // Volume: sum quote volume across all candles (~175 min window)
       const volume24h = ohlcCandles.reduce((s, c) => s + c.volume, 0);
       if (volume24h < HFT_FADE_MIN_VOLUME_24H) {
         console.log(`[${config.label}] ${pair} skipped: volume $${volume24h.toFixed(0)} < $${HFT_FADE_MIN_VOLUME_24H}`);
@@ -398,7 +398,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         continue;
       }
 
-      // Skip if a non-HFT live position exists on this pair (avoids netting conflict on Lighter)
+      // Skip if non-HFT live position exists (netting conflict)
       if (goLive) {
         const nonHftOnPair = getLighterLivePositions().find(p => !p.tradeType?.startsWith("hft-") && p.pair === pair);
         if (nonHftOnPair) {
@@ -425,6 +425,10 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
       let position;
       if (goLive) {
+        if (getStreamPrice(pair) === null) {
+          console.log(`[${config.label}] ${pair} skipped: no stream price`);
+          continue;
+        }
         if (config.tradeType === "hft-regime") {
           const sessionCount = hftRegimeNewTradeCount();
           if (sessionCount >= HFT_REGIME_LIVE_TEST_LIMIT) {
@@ -509,7 +513,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     const tp = pos.takeProfit;
     const slHit = sl && (pos.direction === "long" ? price <= sl : price >= sl);
     const tpHit = tp && (pos.direction === "long" ? price >= tp : price <= tp);
-    const spreadExit = (p: number) => pos.direction === "long"
+    const spreadExit = (p: number): number => pos.direction === "long"
       ? p * (1 - HFT_PAPER_SPREAD_PCT)
       : p * (1 + HFT_PAPER_SPREAD_PCT);
     if (slHit) await paperClosePosition(pos.id, "stop-loss", spreadExit(sl));
@@ -520,6 +524,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     if (isLighterPositionClosing(pos.id)) continue;
     const price = lighterPrices.get(pos.pair);
     if (!price) {
+      if (Date.now() - hftStartedAt < HFT_STREAM_WARMUP_MS) continue; // stream warming up
       console.warn(`[${config.label}] ${pos.pair} no stream price — closing live position`);
       await lighterClosePosition(pos.id, "no-price");
       continue;
@@ -553,7 +558,11 @@ const hftIntervals = new Map<string, ReturnType<typeof setInterval>>();
 const hftInitialTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const hftMonitorIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
+const HFT_STREAM_WARMUP_MS = 30_000;
+let hftStartedAt = 0;
+
 export function startAllHftSchedulers(): void {
+  hftStartedAt = Date.now();
   void startLighterPriceStream(QUANT_TRADING_PAIRS);
 
   for (const config of HFT_VARIANTS) {

@@ -54,7 +54,7 @@ describe("computeDailyAdx", () => {
     expect(ourAdx).not.toBeNull();
     expect(libAdx).not.toBeNull();
     // Values must be equal (same computation)
-    expect(ourAdx).toBeCloseTo(libAdx!, 4);
+    expect(ourAdx).toBeCloseTo(libAdx as number, 4);
   });
 
   it("gives lower ADX than old formula on sideways market", () => {
@@ -99,7 +99,7 @@ describe("computeDailyAdx", () => {
     expect(oldAdx).not.toBeNull();
     // The old formula overestimates on flat markets
     // Our proper ADX should be lower or equal
-    expect(ourAdx!).toBeLessThanOrEqual(oldAdx! + 0.01);
+    expect(ourAdx as number).toBeLessThanOrEqual((oldAdx as number) + 0.01);
   });
 });
 
