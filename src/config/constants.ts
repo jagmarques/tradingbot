@@ -234,7 +234,7 @@ export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
 export const HFT_FADE_MAX_CONCURRENT = 10;
 export const HFT_FADE_LIVE_ENABLED = false;
 export const HFT_REGIME_LIVE_ENABLED = true;
-export const HFT_REGIME_LIVE_TEST_LIMIT = 40;
+export const HFT_REGIME_LIVE_TEST_LIMIT = 20;
 export const HFT_PAPER_SPREAD_PCT = 0.00025;
 
 // HFT Fade Variant t8-tp40-sl3
