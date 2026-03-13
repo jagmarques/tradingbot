@@ -14,7 +14,7 @@ import { runZlemaV2DecisionEngine } from "./zlema-v2-engine.js";
 import { runSchaffV2DecisionEngine } from "./schaff-v2-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED } from "../../config/constants.js";
 import type { QuantAIDecision, TradeType } from "./types.js";
 import type { TechSignal } from "./prompt.js";
 
@@ -94,24 +94,26 @@ export async function runDirectionalCycle(): Promise<void> {
     // AI
     const aiDecisions: QuantAIDecision[] = [];
     const aiSignals = new Map<string, "long" | "short" | "flat">();
-    for (const analysis of analyses) {
-      const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
-      const closes = dailyCandles.map((c) => c.close);
-      const sma50 = computeDailySma(closes, 50, closes.length - 1);
-      const markPrice = analysis.markPrice;
-      let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
-      if (sma50 !== null) {
-        const direction = markPrice > sma50 * 1.01 ? "bullish" : markPrice < sma50 * 0.99 ? "bearish" : "neutral";
-        dailyTrend = { direction, price: markPrice, sma50 };
+    if (QUANT_AI_DIRECTIONAL_ENABLED) {
+      for (const analysis of analyses) {
+        const dailyCandles = await fetchDailyCandles(analysis.pair, 150);
+        const closes = dailyCandles.map((c) => c.close);
+        const sma50 = computeDailySma(closes, 50, closes.length - 1);
+        const markPrice = analysis.markPrice;
+        let dailyTrend: { direction: "bullish" | "bearish" | "neutral"; price: number; sma50: number } | null = null;
+        if (sma50 !== null) {
+          const direction = markPrice > sma50 * 1.01 ? "bullish" : markPrice < sma50 * 0.99 ? "bearish" : "neutral";
+          dailyTrend = { direction, price: markPrice, sma50 };
+        }
+        const pairSignals = techSignalsByPair.get(analysis.pair);
+        const decision = await analyzeWithAI(analysis, dailyTrend, pairSignals);
+        if (!decision) continue;
+        aiSignals.set(decision.pair, decision.direction);
+        if (decision.direction === "flat") continue;
+        const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
+        if (sizeUsd <= 0) continue;
+        aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
       }
-      const pairSignals = techSignalsByPair.get(analysis.pair);
-      const decision = await analyzeWithAI(analysis, dailyTrend, pairSignals);
-      if (!decision) continue;
-      aiSignals.set(decision.pair, decision.direction);
-      if (decision.direction === "flat") continue;
-      const sizeUsd = calculateQuantPositionSize(decision.confidence, decision.entryPrice, decision.stopLoss, false, "ai-directional");
-      if (sizeUsd <= 0) continue;
-      aiDecisions.push({ ...decision, suggestedSizeUsd: sizeUsd });
     }
 
     const openPositions = getOpenQuantPositions();
@@ -126,38 +128,42 @@ export async function runDirectionalCycle(): Promise<void> {
     }
 
     // AI flip exits
-    const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
-    for (const pos of aiPositions) {
-      const signal = aiSignals.get(pos.pair);
-      if (!signal) continue;
-      const flipped = signal !== "flat" && signal !== pos.direction;
-      if (flipped) {
-        console.log(`[QuantScheduler] AI signal flip: ${pos.pair} position=${pos.direction} signal=${signal}, closing`);
-        const result = await closePosition(pos.id, `ai-signal-flip (${pos.direction}->${signal})`);
-        if (result.success) {
-          aiOpenPairs.delete(pos.pair);
-          clearAICacheForPair(pos.pair);
+    if (QUANT_AI_DIRECTIONAL_ENABLED) {
+      const aiPositions = openPositions.filter(p => p.tradeType === "ai-directional" || p.tradeType === "directional" || !p.tradeType);
+      for (const pos of aiPositions) {
+        const signal = aiSignals.get(pos.pair);
+        if (!signal) continue;
+        const flipped = signal !== "flat" && signal !== pos.direction;
+        if (flipped) {
+          console.log(`[QuantScheduler] AI signal flip: ${pos.pair} position=${pos.direction} signal=${signal}, closing`);
+          const result = await closePosition(pos.id, `ai-signal-flip (${pos.direction}->${signal})`);
+          if (result.success) {
+            aiOpenPairs.delete(pos.pair);
+            clearAICacheForPair(pos.pair);
+          }
         }
       }
     }
 
     let aiExecuted = 0;
-    for (const decision of aiDecisions) {
-      if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
-      if (aiOpenPairs.has(decision.pair)) continue;
-      if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
-      // Skip if Lighter inverted has opposite live (netting)
-      const invConflict = openPositions.find(p => p.mode === "live" && p.exchange === "lighter" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
-      if (invConflict) {
-        console.log(`[QuantScheduler] AI: Skip ${decision.pair} — ${invConflict.tradeType} has opposite live`);
-        continue;
-      }
-      const aiSize = QUANT_FIXED_POSITION_SIZE_USD;
-      const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
-      if (position) {
-        aiExecuted++;
-        aiOpenPairs.add(decision.pair);
-        console.log(`[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${aiSize.toFixed(2)} @ ${decision.entryPrice}`);
+    if (QUANT_AI_DIRECTIONAL_ENABLED) {
+      for (const decision of aiDecisions) {
+        if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
+        if (aiOpenPairs.has(decision.pair)) continue;
+        if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
+        // Skip if Lighter inverted has opposite live (netting)
+        const invConflict = openPositions.find(p => p.mode === "live" && p.exchange === "lighter" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
+        if (invConflict) {
+          console.log(`[QuantScheduler] AI: Skip ${decision.pair} — ${invConflict.tradeType} has opposite live`);
+          continue;
+        }
+        const aiSize = QUANT_FIXED_POSITION_SIZE_USD;
+        const position = await openPosition(decision.pair, decision.direction, aiSize, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
+        if (position) {
+          aiExecuted++;
+          aiOpenPairs.add(decision.pair);
+          console.log(`[QuantScheduler] AI: Opened ${decision.pair} ${decision.direction} $${aiSize.toFixed(2)} @ ${decision.entryPrice}`);
+        }
       }
     }
 
@@ -249,7 +255,8 @@ export async function runDirectionalCycle(): Promise<void> {
 
     const eP = (tt: string, d: { length: number }) => `${paperExecuted.get(tt) ?? 0}/${d.length}`;
     const eI = (tt: string, d: { length: number }) => `${eP(tt, d)}${QUANT_HYBRID_LIVE_ENGINES.has(tt) ? "L+P" : "P"}`;
-    const normalLog = `AI ${aiExecuted}/${aiDecisions.length}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
+    const aiLog = QUANT_AI_DIRECTIONAL_ENABLED ? `AI ${aiExecuted}/${aiDecisions.length}` : "AI OFF";
+    const normalLog = `${aiLog}, ZLEMAv2 ${eP("zlemav2-directional", zlemav2Decisions)}P, Vortex ${eP("vortex-directional", vortexDecisions)}P, Schaff ${eP("schaff-directional", schaffDecisions)}P, DEMA ${eP("dema-directional", demaDecisions)}P, ZLEMA ${eP("zlema-directional", zlemaDecisions)}P, PSAR ${eP("psar-directional", psarDecisions)}P, CCI ${eP("cci-directional", cciDecisions)}P, Aroon ${eP("aroon-directional", aroonDecisions)}P, MACD ${eP("macd-directional", macdDecisions)}P, SchaffV2 ${eP("schaffv2-directional", schaffv2Decisions)}P`;
     const invLog = `iZLEMAv2 ${eI("inv-zlemav2-directional", zlemav2Decisions)}, iVortex ${eI("inv-vortex-directional", vortexDecisions)}, iSchaff ${eI("inv-schaff-directional", schaffDecisions)}, iDEMA ${eI("inv-dema-directional", demaDecisions)}, iZLEMA ${eI("inv-zlema-directional", zlemaDecisions)}, iPSAR ${eI("inv-psar-directional", psarDecisions)}, iCCI ${eI("inv-cci-directional", cciDecisions)}, iAroon ${eI("inv-aroon-directional", aroonDecisions)}, iMACD ${eI("inv-macd-directional", macdDecisions)}, iSchaffV2 ${eI("inv-schaffv2-directional", schaffv2Decisions)}`;
     console.log(`[QuantScheduler] Cycle complete: ${normalLog}`);
     console.log(`[QuantScheduler] Inverted: ${invLog}`);
