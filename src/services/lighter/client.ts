@@ -216,63 +216,62 @@ export function toPriceUnits(price: number, decimals: number): number {
 }
 
 const midPriceCache = new Map<string, { price: number; at: number }>();
+const midPricePending = new Map<string, Promise<number | null>>();
 const MID_PRICE_CACHE_MS = 5_000;
 
-export async function getLighterMidPrice(pair: string, noCache = false): Promise<number | null> {
+// noCache=true skips result cache but still shares in-flight requests
+export function getLighterMidPrice(pair: string, noCache = false): Promise<number | null> {
   const cached = midPriceCache.get(pair);
-  if (!noCache && cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return cached.price;
+  if (!noCache && cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return Promise.resolve(cached.price);
 
-  try {
-    const marketId = await getMarketIndex(pair);
-    if (marketId === null) {
-      console.warn(`[Lighter] No market index for ${pair}`);
-      return null;
-    }
-
-    const api = getOrderApi();
-    const resp = await withTimeout(api.orderBookOrders(marketId, 1), API_PRICE_TIMEOUT_MS, "Lighter orderBookOrders");
-    const data = resp.data;
-
-    if (!data.bids || data.bids.length === 0 || !data.asks || data.asks.length === 0) {
-      console.warn(`[Lighter] Empty orderbook for ${pair}`);
-      return null;
-    }
-
-    const bestBid = parseFloat(data.bids[0].price);
-    const bestAsk = parseFloat(data.asks[0].price);
-
-    if (!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) {
-      return null;
-    }
-
-    const mid = (bestBid + bestAsk) / 2;
-    midPriceCache.set(pair, { price: mid, at: Date.now() });
-    return mid;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.includes("429")) {
-      console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
-    }
-    return cached?.price ?? null; // return stale price on error
+  let pending = midPricePending.get(pair);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const marketId = await getMarketIndex(pair);
+        if (marketId === null) {
+          console.warn(`[Lighter] No market index for ${pair}`);
+          return null;
+        }
+        const api = getOrderApi();
+        const resp = await withTimeout(api.orderBookOrders(marketId, 1), API_PRICE_TIMEOUT_MS, "Lighter orderBookOrders");
+        const data = resp.data;
+        if (!data.bids?.length || !data.asks?.length) {
+          console.warn(`[Lighter] Empty orderbook for ${pair}`);
+          return null;
+        }
+        const bestBid = parseFloat(data.bids[0].price);
+        const bestAsk = parseFloat(data.asks[0].price);
+        if (!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) return null;
+        const mid = (bestBid + bestAsk) / 2;
+        midPriceCache.set(pair, { price: mid, at: Date.now() });
+        return mid;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("429")) console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
+        return cached?.price ?? null;
+      } finally {
+        midPricePending.delete(pair);
+      }
+    })();
+    midPricePending.set(pair, pending);
   }
+  return pending;
 }
 
-export const INTER_REQUEST_DELAY_MS = 200;
+export const INTER_REQUEST_DELAY_MS = 200; // kept for backward compat
 
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
-  const results: Record<string, string> = {};
-  for (const pair of pairs) {
+  const entries = await Promise.all(pairs.map(async pair => {
     try {
       const price = await getLighterMidPrice(pair);
-      if (price !== null) {
-        results[pair] = price.toString();
-      }
+      return price !== null ? ([pair, price.toString()] as const) : null;
     } catch (err) {
       console.error(`[Lighter] Mid price fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
     }
-    await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY_MS));
-  }
-  return results;
+  }));
+  return Object.fromEntries(entries.filter((e): e is [string, string] => e !== null));
 }
 
 export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number; unrealizedPnlPct: number }[]> {

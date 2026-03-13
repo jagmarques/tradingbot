@@ -122,29 +122,6 @@ interface VolumeCache {
 const volumeCache = new Map<string, VolumeCache>();
 const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
-// Shared Lighter price cache — deduplicates calls across all concurrent HFT variants
-// In-flight map shares the same Promise so simultaneous callers don't fire duplicate requests
-const hftLighterPriceCache = new Map<string, { price: number; at: number }>();
-const hftLighterPending = new Map<string, Promise<number | null>>();
-const HFT_LIGHTER_CACHE_MS = 150;
-
-function getLighterPriceForHft(pair: string): Promise<number | null> {
-  const cached = hftLighterPriceCache.get(pair);
-  if (cached && Date.now() - cached.at < HFT_LIGHTER_CACHE_MS) return Promise.resolve(cached.price);
-  let pending = hftLighterPending.get(pair);
-  if (!pending) {
-    pending = getLighterMidPrice(pair, true).then(price => {
-      if (price !== null) hftLighterPriceCache.set(pair, { price, at: Date.now() });
-      hftLighterPending.delete(pair);
-      return price;
-    }).catch(err => {
-      hftLighterPending.delete(pair);
-      throw err;
-    });
-    hftLighterPending.set(pair, pending);
-  }
-  return pending;
-}
 
 const ohlcCache = new Map<string, OhlcCache>();
 const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
@@ -625,9 +602,9 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // All positions use Lighter prices (shared in-flight cache deduplicates across variants)
+  // All positions use Lighter prices (in-flight sharing in client.ts deduplicates concurrent variant calls)
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
-  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterPriceForHft(pair) })));
+  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair, true) })));
   const lighterPrices = new Map<string, number>();
   for (const { pair, price } of priceResults) {
     if (price !== null) lighterPrices.set(pair, price);

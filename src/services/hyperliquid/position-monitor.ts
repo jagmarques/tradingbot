@@ -1,5 +1,5 @@
 import { getClient, resetConnection } from "./client.js";
-import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
+import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, PSAR_TRAIL_ACTIVATION, PSAR_TRAIL_DISTANCE, ZLEMA_STAGNATION_BARS, ZLEMA_TRAIL_ACTIVATION, ZLEMA_TRAIL_DISTANCE, VORTEX_STAGNATION_BARS, VORTEX_TRAIL_ACTIVATION, VORTEX_TRAIL_DISTANCE, SCHAFF_STAGNATION_BARS, SCHAFF_TRAIL_ACTIVATION, SCHAFF_TRAIL_DISTANCE, DEMA_STAGNATION_BARS, DEMA_TRAIL_ACTIVATION, DEMA_TRAIL_DISTANCE, CCI_STAGNATION_BARS, CCI_TRAIL_ACTIVATION, CCI_TRAIL_DISTANCE, AROON_STAGNATION_BARS, AROON_TRAIL_ACTIVATION, AROON_TRAIL_DISTANCE, MACD_STAGNATION_BARS, MACD_TRAIL_ACTIVATION, MACD_TRAIL_DISTANCE, ZLEMAV2_STAGNATION_BARS, ZLEMAV2_TRAIL_ACTIVATION, ZLEMAV2_TRAIL_DISTANCE, SCHAFFV2_STAGNATION_BARS, SCHAFFV2_TRAIL_ACTIVATION, SCHAFFV2_TRAIL_DISTANCE, HFT_FADE_STAGNATION_MS, HFT_FADE_TRAIL_ACTIVATION, HFT_FADE_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
@@ -137,11 +137,9 @@ async function checkPositionStops(): Promise<void> {
       // HFT has its own 2s monitor, skip here
       const lighterPairs = [...new Set(lighterPositions.filter(p => !p.tradeType?.startsWith("hft-")).map(p => p.pair))];
       try {
-        // outer = N * (per-call timeout + inter-request delay)
-        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
-          outerTimeoutMs, "Lighter getAllMids",
+          API_PRICE_TIMEOUT_MS + 1_000, "Lighter getAllMids",
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -432,10 +430,9 @@ async function checkTrailActivePositions(): Promise<void> {
     if (lighterCandidates.length > 0 && isLighterInitialized()) {
       const lighterPairs = [...new Set(lighterCandidates.map(p => p.pair))];
       try {
-        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
-          outerTimeoutMs, "Lighter getAllMids (fast-poll)",
+          API_PRICE_TIMEOUT_MS + 1_000, "Lighter getAllMids (fast-poll)",
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
