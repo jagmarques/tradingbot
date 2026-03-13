@@ -219,10 +219,10 @@ const midPriceCache = new Map<string, { price: number; at: number }>();
 const midPricePending = new Map<string, Promise<number | null>>();
 const MID_PRICE_CACHE_MS = 5_000;
 
-// noCache=true bypasses result cache; still shares in-flight
-export function getLighterMidPrice(pair: string, noCache = false): Promise<number | null> {
+// maxAgeMs: cache TTL; on error returns stale cached price, never null
+export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS): Promise<number | null> {
   const cached = midPriceCache.get(pair);
-  if (!noCache && cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return Promise.resolve(cached.price);
+  if (cached && Date.now() - cached.at < maxAgeMs) return Promise.resolve(cached.price);
 
   let pending = midPricePending.get(pair);
   if (!pending) {
@@ -231,25 +231,25 @@ export function getLighterMidPrice(pair: string, noCache = false): Promise<numbe
         const marketId = await getMarketIndex(pair);
         if (marketId === null) {
           console.warn(`[Lighter] No market index for ${pair}`);
-          return null;
+          return cached?.price ?? null;
         }
         const api = getOrderApi();
         const resp = await withTimeout(api.orderBookOrders(marketId, 1), API_PRICE_TIMEOUT_MS, "Lighter orderBookOrders");
         const data = resp.data;
         if (!data.bids?.length || !data.asks?.length) {
           console.warn(`[Lighter] Empty orderbook for ${pair}`);
-          return null;
+          return cached?.price ?? null;
         }
         const bestBid = parseFloat(data.bids[0].price);
         const bestAsk = parseFloat(data.asks[0].price);
-        if (!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) return null;
+        if (!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0) return cached?.price ?? null;
         const mid = (bestBid + bestAsk) / 2;
         midPriceCache.set(pair, { price: mid, at: Date.now() });
         return mid;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes("429")) console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
-        return noCache ? null : (cached?.price ?? null); // noCache=true: don't return stale
+        return cached?.price ?? null;
       } finally {
         midPricePending.delete(pair);
       }

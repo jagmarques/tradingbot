@@ -614,9 +614,9 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // Lighter prices; in-flight sharing deduplicates concurrent variant calls; cached price used on 429/error
+  // 500ms max age: fresh for tight stops, avoids 429s; falls back to stale on error
   const allPairs = [...new Set([...paperPositions, ...livePositions].map(p => p.pair))];
-  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair) })));
+  const priceResults = await Promise.all(allPairs.map(async pair => ({ pair, price: await getLighterMidPrice(pair, 500) })));
   const lighterPrices = new Map<string, number>();
   for (const { pair, price } of priceResults) {
     if (price !== null) lighterPrices.set(pair, price);
