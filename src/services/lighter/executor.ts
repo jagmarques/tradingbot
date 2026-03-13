@@ -645,7 +645,6 @@ export async function lighterClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    const closeSizeCoins = sizeInCoins;
     let closeFilled = false;
     for (let attempt = 0; attempt < 8; attempt++) {
       await new Promise(r => setTimeout(r, 2000));
@@ -665,10 +664,6 @@ export async function lighterClosePosition(
             closeFilled = true;
             break;
           }
-        } else if (postCloseEntry.size < closeSizeCoins * 0.1) {
-          // Single position: size reduced to <10% of original — consider filled
-          closeFilled = true;
-          break;
         }
       } catch (verifyErr) {
         console.error(`[Lighter Executor] Close verify failed: ${verifyErr instanceof Error ? verifyErr.message : verifyErr}`);
