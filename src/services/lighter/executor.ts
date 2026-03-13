@@ -691,8 +691,10 @@ export async function lighterClosePosition(
       console.error(`[Lighter Executor] Close failed for ${position.pair}: ${closeErr}`);
       if (closeErr.includes("nonce") || closeErr.includes("ratelimit") || closeErr.includes("Too Many")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
-      void placeExchangeStop(position);
-      void placeExchangeTP(position);
+      if (!(position.tradeType ?? "").startsWith("hft-")) {
+        void placeExchangeStop(position);
+        void placeExchangeTP(position);
+      }
       return { success: false, pnl: 0 };
     }
 
@@ -723,8 +725,10 @@ export async function lighterClosePosition(
     if (!closeFilled) {
       console.error(`[Lighter Executor] Close not filled for ${position.pair} — still open on exchange`);
       void notifyCriticalError(`Lighter close not filled: ${position.pair} still open`, "LighterExecutor");
-      void placeExchangeStop(position);
-      void placeExchangeTP(position);
+      if (!(position.tradeType ?? "").startsWith("hft-")) {
+        void placeExchangeStop(position);
+        void placeExchangeTP(position);
+      }
       return { success: false, pnl: 0 };
     }
     const fees = 0; // Lighter: zero fees
@@ -848,8 +852,10 @@ export async function lighterClosePosition(
       }
     }
 
-    void placeExchangeStop(position);
-    void placeExchangeTP(position);
+    if (!(position.tradeType ?? "").startsWith("hft-")) {
+      void placeExchangeStop(position);
+      void placeExchangeTP(position);
+    }
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

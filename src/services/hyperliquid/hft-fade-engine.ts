@@ -689,7 +689,7 @@ export function startAllHftSchedulers(): void {
     }, delay);
     hftInitialTimeouts.set(config.tradeType, timeout);
     const isLive = (HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade") || (HFT_REGIME_LIVE_ENABLED && config.tradeType === "hft-regime");
-    const monitorInterval = setInterval(() => { void runHftMonitor(config); }, isLive ? 500 : 2_000);
+    const monitorInterval = setInterval(() => { void runHftMonitor(config); }, isLive ? 100 : 2_000);
     hftMonitorIntervals.set(config.tradeType, monitorInterval);
   }
 }
