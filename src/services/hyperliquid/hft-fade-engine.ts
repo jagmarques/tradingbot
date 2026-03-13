@@ -275,6 +275,46 @@ function computeAiScore(candles: OhlcCandle[], direction: "long" | "short"): { s
 const HFT_MIN_BALANCE_USD = 200;
 let hftBalanceHalted = false;
 
+export type BalanceGuardResult = {
+  ok: boolean;
+  newHalted: boolean;
+  alertMsg: string | null;
+  logMsg: string | null;
+};
+
+export function evalBalanceGuard(
+  equity: number,
+  currentHalted: boolean,
+  minBalance: number,
+  label: string,
+): BalanceGuardResult {
+  if (equity < minBalance) {
+    if (!currentHalted) {
+      return {
+        ok: false,
+        newHalted: true,
+        alertMsg: `⛔ HFT LIVE STOPPED\n\nLighter balance $${equity.toFixed(2)} is below the $${minBalance} safety threshold.\n\nLive trading will automatically resume when balance recovers above $${minBalance}.`,
+        logMsg: `[${label}] Balance $${equity.toFixed(2)} < $${minBalance} — halting live trading`,
+      };
+    }
+    return {
+      ok: false,
+      newHalted: true,
+      alertMsg: null,
+      logMsg: `[${label}] Balance $${equity.toFixed(2)} still below $${minBalance} — live trading halted`,
+    };
+  }
+  if (currentHalted) {
+    return {
+      ok: true,
+      newHalted: false,
+      alertMsg: null,
+      logMsg: `[${label}] Balance recovered to $${equity.toFixed(2)} — resuming live trading`,
+    };
+  }
+  return { ok: true, newHalted: false, alertMsg: null, logMsg: null };
+}
+
 const cycleRunning = new Map<string, boolean>();
 
 async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
@@ -291,25 +331,17 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
   let signals = 0;
   let opened = 0;
 
-  // Balance guard: check once per cycle, auto-reset when balance recovers
   let cycleBalanceOk = true;
   if (goLive) {
     try {
       const { equity } = await getLighterAccountInfo();
-      if (equity < HFT_MIN_BALANCE_USD) {
-        if (!hftBalanceHalted) {
-          hftBalanceHalted = true;
-          const msg = `⛔ HFT LIVE STOPPED\n\nLighter balance $${equity.toFixed(2)} is below the $${HFT_MIN_BALANCE_USD} safety threshold.\n\nLive trading will automatically resume when balance recovers above $${HFT_MIN_BALANCE_USD}.`;
-          console.error(`[${config.label}] Balance $${equity.toFixed(2)} < $${HFT_MIN_BALANCE_USD} — halting live trading`);
-          void sendMessage(msg);
-        } else {
-          console.log(`[${config.label}] Balance $${equity.toFixed(2)} still below $${HFT_MIN_BALANCE_USD} — live trading halted`);
-        }
-        cycleBalanceOk = false;
-      } else if (hftBalanceHalted) {
-        hftBalanceHalted = false;
-        console.log(`[${config.label}] Balance recovered to $${equity.toFixed(2)} — resuming live trading`);
+      const guard = evalBalanceGuard(equity, hftBalanceHalted, HFT_MIN_BALANCE_USD, config.label);
+      hftBalanceHalted = guard.newHalted;
+      cycleBalanceOk = guard.ok;
+      if (guard.logMsg) {
+        if (guard.alertMsg) console.error(guard.logMsg); else console.log(guard.logMsg);
       }
+      if (guard.alertMsg) void sendMessage(guard.alertMsg);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.warn(`[${config.label}] Balance check failed: ${errMsg} — skipping live trades this cycle`);
