@@ -317,7 +317,7 @@ async function checkPositionStops(): Promise<void> {
           if (!nearSlIds.has(position.id)) {
             nearSlIds.set(position.id, currentPrice);
             console.log(
-              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (entry ${position.entryPrice}, SL ${effectiveSl.toPrecision(6)}, 75% threshold ${(position.direction === "long" ? position.entryPrice - nearSlThreshold : position.entryPrice + nearSlThreshold).toPrecision(6)})`
+              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (SL ${effectiveSl.toPrecision(6)}, 70% threshold)`
             );
           }
         } else if (nearSlIds.has(position.id)) {
