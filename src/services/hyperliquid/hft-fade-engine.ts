@@ -181,10 +181,9 @@ function computeRegimeParams(candles: OhlcCandle[]): { thresholdPct: number; tpP
   const last14 = candles.slice(-14);
   const atrPct = last14.reduce((acc, c) => acc + (c.high - c.low) / c.close * 100, 0) / last14.length;
 
-  if (atrPct > 0.60) {
-    return { thresholdPct: 0.06, tpPct: 0.40, slPct: 0.03 }; // high-vol
-  }
-  return { thresholdPct: 0.06, tpPct: 0.30, slPct: 0.03 }; // ranging
+  const slPct = Math.min(Math.max(atrPct * 0.5, 0.15), 0.40); // 0.5x ATR
+  const tpPct = Math.min(Math.max(atrPct * 1.5, 0.30), 0.80); // 1.5x ATR
+  return { thresholdPct: 0.06, tpPct, slPct };
 }
 
 function computeRsiN(closes: number[], period: number): number | null {
