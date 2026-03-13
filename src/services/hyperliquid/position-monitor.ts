@@ -310,7 +310,7 @@ async function checkPositionStops(): Promise<void> {
             ? position.entryPrice - currentPrice   // long: price falling toward SL
             : currentPrice - position.entryPrice;  // short: price rising toward SL
 
-        const nearSlThreshold = 0.75 * slDistance;
+        const nearSlThreshold = 0.70 * slDistance;
         const recoveryThreshold = 0.20 * slDistance;
 
         if (priceDistanceTowardSl >= nearSlThreshold) {
@@ -504,7 +504,7 @@ async function checkTrailActivePositions(): Promise<void> {
           position.direction === "long"
             ? position.entryPrice - currentPrice
             : currentPrice - position.entryPrice;
-        const nearSlThreshold = 0.75 * slDistance;
+        const nearSlThreshold = 0.70 * slDistance;
         if (priceDistanceTowardSl >= nearSlThreshold) {
           if (!nearSlIds.has(position.id)) {
             nearSlIds.set(position.id, currentPrice);
