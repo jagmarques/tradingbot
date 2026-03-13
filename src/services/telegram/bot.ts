@@ -1,7 +1,7 @@
 import { Bot, Context } from "grammy";
 import { readFileSync, writeFileSync } from "fs";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, HFT_REGIME_LIVE_ENABLED } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -2235,7 +2235,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     // Live engines (AI + any live technical + any live inverted)
     let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
     for (const [label, typeKey] of [...engines, ...invertedEngines]) {
-      const isLiveEngine = typeKey === "ai-directional" || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
+      const isLiveEngine = (typeKey === "ai-directional" && QUANT_AI_DIRECTIONAL_ENABLED) || (typeKey === "hft-regime" && HFT_REGIME_LIVE_ENABLED) || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
       if (!isLiveEngine) continue;
       const stats = getQuantStats(typeKey, "live");
       liveBlock += sl(label, stats, typeKey, "live");
@@ -2248,7 +2248,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     }
 
     // Paper normal engines (exclude AI and HFT which get own blocks)
-    const paper = renderEngineBlock(engines.filter(([, t]) => t !== "ai-directional" && !t.startsWith("hft-") && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
+    const paper = renderEngineBlock(engines.filter(([, t]) => (t !== "ai-directional" || !QUANT_AI_DIRECTIONAL_ENABLED) && !t.startsWith("hft-") && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
     // Paper inverted engines
     const inverted = renderEngineBlock(invertedEngines, "paper");
     // HFT separate block (all hft-* variants)
