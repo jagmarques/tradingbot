@@ -41,12 +41,14 @@ import {
   HFT_T8_TP25_SL3_SL_PCT,
   QUANT_TRADING_PAIRS,
   HFT_PAPER_SPREAD_PCT,
+  HFT_REGIME_LIVE_ENABLED,
+  HFT_REGIME_LIVE_TEST_LIMIT,
 } from "../../config/constants.js";
 import type { TradeType } from "./types.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
-import { lighterOpenPosition } from "../lighter/executor.js";
+import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP } from "../lighter/executor.js";
 import { isLighterInitialized } from "../lighter/client.js";
 import { loadOpenQuantPositions } from "../database/quant.js";
 
@@ -404,6 +406,8 @@ async function fetchBinance5mCandle(symbol: string): Promise<Candle5m | null> {
   }
 }
 
+let hftRegimeLiveTradesOpened = 0;
+
 const cycleRunning = new Map<string, boolean>();
 
 async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
@@ -414,7 +418,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
   }
   cycleRunning.set(config.tradeType, true);
 
-  const goLive = HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade" && isLighterInitialized();
+  const goLive = ((HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade") || (HFT_REGIME_LIVE_ENABLED && config.tradeType === "hft-regime")) && isLighterInitialized();
   const mode = goLive ? "live" : "paper";
 
   let signals = 0;
@@ -504,6 +508,15 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         continue;
       }
 
+      // Skip if a non-HFT live position exists on this pair (avoids netting conflict on Lighter)
+      if (goLive) {
+        const nonHftOnPair = getLighterLivePositions().find(p => !p.tradeType?.startsWith("hft-") && p.pair === pair);
+        if (nonHftOnPair) {
+          console.log(`[${config.label}] ${pair} skipped: non-HFT live position exists (${nonHftOnPair.tradeType})`);
+          continue;
+        }
+      }
+
       const gate = validateRiskGates({
         leverage: HFT_FADE_LEVERAGE,
         stopLoss: sl,
@@ -517,8 +530,15 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         continue;
       }
 
+      const spreadEntry = direction === "long"
+        ? entryPrice * (1 + HFT_PAPER_SPREAD_PCT)
+        : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
       let position;
       if (goLive) {
+        if (config.tradeType === "hft-regime" && hftRegimeLiveTradesOpened >= HFT_REGIME_LIVE_TEST_LIMIT) {
+          console.log(`[${config.label}] Test limit reached (${hftRegimeLiveTradesOpened}/${HFT_REGIME_LIVE_TEST_LIMIT}) — live paused`);
+          continue;
+        }
         position = await lighterOpenPosition(
           pair,
           direction,
@@ -529,14 +549,20 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           config.tradeType,
           undefined,
           entryPrice,
-          true,  // allowMultiple
-          true,  // skipExchangeOrders
+          true,
+          false,
         );
+        if (position) {
+          if (config.tradeType === "hft-regime") {
+            hftRegimeLiveTradesOpened++;
+            console.log(`[${config.label}] Live trade ${hftRegimeLiveTradesOpened}/${HFT_REGIME_LIVE_TEST_LIMIT} | ${pair} ${direction} | entry=${position.entryPrice} SL=${position.stopLoss?.toFixed(5)} TP=${position.takeProfit?.toFixed(5)} candle=${returnPct > 0 ? "+" : ""}${returnPct.toFixed(3)}%`);
+            if (hftRegimeLiveTradesOpened >= HFT_REGIME_LIVE_TEST_LIMIT) {
+              console.log(`[${config.label}] *** TEST LIMIT REACHED — live trading stopped. Analyse DB: SELECT * FROM quant_trades WHERE trade_type='hft-regime' ORDER BY created_at; ***`);
+            }
+          }
+          await paperOpenPosition(pair, direction, HFT_FADE_POSITION_SIZE_USD, HFT_FADE_LEVERAGE, sl, tp, config.tradeType, undefined, spreadEntry, "lighter");
+        }
       } else {
-        // Entry at ask/bid
-        const spreadEntry = direction === "long"
-          ? entryPrice * (1 + HFT_PAPER_SPREAD_PCT)
-          : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
         position = await paperOpenPosition(
           pair,
           direction,
@@ -549,14 +575,16 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           spreadEntry,
           "lighter",
         );
+        if (position) {
+          opened++;
+          const sign = returnPct > 0 ? "+" : "";
+          console.log(`[${config.label}] ${pair} ${direction.toUpperCase()} paper (candle ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`);
+        }
+        continue;
       }
 
       if (position) {
         opened++;
-        const sign = returnPct > 0 ? "+" : "";
-        console.log(
-          `[${config.label}] ${pair} ${direction.toUpperCase()} ${mode} (candle return ${sign}${returnPct.toFixed(3)}%, entry ${entryPrice})`,
-        );
       }
     }
   } finally {
@@ -584,13 +612,16 @@ async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number
 }
 
 async function runHftMonitor(config: HftVariantConfig): Promise<void> {
-  const positions = getPaperPositions().filter(p => p.tradeType === config.tradeType && p.status === "open");
-  if (!positions.length) return;
+  const paperPositions = getPaperPositions().filter(p => p.tradeType === config.tradeType && p.status === "open");
+  const livePositions = getLighterLivePositions().filter(p => p.tradeType === config.tradeType);
 
-  const symbols = [...new Set(positions.map(p => BINANCE_SYMBOL_MAP[p.pair]).filter(Boolean))];
+  if (!paperPositions.length && !livePositions.length) return;
+
+  const allPairs = new Set([...paperPositions.map(p => p.pair), ...livePositions.map(p => p.pair)]);
+  const symbols = [...allPairs].map(p => BINANCE_SYMBOL_MAP[p]).filter(Boolean);
   const prices = await fetchBinancePrices(symbols);
 
-  for (const pos of positions) {
+  for (const pos of paperPositions) {
     const symbol = BINANCE_SYMBOL_MAP[pos.pair];
     if (!symbol) continue;
     const price = prices.get(symbol);
@@ -599,12 +630,31 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     const tp = pos.takeProfit;
     const slHit = sl && (pos.direction === "long" ? price <= sl : price >= sl);
     const tpHit = tp && (pos.direction === "long" ? price >= tp : price <= tp);
-    // Exit at bid/ask
     const spreadExit = (p: number) => pos.direction === "long"
       ? p * (1 - HFT_PAPER_SPREAD_PCT)
       : p * (1 + HFT_PAPER_SPREAD_PCT);
     if (slHit) await paperClosePosition(pos.id, "stop-loss", spreadExit(sl));
     else if (tpHit) await paperClosePosition(pos.id, "take-profit", spreadExit(tp));
+  }
+
+  for (const pos of livePositions) {
+    const symbol = BINANCE_SYMBOL_MAP[pos.pair];
+    if (!symbol) continue;
+    const price = prices.get(symbol);
+    if (!price) continue;
+    const exchangeStopActive = hasExchangeStop(pos.id);
+    const exchangeTpActive = hasExchangeTP(pos.id);
+    const sl = pos.stopLoss;
+    const tp = pos.takeProfit;
+    const slHit = !exchangeStopActive && sl && isFinite(sl) && (pos.direction === "long" ? price <= sl : price >= sl);
+    const tpHit = !exchangeTpActive && tp && isFinite(tp) && tp > 0 && (pos.direction === "long" ? price >= tp : price <= tp);
+    if (slHit) {
+      console.log(`[${config.label}] ${pos.pair} live SL hit @ ${price} (software fallback)`);
+      await lighterClosePosition(pos.id, "stop-loss");
+    } else if (tpHit) {
+      console.log(`[${config.label}] ${pos.pair} live TP hit @ ${price} (software fallback)`);
+      await lighterClosePosition(pos.id, "take-profit");
+    }
   }
 }
 
@@ -628,7 +678,7 @@ export function startAllHftSchedulers(): void {
       continue;
     }
     const delay = msUntilNextCandle();
-    const startMode = HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade" ? "live" : "paper";
+    const startMode = ((HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade") || (HFT_REGIME_LIVE_ENABLED && config.tradeType === "hft-regime")) ? "live+paper" : "paper";
     console.log(`[${config.label}] Started (${startMode}) — first cycle in ${Math.round(delay / 1000)}s`);
     const timeout = setTimeout(() => {
       void runHftFadeCycle(config);
@@ -638,7 +688,8 @@ export function startAllHftSchedulers(): void {
       hftIntervals.set(config.tradeType, interval);
     }, delay);
     hftInitialTimeouts.set(config.tradeType, timeout);
-    const monitorInterval = setInterval(() => { void runHftMonitor(config); }, 2_000);
+    const isLive = (HFT_FADE_LIVE_ENABLED && config.tradeType === "hft-fade") || (HFT_REGIME_LIVE_ENABLED && config.tradeType === "hft-regime");
+    const monitorInterval = setInterval(() => { void runHftMonitor(config); }, isLive ? 500 : 2_000);
     hftMonitorIntervals.set(config.tradeType, monitorInterval);
   }
 }

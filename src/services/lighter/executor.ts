@@ -1,5 +1,7 @@
 import {
   getSignerClient,
+  getOrderApi,
+  getAccountIndex,
   getMarketIndex,
   getMarketSizeDecimals,
   getMarketPriceDecimals,
@@ -24,13 +26,13 @@ import { recordStopLossCooldown } from "../hyperliquid/scheduler.js";
 import { SignerClient } from "zklighter-sdk";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
 
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
-const exchangeStops = new Set<string>();
-const exchangeTPs = new Set<string>();
+const exchangeStops = new Map<string, { marketIndex: number; clientOrderIndex: number }>();
+const exchangeTPs = new Map<string, { marketIndex: number; clientOrderIndex: number }>();
 
 const positionContext = new Map<string, {
   indicatorsAtEntry?: string;
@@ -56,10 +58,11 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
       priceDecimals,
     );
     const isAsk = position.direction === "long";
+    const clientOrderIndex = Date.now() % 1_000_000_000;
     const [, , err] = await withNonce(async (nonce) =>
       withTimeout(
         getSignerClient().create_sl_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          marketIndex, clientOrderIndex, baseAmount,
           triggerPrice, limitPrice, isAsk, true, nonce,
         ),
         API_ORDER_TIMEOUT_MS, "Lighter placeExchangeStop",
@@ -69,7 +72,7 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
       if (err.includes("nonce") || err.includes("ratelimit") || err.includes("Too Many")) resetNonce();
       console.error(`[Lighter Executor] Exchange stop failed for ${position.pair}: ${err}`);
     } else {
-      exchangeStops.add(position.id);
+      exchangeStops.set(position.id, { marketIndex, clientOrderIndex });
       console.log(`[Lighter Executor] Exchange stop placed for ${position.pair} @ ${sl}`);
     }
   } catch (err) {
@@ -98,10 +101,11 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
       priceDecimals,
     );
     const isAsk = position.direction === "long";
+    const clientOrderIndex = Date.now() % 1_000_000_000;
     const [, , err] = await withNonce(async (nonce) =>
       withTimeout(
         getSignerClient().create_tp_order(
-          marketIndex, Date.now() % 1_000_000_000, baseAmount,
+          marketIndex, clientOrderIndex, baseAmount,
           triggerPrice, limitPrice, isAsk, true, nonce,
         ),
         API_ORDER_TIMEOUT_MS, "Lighter placeExchangeTP",
@@ -111,7 +115,7 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
       if (err.includes("nonce") || err.includes("ratelimit") || err.includes("Too Many")) resetNonce();
       console.error(`[Lighter Executor] Exchange TP failed for ${position.pair}: ${err}`);
     } else {
-      exchangeTPs.add(position.id);
+      exchangeTPs.set(position.id, { marketIndex, clientOrderIndex });
       console.log(`[Lighter Executor] Exchange TP placed for ${position.pair} @ ${tp}`);
     }
   } catch (err) {
@@ -121,50 +125,69 @@ async function placeExchangeTP(position: QuantPosition, force = false): Promise<
   }
 }
 
-// Cancel all exchange orders, then re-place stops/TPs for remaining open positions
-async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> {
+async function fetchActiveOrders(marketIndex: number): Promise<{ order_index: string; client_order_index: number }[]> {
   try {
-    await withNonce(async (nonce) =>
-      withTimeout(getSignerClient().cancel_all_orders(0, 0, nonce), API_ORDER_TIMEOUT_MS, "Lighter cancelAllOrders"),
+    const [token, tokenErr] = getSignerClient().create_auth_token_with_expiry(600);
+    if (tokenErr || !token) return [];
+    const resp = await withTimeout(
+      getOrderApi().accountActiveOrders(getAccountIndex(), marketIndex, undefined, token, {
+        // order_index can exceed MAX_SAFE_INTEGER, preserve as string
+        transformResponse: (raw: string) =>
+          JSON.parse(raw.replace(/"order_index"\s*:\s*(\d+)/g, '"order_index":"$1"')),
+      }),
+      API_ORDER_TIMEOUT_MS, "Lighter activeOrders",
     );
-    exchangeStops.clear();
-    exchangeTPs.clear();
-    console.log(`[Lighter Executor] All orders cancelled`);
-  } catch (err) {
-    if (err instanceof TimeoutError) resetNonce();
-    const cancelMsg = err instanceof Error ? err.message : String(err);
-    if (cancelMsg.includes("nonce") || cancelMsg.includes("ratelimit") || cancelMsg.includes("Too Many")) resetNonce();
-    console.error(`[Lighter Executor] Cancel all orders error: ${cancelMsg}`);
-    return;
+    return ((resp.data as unknown) as { orders?: { order_index: string; client_order_index: number }[] }).orders ?? [];
+  } catch {
+    return [];
   }
-  const toReplace = getLighterLivePositions().filter(
-    p => p.id !== closingPositionId && !p.tradeType?.startsWith("hft-"),
-  );
-  for (const pos of toReplace) {
-    if (pos.stopLoss && isFinite(pos.stopLoss)) {
-      await placeExchangeStop(pos, true);
-      await new Promise(r => setTimeout(r, 500));
+}
+
+async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> {
+  const stopInfo = exchangeStops.get(closingPositionId);
+  const tpInfo = exchangeTPs.get(closingPositionId);
+
+  if (!stopInfo && !tpInfo) return;
+
+  const marketIndex = stopInfo?.marketIndex ?? tpInfo!.marketIndex;
+  const activeOrders = await fetchActiveOrders(marketIndex);
+
+  if (stopInfo) {
+    const order = activeOrders.find(o => o.client_order_index === stopInfo.clientOrderIndex);
+    if (order) {
+      try {
+        await withNonce(async (nonce) =>
+          withTimeout(
+            getSignerClient().cancel_order(stopInfo.marketIndex, BigInt(order.order_index), nonce),
+            API_ORDER_TIMEOUT_MS, "Lighter cancelStop",
+          ),
+        );
+        console.log(`[Lighter Executor] Exchange stop cancelled for position ${closingPositionId}`);
+      } catch (err) {
+        if (err instanceof TimeoutError) resetNonce();
+        console.error(`[Lighter Executor] Cancel stop error: ${err instanceof Error ? err.message : err}`);
+      }
     }
-    if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) {
-      await placeExchangeTP(pos, true);
-      await new Promise(r => setTimeout(r, 500));
-    }
+    exchangeStops.delete(closingPositionId);
   }
-  // Retry failed stop placements
-  const missingAfter = toReplace.filter(p => p.stopLoss && isFinite(p.stopLoss) && !exchangeStops.has(p.id));
-  if (missingAfter.length > 0) {
-    console.warn(`[Lighter Executor] ${missingAfter.length} stop(s) unplaced, retrying...`);
-    await new Promise(r => setTimeout(r, 2000));
-    for (const pos of missingAfter) {
-      await placeExchangeStop(pos, true);
-      await new Promise(r => setTimeout(r, 500));
+
+  if (tpInfo) {
+    const order = activeOrders.find(o => o.client_order_index === tpInfo.clientOrderIndex);
+    if (order) {
+      try {
+        await withNonce(async (nonce) =>
+          withTimeout(
+            getSignerClient().cancel_order(tpInfo.marketIndex, BigInt(order.order_index), nonce),
+            API_ORDER_TIMEOUT_MS, "Lighter cancelTP",
+          ),
+        );
+        console.log(`[Lighter Executor] Exchange TP cancelled for position ${closingPositionId}`);
+      } catch (err) {
+        if (err instanceof TimeoutError) resetNonce();
+        console.error(`[Lighter Executor] Cancel TP error: ${err instanceof Error ? err.message : err}`);
+      }
     }
-    const stillMissing = missingAfter.filter(p => !exchangeStops.has(p.id));
-    if (stillMissing.length > 0) {
-      const pairs = stillMissing.map(p => p.pair).join(", ");
-      console.error(`[Lighter Executor] CRITICAL: stops unplaced for ${pairs}`);
-      void notifyCriticalError(`Lighter stops unplaced for ${pairs} — software SL only`, "LighterExecutor");
-    }
+    exchangeTPs.delete(closingPositionId);
   }
 }
 
@@ -188,7 +211,6 @@ export function initLighterEngine(): void {
       if (msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
     }
     for (const pos of getLighterLivePositions()) {
-      if (pos.tradeType?.startsWith("hft-")) continue;
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos, true);
         await new Promise(r => setTimeout(r, 500));
@@ -203,11 +225,12 @@ export function initLighterEngine(): void {
 }
 
 async function closePhantom(pos: QuantPosition): Promise<void> {
+  await cancelAndReplaceOrders(pos.id);
   const exitPrice = await getLighterMidPrice(pos.pair).catch(() => null) ?? pos.entryPrice;
   const fees = 0; // Lighter: zero fees
   const pnl = calcPnl(pos.direction, pos.entryPrice, exitPrice, pos.size, pos.leverage, fees);
   const now = new Date().toISOString();
-  const reason = inferExitReason(pos, exitPrice);
+  const reason = "exchange-closed"; // exit price is mid at detection, not actual fill
 
   const closed: QuantPosition = { ...pos, status: "closed", closedAt: now, exitPrice, realizedPnl: pnl, unrealizedPnl: pnl, exitReason: reason };
   lighterPositions.set(pos.id, closed);
@@ -300,20 +323,23 @@ async function reconcileLighter(): Promise<void> {
       console.log(`[Lighter Executor] Reconcile: ${exchangePositions.length} exchange, ${tracked.length} DB`);
     }
 
-    // Re-place only stops/TPs that aren't tracked in memory (missing or after restart)
-    const missingStops = getLighterLivePositions().filter(
-      p => !p.tradeType?.startsWith("hft-") && !closingSet.has(p.id) && p.stopLoss && isFinite(p.stopLoss) && !exchangeStops.has(p.id),
-    );
-    for (const pos of missingStops) {
-      await placeExchangeStop(pos, true);
-      await new Promise(r => setTimeout(r, 500));
+    // Re-place missing exchange orders
+    const livePosForReconcile = getLighterLivePositions().filter(p => !closingSet.has(p.id));
+    let replacedCount = 0;
+    for (const pos of livePosForReconcile) {
+      if (pos.stopLoss && isFinite(pos.stopLoss) && !exchangeStops.has(pos.id)) {
+        await placeExchangeStop(pos, true);
+        await new Promise(r => setTimeout(r, 500));
+        replacedCount++;
+      }
       if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0 && !exchangeTPs.has(pos.id)) {
         await placeExchangeTP(pos, true);
         await new Promise(r => setTimeout(r, 500));
+        replacedCount++;
       }
     }
-    if (missingStops.length > 0) {
-      console.log(`[Lighter Executor] Reconcile: re-placed stops for ${missingStops.length} position(s)`);
+    if (replacedCount > 0) {
+      console.log(`[Lighter Executor] Reconcile: re-placed ${replacedCount} missing order(s)`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -323,6 +349,14 @@ async function reconcileLighter(): Promise<void> {
 
 export function getLighterLivePositions(): QuantPosition[] {
   return Array.from(lighterPositions.values()).filter(p => p.status === "open");
+}
+
+export function hasExchangeStop(id: string): boolean {
+  return exchangeStops.has(id);
+}
+
+export function hasExchangeTP(id: string): boolean {
+  return exchangeTPs.has(id);
 }
 
 function getOrderError(result: [any, any, string | null]): string | null {

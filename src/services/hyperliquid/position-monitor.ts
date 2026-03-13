@@ -75,7 +75,7 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = true): Promise<void> {
+async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = false): Promise<void> {
   if (closingInProgress.has(position.id)) return;
   closingInProgress.add(position.id);
   try {
@@ -310,14 +310,14 @@ async function checkPositionStops(): Promise<void> {
             ? position.entryPrice - currentPrice   // long: price falling toward SL
             : currentPrice - position.entryPrice;  // short: price rising toward SL
 
-        const nearSlThreshold = 0.70 * slDistance;
+        const nearSlThreshold = 0.75 * slDistance;
         const recoveryThreshold = 0.20 * slDistance;
 
         if (priceDistanceTowardSl >= nearSlThreshold) {
           if (!nearSlIds.has(position.id)) {
             nearSlIds.set(position.id, currentPrice);
             console.log(
-              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (SL ${effectiveSl.toPrecision(6)}, 70% threshold)`
+              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (SL ${effectiveSl.toPrecision(6)}, 75% threshold)`
             );
           }
         } else if (nearSlIds.has(position.id)) {
@@ -497,14 +497,18 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Near-SL recovery
-      const sl = position.stopLoss;
-      if (sl && isFinite(sl) && sl > 0) {
+      const rawSlFast = position.stopLoss;
+      const isInvFast = (position.tradeType ?? "").startsWith("inv-");
+      const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
+        ? capStopLoss(position.entryPrice, rawSlFast, position.direction, isInvFast)
+        : null;
+      if (sl) {
         const slDistance = Math.abs(position.entryPrice - sl);
         const priceDistanceTowardSl =
           position.direction === "long"
             ? position.entryPrice - currentPrice
             : currentPrice - position.entryPrice;
-        const nearSlThreshold = 0.70 * slDistance;
+        const nearSlThreshold = 0.75 * slDistance;
         if (priceDistanceTowardSl >= nearSlThreshold) {
           if (!nearSlIds.has(position.id)) {
             nearSlIds.set(position.id, currentPrice);

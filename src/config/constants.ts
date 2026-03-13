@@ -233,7 +233,9 @@ export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
 export const HFT_FADE_MIN_VOLUME_24H = 1_000_000;
 export const HFT_FADE_MAX_CONCURRENT = 10;
 export const HFT_FADE_LIVE_ENABLED = false;
-export const HFT_PAPER_SPREAD_PCT = 0.00025; // 0.025% per side
+export const HFT_REGIME_LIVE_ENABLED = true;
+export const HFT_REGIME_LIVE_TEST_LIMIT = 20;
+export const HFT_PAPER_SPREAD_PCT = 0.00025;
 
 // HFT Fade Variant t8-tp40-sl3
 export const HFT_T8_TP40_SL3_THRESHOLD_PCT = 0.08;
@@ -318,7 +320,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["inv-dema-directional", "inv-schaff-directional", "inv-macd-directional", "inv-aroon-directional"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>();
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

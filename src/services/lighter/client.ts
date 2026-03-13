@@ -70,6 +70,10 @@ export function isLighterInitialized(): boolean {
   return config !== null;
 }
 
+export function getAccountIndex(): number {
+  return storedAccountIndex;
+}
+
 export function getSignerClient(): SignerClient {
   if (!signerClient) throw new Error("[Lighter] SDK not initialized");
   return signerClient;
