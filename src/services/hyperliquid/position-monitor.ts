@@ -403,20 +403,6 @@ async function checkTrailActivePositions(): Promise<void> {
       }
     }
 
-    // Exchange P&L for live Lighter
-    const lighterExchangePnl = new Map<string, number>();
-    const liveLighterCandidates = lighterCandidates.filter(p => p.mode === "live");
-    if (liveLighterCandidates.length > 0 && isLighterInitialized()) {
-      try {
-        const exchangePositions = await getLighterOpenPositions();
-        for (const ep of exchangePositions) {
-          lighterExchangePnl.set(`${ep.symbol}:${ep.side}`, ep.unrealizedPnlPct);
-        }
-      } catch (err) {
-        console.warn(`[PositionMonitor] Fast-poll exchange P&L fetch failed, falling back to mid-price: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
     for (const position of trailCandidates) {
       const priceSource = position.exchange === "lighter" ? lighterMids : mids;
       const rawPrice = priceSource[position.pair];
@@ -429,10 +415,8 @@ async function checkTrailActivePositions(): Promise<void> {
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
           : ((position.entryPrice - currentPrice) / position.entryPrice);
-      const exchangePnlPct = position.exchange === "lighter" && position.mode === "live"
-        ? lighterExchangePnl.get(`${position.pair}:${position.direction}`)
-        : undefined;
-      const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
+      // Lighter has zero fees so mid-price P&L is exact; no exchange API call needed
+      const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
