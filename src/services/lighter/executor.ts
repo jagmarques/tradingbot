@@ -211,6 +211,7 @@ export function initLighterEngine(): void {
       if (msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
     }
     for (const pos of getLighterLivePositions()) {
+      if ((pos.tradeType ?? "").startsWith("hft-")) continue; // HFT managed by software monitor
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos, true);
         await new Promise(r => setTimeout(r, 500));
@@ -323,8 +324,8 @@ async function reconcileLighter(): Promise<void> {
       console.log(`[Lighter Executor] Reconcile: ${exchangePositions.length} exchange, ${tracked.length} DB`);
     }
 
-    // Re-place missing exchange orders
-    const livePosForReconcile = getLighterLivePositions().filter(p => !closingSet.has(p.id));
+    // Re-place missing exchange orders (skip HFT — tight stops cause market-order slippage)
+    const livePosForReconcile = getLighterLivePositions().filter(p => !closingSet.has(p.id) && !(p.tradeType ?? "").startsWith("hft-"));
     let replacedCount = 0;
     for (const pos of livePosForReconcile) {
       if (pos.stopLoss && isFinite(pos.stopLoss) && !exchangeStops.has(pos.id)) {

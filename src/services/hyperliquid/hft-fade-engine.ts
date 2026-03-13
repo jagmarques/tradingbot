@@ -550,7 +550,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           undefined,
           entryPrice,
           true,
-          false,
+          true, // HFT uses 500ms software monitor; exchange SL/TP cause market-order slippage on tight stops
         );
         if (position) {
           if (config.tradeType === "hft-regime") {
