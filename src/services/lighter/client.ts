@@ -218,9 +218,9 @@ export function toPriceUnits(price: number, decimals: number): number {
 const midPriceCache = new Map<string, { price: number; at: number }>();
 const MID_PRICE_CACHE_MS = 5_000;
 
-export async function getLighterMidPrice(pair: string): Promise<number | null> {
+export async function getLighterMidPrice(pair: string, noCache = false): Promise<number | null> {
   const cached = midPriceCache.get(pair);
-  if (cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return cached.price;
+  if (!noCache && cached && Date.now() - cached.at < MID_PRICE_CACHE_MS) return cached.price;
 
   try {
     const marketId = await getMarketIndex(pair);

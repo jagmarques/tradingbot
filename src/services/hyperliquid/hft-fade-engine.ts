@@ -49,7 +49,7 @@ import { callDeepSeek } from "../shared/llm.js";
 import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP } from "../lighter/executor.js";
-import { isLighterInitialized } from "../lighter/client.js";
+import { isLighterInitialized, getLighterMidPrice } from "../lighter/client.js";
 import { loadOpenQuantPositions } from "../database/quant.js";
 
 export interface HftVariantConfig {
@@ -121,6 +121,18 @@ interface VolumeCache {
 
 const volumeCache = new Map<string, VolumeCache>();
 const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+
+// Short-lived shared Lighter price cache for HFT monitor (deduplicates parallel calls across variants)
+const hftLighterPriceCache = new Map<string, { price: number; at: number }>();
+const HFT_LIGHTER_CACHE_MS = 150;
+
+async function getLighterPriceForHft(pair: string): Promise<number | null> {
+  const cached = hftLighterPriceCache.get(pair);
+  if (cached && Date.now() - cached.at < HFT_LIGHTER_CACHE_MS) return cached.price;
+  const price = await getLighterMidPrice(pair, true);
+  if (price !== null) hftLighterPriceCache.set(pair, { price, at: Date.now() });
+  return price;
+}
 
 const ohlcCache = new Map<string, OhlcCache>();
 const OHLC_CACHE_TTL_MS = 5 * 60 * 1000; // 5min
@@ -617,14 +629,25 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  const allPairs = new Set([...paperPositions.map(p => p.pair), ...livePositions.map(p => p.pair)]);
-  const symbols = [...allPairs].map(p => BINANCE_SYMBOL_MAP[p]).filter(Boolean);
-  const prices = await fetchBinancePrices(symbols);
+  // Paper uses Binance prices
+  const paperPairs = new Set(paperPositions.map(p => p.pair));
+  const paperSymbols = [...paperPairs].map(p => BINANCE_SYMBOL_MAP[p]).filter(Boolean);
+  const binancePrices = await fetchBinancePrices(paperSymbols);
+
+  // Live uses Lighter prices (exact exchange prices, 150ms shared cache to cap request rate)
+  const livePrices = new Map<string, number>();
+  if (livePositions.length) {
+    const livePairs = [...new Set(livePositions.map(p => p.pair))];
+    const results = await Promise.all(livePairs.map(async pair => ({ pair, price: await getLighterPriceForHft(pair) })));
+    for (const { pair, price } of results) {
+      if (price !== null) livePrices.set(pair, price);
+    }
+  }
 
   for (const pos of paperPositions) {
     const symbol = BINANCE_SYMBOL_MAP[pos.pair];
     if (!symbol) continue;
-    const price = prices.get(symbol);
+    const price = binancePrices.get(symbol);
     if (!price) continue;
     const sl = pos.stopLoss;
     const tp = pos.takeProfit;
@@ -638,9 +661,7 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
   }
 
   for (const pos of livePositions) {
-    const symbol = BINANCE_SYMBOL_MAP[pos.pair];
-    if (!symbol) continue;
-    const price = prices.get(symbol);
+    const price = livePrices.get(pos.pair);
     if (!price) continue;
     const exchangeStopActive = hasExchangeStop(pos.id);
     const exchangeTpActive = hasExchangeTP(pos.id);
@@ -649,10 +670,10 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
     const slHit = !exchangeStopActive && sl && isFinite(sl) && (pos.direction === "long" ? price <= sl : price >= sl);
     const tpHit = !exchangeTpActive && tp && isFinite(tp) && tp > 0 && (pos.direction === "long" ? price >= tp : price <= tp);
     if (slHit) {
-      console.log(`[${config.label}] ${pos.pair} live SL hit @ ${price} (software fallback)`);
+      console.log(`[${config.label}] ${pos.pair} live SL hit @ ${price}`);
       await lighterClosePosition(pos.id, "stop-loss");
     } else if (tpHit) {
-      console.log(`[${config.label}] ${pos.pair} live TP hit @ ${price} (software fallback)`);
+      console.log(`[${config.label}] ${pos.pair} live TP hit @ ${price}`);
       await lighterClosePosition(pos.id, "take-profit");
     }
   }
