@@ -122,7 +122,7 @@ interface VolumeCache {
 const volumeCache = new Map<string, VolumeCache>();
 const VOLUME_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
-// Short-lived shared Lighter price cache for HFT monitor (deduplicates parallel calls across variants)
+// Shared 150ms Lighter price cache — deduplicates calls across concurrent HFT variants
 const hftLighterPriceCache = new Map<string, { price: number; at: number }>();
 const HFT_LIGHTER_CACHE_MS = 150;
 
@@ -562,7 +562,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           undefined,
           entryPrice,
           true,
-          true, // HFT uses 500ms software monitor; exchange SL/TP cause market-order slippage on tight stops
+          true, // skip exchange SL/TP — software monitor at 100ms, exchange orders cause slippage
         );
         if (position) {
           if (config.tradeType === "hft-regime") {
@@ -629,12 +629,12 @@ async function runHftMonitor(config: HftVariantConfig): Promise<void> {
 
   if (!paperPositions.length && !livePositions.length) return;
 
-  // Paper uses Binance prices
+  // Paper: Binance prices
   const paperPairs = new Set(paperPositions.map(p => p.pair));
   const paperSymbols = [...paperPairs].map(p => BINANCE_SYMBOL_MAP[p]).filter(Boolean);
   const binancePrices = await fetchBinancePrices(paperSymbols);
 
-  // Live uses Lighter prices (exact exchange prices, 150ms shared cache to cap request rate)
+  // Live: Lighter prices (150ms cache)
   const livePrices = new Map<string, number>();
   if (livePositions.length) {
     const livePairs = [...new Set(livePositions.map(p => p.pair))];
