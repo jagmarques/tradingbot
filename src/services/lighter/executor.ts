@@ -137,10 +137,10 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
     console.error(`[Lighter Executor] Cancel all orders error: ${cancelMsg}`);
     return;
   }
-  // Re-place stops/TPs for all remaining positions except the one being closed
-  for (const pos of getLighterLivePositions()) {
-    if (pos.id === closingPositionId) continue;
-    if (pos.tradeType?.startsWith("hft-")) continue;
+  const toReplace = getLighterLivePositions().filter(
+    p => p.id !== closingPositionId && !p.tradeType?.startsWith("hft-"),
+  );
+  for (const pos of toReplace) {
     if (pos.stopLoss && isFinite(pos.stopLoss)) {
       await placeExchangeStop(pos, true);
       await new Promise(r => setTimeout(r, 500));
@@ -148,6 +148,22 @@ async function cancelAndReplaceOrders(closingPositionId: string): Promise<void> 
     if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) {
       await placeExchangeTP(pos, true);
       await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  // Retry failed stop placements
+  const missingAfter = toReplace.filter(p => p.stopLoss && isFinite(p.stopLoss) && !exchangeStops.has(p.id));
+  if (missingAfter.length > 0) {
+    console.warn(`[Lighter Executor] ${missingAfter.length} stop(s) unplaced, retrying...`);
+    await new Promise(r => setTimeout(r, 2000));
+    for (const pos of missingAfter) {
+      await placeExchangeStop(pos, true);
+      await new Promise(r => setTimeout(r, 500));
+    }
+    const stillMissing = missingAfter.filter(p => !exchangeStops.has(p.id));
+    if (stillMissing.length > 0) {
+      const pairs = stillMissing.map(p => p.pair).join(", ");
+      console.error(`[Lighter Executor] CRITICAL: stops unplaced for ${pairs}`);
+      void notifyCriticalError(`Lighter stops unplaced for ${pairs} — software SL only`, "LighterExecutor");
     }
   }
 }
