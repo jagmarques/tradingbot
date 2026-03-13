@@ -1,13 +1,12 @@
 import { QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
-// Cap SL to max %; inverted skip (their SL = normal's TP)
+// Cap SL to max % from entry (all engines)
 export function capStopLoss(
   entryPrice: number,
   stopLoss: number,
   direction: "long" | "short",
-  isInverted: boolean,
+  _isInverted: boolean,
 ): number {
-  if (isInverted) return stopLoss;
   const maxSlFrac = QUANT_MAX_SL_PCT / 100;
   if (direction === "long") {
     const floor = entryPrice * (1 - maxSlFrac);
