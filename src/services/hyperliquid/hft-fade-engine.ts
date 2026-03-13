@@ -50,7 +50,7 @@ import { validateRiskGates, isQuantKilled } from "./risk-manager.js";
 import { paperOpenPosition, paperClosePosition, getPaperPositions } from "./paper.js";
 import { lighterOpenPosition, lighterClosePosition, getLighterLivePositions, hasExchangeStop, hasExchangeTP } from "../lighter/executor.js";
 import { isLighterInitialized, getLighterMidPrice } from "../lighter/client.js";
-import { loadOpenQuantPositions } from "../database/quant.js";
+import { loadOpenQuantPositions, countQuantPositionsByType } from "../database/quant.js";
 
 export interface HftVariantConfig {
   tradeType: TradeType;
@@ -407,8 +407,6 @@ async function fetchBinance5mCandle(symbol: string): Promise<Candle5m | null> {
   }
 }
 
-let hftRegimeLiveTradesOpened = 0;
-
 const cycleRunning = new Map<string, boolean>();
 
 async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
@@ -536,9 +534,12 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         : entryPrice * (1 - HFT_PAPER_SPREAD_PCT);
       let position;
       if (goLive) {
-        if (config.tradeType === "hft-regime" && hftRegimeLiveTradesOpened >= HFT_REGIME_LIVE_TEST_LIMIT) {
-          console.log(`[${config.label}] Test limit reached (${hftRegimeLiveTradesOpened}/${HFT_REGIME_LIVE_TEST_LIMIT}) — live paused`);
-          continue;
+        if (config.tradeType === "hft-regime") {
+          const liveCount = countQuantPositionsByType("hft-regime", "live");
+          if (liveCount >= HFT_REGIME_LIVE_TEST_LIMIT) {
+            console.log(`[${config.label}] Test limit reached (${liveCount}/${HFT_REGIME_LIVE_TEST_LIMIT}) — live paused`);
+            continue;
+          }
         }
         position = await lighterOpenPosition(
           pair,
@@ -555,9 +556,9 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
         );
         if (position) {
           if (config.tradeType === "hft-regime") {
-            hftRegimeLiveTradesOpened++;
-            console.log(`[${config.label}] Live trade ${hftRegimeLiveTradesOpened}/${HFT_REGIME_LIVE_TEST_LIMIT} | ${pair} ${direction} | entry=${position.entryPrice} SL=${position.stopLoss?.toFixed(5)} TP=${position.takeProfit?.toFixed(5)} candle=${returnPct > 0 ? "+" : ""}${returnPct.toFixed(3)}%`);
-            if (hftRegimeLiveTradesOpened >= HFT_REGIME_LIVE_TEST_LIMIT) {
+            const newCount = countQuantPositionsByType("hft-regime", "live");
+            console.log(`[${config.label}] Live trade ${newCount}/${HFT_REGIME_LIVE_TEST_LIMIT} | ${pair} ${direction} | entry=${position.entryPrice} SL=${position.stopLoss?.toFixed(5)} TP=${position.takeProfit?.toFixed(5)} candle=${returnPct > 0 ? "+" : ""}${returnPct.toFixed(3)}%`);
+            if (newCount >= HFT_REGIME_LIVE_TEST_LIMIT) {
               console.log(`[${config.label}] *** TEST LIMIT REACHED — live trading stopped. Analyse DB: SELECT * FROM quant_trades WHERE trade_type='hft-regime' ORDER BY created_at; ***`);
             }
           }

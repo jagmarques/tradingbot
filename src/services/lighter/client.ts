@@ -249,7 +249,7 @@ export function getLighterMidPrice(pair: string, noCache = false): Promise<numbe
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes("429")) console.error(`[Lighter] Failed to fetch mid price for ${pair}: ${msg}`);
-        return cached?.price ?? null;
+        return noCache ? null : (cached?.price ?? null); // noCache=true: don't return stale
       } finally {
         midPricePending.delete(pair);
       }

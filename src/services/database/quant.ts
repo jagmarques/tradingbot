@@ -349,3 +349,11 @@ export function sumRecentQuantLosses(withinMs: number, strategy?: string, mode?:
   return { totalLoss: row.total_loss, lastLossTs };
 }
 
+export function countQuantPositionsByType(tradeType: string, mode: "live" | "paper"): number {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COUNT(*) as cnt FROM quant_positions WHERE trade_type = ? AND mode = ?`,
+  ).get(tradeType, mode) as { cnt: number };
+  return row?.cnt ?? 0;
+}
+
