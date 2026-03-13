@@ -542,7 +542,7 @@ async function runHftFadeCycle(config: HftVariantConfig): Promise<void> {
           tp,
           config.tradeType,
           undefined,
-          undefined,
+          entryPrice,
           "lighter",
         );
       }
