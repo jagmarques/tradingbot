@@ -1,7 +1,7 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized, INTER_REQUEST_DELAY_MS as LIGHTER_DELAY_MS } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, PSAR_TRAIL_ACTIVATION, PSAR_TRAIL_DISTANCE, ZLEMA_STAGNATION_BARS, ZLEMA_TRAIL_ACTIVATION, ZLEMA_TRAIL_DISTANCE, VORTEX_STAGNATION_BARS, VORTEX_TRAIL_ACTIVATION, VORTEX_TRAIL_DISTANCE, SCHAFF_STAGNATION_BARS, SCHAFF_TRAIL_ACTIVATION, SCHAFF_TRAIL_DISTANCE, DEMA_STAGNATION_BARS, DEMA_TRAIL_ACTIVATION, DEMA_TRAIL_DISTANCE, CCI_STAGNATION_BARS, CCI_TRAIL_ACTIVATION, CCI_TRAIL_DISTANCE, AROON_STAGNATION_BARS, AROON_TRAIL_ACTIVATION, AROON_TRAIL_DISTANCE, MACD_STAGNATION_BARS, MACD_TRAIL_ACTIVATION, MACD_TRAIL_DISTANCE, ZLEMAV2_STAGNATION_BARS, ZLEMAV2_TRAIL_ACTIVATION, ZLEMAV2_TRAIL_DISTANCE, SCHAFFV2_STAGNATION_BARS, SCHAFFV2_TRAIL_ACTIVATION, SCHAFFV2_TRAIL_DISTANCE, HFT_FADE_STAGNATION_MS, HFT_FADE_TRAIL_ACTIVATION, HFT_FADE_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, PSAR_TRAIL_ACTIVATION, PSAR_TRAIL_DISTANCE, ZLEMA_STAGNATION_BARS, ZLEMA_TRAIL_ACTIVATION, ZLEMA_TRAIL_DISTANCE, VORTEX_STAGNATION_BARS, VORTEX_TRAIL_ACTIVATION, VORTEX_TRAIL_DISTANCE, SCHAFF_STAGNATION_BARS, SCHAFF_TRAIL_ACTIVATION, SCHAFF_TRAIL_DISTANCE, DEMA_STAGNATION_BARS, DEMA_TRAIL_ACTIVATION, DEMA_TRAIL_DISTANCE, CCI_STAGNATION_BARS, CCI_TRAIL_ACTIVATION, CCI_TRAIL_DISTANCE, AROON_STAGNATION_BARS, AROON_TRAIL_ACTIVATION, AROON_TRAIL_DISTANCE, MACD_STAGNATION_BARS, MACD_TRAIL_ACTIVATION, MACD_TRAIL_DISTANCE, ZLEMAV2_STAGNATION_BARS, ZLEMAV2_TRAIL_ACTIVATION, ZLEMAV2_TRAIL_DISTANCE, SCHAFFV2_STAGNATION_BARS, SCHAFFV2_TRAIL_ACTIVATION, SCHAFFV2_TRAIL_DISTANCE, HFT_FADE_STAGNATION_MS, HFT_FADE_TRAIL_ACTIVATION, HFT_FADE_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
@@ -57,6 +57,8 @@ const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
+let fastPollInterval: ReturnType<typeof setInterval> | null = null;
+let fastPollRunning = false;
 
 const trailActivatedIds = new Set<string>(); // trail alert dedup
 
@@ -344,6 +346,132 @@ async function checkPositionStops(): Promise<void> {
   }
 }
 
+async function checkTrailActivePositions(): Promise<void> {
+  if (fastPollRunning) return;
+  fastPollRunning = true;
+  try {
+    const positions: QuantPosition[] = getOpenQuantPositions();
+
+    // Only process non-HFT positions that are trail-active (peak > activation) or already in the set
+    const trailCandidates = positions.filter(p => {
+      if (p.tradeType?.startsWith("hft-")) return false; // HFT has its own 2s monitor
+      const trailBaseType = (p.tradeType ?? "").replace(/^inv-/, "");
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[p.tradeType ?? ""]
+        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
+        ?? DEFAULT_TRAIL;
+      return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;
+    });
+
+    if (trailCandidates.length === 0) return;
+
+    // Fetch prices only for pairs of trail-active positions
+    let mids: Record<string, string> = {};
+    const hlCandidates = trailCandidates.filter(p => p.exchange !== "lighter");
+    if (hlCandidates.length > 0) {
+      try {
+        const sdk = getClient();
+        mids = await withTimeout(
+          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+          API_PRICE_TIMEOUT_MS, "HL getAllMids (fast-poll)",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[PositionMonitor] Fast-poll HL price fetch failed: ${msg}`);
+      }
+    }
+
+    let lighterMids: Record<string, string> = {};
+    const lighterCandidates = trailCandidates.filter(p => p.exchange === "lighter");
+    if (lighterCandidates.length > 0 && isLighterInitialized()) {
+      const lighterPairs = [...new Set(lighterCandidates.map(p => p.pair))];
+      try {
+        const outerTimeoutMs = lighterPairs.length * (API_PRICE_TIMEOUT_MS + LIGHTER_DELAY_MS);
+        lighterMids = await withTimeout(
+          getLighterAllMids(lighterPairs),
+          outerTimeoutMs, "Lighter getAllMids (fast-poll)",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[PositionMonitor] Fast-poll Lighter price fetch failed: ${msg}`);
+      }
+    }
+
+    // Exchange P&L for live Lighter candidates (mark price-based, accurate)
+    const lighterExchangePnl = new Map<string, number>();
+    const liveLighterCandidates = lighterCandidates.filter(p => p.mode === "live");
+    if (liveLighterCandidates.length > 0 && isLighterInitialized()) {
+      try {
+        const exchangePositions = await getLighterOpenPositions();
+        for (const ep of exchangePositions) {
+          lighterExchangePnl.set(`${ep.symbol}:${ep.side}`, ep.unrealizedPnlPct);
+        }
+      } catch (err) {
+        console.warn(`[PositionMonitor] Fast-poll exchange P&L fetch failed, falling back to mid-price: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    for (const position of trailCandidates) {
+      const priceSource = position.exchange === "lighter" ? lighterMids : mids;
+      const rawPrice = priceSource[position.pair];
+      if (rawPrice === undefined) continue;
+
+      const currentPrice = parseFloat(rawPrice);
+      if (isNaN(currentPrice)) continue;
+
+      const pricePct =
+        position.direction === "long"
+          ? ((currentPrice - position.entryPrice) / position.entryPrice)
+          : ((position.entryPrice - currentPrice) / position.entryPrice);
+      const exchangePnlPct = position.exchange === "lighter" && position.mode === "live"
+        ? lighterExchangePnl.get(`${position.pair}:${position.direction}`)
+        : undefined;
+      const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
+
+      if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
+        position.maxUnrealizedPnlPct = unrealizedPnlPct;
+        saveQuantPosition(position);
+      }
+
+      const peak = position.maxUnrealizedPnlPct ?? 0;
+      const trailBaseType = (position.tradeType ?? "").replace(/^inv-/, "");
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""]
+        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
+        ?? DEFAULT_TRAIL;
+
+      if (peak > trailCfg.activation) {
+        if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
+          trailActivatedIds.add(position.id);
+          console.log(
+            `[PositionMonitor] Trail activated: ${position.pair} ${position.direction} at +${peak.toFixed(1)}% (threshold ${trailCfg.activation}%, trail ${trailCfg.distance}%)`,
+          );
+          void notifyTrailActivation({
+            pair: position.pair,
+            direction: position.direction,
+            entryPrice: position.entryPrice,
+            currentPrice: currentPrice,
+            unrealizedPnlPct: peak,
+            trailActivation: trailCfg.activation,
+            trailDistance: trailCfg.distance,
+            tradeType: position.tradeType ?? "directional",
+          });
+        }
+        const trailTrigger = peak - trailCfg.distance;
+        if (unrealizedPnlPct <= trailTrigger) {
+          console.log(
+            `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
+          );
+          await tryClose(position, "trailing-stop");
+        }
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[PositionMonitor] Fast-poll error: ${msg}`);
+  } finally {
+    fastPollRunning = false;
+  }
+}
+
 export function startPositionMonitor(): void {
   if (monitorInterval !== null) {
     return;
@@ -352,6 +480,10 @@ export function startPositionMonitor(): void {
   monitorInterval = setInterval(() => {
     void checkPositionStops();
   }, QUANT_POSITION_MONITOR_INTERVAL_MS);
+  console.log(`[PositionMonitor] Fast-poll started (interval: ${QUANT_TRAIL_FAST_POLL_MS}ms, trail-active only)`);
+  fastPollInterval = setInterval(() => {
+    void checkTrailActivePositions();
+  }, QUANT_TRAIL_FAST_POLL_MS);
 }
 
 export function stopPositionMonitor(): void {
@@ -360,5 +492,9 @@ export function stopPositionMonitor(): void {
   }
   clearInterval(monitorInterval);
   monitorInterval = null;
+  if (fastPollInterval !== null) {
+    clearInterval(fastPollInterval);
+    fastPollInterval = null;
+  }
   console.log("[PositionMonitor] Stopped");
 }
