@@ -119,16 +119,18 @@ export async function runDirectionalCycle(): Promise<void> {
       let count = 0;
       const donOpenPairs = new Set(getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper").map(p => p.pair));
 
+      // Dedup at pair level first, then close ALL positions for that pair
+      const pairsToExit = new Map<string, number>(); // pair -> barTime
+      for (const [pair, barTime] of exitPairs) {
+        if (lastExitBarTime.get(`${tradeType}:${pair}`) !== barTime) pairsToExit.set(pair, barTime);
+      }
       for (const pos of getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper")) {
-        const barTime = exitPairs.get(pos.pair);
-        if (barTime === undefined) continue;
-        const lastExitKey = `${tradeType}:${pos.pair}`;
-        if (lastExitBarTime.get(lastExitKey) === barTime) continue; // already processed this bar
+        if (!pairsToExit.has(pos.pair)) continue;
         console.log(`[QuantScheduler] ${tradeType} channel exit: ${pos.pair} ${pos.direction}`);
         await closePosition(pos.id, `${tradeType}-channel-exit`);
-        lastExitBarTime.set(lastExitKey, barTime);
         donOpenPairs.delete(pos.pair);
       }
+      for (const [pair, barTime] of pairsToExit) lastExitBarTime.set(`${tradeType}:${pair}`, barTime);
 
       // Donchian entries
       for (const decision of decisions) {
