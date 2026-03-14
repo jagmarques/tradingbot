@@ -13,7 +13,6 @@ export function calculateQuantPositionSize(
   confidence: number,
   entryPrice: number,
   stopLoss: number,
-  isRuleBased = false,
   tradeType?: TradeType,
 ): number {
   const balance = getVirtualBalance(tradeType);
@@ -28,7 +27,7 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
-  const minConfidence = isRuleBased ? 60 : 65;
+  const minConfidence = 65;
   if (confidence < minConfidence) return 0;
 
   const edge = winProb - 0.5;

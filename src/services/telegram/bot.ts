@@ -1,7 +1,7 @@
 import { Bot, Context } from "grammy";
 import { readFileSync, writeFileSync } from "fs";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, HFT_REGIME_LIVE_ENABLED } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -2044,41 +2044,12 @@ async function handleQuant(ctx: Context): Promise<void> {
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
     const typeTag =
-      pos.tradeType === "psar-directional" ? "[PS]" :
-      pos.tradeType === "zlema-directional" ? "[ZL]" :
-      pos.tradeType === "vortex-directional" ? "[VO]" :
-      pos.tradeType === "schaff-directional" ? "[SC]" :
-      pos.tradeType === "dema-directional" ? "[DE]" :
-      pos.tradeType === "cci-directional" ? "[CC]" :
-      pos.tradeType === "aroon-directional" ? "[AR]" :
-      pos.tradeType === "macd-directional" ? "[MA]" :
-      pos.tradeType === "zlemav2-directional" ? "[Z2]" :
-      pos.tradeType === "schaffv2-directional" ? "[S2]" :
-      pos.tradeType === "inv-psar-directional" ? "[iPS]" :
-      pos.tradeType === "inv-zlema-directional" ? "[iZL]" :
-      pos.tradeType === "inv-vortex-directional" ? "[iVO]" :
-      pos.tradeType === "inv-schaff-directional" ? "[iSC]" :
-      pos.tradeType === "inv-dema-directional" ? "[iDE]" :
-      pos.tradeType === "inv-cci-directional" ? "[iCC]" :
-      pos.tradeType === "inv-aroon-directional" ? "[iAR]" :
-      pos.tradeType === "inv-macd-directional" ? "[iMA]" :
-      pos.tradeType === "inv-zlemav2-directional" ? "[iZ2]" :
-      pos.tradeType === "inv-schaffv2-directional" ? "[iS2]" :
-      pos.tradeType === "hft-fade" ? "[HFT-0]" :
-      pos.tradeType === "hft-t8-tp40-sl3" ? "[HFT-1]" :
-      pos.tradeType === "hft-t10-tp35-sl4" ? "[HFT-2]" :
-      pos.tradeType === "hft-t8-tp35-sl4" ? "[HFT-3]" :
-      pos.tradeType === "hft-t8-tp25-sl5" ? "[HFT-4]" :
-      pos.tradeType === "hft-t8-tp30-sl5" ? "[HFT-5]" :
-      pos.tradeType === "hft-t12-tp40-sl3" ? "[HFT-6]" :
-      pos.tradeType === "hft-t10-tp40-sl3" ? "[HFT-7]" :
-      pos.tradeType === "hft-t8-tp30-sl3" ? "[HFT-8]" :
-      pos.tradeType === "hft-t8-tp35-sl3" ? "[HFT-9]" :
-      pos.tradeType === "hft-t8-tp25-sl3" ? "[HFT-10]" :
-      pos.tradeType === "hft-regime" ? "[HFT-11]" :
-      pos.tradeType === "hft-smart" ? "[HFT-12]" :
-      pos.tradeType === "hft-ai" ? "[HFT-13]" :
-      "[AI]";
+      pos.tradeType === "ai-directional" ? "[AI]" :
+      pos.tradeType === "don-4h-a" ? "[DA]" :
+      pos.tradeType === "don-4h-b" ? "[DB]" :
+      pos.tradeType === "don-4h-c" ? "[DC]" :
+      pos.tradeType === "don-4h-d" ? "[DD]" :
+      "[??]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
     const exchangeUpnl = getExchangeUpnl(pos);
@@ -2104,9 +2075,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   if (openPositions.length > 0) {
     const isHybridOrLive = tradingMode === "hybrid" || tradingMode === "live";
     const livePositions = openPositions.filter(p => p.mode === "live");
-    const paperPositions = openPositions.filter(p => p.mode !== "live" && !p.tradeType?.startsWith("inv-") && !p.tradeType?.startsWith("hft-"));
-    const hftPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("hft-"));
-    const invertedPositions = openPositions.filter(p => p.mode !== "live" && p.tradeType?.startsWith("inv-"));
+    const paperPositions = openPositions.filter(p => p.mode !== "live");
 
     if (paperPositions.length > 0) {
       if (isHybridOrLive) {
@@ -2115,15 +2084,6 @@ async function handleQuant(ctx: Context): Promise<void> {
         text += `\n`;
       }
       text += paperPositions.map(formatPosLine).join("\n") + "\n";
-    }
-
-    if (invertedPositions.length > 0) {
-      text += `\n<b>Inverted (${invertedPositions.length})</b>\n`;
-      text += invertedPositions.map(formatPosLine).join("\n") + "\n";
-    }
-
-    if (hftPositions.length > 0) {
-      text += `\n<b>HFT (${hftPositions.length} open — see stats below)</b>\n`;
     }
 
     if (isHybridOrLive && livePositions.length > 0) {
@@ -2191,32 +2151,10 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const engines: [string, string][] = [
     ["AI", "ai-directional"],
-    ["PSAR", "psar-directional"], ["ZLEMA", "zlema-directional"],
-    ["Vortex", "vortex-directional"], ["Schaff", "schaff-directional"],
-    ["DEMA", "dema-directional"], ["CCI", "cci-directional"],
-    ["Aroon", "aroon-directional"], ["MACD", "macd-directional"],
-    ["ZLEMAv2", "zlemav2-directional"], ["SchaffV2", "schaffv2-directional"],
-    ["HFT-0", "hft-fade"],
-    ["HFT-1", "hft-t8-tp40-sl3"],
-    ["HFT-2", "hft-t10-tp35-sl4"],
-    ["HFT-3", "hft-t8-tp35-sl4"],
-    ["HFT-4", "hft-t8-tp25-sl5"],
-    ["HFT-5", "hft-t8-tp30-sl5"],
-    ["HFT-6", "hft-t12-tp40-sl3"],
-    ["HFT-7", "hft-t10-tp40-sl3"],
-    ["HFT-8", "hft-t8-tp30-sl3"],
-    ["HFT-9", "hft-t8-tp35-sl3"],
-    ["HFT-10", "hft-t8-tp25-sl3"],
-    ["HFT-11", "hft-regime"],
-    ["HFT-12", "hft-smart"],
-    ["HFT-13", "hft-ai"],
-  ];
-  const invertedEngines: [string, string][] = [
-    ["iPSAR", "inv-psar-directional"], ["iZLEMA", "inv-zlema-directional"],
-    ["iVortex", "inv-vortex-directional"], ["iSchaff", "inv-schaff-directional"],
-    ["iDEMA", "inv-dema-directional"], ["iCCI", "inv-cci-directional"],
-    ["iAroon", "inv-aroon-directional"], ["iMACD", "inv-macd-directional"],
-    ["iZLEMAv2", "inv-zlemav2-directional"], ["iSchaffV2", "inv-schaffv2-directional"],
+    ["Don-A", "don-4h-a"],
+    ["Don-B", "don-4h-b"],
+    ["Don-C", "don-4h-c"],
+    ["Don-D", "don-4h-d"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");
@@ -2239,10 +2177,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   if (isHybrid) {
-    // Live engines (AI + any live technical + any live inverted)
+    // Live engines (AI + any live technical)
     let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
-    for (const [label, typeKey] of [...engines, ...invertedEngines]) {
-      const isLiveEngine = (typeKey === "ai-directional" && QUANT_AI_DIRECTIONAL_ENABLED) || (typeKey === "hft-regime" && HFT_REGIME_LIVE_ENABLED) || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
+    for (const [label, typeKey] of engines) {
+      const isLiveEngine = (typeKey === "ai-directional" && QUANT_AI_DIRECTIONAL_ENABLED) || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
       if (!isLiveEngine) continue;
       const stats = getQuantStats(typeKey, "live");
       liveBlock += sl(label, stats, typeKey, "live");
@@ -2254,12 +2192,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       liveOpenTotal += openCountByKey.get(lk) ?? 0;
     }
 
-    // Paper normal engines (exclude AI and HFT which get own blocks)
-    const paper = renderEngineBlock(engines.filter(([, t]) => (t !== "ai-directional" || !QUANT_AI_DIRECTIONAL_ENABLED) && !t.startsWith("hft-") && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
-    // Paper inverted engines
-    const inverted = renderEngineBlock(invertedEngines, "paper");
-    // HFT separate block (all hft-* variants)
-    const hft = renderEngineBlock(engines.filter(([, t]) => t.startsWith("hft-")), "paper");
+    const paper = renderEngineBlock(engines.filter(([, t]) => (t !== "ai-directional" || !QUANT_AI_DIRECTIONAL_ENABLED) && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
 
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;
@@ -2273,19 +2206,9 @@ async function handleQuant(ctx: Context): Promise<void> {
       const dep = paper.depTotal > 0 ? ` | $${paper.depTotal.toFixed(0)}` : "";
       text += `Total: ${fmtSign(paper.pnlTotal, 1)} ${paper.trades + paper.openTotal}T${dep} | unr ${fmtUnr(paper.unrTotal)}\n`;
     }
-    if (inverted.block) {
-      text += `\n<b>-- Inverted --</b>\n`;
-      text += inverted.block;
-      const dep = inverted.depTotal > 0 ? ` | $${inverted.depTotal.toFixed(0)}` : "";
-      text += `Total: ${fmtSign(inverted.pnlTotal, 1)} ${inverted.trades + inverted.openTotal}T${dep} | unr ${fmtUnr(inverted.unrTotal)}\n`;
-    }
-    if (hft.openTotal > 0 || hft.trades > 0) {
-      text += `\n<b>-- HFT --</b>\n`;
-      text += hft.block || `HFT: $0.0 ${hft.openTotal}/${hft.trades + hft.openTotal}T | unr ${fmtUnr(hft.unrTotal)}\n`;
-    }
   } else {
     text += `\n`;
-    const allEngines = [...engines, ...invertedEngines];
+    const allEngines = engines;
     for (const [label, typeKey] of allEngines) {
       const stats = getQuantStats(typeKey);
       text += sl(label, stats, typeKey, tradingMode === "paper" ? "paper" : "live");

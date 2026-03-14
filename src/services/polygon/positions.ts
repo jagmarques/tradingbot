@@ -1,7 +1,8 @@
 import {
   ARBITRAGE_PAIR_TIMEOUT_MS,
-  STAGNATION_TIMEOUT_MS,
 } from "../../config/constants.js";
+
+const STAGNATION_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12h
 import {
   markPositionClosed as markPositionClosedInDb,
   loadOpenPositions as loadOpenPositionsFromDb,

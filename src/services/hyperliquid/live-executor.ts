@@ -11,7 +11,7 @@ import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, inferExitReason, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, inferExitReason, rebaseStops } from "../hyperliquid/quant-utils.js";
 
 const MAX_SLIPPAGE = 0.005;
 
@@ -69,8 +69,7 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
   if (!position.stopLoss || !isFinite(position.stopLoss)) return;
   if (exchangeStopOids.has(position.id)) return;
   try {
-    const isInverted = (position.tradeType ?? "").startsWith("inv-");
-    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction, isInverted);
+    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction);
     await ensureConnected();
     const sdk = getClient();
     const szMap = await getSzDecimals();
@@ -695,7 +694,7 @@ export async function liveClosePosition(
     });
     positionContext.delete(positionId);
 
-    if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
+    if (reason === "stop-loss") {
       recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
     }
 
@@ -751,7 +750,7 @@ export async function liveClosePosition(
               tradeType: position.tradeType ?? "directional",
             });
             positionContext.delete(positionId);
-            if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
+            if (reason === "stop-loss") {
               recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
             }
             void notifyQuantTradeExit({

@@ -1,4 +1,4 @@
-import { buildQuantPrompt, type DailyTrend, type TechSignal } from "./prompt.js";
+import { buildQuantPrompt, type DailyTrend } from "./prompt.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { calculateQuantPositionSize } from "./kelly.js";
@@ -204,7 +204,7 @@ function isRangingNoExtreme(analysis: PairAnalysis): boolean {
   return !rsiConfirms;
 }
 
-export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null, techSignals?: TechSignal[]): Promise<QuantAIDecision | null> {
+export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTrend | null): Promise<QuantAIDecision | null> {
   const { pair } = analysis;
 
   const cached = getCached(pair);
@@ -227,7 +227,7 @@ export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTr
     return flat;
   }
 
-  const prompt = buildQuantPrompt(analysis, dailyTrend, techSignals);
+  const prompt = buildQuantPrompt(analysis, dailyTrend);
 
   let raw: string;
   try {
@@ -272,7 +272,6 @@ export async function runAIDecisionEngine(): Promise<QuantAIDecision[]> {
       decision.confidence,
       decision.entryPrice,
       decision.stopLoss,
-      false,
       "ai-directional",
     );
 

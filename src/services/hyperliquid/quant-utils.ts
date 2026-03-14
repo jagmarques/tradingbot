@@ -1,11 +1,10 @@
 import { QUANT_MAX_SL_PCT } from "../../config/constants.js";
 
-// Cap SL to max % from entry (all engines)
+// Cap SL to max % from entry
 export function capStopLoss(
   entryPrice: number,
   stopLoss: number,
   direction: "long" | "short",
-  _isInverted: boolean,
 ): number {
   const maxSlFrac = QUANT_MAX_SL_PCT / 100;
   if (direction === "long") {
@@ -48,11 +47,6 @@ export function inferExitReason(
   if (tp && pos.direction === "short" && exitPrice <= tp + tol) return "TP hit";
   const pct = ((exitPrice - pos.entryPrice) / pos.entryPrice) * 100;
   return `closed ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
-}
-
-// True if SL close should record cooldown; inv-* and hft-fade exempt
-export function shouldRecordSlCooldown(tradeType: string): boolean {
-  return !tradeType.startsWith("inv-") && !tradeType.startsWith("hft-");
 }
 
 // Rebase SL/TP from expected entry to actual fill (preserves % offset)

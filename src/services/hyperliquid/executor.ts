@@ -51,10 +51,8 @@ export async function openPosition(
     return null;
   }
 
-  // Cap SL; skip for inverted (their SL = normal's TP)
-  const isInverted = tradeType.startsWith("inv-");
   if (aiEntryPrice && aiEntryPrice > 0) {
-    const capped = capStopLoss(aiEntryPrice, stopLoss, direction, isInverted);
+    const capped = capStopLoss(aiEntryPrice, stopLoss, direction);
     if (capped !== stopLoss) {
       console.log(`[Quant Executor] Capped ${pair} SL ${stopLoss.toFixed(4)}->${capped.toFixed(4)}`);
       stopLoss = capped;

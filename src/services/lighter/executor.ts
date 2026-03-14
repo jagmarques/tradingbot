@@ -26,7 +26,7 @@ import { recordStopLossCooldown } from "../hyperliquid/scheduler.js";
 import { SignerClient } from "zklighter-sdk";
 import { withTimeout, TimeoutError } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, shouldRecordSlCooldown, rebaseStops } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, rebaseStops } from "../hyperliquid/quant-utils.js";
 
 const lighterPositions = new Map<string, QuantPosition>();
 const closingSet = new Set<string>();
@@ -43,8 +43,7 @@ async function placeExchangeStop(position: QuantPosition, force = false): Promis
   if (!force && exchangeStops.has(position.id)) return;
   exchangeStops.delete(position.id);
   try {
-    const isInverted = (position.tradeType ?? "").startsWith("inv-");
-    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction, isInverted);
+    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction);
     const marketIndex = await getMarketIndex(position.pair);
     if (marketIndex === null) return;
     const sizeDecimals = await getMarketSizeDecimals(marketIndex);
@@ -211,7 +210,6 @@ export function initLighterEngine(): void {
       if (msg.includes("nonce") || msg.includes("ratelimit") || msg.includes("Too Many")) resetNonce();
     }
     for (const pos of getLighterLivePositions()) {
-      if ((pos.tradeType ?? "").startsWith("hft-")) continue; // HFT managed by software monitor
       if (pos.stopLoss && isFinite(pos.stopLoss)) {
         await placeExchangeStop(pos, true);
         await new Promise(r => setTimeout(r, 500));
@@ -325,7 +323,7 @@ async function reconcileLighter(): Promise<void> {
     }
 
     // Re-place missing exchange orders (skip HFT — tight stops cause market-order slippage)
-    const livePosForReconcile = getLighterLivePositions().filter(p => !closingSet.has(p.id) && !(p.tradeType ?? "").startsWith("hft-"));
+    const livePosForReconcile = getLighterLivePositions().filter(p => !closingSet.has(p.id));
     let replacedCount = 0;
     for (const pos of livePosForReconcile) {
       if (pos.stopLoss && isFinite(pos.stopLoss) && !exchangeStops.has(pos.id)) {
@@ -695,10 +693,8 @@ export async function lighterClosePosition(
       console.error(`[Lighter Executor] Close failed for ${position.pair}: ${closeErr}`);
       if (closeErr.includes("nonce") || closeErr.includes("ratelimit") || closeErr.includes("Too Many")) resetNonce();
       void notifyCriticalError(`Lighter close failed: ${position.pair} ${position.direction} — ${closeErr}`, "LighterExecutor");
-      if (!(position.tradeType ?? "").startsWith("hft-")) {
-        void placeExchangeStop(position);
-        void placeExchangeTP(position);
-      }
+      void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
 
@@ -729,10 +725,8 @@ export async function lighterClosePosition(
     if (!closeFilled) {
       console.error(`[Lighter Executor] Close not filled for ${position.pair} — still open on exchange`);
       void notifyCriticalError(`Lighter close not filled: ${position.pair} still open`, "LighterExecutor");
-      if (!(position.tradeType ?? "").startsWith("hft-")) {
-        void placeExchangeStop(position);
-        void placeExchangeTP(position);
-      }
+      void placeExchangeStop(position);
+      void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
     const fees = 0; // Lighter: zero fees
@@ -774,7 +768,7 @@ export async function lighterClosePosition(
     });
     positionContext.delete(positionId);
 
-    if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
+    if (reason === "stop-loss") {
       recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
     }
 
@@ -838,7 +832,7 @@ export async function lighterClosePosition(
             tradeType: position.tradeType ?? "directional",
           });
           positionContext.delete(positionId);
-          if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
+          if (reason === "stop-loss") {
             recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           }
           void notifyQuantTradeExit({
@@ -856,10 +850,8 @@ export async function lighterClosePosition(
       }
     }
 
-    if (!(position.tradeType ?? "").startsWith("hft-")) {
-      void placeExchangeStop(position);
-      void placeExchangeTP(position);
-    }
+    void placeExchangeStop(position);
+    void placeExchangeTP(position);
     return { success: false, pnl: 0 };
   } finally {
     closingSet.delete(positionId);

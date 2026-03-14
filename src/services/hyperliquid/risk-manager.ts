@@ -10,8 +10,7 @@ const dailyLossMap = new Map<string, number>();
 const lastLossTimestampMap = new Map<string, number>();
 
 export function strategyFromTradeType(tradeType: string): string {
-  // "inv-psar-directional" -> "psar", "psar-directional" -> "psar"
-  return tradeType.replace(/^inv-/, "").replace(/-directional$/, "");
+  return tradeType.replace(/-directional$/, "");
 }
 
 function resetIfStale(strategy: string): void {
@@ -51,7 +50,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["ai", "psar", "zlema", "vortex", "schaff", "dema", "cci", "aroon", "macd", "zlemav2", "schaffv2", "hft-fade", "hft-t8-tp40-sl3", "hft-t10-tp35-sl4", "hft-t8-tp35-sl4", "hft-t8-tp25-sl5", "hft-t8-tp30-sl5", "hft-t12-tp40-sl3", "hft-t10-tp40-sl3", "hft-t8-tp30-sl3", "hft-t8-tp35-sl3", "hft-t8-tp25-sl3", "hft-regime", "hft-smart", "hft-ai"];
+  const strategies = ["ai", "don-4h-a", "don-4h-b", "don-4h-c", "don-4h-d"];
   const modes: Array<"live" | "paper"> = ["live", "paper"];
   for (const mode of modes) {
     for (const strategy of strategies) {

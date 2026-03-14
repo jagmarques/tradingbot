@@ -6,10 +6,15 @@ import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
 
 function quantTypeLabel(tradeType: string): string {
-  const inv = tradeType.startsWith("inv-");
-  const base = inv ? tradeType.slice(4) : tradeType;
-  const label = base === "funding" ? "Funding" : base === "hft-fade" ? "HFT-0" : base === "hft-t8-tp40-sl3" ? "HFT-1" : base === "hft-t10-tp35-sl4" ? "HFT-2" : base === "hft-t8-tp35-sl4" ? "HFT-3" : base === "hft-t8-tp25-sl5" ? "HFT-4" : base === "hft-t8-tp30-sl5" ? "HFT-5" : base === "hft-t12-tp40-sl3" ? "HFT-6" : base === "hft-t10-tp40-sl3" ? "HFT-7" : base === "hft-t8-tp30-sl3" ? "HFT-8" : base === "hft-t8-tp35-sl3" ? "HFT-9" : base === "hft-t8-tp25-sl3" ? "HFT-10" : base === "hft-regime" ? "HFT-Regime" : base === "hft-smart" ? "HFT-Smart" : base === "hft-ai" ? "HFT-AI" : base === "psar-directional" ? "PSAR" : base === "zlema-directional" ? "ZLEMA" : base === "vortex-directional" ? "Vortex" : base === "schaff-directional" ? "Schaff" : base === "dema-directional" ? "DEMA" : base === "cci-directional" ? "CCI" : base === "aroon-directional" ? "Aroon" : base === "macd-directional" ? "MACD" : base === "zlemav2-directional" ? "ZLEMAv2" : base === "schaffv2-directional" ? "SchaffV2" : base === "ai-directional" ? "AI" : base;
-  return inv ? `inv-${label}` : label;
+  const labels: Record<string, string> = {
+    "funding": "Funding",
+    "ai-directional": "AI",
+    "don-4h-a": "Don-A",
+    "don-4h-b": "Don-B",
+    "don-4h-c": "Don-C",
+    "don-4h-d": "Don-D",
+  };
+  return labels[tradeType] ?? tradeType;
 }
 
 function formatDate(date: Date = new Date(), userId?: string): string {

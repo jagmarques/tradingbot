@@ -1,5 +1,3 @@
-export const STAGNATION_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12h
-
 // Capital allocation
 export const STARTING_CAPITAL_USD = 100;
 export const CAPITAL_PER_STRATEGY_USD = 50;
@@ -35,13 +33,13 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10;
-export const QUANT_DEFAULT_VIRTUAL_BALANCE = 1000; // $100/engine x 10 engines
+export const QUANT_DEFAULT_VIRTUAL_BALANCE = 1000; // $200/engine x 5 engines
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000;
 export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "XRP", "SUI", "TON", "UNI"];
+export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "AVAX", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "SEI", "LINK", "ADA", "WLD", "MKR", "XRP", "SUI", "TON", "UNI"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -66,256 +64,22 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14;
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
-// PSAR
-export const PSAR_DAILY_SMA_PERIOD = 50;
-export const PSAR_DAILY_ADX_MIN = 14;
-export const PSAR_STEP = 0.02;
-export const PSAR_MAX = 0.1;
-export const PSAR_STOP_ATR_MULT = 6.0;
-export const PSAR_REWARD_RISK = 6.0;
-export const PSAR_STAGNATION_BARS = 10;
-export const PSAR_BASE_CONFIDENCE = 65;
-export const PSAR_DAILY_LOOKBACK_DAYS = 150;
-export const PSAR_REVERSE_EXIT = 1;
-export const PSAR_ADX_NOT_DECL = 0;
-export const PSAR_TRAIL_ACTIVATION = 5;
-export const PSAR_TRAIL_DISTANCE = 3;
-
-// ZLEMA
-export const ZLEMA_DAILY_SMA_PERIOD = 75;
-export const ZLEMA_DAILY_ADX_MIN = 10;
-export const ZLEMA_FAST = 10;
-export const ZLEMA_SLOW = 34;
-export const ZLEMA_STOP_ATR_MULT = 4.0;
-export const ZLEMA_REWARD_RISK = 3.0;
-export const ZLEMA_STAGNATION_BARS = 8;
-export const ZLEMA_BASE_CONFIDENCE = 65;
-export const ZLEMA_DAILY_LOOKBACK_DAYS = 150;
-export const ZLEMA_ADX_NOT_DECL = 0;
-export const ZLEMA_REVERSE_EXIT = 0;
-export const ZLEMA_TRAIL_ACTIVATION = 5;
-export const ZLEMA_TRAIL_DISTANCE = 3;
-
-// Vortex
-export const VORTEX_DAILY_SMA_PERIOD = 75;
-export const VORTEX_DAILY_ADX_MIN = 10;
-export const VORTEX_VORTEX_PERIOD = 14;
-export const VORTEX_STOP_ATR_MULT = 4.0;
-export const VORTEX_REWARD_RISK = 4.0;
-export const VORTEX_STAGNATION_BARS = 12;
-export const VORTEX_BASE_CONFIDENCE = 65;
-export const VORTEX_DAILY_LOOKBACK_DAYS = 150;
-export const VORTEX_ADX_NOT_DECL = 1;
-export const VORTEX_REVERSE_EXIT = 0;
-export const VORTEX_TRAIL_ACTIVATION = 5;
-export const VORTEX_TRAIL_DISTANCE = 3;
-
-// Schaff
-export const SCHAFF_DAILY_SMA_PERIOD = 50;
-export const SCHAFF_DAILY_ADX_MIN = 10;
-export const SCHAFF_STC_FAST = 8;
-export const SCHAFF_STC_SLOW = 20;
-export const SCHAFF_STC_CYCLE = 12;
-export const SCHAFF_STC_THRESHOLD = 40;
-export const SCHAFF_STOP_ATR_MULT = 3.0;
-export const SCHAFF_REWARD_RISK = 3.0;
-export const SCHAFF_STAGNATION_BARS = 12;
-export const SCHAFF_BASE_CONFIDENCE = 65;
-export const SCHAFF_DAILY_LOOKBACK_DAYS = 150;
-export const SCHAFF_ADX_NOT_DECL = 0;
-export const SCHAFF_REVERSE_EXIT = 0;
-export const SCHAFF_TRAIL_ACTIVATION = 5;
-export const SCHAFF_TRAIL_DISTANCE = 3;
-
-// DEMA
-export const DEMA_DAILY_SMA_PERIOD = 75;
-export const DEMA_DAILY_ADX_MIN = 10;
-export const DEMA_FAST = 5;
-export const DEMA_SLOW = 21;
-export const DEMA_STOP_ATR_MULT = 3.5;
-export const DEMA_REWARD_RISK = 3.0;
-export const DEMA_STAGNATION_BARS = 12;
-export const DEMA_BASE_CONFIDENCE = 65;
-export const DEMA_DAILY_LOOKBACK_DAYS = 150;
-export const DEMA_ADX_NOT_DECL = 0;
-export const DEMA_REVERSE_EXIT = 0;
-export const DEMA_TRAIL_ACTIVATION = 5;
-export const DEMA_TRAIL_DISTANCE = 3;
-
-// CCI
-export const CCI_DAILY_SMA_PERIOD = 75;
-export const CCI_DAILY_ADX_MIN = 10;
-export const CCI_PERIOD = 14;
-export const CCI_THRESHOLD = 100;
-export const CCI_STOP_ATR_MULT = 3.0;
-export const CCI_REWARD_RISK = 3.0;
-export const CCI_STAGNATION_BARS = 12;
-export const CCI_BASE_CONFIDENCE = 65;
-export const CCI_DAILY_LOOKBACK_DAYS = 150;
-export const CCI_ADX_NOT_DECL = 0;
-export const CCI_REVERSE_EXIT = 1;
-export const CCI_TRAIL_ACTIVATION = 5;
-export const CCI_TRAIL_DISTANCE = 3;
-
-// ZLEMA v2
-export const ZLEMAV2_DAILY_SMA_PERIOD = 75;
-export const ZLEMAV2_DAILY_ADX_MIN = 10;
-export const ZLEMAV2_FAST = 10;
-export const ZLEMAV2_SLOW = 30;
-export const ZLEMAV2_STOP_ATR_MULT = 4.0;
-export const ZLEMAV2_REWARD_RISK = 3.0;
-export const ZLEMAV2_STAGNATION_BARS = 8;
-export const ZLEMAV2_BASE_CONFIDENCE = 65;
-export const ZLEMAV2_DAILY_LOOKBACK_DAYS = 150;
-export const ZLEMAV2_ADX_NOT_DECL = 0;
-export const ZLEMAV2_REVERSE_EXIT = 0;
-export const ZLEMAV2_TRAIL_ACTIVATION = 5;
-export const ZLEMAV2_TRAIL_DISTANCE = 3;
-
-// Schaff v2
-export const SCHAFFV2_DAILY_SMA_PERIOD = 75;
-export const SCHAFFV2_DAILY_ADX_MIN = 0;
-export const SCHAFFV2_STC_FAST = 10;
-export const SCHAFFV2_STC_SLOW = 20;
-export const SCHAFFV2_STC_CYCLE = 10;
-export const SCHAFFV2_STC_THRESHOLD = 40;
-export const SCHAFFV2_STOP_ATR_MULT = 3.5;
-export const SCHAFFV2_REWARD_RISK = 4.0;
-export const SCHAFFV2_STAGNATION_BARS = 8;
-export const SCHAFFV2_BASE_CONFIDENCE = 65;
-export const SCHAFFV2_DAILY_LOOKBACK_DAYS = 150;
-export const SCHAFFV2_ADX_NOT_DECL = 0;
-export const SCHAFFV2_REVERSE_EXIT = 0;
-export const SCHAFFV2_TRAIL_ACTIVATION = 5;
-export const SCHAFFV2_TRAIL_DISTANCE = 3;
-
-// Aroon
-export const AROON_DAILY_SMA_PERIOD = 75;
-export const AROON_DAILY_ADX_MIN = 10;
-export const AROON_PERIOD = 14;
-export const AROON_STOP_ATR_MULT = 4.0;
-export const AROON_REWARD_RISK = 3.0;
-export const AROON_STAGNATION_BARS = 10;
-export const AROON_BASE_CONFIDENCE = 65;
-export const AROON_DAILY_LOOKBACK_DAYS = 150;
-export const AROON_ADX_NOT_DECL = 0;
-export const AROON_REVERSE_EXIT = 0;
-export const AROON_TRAIL_ACTIVATION = 5;
-export const AROON_TRAIL_DISTANCE = 3;
-
-// MACD
-export const MACD_DAILY_SMA_PERIOD = 75;
-export const MACD_DAILY_ADX_MIN = 8;
-export const MACD_FAST = 8;
-export const MACD_SLOW = 17;
-export const MACD_SIGNAL_PERIOD = 7;
-export const MACD_STOP_ATR_MULT = 3.5;
-export const MACD_REWARD_RISK = 3.0;
-export const MACD_STAGNATION_BARS = 8;
-export const MACD_BASE_CONFIDENCE = 65;
-export const MACD_DAILY_LOOKBACK_DAYS = 150;
-export const MACD_ADX_NOT_DECL = 0;
-export const MACD_REVERSE_EXIT = 0;
-export const MACD_TRAIL_ACTIVATION = 5;
-export const MACD_TRAIL_DISTANCE = 3;
-
-// HFT Fade Engine
-export const HFT_FADE_INTERVAL_MS = 5 * 60 * 1000;
-export const HFT_FADE_MIN_RETURN_PCT = 0.08;
-export const HFT_FADE_POSITION_SIZE_USD = 10;
-export const HFT_FADE_LEVERAGE = 10;
-export const HFT_FADE_TP_PCT = 0.40;
-export const HFT_FADE_SL_PCT = 0.05;
-export const HFT_FADE_TRAIL_ACTIVATION = 9999; // disabled
-export const HFT_FADE_TRAIL_DISTANCE = 0.4;
-export const HFT_FADE_STAGNATION_MS = 15 * 60 * 1000;
-export const HFT_FADE_DAILY_LOSS_LIMIT = 10;
-export const HFT_FADE_MIN_VOLUME_24H = 5_000;
-export const HFT_FADE_MAX_CONCURRENT = 10;
-export const HFT_FADE_LIVE_ENABLED = false;
-export const HFT_REGIME_LIVE_ENABLED = true;
-export const HFT_PAPER_SPREAD_PCT = 0.00025;
-
-// HFT Fade Variant t8-tp40-sl3
-export const HFT_T8_TP40_SL3_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP40_SL3_TP_PCT = 0.40;
-export const HFT_T8_TP40_SL3_SL_PCT = 0.03;
-// HFT Fade Variant t10-tp35-sl4
-export const HFT_T10_TP35_SL4_THRESHOLD_PCT = 0.10;
-export const HFT_T10_TP35_SL4_TP_PCT = 0.35;
-export const HFT_T10_TP35_SL4_SL_PCT = 0.04;
-// HFT Fade Variant t8-tp35-sl4
-export const HFT_T8_TP35_SL4_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP35_SL4_TP_PCT = 0.35;
-export const HFT_T8_TP35_SL4_SL_PCT = 0.04;
-// HFT Fade Variant t8-tp25-sl5
-export const HFT_T8_TP25_SL5_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP25_SL5_TP_PCT = 0.25;
-export const HFT_T8_TP25_SL5_SL_PCT = 0.05;
-// HFT Fade Variant t8-tp30-sl5
-export const HFT_T8_TP30_SL5_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP30_SL5_TP_PCT = 0.30;
-export const HFT_T8_TP30_SL5_SL_PCT = 0.05;
-// HFT Fade Variant t12-tp40-sl3
-export const HFT_T12_TP40_SL3_THRESHOLD_PCT = 0.12;
-export const HFT_T12_TP40_SL3_TP_PCT = 0.40;
-export const HFT_T12_TP40_SL3_SL_PCT = 0.03;
-// HFT Fade Variant t10-tp40-sl3
-export const HFT_T10_TP40_SL3_THRESHOLD_PCT = 0.10;
-export const HFT_T10_TP40_SL3_TP_PCT = 0.40;
-export const HFT_T10_TP40_SL3_SL_PCT = 0.03;
-// HFT Fade Variant t8-tp30-sl3
-export const HFT_T8_TP30_SL3_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP30_SL3_TP_PCT = 0.30;
-export const HFT_T8_TP30_SL3_SL_PCT = 0.03;
-// HFT Fade Variant t8-tp35-sl3
-export const HFT_T8_TP35_SL3_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP35_SL3_TP_PCT = 0.35;
-export const HFT_T8_TP35_SL3_SL_PCT = 0.03;
-// HFT Fade Variant t8-tp25-sl3
-export const HFT_T8_TP25_SL3_THRESHOLD_PCT = 0.08;
-export const HFT_T8_TP25_SL3_TP_PCT = 0.25;
-export const HFT_T8_TP25_SL3_SL_PCT = 0.03;
+// Donchian+EMA Engine (4h breakout, 4 paper variants)
+export const DON_ATR_MULT = 3.0;
+export const DON_CANDLES_NEEDED = 50;
+export const DON_STAGNATION_BARS = 12; // 12 × 4h = 48h
+export const DON_TRAIL_ACTIVATION = 25; // leveraged %
+export const DON_TRAIL_DISTANCE = 5;   // leveraged %
 
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
-  "psar-directional": "lighter",
-  "zlema-directional": "lighter",
-  "vortex-directional": "lighter",
-  "schaff-directional": "lighter",
-  "dema-directional": "lighter",
-  "cci-directional": "lighter",
-  "aroon-directional": "lighter",
-  "macd-directional": "lighter",
-  "zlemav2-directional": "lighter",
-  "schaffv2-directional": "lighter",
   "ai-directional": "lighter",
-  "inv-psar-directional": "lighter",
-  "inv-zlema-directional": "lighter",
-  "inv-vortex-directional": "lighter",
-  "inv-schaff-directional": "lighter",
-  "inv-dema-directional": "lighter",
-  "inv-cci-directional": "lighter",
-  "inv-aroon-directional": "lighter",
-  "inv-macd-directional": "lighter",
-  "inv-zlemav2-directional": "lighter",
-  "inv-schaffv2-directional": "lighter",
-  "hft-fade": "lighter",
-  "hft-t8-tp40-sl3": "lighter",
-  "hft-t10-tp35-sl4": "lighter",
-  "hft-t8-tp35-sl4": "lighter",
-  "hft-t8-tp25-sl5": "lighter",
-  "hft-t8-tp30-sl5": "lighter",
-  "hft-t12-tp40-sl3": "lighter",
-  "hft-t10-tp40-sl3": "lighter",
-  "hft-t8-tp30-sl3": "lighter",
-  "hft-t8-tp35-sl3": "lighter",
-  "hft-t8-tp25-sl3": "lighter",
-  "hft-regime": "lighter",
-  "hft-smart": "lighter",
-  "hft-ai": "lighter",
+  "don-4h-a": "lighter",
+  "don-4h-b": "lighter",
+  "don-4h-c": "lighter",
+  "don-4h-d": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
@@ -326,6 +90,7 @@ export function getEngineExchange(tradeType: string): QuantExchange {
 }
 
 export const LIGHTER_TAKER_FEE_PCT = 0;
+export const LIGHTER_PAPER_SPREAD_PCT = 0.0004; // 0.04% half-spread per side
 
 // Hyperliquid Tier 1 maintenance margin rates
 export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
@@ -352,3 +117,5 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   UNI: 0.05,    // 10x max
   TON: 0.05,    // 20x Lighter
 };
+
+

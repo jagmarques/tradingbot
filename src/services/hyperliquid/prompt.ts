@@ -133,25 +133,7 @@ function formatDailyTrend(trend: DailyTrend): string {
   ].join("\n");
 }
 
-export interface TechSignal {
-  engine: string;
-  direction: "long" | "short" | "flat";
-}
-
-function formatTechSignals(signals: TechSignal[]): string {
-  if (!signals.length) return "No technical signals available this cycle.";
-  const lines = signals.map(s => `  ${s.engine}: ${s.direction.toUpperCase()}`);
-  const longs = signals.filter(s => s.direction === "long").length;
-  const shorts = signals.filter(s => s.direction === "short").length;
-  const flats = signals.filter(s => s.direction === "flat").length;
-  lines.push(`  Consensus: ${longs} long, ${shorts} short, ${flats} flat`);
-  if (longs > shorts && longs > flats) lines.push(`  [Engines lean long - consider as one input alongside price action and microstructure]`);
-  else if (shorts > longs && shorts > flats) lines.push(`  [Engines lean short - consider as one input alongside price action and microstructure]`);
-  else lines.push(`  [Mixed engine signals - no clear consensus from technical systems]`);
-  return lines.join("\n");
-}
-
-export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }, dailyTrend?: DailyTrend | null, techSignals?: TechSignal[]): string {
+export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<CandleInterval, OhlcvCandle[]> }, dailyTrend?: DailyTrend | null): string {
   const intervals: CandleInterval[] = ["15m", "1h", "4h", "1d"];
   const fundingPct = (analysis.fundingRate * 100).toFixed(4);
 
@@ -199,7 +181,7 @@ Use funding as confirmation, not primary signal. High funding also erodes edge o
 Detected regime: ${analysis.regime.toUpperCase()}
 ${getRegimeInstruction(analysis.regime)}
 
-${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}${techSignals?.length ? `=== TECHNICAL ENGINE SIGNALS (10 backtested engines) ===\n${formatTechSignals(techSignals)}\n\nThese are live signals from 10 backtested technical engines running on real data. Top engines by backtest Sharpe: ZLEMA 4h (7.0), Aroon (6.7), Schaff (6.6), DEMA (6.3), MACD (5.7), CCI (5.6). Weight higher-Sharpe engines more heavily. Strong consensus (7+ engines agreeing) is a powerful confirmation signal. Mixed signals suggest caution - lean flat.\n\n` : ""}=== INSTRUCTIONS ===
+${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
 The 4h ATR is ${formatNum(analysis.indicators["4h"].atr, 4)}. Use 2-3x ATR for stop-loss distance (${formatNum((analysis.indicators["4h"].atr ?? 0) * 2, 4)} to ${formatNum((analysis.indicators["4h"].atr ?? 0) * 3, 4)} from entry). Stops beyond 5% of entry will be capped automatically.
 
 Return flat when signals contradict, the market is choppy, or there is no clear edge. FLAT IS A VALID AND PROFITABLE DECISION - not trading bad setups preserves capital. You should return flat at least 40-60% of the time across all pairs. Do not force trades.
@@ -214,7 +196,6 @@ Before deciding direction, you MUST reason through BOTH sides:
 - Write a bull case (why price goes up)
 - Write a bear case (why price goes down)
 - Only then decide direction based on which case is stronger
-- If technical engines have consensus, explain why you agree or disagree
 - If both cases are roughly equal, return flat
 
 OUTPUT JSON ONLY (no markdown, no extra text):

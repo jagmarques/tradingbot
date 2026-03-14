@@ -333,7 +333,7 @@ export function sumRecentQuantLosses(withinMs: number, strategy?: string, mode?:
         AND trade_type IN ('ai-directional', 'directional')${modeClause}
     `).get(...params) as typeof row;
   } else {
-    const params: string[] = [cutoff, `${strategy}-directional`];
+    const params: string[] = [cutoff, strategy];
     if (mode) params.push(mode);
     row = db.prepare(`
       SELECT

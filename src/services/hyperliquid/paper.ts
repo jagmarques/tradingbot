@@ -7,46 +7,18 @@ import {
   saveQuantTrade,
   loadOpenQuantPositions,
 } from "../database/quant.js";
-import { QUANT_DEFAULT_VIRTUAL_BALANCE } from "../../config/constants.js";
-import { calcPnl, shouldRecordSlCooldown, rebaseStops } from "./quant-utils.js";
+import { QUANT_DEFAULT_VIRTUAL_BALANCE, LIGHTER_PAPER_SPREAD_PCT } from "../../config/constants.js";
+import { calcPnl, rebaseStops } from "./quant-utils.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ai-directional",
-  "psar-directional",
-  "zlema-directional",
-  "vortex-directional",
-  "schaff-directional",
-  "dema-directional",
-  "cci-directional",
-  "aroon-directional",
-  "macd-directional",
-  "zlemav2-directional",
-  "schaffv2-directional",
-  "inv-psar-directional",
-  "inv-zlema-directional",
-  "inv-vortex-directional",
-  "inv-schaff-directional",
-  "inv-dema-directional",
-  "inv-cci-directional",
-  "inv-aroon-directional",
-  "inv-macd-directional",
-  "inv-zlemav2-directional",
-  "inv-schaffv2-directional",
-  "hft-fade",
-  "hft-t8-tp40-sl3",
-  "hft-t10-tp35-sl4",
-  "hft-t8-tp35-sl4",
-  "hft-t8-tp25-sl5",
-  "hft-t8-tp30-sl5",
-  "hft-t12-tp40-sl3",
-  "hft-t10-tp40-sl3",
-  "hft-t8-tp30-sl3",
-  "hft-t8-tp35-sl3",
-  "hft-t8-tp25-sl3",
-  "hft-regime",
+  "don-4h-a",
+  "don-4h-b",
+  "don-4h-c",
+  "don-4h-d",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();
@@ -251,8 +223,9 @@ export async function paperClosePosition(
     return { success: false, pnl: 0 };
   }
 
-  // Lighter: 0 fees; HL: 0.045% per side
-  const fees = posExchange === "lighter" ? 0 : position.size * position.leverage * 0.00045 * 2;
+  const fees = posExchange === "lighter"
+    ? position.size * position.leverage * LIGHTER_PAPER_SPREAD_PCT * 2
+    : position.size * position.leverage * 0.00045 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
   const rawPnl = calcPnl(position.direction, position.entryPrice, currentPrice, position.size, position.leverage, 0);
 
@@ -308,7 +281,7 @@ export async function paperClosePosition(
   lastFundingAccrual.delete(positionId);
   accumulatedFunding.delete(positionId);
 
-  if (reason === "stop-loss" && shouldRecordSlCooldown(position.tradeType ?? "directional")) {
+  if (reason === "stop-loss") {
     recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
   }
 

@@ -8,7 +8,6 @@ import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
-import { startAllHftSchedulers, stopAllHftSchedulers } from "./hft-fade-engine.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -51,7 +50,6 @@ export function initQuant(): number {
   seedDailyLossFromDb();
   startPositionMonitor();
   startQuantScheduler();
-  startAllHftSchedulers();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
   console.log(`[Quant] Initialized (${getTradingMode()} mode), ${count} open positions`);
@@ -86,7 +84,6 @@ async function verifyLighterConnection(): Promise<void> {
 
 export function stopQuant(): void {
   stopQuantScheduler();
-  stopAllHftSchedulers();
   stopPositionMonitor();
   console.log("[Quant] Stopped");
 }
@@ -127,17 +124,7 @@ export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./
 // AI Engine
 export { analyzeWithAI, runAIDecisionEngine, clearAICache, clearAICacheForPair, getCachedAIDecision } from "./ai-analyzer.js";
 
-// Directional Engines
-export { runPsarDecisionEngine } from "./psar-engine.js";
-export { runZlemaDecisionEngine } from "./zlema-engine.js";
-export { runVortexDecisionEngine } from "./vortex-engine.js";
-export { runSchaffDecisionEngine } from "./schaff-engine.js";
-export { runDEMADecisionEngine } from "./dema-engine.js";
-export { runCCIDecisionEngine } from "./cci-engine.js";
-
 // Lighter DEX
 export { getLighterLivePositions } from "../lighter/executor.js";
 
-// HFT Fade Engine
-export { startAllHftSchedulers, stopAllHftSchedulers } from "./hft-fade-engine.js";
 

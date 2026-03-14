@@ -1,7 +1,7 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, STAGNATION_TIMEOUT_MS, PSAR_STAGNATION_BARS, PSAR_TRAIL_ACTIVATION, PSAR_TRAIL_DISTANCE, ZLEMA_STAGNATION_BARS, ZLEMA_TRAIL_ACTIVATION, ZLEMA_TRAIL_DISTANCE, VORTEX_STAGNATION_BARS, VORTEX_TRAIL_ACTIVATION, VORTEX_TRAIL_DISTANCE, SCHAFF_STAGNATION_BARS, SCHAFF_TRAIL_ACTIVATION, SCHAFF_TRAIL_DISTANCE, DEMA_STAGNATION_BARS, DEMA_TRAIL_ACTIVATION, DEMA_TRAIL_DISTANCE, CCI_STAGNATION_BARS, CCI_TRAIL_ACTIVATION, CCI_TRAIL_DISTANCE, AROON_STAGNATION_BARS, AROON_TRAIL_ACTIVATION, AROON_TRAIL_DISTANCE, MACD_STAGNATION_BARS, MACD_TRAIL_ACTIVATION, MACD_TRAIL_DISTANCE, ZLEMAV2_STAGNATION_BARS, ZLEMAV2_TRAIL_ACTIVATION, ZLEMAV2_TRAIL_DISTANCE, SCHAFFV2_STAGNATION_BARS, SCHAFFV2_TRAIL_ACTIVATION, SCHAFFV2_TRAIL_DISTANCE, HFT_FADE_STAGNATION_MS, HFT_FADE_TRAIL_ACTIVATION, HFT_FADE_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, DON_STAGNATION_BARS, DON_TRAIL_ACTIVATION, DON_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
@@ -13,45 +13,20 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 // Per-engine stagnation
 const H4_MS = 4 * 60 * 60 * 1000;
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "cci-directional": CCI_STAGNATION_BARS * H4_MS,
-  "psar-directional": PSAR_STAGNATION_BARS * H4_MS,
-  "zlema-directional": ZLEMA_STAGNATION_BARS * H4_MS,
-  "vortex-directional": VORTEX_STAGNATION_BARS * H4_MS,
-  "schaff-directional": SCHAFF_STAGNATION_BARS * H4_MS,
-  "dema-directional": DEMA_STAGNATION_BARS * H4_MS,
-  "aroon-directional": AROON_STAGNATION_BARS * H4_MS,
-  "macd-directional": MACD_STAGNATION_BARS * H4_MS,
-  "zlemav2-directional": ZLEMAV2_STAGNATION_BARS * H4_MS,
-  "schaffv2-directional": SCHAFFV2_STAGNATION_BARS * H4_MS,
+  "don-4h-a": DON_STAGNATION_BARS * H4_MS,
+  "don-4h-b": DON_STAGNATION_BARS * H4_MS,
+  "don-4h-c": DON_STAGNATION_BARS * H4_MS,
+  "don-4h-d": DON_STAGNATION_BARS * H4_MS,
   "ai-directional": Infinity, // signal-flip only
-  "hft-fade": HFT_FADE_STAGNATION_MS,
 };
 
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "psar-directional": { activation: PSAR_TRAIL_ACTIVATION, distance: PSAR_TRAIL_DISTANCE },
-  "zlema-directional": { activation: ZLEMA_TRAIL_ACTIVATION, distance: ZLEMA_TRAIL_DISTANCE },
-  "vortex-directional": { activation: VORTEX_TRAIL_ACTIVATION, distance: VORTEX_TRAIL_DISTANCE },
-  "schaff-directional": { activation: SCHAFF_TRAIL_ACTIVATION, distance: SCHAFF_TRAIL_DISTANCE },
-  "dema-directional": { activation: DEMA_TRAIL_ACTIVATION, distance: DEMA_TRAIL_DISTANCE },
-  "cci-directional": { activation: CCI_TRAIL_ACTIVATION, distance: CCI_TRAIL_DISTANCE },
-  "aroon-directional": { activation: AROON_TRAIL_ACTIVATION, distance: AROON_TRAIL_DISTANCE },
-  "macd-directional": { activation: MACD_TRAIL_ACTIVATION, distance: MACD_TRAIL_DISTANCE },
-  "zlemav2-directional": { activation: ZLEMAV2_TRAIL_ACTIVATION, distance: ZLEMAV2_TRAIL_DISTANCE },
-  "schaffv2-directional": { activation: SCHAFFV2_TRAIL_ACTIVATION, distance: SCHAFFV2_TRAIL_DISTANCE },
+  "don-4h-a": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
+  "don-4h-b": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
+  "don-4h-c": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
+  "don-4h-d": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
   "ai-directional": { activation: 20, distance: 5 },
-  "hft-fade": { activation: HFT_FADE_TRAIL_ACTIVATION, distance: HFT_FADE_TRAIL_DISTANCE },
-  // Inverted: activate earlier to lock in profits faster
-  "inv-psar-directional": { activation: 5, distance: 3 },
-  "inv-zlema-directional": { activation: 5, distance: 3 },
-  "inv-vortex-directional": { activation: 5, distance: 3 },
-  "inv-schaff-directional": { activation: 5, distance: 3 },
-  "inv-dema-directional": { activation: 5, distance: 3 },
-  "inv-cci-directional": { activation: 5, distance: 3 },
-  "inv-aroon-directional": { activation: 5, distance: 3 },
-  "inv-macd-directional": { activation: 5, distance: 3 },
-  "inv-zlemav2-directional": { activation: 5, distance: 3 },
-  "inv-schaffv2-directional": { activation: 5, distance: 3 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -134,8 +109,7 @@ async function checkPositionStops(): Promise<void> {
     let lighterMids: Record<string, string> = {};
     const lighterPositions = positions.filter(p => p.exchange === "lighter");
     if (lighterPositions.length > 0 && isLighterInitialized()) {
-      // HFT has its own 2s monitor, skip here
-      const lighterPairs = [...new Set(lighterPositions.filter(p => !p.tradeType?.startsWith("hft-")).map(p => p.pair))];
+      const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
       try {
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
@@ -153,8 +127,8 @@ async function checkPositionStops(): Promise<void> {
 
     // Exchange P&L for live Lighter
     const lighterExchangePnl = new Map<string, number>(); // key: `${pair}:${direction}`
-    const liveLighterNonHft = lighterPositions.filter(p => p.mode === "live" && !p.tradeType?.startsWith("hft-"));
-    if (liveLighterNonHft.length > 0 && isLighterInitialized()) {
+    const liveLighterPositions = lighterPositions.filter(p => p.mode === "live");
+    if (liveLighterPositions.length > 0 && isLighterInitialized()) {
       try {
         const exchangePositions = await getLighterOpenPositions();
         for (const ep of exchangePositions) {
@@ -169,9 +143,6 @@ async function checkPositionStops(): Promise<void> {
 
     let orphanClosed = false;
     for (const position of positions) {
-      // HFT has its own 2s monitor
-      if (position.tradeType?.startsWith("hft-")) continue;
-
       if (position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
@@ -195,8 +166,8 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      // Paper liquidation check (skip hft-*)
-      if (position.mode === "paper" && !position.tradeType?.startsWith("hft-")) {
+      // Paper liquidation check
+      if (position.mode === "paper") {
         const priceDiff = position.direction === "long"
           ? currentPrice - position.entryPrice
           : position.entryPrice - currentPrice;
@@ -234,10 +205,7 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailBaseType = (position.tradeType ?? "").replace(/^inv-/, "");
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""]
-        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
-        ?? DEFAULT_TRAIL;
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
       if (peak > trailCfg.activation) {
         // alert once per live position
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
@@ -269,10 +237,8 @@ async function checkPositionStops(): Promise<void> {
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
-        const baseType = (position.tradeType ?? "").replace(/^inv-/, "");
         const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""]
-          ?? STAGNATION_MS_BY_TRADE_TYPE[baseType]
-          ?? ((position.tradeType ?? "").startsWith("hft-") ? HFT_FADE_STAGNATION_MS : STAGNATION_TIMEOUT_MS);
+          ?? (4 * 60 * 60 * 1000 * 20);
         if (holdMs >= stagnationMs) {
           console.log(
             `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${stagnationMs < 3_600_000 ? `${Math.round(holdMs / 60_000)}m` : `${(holdMs / 3_600_000).toFixed(0)}h`} (limit ${stagnationMs < 3_600_000 ? `${Math.round(stagnationMs / 60_000)}m` : `${(stagnationMs / 3_600_000).toFixed(0)}h`}), P&L ${unrealizedPnlPct.toFixed(2)}%`,
@@ -292,16 +258,14 @@ async function checkPositionStops(): Promise<void> {
         isFinite(position.takeProfit) &&
         position.takeProfit > 0;
 
-      // Cap SL; skip inverted (SL = normal's TP)
-      const isInvertedPos = (position.tradeType ?? "").startsWith("inv-");
       const rawSl = position.stopLoss ?? 0;
       const cappedSl = hasValidStopLoss
-        ? capStopLoss(position.entryPrice, rawSl, position.direction, isInvertedPos)
+        ? capStopLoss(position.entryPrice, rawSl, position.direction)
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       // Near-SL recovery exit
-      if (hasValidStopLoss && !position.tradeType?.startsWith("hft-")) {
+      if (hasValidStopLoss) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
           position.direction === "long"
@@ -346,8 +310,6 @@ async function checkPositionStops(): Promise<void> {
         (position.direction === "long"
           ? currentPrice >= (position.takeProfit ?? 0)
           : currentPrice <= (position.takeProfit ?? 0));
-
-      if (position.tradeType?.startsWith("hft-")) continue; // handled by 2s HFT monitor
 
       // Stop-loss takes priority over take-profit
       if (stopLossBreached) {
@@ -396,14 +358,10 @@ async function checkTrailActivePositions(): Promise<void> {
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
-    // Non-HFT trail-active or near-SL positions only
+    // Trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
-      if (p.tradeType?.startsWith("hft-")) return false;
       if (nearSlIds.has(p.id)) return true;
-      const trailBaseType = (p.tradeType ?? "").replace(/^inv-/, "");
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[p.tradeType ?? ""]
-        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
-        ?? DEFAULT_TRAIL;
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[p.tradeType ?? ""] ?? DEFAULT_TRAIL;
       return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;
     });
 
@@ -461,10 +419,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailBaseType = (position.tradeType ?? "").replace(/^inv-/, "");
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""]
-        ?? TRAIL_CONFIG_BY_ENGINE[trailBaseType]
-        ?? DEFAULT_TRAIL;
+      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
 
       if (peak > trailCfg.activation) {
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
@@ -495,9 +450,8 @@ async function checkTrailActivePositions(): Promise<void> {
 
       // Near-SL recovery
       const rawSlFast = position.stopLoss;
-      const isInvFast = (position.tradeType ?? "").startsWith("inv-");
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
-        ? capStopLoss(position.entryPrice, rawSlFast, position.direction, isInvFast)
+        ? capStopLoss(position.entryPrice, rawSlFast, position.direction)
         : null;
       if (sl) {
         const slDistance = Math.abs(position.entryPrice - sl);
