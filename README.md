@@ -71,33 +71,23 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 
 ### Hyperliquid Quant Trading
 
-Directional trades on 20 perpetual futures pairs via Lighter DEX (technical + AI).
+Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian breakout + AI).
 
 **Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, XRP, SUI, TON, UNI
 
-**11 directional engines (15m cycle):**
-- Technical 4h (8): PSAR, ZLEMA, Vortex, Schaff, DEMA, CCI, Aroon, MACD (all on Lighter)
-- Technical 4h v2 (2): ZLEMAv2, SchaffV2 (on Lighter)
-- AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime, and technical engine signals as context
-- Live (hybrid): AI only on Lighter. Paper: all 10 technical engines
-- 10 inverted engines mirror the technical engines in the opposite direction (4 live: iDEMA, iSchaff, iMACD, iAroon)
-
-**13 HFT fade engines (5m cycle, all paper):**
-- HFT-0 to HFT-10: mean-reversion on overbought/oversold 5m candle closes, parameter variants (TP 0.25–0.40%, SL 0.03–0.05%)
-- HFT-11 (Regime): ATR-adaptive params (TP 0.20–0.35% based on volatility)
-- HFT-12 (Smart): Regime + multi-signal AI score filter (RSI7 extreme + BB breach + volume surge + EMA flat, ≥3/4 required)
-- HFT-13 (AI): Smart + hourly LLM filter per pair (DeepSeek-chat: regime/bias/skipFades, cached 1h)
-- Paper spread simulation: 0.02% per side on entry and exit to model live conditions
+**5 directional engines (15m cycle), all paper:**
+- Donchian 4h (4): Don-A/B/C/D — channel breakout + EMA filter, 4h bars. Entry when last bar breaks lb-bar channel and EMA filter agrees. Exit when last bar close exits ex-bar channel. Params: A=lb12/ex10/ep10, B=lb12/ex10/ep15, C=lb10/ex8/ep10, D=lb10/ex8/ep15
+- AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime context. Currently disabled.
 
 **Execution:**
-- $10 fixed margin per trade, 10x leverage
-- 50 max paper positions, 5 max live positions
+- $10 fixed margin per trade, 10x leverage, $200 virtual balance per engine
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
-- Trailing stop (per-engine config), stagnation exit (technical engines only), stop-loss (ATR-based, 5% max)
-- AI: no stagnation (uses signal-flip only), closes on reversal (long->short or vice versa), flat signals ignored
-- Scheduler runs technical engines first, collects signals per pair, passes to AI as reference context
-- Exchange-level stop-loss orders on both HL and Lighter
+- ATR×3 stop-loss (capped 3.5%), trailing stop activation 25% / distance 5%
+- Donchian stagnation: 48h. AI: signal-flip only (no stagnation)
+- Channel exit fires once per 4h bar (deduplicated by bar timestamp)
+- Paper spread: 0.04% per side on Lighter
+- Exchange-level stop-loss orders on Lighter
 - Bidirectional reconciliation: orphan close + phantom detection
 - 14-day paper validation before live
 
@@ -108,12 +98,11 @@ Directional trades on 20 perpetual futures pairs via Lighter DEX (technical + AI
 | Description | All strategies paper | AI + select engines live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
 | Quant AI engine (R1) | Paper | Live ($10 margin, Lighter) | Live |
-| Quant technical engines (10) | Paper | Paper (Lighter) | Live |
-| Note: live engines also run paper for independent performance tracking ||||
+| Quant Donchian engines (4) | Paper | Paper (Lighter) | Live |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
-- Virtual $1250 quant bankroll ($125/engine x 10 technical engines)
+- Virtual $1000 quant bankroll ($200/engine x 5 engines)
 - Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
 - Simulated funding: accrued hourly from live predicted rates
 - Simulated liquidation: per-pair maintenance margin rates
@@ -160,7 +149,7 @@ Directional trades on 20 perpetual futures pairs via Lighter DEX (technical + AI
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($100/engine x 10) |
+| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($200/engine x 5) |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
