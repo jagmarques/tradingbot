@@ -93,8 +93,7 @@ function evalVariant(
 export interface DonchianEngineOutput {
   tradeType: string;
   decisions: QuantAIDecision[];
-  // pairs where channel exit fired (price broke exit channel for open positions)
-  exitPairs: Set<string>;
+  exitPairs: Map<string, number>; // pair -> last completed 4h bar timestamp
 }
 
 export function runDonchianEngine(
@@ -102,7 +101,7 @@ export function runDonchianEngine(
 ): DonchianEngineOutput[] {
   return VARIANTS.map((variant) => {
     const decisions: QuantAIDecision[] = [];
-    const exitPairs = new Set<string>();
+    const exitPairs = new Map<string, number>();
 
     for (const analysis of analyses) {
       const candles4h = analysis.candles?.["4h"];
@@ -110,12 +109,12 @@ export function runDonchianEngine(
 
       const n = candles4h.length;
 
-      // Check exit channel for existing long/short (scheduler uses this to close open positions)
+      const lastBarClose = candles4h[n - 1].close; // bar close, not mark price — matches backtest
+      const lastBarTime = candles4h[n - 1].timestamp;
       const exLow = Math.min(...candles4h.slice(n - variant.ex - 1, n - 1).map((c) => c.low));
       const exHigh = Math.max(...candles4h.slice(n - variant.ex - 1, n - 1).map((c) => c.high));
-      if (analysis.markPrice <= exLow || analysis.markPrice >= exHigh) {
-        // Let scheduler decide which direction to close based on open position
-        exitPairs.add(analysis.pair);
+      if (lastBarClose <= exLow || lastBarClose >= exHigh) {
+        exitPairs.set(analysis.pair, lastBarTime);
       }
 
       const decision = evalVariant(analysis.pair, analysis.markPrice, analysis.regime, candles4h, variant);

@@ -11,6 +11,7 @@ import type { QuantAIDecision, TradeType } from "./types.js";
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
+const lastExitBarTime = new Map<string, number>(); // dedup channel exits per bar
 
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const stopLossCooldowns = new Map<string, number>();
@@ -118,13 +119,15 @@ export async function runDirectionalCycle(): Promise<void> {
       let count = 0;
       const donOpenPairs = new Set(getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper").map(p => p.pair));
 
-      // Donchian channel exits for open positions
       for (const pos of getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper")) {
-        if (exitPairs.has(pos.pair)) {
-          console.log(`[QuantScheduler] ${tradeType} channel exit: ${pos.pair} ${pos.direction}`);
-          await closePosition(pos.id, `${tradeType}-channel-exit`);
-          donOpenPairs.delete(pos.pair);
-        }
+        const barTime = exitPairs.get(pos.pair);
+        if (barTime === undefined) continue;
+        const lastExitKey = `${tradeType}:${pos.pair}`;
+        if (lastExitBarTime.get(lastExitKey) === barTime) continue; // already processed this bar
+        console.log(`[QuantScheduler] ${tradeType} channel exit: ${pos.pair} ${pos.direction}`);
+        await closePosition(pos.id, `${tradeType}-channel-exit`);
+        lastExitBarTime.set(lastExitKey, barTime);
+        donOpenPairs.delete(pos.pair);
       }
 
       // Donchian entries
