@@ -2,7 +2,6 @@ import type {
   PairAnalysis,
   OhlcvCandle,
   TechnicalIndicators,
-  MarketRegime,
   CandleInterval,
   MicrostructureData,
 } from "./types.js";
@@ -78,31 +77,6 @@ function formatMicrostructure(ms: MicrostructureData | undefined): string {
   ].join("\n");
 }
 
-function getRegimeInstruction(regime: MarketRegime): string {
-  switch (regime) {
-    case "trending":
-      return (
-        "Market is TRENDING. Favor trend-following entries. Look for pullbacks to support/resistance " +
-        "with momentum confirmation (RSI not overbought/oversold, MACD aligned with trend). " +
-        "Set wider stops to ride the trend."
-      );
-    case "ranging":
-      return (
-        "Market is RANGING/SIDEWAYS. Most ranging trades lose money - default to FLAT unless you see a clear extreme. " +
-        "ONLY trade if ALL of these conditions are met: " +
-        "(1) Price is at a Bollinger Band extreme (touching upper or lower band), " +
-        "(2) RSI confirms (>70 for short at upper band, <30 for long at lower band), " +
-        "(3) Orderbook imbalance supports the reversal direction. " +
-        "If ANY condition is missing, return flat. Ranging markets chop - sitting out IS the edge. " +
-        "Do NOT use daily trend bias in ranging markets - trend-following loses when there is no trend."
-      );
-    case "volatile":
-      return (
-        "Market is VOLATILE. Risk is elevated. You MUST return direction: flat. " +
-        "Do not enter new positions in volatile regimes."
-      );
-  }
-}
 
 export interface DailyTrend {
   direction: "bullish" | "bearish" | "neutral";
@@ -155,58 +129,48 @@ export function buildQuantPrompt(analysis: PairAnalysis & { candles?: Record<Can
     })
     .join("\n\n");
 
-  return `You are a quantitative crypto trading analyst. Analyze the following market data and provide a trading decision. Respond with valid JSON only.
+  return `You are a professional quantitative trader at a hedge fund. You trade crypto perpetual futures. You DO NOT use traditional indicators as primary signals — they are lagging and crowded. Instead you read raw price action, volume dynamics, orderbook structure, and positioning data to find short-term edge.
 
-=== MARKET SUMMARY ===
+=== RAW DATA ===
 Pair: ${analysis.pair}-PERP
-Mark Price: ${formatNum(analysis.markPrice, 2)}
-Oracle Price: ${formatNum(analysis.oraclePrice, 2)}
-24h Volume: ${formatNum(analysis.dayVolume, 0)}
-Funding Rate: ${fundingPct}% (per 1h)
-Open Interest: ${formatNum(analysis.openInterest, 0)}
+Mark: ${formatNum(analysis.markPrice, 2)} | Oracle: ${formatNum(analysis.oraclePrice, 2)}
+24h Vol: ${formatNum(analysis.dayVolume, 0)} | OI: ${formatNum(analysis.openInterest, 0)}
+Funding: ${fundingPct}%/1h (positive = longs pay, negative = shorts pay)
 
-=== MULTI-TIMEFRAME ANALYSIS ===
 ${timeframeSections}
 
-=== MARKET MICROSTRUCTURE ===
+=== MICROSTRUCTURE ===
 ${formatMicrostructure(analysis.microstructure)}
 
-=== FUNDING RATE INTERPRETATION ===
-Positive funding (${fundingPct}% > 0): Longs pay shorts. Market is crowded long -- contrarian short signal.
-Negative funding (${fundingPct}% < 0): Shorts pay longs. Market is crowded short -- contrarian long signal.
-Extreme rates (|rate| > 0.01%): Strong contrarian signal -- crowded positioning often precedes reversals.
-Use funding as confirmation, not primary signal. High funding also erodes edge on longer holds.
+${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== HOW YOU THINK ===
+You are NOT a retail trader. Ignore what indicators "say." Instead:
 
-=== REGIME ===
-Detected regime: ${analysis.regime.toUpperCase()}
-${getRegimeInstruction(analysis.regime)}
+1. READ THE CANDLES: What is the actual price doing? Is it making higher highs? Lower lows? Compressing? Expanding? Where did it open vs close? What is the body-to-wick ratio telling you about buyer/seller conviction?
 
-${dailyTrend ? formatDailyTrend(dailyTrend) + "\n\n" : ""}=== INSTRUCTIONS ===
-The 4h ATR is ${formatNum(analysis.indicators["4h"].atr, 4)}. Use 2-3x ATR for stop-loss distance (${formatNum((analysis.indicators["4h"].atr ?? 0) * 2, 4)} to ${formatNum((analysis.indicators["4h"].atr ?? 0) * 3, 4)} from entry). Stops beyond 5% of entry will be capped automatically.
+2. READ THE VOLUME: Is volume increasing into moves (conviction) or decreasing (exhaustion)? Volume spikes at extremes = capitulation/climax. Low volume breakout = likely false.
 
-Return flat when signals contradict, the market is choppy, or there is no clear edge. FLAT IS A VALID AND PROFITABLE DECISION - not trading bad setups preserves capital. You should return flat at least 40-60% of the time across all pairs. Do not force trades.
+3. READ THE ORDERBOOK: Which side has more depth? If bids are 2x asks, there is a floor. If asks dominate, there is a ceiling. Large imbalances precede moves.
 
-CRITICAL RULES:
-1. In RANGING markets: Return flat unless price is at a clear Bollinger Band extreme with RSI confirmation. Most ranging trades lose money.
-2. BOTH directions are valid: Do not develop a bias toward only long or only short. Actively consider both directions - a balanced trader takes longs AND shorts depending on the setup.
-3. Microstructure confirms, not drives: Use long/short ratio, orderbook imbalance, and OI delta to confirm or reject a technical setup, not as standalone signals.
-4. Confidence calibration: 50-60% = weak/skip, 60-70% = moderate, 70-80% = good, 80%+ = very strong. Be honest about uncertainty.
+4. READ THE FUNDING: Extreme positive funding = overleveraged longs = ripe for liquidation cascade down. Extreme negative = overleveraged shorts = squeeze up. This is a positioning signal, not a technical one.
 
-Before deciding direction, you MUST reason through BOTH sides:
-- Write a bull case (why price goes up)
-- Write a bear case (why price goes down)
-- Only then decide direction based on which case is stronger
-- If both cases are roughly equal, return flat
+5. THINK IN PROBABILITIES: What is the expected value of this trade? If the setup has a 55% chance of a 1% move in your favor and 45% chance of a 0.8% move against, that's +EV. If it's a coin flip, return flat.
 
-OUTPUT JSON ONLY (no markdown, no extra text):
+6. SPREAD COST: Every trade costs ~0.08% round trip. Your edge must exceed this. Marginal setups are negative EV after costs. Be selective — flat is profitable when there's no clear edge.
+
+=== RISK ===
+ATR(4h): ${formatNum(analysis.indicators["4h"].atr, 4)}
+Stop distance: 2-3x ATR from entry (max 5% capped).
+You should return flat 50-70% of the time. Only trade clear setups.
+
+OUTPUT JSON ONLY:
 {
-  "bullCase": "<1-2 sentences: strongest argument for price going UP>",
-  "bearCase": "<1-2 sentences: strongest argument for price going DOWN>",
+  "bullCase": "<why price goes up>",
+  "bearCase": "<why price goes down>",
   "direction": "long" | "short" | "flat",
-  "entryPrice": <number - suggested entry price near current mark>,
-  "stopLoss": <number - use 2-3x ATR for stop distance, max 5% from entry>,
-  "takeProfit": <number - take-profit price>,
-  "confidence": <number 0-100 - how confident in this trade>,
-  "reasoning": "<2-3 sentences explaining why the chosen direction wins over the other>"
+  "entryPrice": <number>,
+  "stopLoss": <number>,
+  "takeProfit": <number>,
+  "confidence": <0-100>,
+  "reasoning": "<2-3 sentences: what raw data pattern convinced you>"
 }`;
 }
