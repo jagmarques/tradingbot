@@ -231,7 +231,7 @@ export async function analyzeWithAI(analysis: PairAnalysis, dailyTrend?: DailyTr
 
   let raw: string;
   try {
-    raw = await callDeepSeek(prompt, "deepseek-reasoner", undefined, undefined, "quant");
+    raw = await callDeepSeek(prompt, "deepseek-chat", undefined, undefined, "quant");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[QuantAI] DeepSeek call failed for ${pair}: ${msg}`);

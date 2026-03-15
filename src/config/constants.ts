@@ -48,7 +48,7 @@ export const QUANT_AI_DIRECTIONAL_ENABLED = true;
 export const QUANT_DTF_MR_ENABLED = true;
 export const QUANT_EMA_CROSS_ENABLED = true;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
-export const QUANT_AI_CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1h cache on AI analyses
+export const QUANT_AI_CACHE_TTL_MS = 5 * 60 * 1000; // 5min cache (fast model)
 export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 
 // Quant Risk Management

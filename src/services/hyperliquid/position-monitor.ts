@@ -14,15 +14,15 @@ import { checkDtfMrSignalExit } from "./dtf-mr.js";
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "ai-directional": Infinity, // signal-flip only
-  "dtf-mr": 80 * 45 * 60 * 1000, // Chandelier: 80 bars of 45m = 60h
-  "ema-cross": 150 * 60 * 60 * 1000, // 150 1h bars = 6.25 days
+  "dtf-mr": 80 * 45 * 60 * 1000,
+  "ema-cross": 150 * 60 * 60 * 1000,
 };
 
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "ai-directional": { activation: 20, distance: 5 },
-  "dtf-mr": { activation: 999, distance: 999 }, // Chandelier: trailing managed by engine
-  "ema-cross": { activation: 999, distance: 999 }, // signal exit only
+  "dtf-mr": { activation: 999, distance: 999 },
+  "ema-cross": { activation: 999, distance: 999 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
