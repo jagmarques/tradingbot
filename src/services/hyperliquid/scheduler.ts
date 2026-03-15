@@ -4,9 +4,11 @@ import { calculateQuantPositionSize } from "./kelly.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, QUANT_DTF_MR_ENABLED, QUANT_EMA_CROSS_ENABLED } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
+import { runEmaCrossCycle } from "./ema-cross.js";
+import { runOrderbookCycle } from "./orderbook-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -122,9 +124,29 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
+    // EMA cross engine
+    let emaExecuted = 0;
+    if (QUANT_EMA_CROSS_ENABLED) {
+      try {
+        emaExecuted = await runEmaCrossCycle();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[QuantScheduler] EmaCross cycle error: ${msg}`);
+      }
+    }
+
+    // Orderbook microstructure (data collection, no positions)
+    try {
+      await runOrderbookCycle();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[QuantScheduler] OBMicro cycle error: ${msg}`);
+    }
+
     const aiLog = QUANT_AI_DIRECTIONAL_ENABLED ? `AI ${aiExecuted}/${aiDecisions.length}` : "AI OFF";
     const dtfLog = QUANT_DTF_MR_ENABLED ? `DtfMR ${dtfMrExecuted}` : "DtfMR OFF";
-    console.log(`[QuantScheduler] Cycle: ${aiLog}, ${dtfLog}`);
+    const emaLog = QUANT_EMA_CROSS_ENABLED ? `EMA ${emaExecuted}` : "EMA OFF";
+    console.log(`[QuantScheduler] Cycle: ${aiLog}, ${dtfLog}, ${emaLog}`);
   } finally {
     cycleRunning = false;
   }

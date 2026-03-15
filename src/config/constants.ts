@@ -46,6 +46,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 // Quant Position Sizing
 export const QUANT_AI_DIRECTIONAL_ENABLED = false;
 export const QUANT_DTF_MR_ENABLED = true;
+export const QUANT_EMA_CROSS_ENABLED = true;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
 export const QUANT_AI_CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1h cache on AI analyses
 export const QUANT_FIXED_POSITION_SIZE_USD = 10;
@@ -71,6 +72,7 @@ export type QuantExchange = "hyperliquid" | "lighter";
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "ai-directional": "lighter",
   "dtf-mr": "lighter",
+  "ema-cross": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

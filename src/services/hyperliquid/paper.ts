@@ -16,6 +16,7 @@ import { recordStopLossCooldown } from "./scheduler.js";
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ai-directional",
   "dtf-mr",
+  "ema-cross",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();
