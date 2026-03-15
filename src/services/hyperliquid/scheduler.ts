@@ -36,13 +36,25 @@ function isInStopLossCooldown(pair: string, direction: string, tradeType = "dire
   return true;
 }
 
+// Cache pipeline results to avoid hammering exchange APIs every minute
+let pipelineCache: Awaited<ReturnType<typeof runMarketDataPipeline>> | null = null;
+let pipelineCacheAt = 0;
+const PIPELINE_CACHE_MS = 2 * 60 * 1000; // 2 min
+
+async function getCachedPipeline() {
+  if (pipelineCache && Date.now() - pipelineCacheAt < PIPELINE_CACHE_MS) return pipelineCache;
+  pipelineCache = await runMarketDataPipeline();
+  pipelineCacheAt = Date.now();
+  return pipelineCache;
+}
+
 // Fast cycle: AI engine every 1 min
 async function runAICycle(): Promise<void> {
   if (aiCycleRunning || !QUANT_AI_DIRECTIONAL_ENABLED) return;
   aiCycleRunning = true;
   try {
     if (isQuantKilled()) return;
-    const analyses = await runMarketDataPipeline();
+    const analyses = await getCachedPipeline();
     const openPositions = getOpenQuantPositions();
     const aiDecisions: QuantAIDecision[] = [];
     const aiSignals = new Map<string, "long" | "short" | "flat">();

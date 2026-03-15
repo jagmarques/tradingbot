@@ -2,6 +2,7 @@ import { EMA, ATR } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_TRADING_PAIRS } from "../../config/constants.js";
+import { saveQuantPosition } from "../database/quant.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "dtf-mr" as const;
@@ -128,6 +129,7 @@ export async function updateChandelierStops(): Promise<void> {
         if (pos.stopLoss && newStop > pos.stopLoss) {
           console.log(`[Chandelier] Trail up ${pos.pair} SL ${pos.stopLoss.toFixed(2)} -> ${newStop.toFixed(2)}`);
           pos.stopLoss = newStop;
+          saveQuantPosition(pos);
         }
       } else {
         const ll = Math.min(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.low));
@@ -135,6 +137,7 @@ export async function updateChandelierStops(): Promise<void> {
         if (pos.stopLoss && newStop < pos.stopLoss) {
           console.log(`[Chandelier] Trail dn ${pos.pair} SL ${pos.stopLoss.toFixed(2)} -> ${newStop.toFixed(2)}`);
           pos.stopLoss = newStop;
+          saveQuantPosition(pos);
         }
       }
     } catch (err) {
