@@ -75,12 +75,12 @@ Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian break
 
 **Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, XRP, SUI, TON, UNI
 
-**5 directional engines (15m cycle), all paper:**
-- Donchian 4h (4): Don-A/B/C/D — channel breakout + EMA filter, 4h bars. Entry when last bar breaks lb-bar channel and EMA filter agrees. Exit when last bar close exits ex-bar channel. Params: A=lb12/ex10/ep10, B=lb12/ex10/ep15, C=lb10/ex8/ep10, D=lb10/ex8/ep15
+**1 directional engine (15m cycle):**
 - AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime context. Currently disabled.
+- Donchian 4h engines removed (unprofitable in paper).
 
 **Execution:**
-- $10 fixed margin per trade, 10x leverage, $200 virtual balance per engine
+- $10 fixed margin per trade, 10x leverage, $200 virtual balance (AI engine)
 - $25 rolling 24h drawdown limit per strategy
 - 15-minute cycle, 10s position monitor
 - ATR×3 stop-loss (capped 3.5%), trailing stop activation 25% / distance 5%
@@ -149,7 +149,7 @@ Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian break
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
 | `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$1000` | Quant paper trading balance ($200/engine x 5) |
+| `QUANT_VIRTUAL_BALANCE` | `$200` | Quant paper trading balance (AI engine) |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
 **Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`

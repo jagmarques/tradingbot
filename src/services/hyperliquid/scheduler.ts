@@ -2,16 +2,15 @@ import { analyzeWithAI, clearAICacheForPair } from "./ai-analyzer.js";
 import { fetchDailyCandles, computeDailySma } from "./daily-indicators.js";
 import { calculateQuantPositionSize } from "./kelly.js";
 import { runMarketDataPipeline } from "./pipeline.js";
-import { runDonchianEngine } from "./donchian-engine.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED } from "../../config/constants.js";
-import type { QuantAIDecision, TradeType } from "./types.js";
+import { QUANT_SCHEDULER_INTERVAL_MS, QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
+import type { QuantAIDecision } from "./types.js";
+import { runDtfMrCycle } from "./dtf-mr.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
-const lastExitBarTime = new Map<string, number>(); // dedup channel exits per bar
 
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const stopLossCooldowns = new Map<string, number>();
@@ -112,43 +111,20 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     }
 
-    // Donchian engines (4 paper variants)
-    const donResults = runDonchianEngine(analyses);
-    const donExecuted = new Map<string, number>();
-    for (const { tradeType, decisions, exitPairs } of donResults) {
-      let count = 0;
-      const donOpenPairs = new Set(getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper").map(p => p.pair));
-
-      // Dedup at pair level first, then close ALL positions for that pair
-      const pairsToExit = new Map<string, number>(); // pair -> barTime
-      for (const [pair, barTime] of exitPairs) {
-        if (lastExitBarTime.get(`${tradeType}:${pair}`) !== barTime) pairsToExit.set(pair, barTime);
+    // DualTF Mean Reversion engine
+    let dtfMrExecuted = 0;
+    if (QUANT_DTF_MR_ENABLED) {
+      try {
+        dtfMrExecuted = await runDtfMrCycle();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[QuantScheduler] DtfMR cycle error: ${msg}`);
       }
-      for (const pos of getOpenQuantPositions().filter(p => p.tradeType === tradeType && p.mode === "paper")) {
-        if (!pairsToExit.has(pos.pair)) continue;
-        console.log(`[QuantScheduler] ${tradeType} channel exit: ${pos.pair} ${pos.direction}`);
-        await closePosition(pos.id, `${tradeType}-channel-exit`);
-        donOpenPairs.delete(pos.pair);
-      }
-      for (const [pair, barTime] of pairsToExit) lastExitBarTime.set(`${tradeType}:${pair}`, barTime);
-
-      // Donchian entries
-      for (const decision of decisions) {
-        if (donOpenPairs.has(decision.pair)) continue;
-        if (isInStopLossCooldown(decision.pair, decision.direction, tradeType)) continue;
-        const position = await openPosition(decision.pair, decision.direction as "long" | "short", QUANT_FIXED_POSITION_SIZE_USD, 10, decision.stopLoss, 0, decision.regime, tradeType as TradeType, undefined, decision.entryPrice, true);
-        if (position) {
-          count++;
-          donOpenPairs.add(decision.pair);
-          console.log(`[QuantScheduler] ${tradeType}(paper): Opened ${decision.pair} ${decision.direction} $${QUANT_FIXED_POSITION_SIZE_USD.toFixed(2)} @ ${decision.entryPrice}`);
-        }
-      }
-      donExecuted.set(tradeType, count);
     }
 
     const aiLog = QUANT_AI_DIRECTIONAL_ENABLED ? `AI ${aiExecuted}/${aiDecisions.length}` : "AI OFF";
-    const donLog = Array.from(donExecuted.entries()).map(([tt, n]) => `${tt} ${n}P`).join(", ");
-    console.log(`[QuantScheduler] Cycle: ${aiLog}, ${donLog}`);
+    const dtfLog = QUANT_DTF_MR_ENABLED ? `DtfMR ${dtfMrExecuted}` : "DtfMR OFF";
+    console.log(`[QuantScheduler] Cycle: ${aiLog}, ${dtfLog}`);
   } finally {
     cycleRunning = false;
   }

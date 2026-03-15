@@ -1,32 +1,26 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, DON_STAGNATION_BARS, DON_TRAIL_ACTIVATION, DON_TRAIL_DISTANCE, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifications.js";
+import { checkDtfMrSignalExit } from "./dtf-mr.js";
 
 
 // Per-engine stagnation
-const H4_MS = 4 * 60 * 60 * 1000;
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "don-4h-a": DON_STAGNATION_BARS * H4_MS,
-  "don-4h-b": DON_STAGNATION_BARS * H4_MS,
-  "don-4h-c": DON_STAGNATION_BARS * H4_MS,
-  "don-4h-d": DON_STAGNATION_BARS * H4_MS,
   "ai-directional": Infinity, // signal-flip only
+  "dtf-mr": 80 * 45 * 60 * 1000, // Chandelier: 80 bars of 45m = 60h
 };
 
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "don-4h-a": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
-  "don-4h-b": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
-  "don-4h-c": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
-  "don-4h-d": { activation: DON_TRAIL_ACTIVATION, distance: DON_TRAIL_DISTANCE },
   "ai-directional": { activation: 20, distance: 5 },
+  "dtf-mr": { activation: 999, distance: 999 }, // Chandelier: trailing managed by engine, not monitor
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -34,6 +28,9 @@ let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
 let fastPollInterval: ReturnType<typeof setInterval> | null = null;
 let fastPollRunning = false;
+
+const DTF_MR_CHECK_INTERVAL_MS = 60_000; // check RSI exit once per minute
+const dtfMrLastCheck = new Map<string, number>();
 
 const trailActivatedIds = new Set<string>(); // trail alert dedup
 const closingInProgress = new Set<string>(); // prevent double-close across loops
@@ -234,6 +231,21 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
+      // DtfMR RSI signal exit (throttled to once per 60s per position)
+      if (position.tradeType === "dtf-mr") {
+        const lastCheck = dtfMrLastCheck.get(position.id) ?? 0;
+        if (Date.now() - lastCheck >= DTF_MR_CHECK_INTERVAL_MS) {
+          dtfMrLastCheck.set(position.id, Date.now());
+          try {
+            const exited = await checkDtfMrSignalExit(position.id, position.pair, position.direction);
+            if (exited) continue;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[PositionMonitor] DtfMR signal check failed for ${position.pair}: ${msg}`);
+          }
+        }
+      }
+
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
@@ -335,6 +347,9 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
+    }
+    for (const id of dtfMrLastCheck.keys()) {
+      if (!openIds.has(id)) dtfMrLastCheck.delete(id);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

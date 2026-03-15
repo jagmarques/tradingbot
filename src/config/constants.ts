@@ -33,7 +33,7 @@ export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10;
-export const QUANT_DEFAULT_VIRTUAL_BALANCE = 1000; // $200/engine x 5 engines
+export const QUANT_DEFAULT_VIRTUAL_BALANCE = 200; // $200 for AI engine
 export const HYPERLIQUID_API_TIMEOUT_MS = 10_000;
 export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
@@ -45,6 +45,7 @@ export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant Position Sizing
 export const QUANT_AI_DIRECTIONAL_ENABLED = false;
+export const QUANT_DTF_MR_ENABLED = true;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
 export const QUANT_AI_CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1h cache on AI analyses
 export const QUANT_FIXED_POSITION_SIZE_USD = 10;
@@ -64,22 +65,12 @@ export const QUANT_PAPER_VALIDATION_DAYS = 14;
 // Quant liquidation simulation
 export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 
-// Donchian+EMA Engine (4h breakout, 4 paper variants)
-export const DON_ATR_MULT = 3.0;
-export const DON_CANDLES_NEEDED = 50;
-export const DON_STAGNATION_BARS = 12; // 12 × 4h = 48h
-export const DON_TRAIL_ACTIVATION = 25; // leveraged %
-export const DON_TRAIL_DISTANCE = 5;   // leveraged %
-
 // Exchange routing per engine
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "ai-directional": "lighter",
-  "don-4h-a": "lighter",
-  "don-4h-b": "lighter",
-  "don-4h-c": "lighter",
-  "don-4h-d": "lighter",
+  "dtf-mr": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

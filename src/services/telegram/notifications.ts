@@ -9,10 +9,6 @@ function quantTypeLabel(tradeType: string): string {
   const labels: Record<string, string> = {
     "funding": "Funding",
     "ai-directional": "AI",
-    "don-4h-a": "Don-A",
-    "don-4h-b": "Don-B",
-    "don-4h-c": "Don-C",
-    "don-4h-d": "Don-D",
   };
   return labels[tradeType] ?? tradeType;
 }

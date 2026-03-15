@@ -67,7 +67,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "ai-directional" | "don-4h-a" | "don-4h-b" | "don-4h-c" | "don-4h-d";
+export type TradeType = "directional" | "funding" | "ai-directional" | "dtf-mr";
 
 export type MarketRegime = "trending" | "ranging" | "volatile";
 

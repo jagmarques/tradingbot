@@ -15,10 +15,7 @@ import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ai-directional",
-  "don-4h-a",
-  "don-4h-b",
-  "don-4h-c",
-  "don-4h-d",
+  "dtf-mr",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();
