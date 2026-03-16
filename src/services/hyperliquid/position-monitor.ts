@@ -196,6 +196,18 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
+      // Hard stop: cut losers at -2% unrealized PnL
+      const hardStopPct = 2;
+      const rawPnlPct = position.direction === "long"
+        ? ((currentPrice - position.entryPrice) / position.entryPrice) * (position.leverage ?? 10) * 100
+        : ((position.entryPrice - currentPrice) / position.entryPrice) * (position.leverage ?? 10) * 100;
+      if (rawPnlPct < -hardStopPct) {
+        console.log(`[PositionMonitor] Hard stop: ${position.pair} ${position.direction} pnl=${rawPnlPct.toFixed(1)}% < -${hardStopPct}%`);
+        await tryClose(position, `hard-stop (${rawPnlPct.toFixed(1)}%)`);
+        recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
+        continue;
+      }
+
       // Trailing stop
       const pricePct =
         position.direction === "long"
