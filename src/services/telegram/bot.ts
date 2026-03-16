@@ -2110,6 +2110,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["AI", "ai-directional"],
     ["MR", "dtf-mr"],
     ["MOM", "mom-4h"],
+    ["EMA", "ema-cross"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

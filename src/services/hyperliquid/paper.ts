@@ -17,6 +17,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ai-directional",
   "dtf-mr",
   "mom-4h",
+  "ema-cross",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

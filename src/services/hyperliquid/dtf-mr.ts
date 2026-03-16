@@ -8,35 +8,12 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "dtf-mr" as const;
 const LEVERAGE = 10;
 
-// Chandelier 45m: EMA(8) cross, trail = HH - 3×ATR(14)
+// Chandelier 1h: EMA(8) cross, trail = HH - 3×ATR(14)
 const EMA_PERIOD = 8;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 3;
 const HARD_SL_PCT = 0.04;
 const MAX_HOLD_MS = 80 * 45 * 60 * 1000;
-
-function aggregate45m(candles15m: OhlcvCandle[]): OhlcvCandle[] {
-  const ms = 45 * 60 * 1000;
-  const out: OhlcvCandle[] = [];
-  let i = 0;
-  while (i < candles15m.length) {
-    const bk = Math.floor(candles15m[i].timestamp / ms) * ms;
-    let j = i;
-    while (j < candles15m.length && Math.floor(candles15m[j].timestamp / ms) * ms === bk) j++;
-    const s = candles15m.slice(i, j);
-    out.push({
-      timestamp: bk,
-      open: s[0].open,
-      high: Math.max(...s.map(c => c.high)),
-      low: Math.min(...s.map(c => c.low)),
-      close: s[s.length - 1].close,
-      volume: s.reduce((a, c) => a + c.volume, 0),
-      trades: s.reduce((a, c) => a + c.trades, 0),
-    });
-    i = j;
-  }
-  return out;
-}
 
 function computeEma(candles: OhlcvCandle[]): number[] {
   const closes = candles.map(c => c.close);
@@ -61,10 +38,8 @@ interface ChanSignal {
 }
 
 async function analyzeSignal(pair: string): Promise<ChanSignal | null> {
-  const candles15m = await fetchCandles(pair, "15m", 200);
-  if (candles15m.length < 150) return null;
-
-  const cs = aggregate45m(candles15m);
+  // Use 1h candles directly (best backtest: $19.48/d with trail3/2)
+  const cs = await fetchCandles(pair, "1h", 80);
   if (cs.length < EMA_PERIOD + ATR_PERIOD + 3) return null;
 
   const emaVals = computeEma(cs);
@@ -115,9 +90,8 @@ export async function updateChandelierStops(): Promise<void> {
   const positions = getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE);
   for (const pos of positions) {
     try {
-      const candles15m = await fetchCandles(pos.pair, "15m", 200);
-      if (candles15m.length < 100) continue;
-      const cs = aggregate45m(candles15m);
+      const cs = await fetchCandles(pos.pair, "1h", 80);
+      if (cs.length < 30) continue;
       const atrVals = computeAtr(cs);
       if (atrVals.length < 1) continue;
 
