@@ -68,8 +68,6 @@ async function analyzeSignal(pair: string): Promise<ChanSignal | null> {
     const chanStop = hh - CHAN_MULT * atrLast;
     const hardStop = currentOpen * (1 - HARD_SL_PCT);
     const sl = Math.max(chanStop, hardStop);
-    // Don't open if current price already below stop
-    if (cs[last].close < sl) return null;
     return { pair, direction: "long", entryPrice: currentOpen, stopLoss: sl, emaValue: emaLast };
   }
 
@@ -79,7 +77,6 @@ async function analyzeSignal(pair: string): Promise<ChanSignal | null> {
     const chanStop = ll + CHAN_MULT * atrLast;
     const hardStop = currentOpen * (1 + HARD_SL_PCT);
     const sl = Math.min(chanStop, hardStop);
-    if (cs[last].close > sl) return null;
     return { pair, direction: "short", entryPrice: currentOpen, stopLoss: sl, emaValue: emaLast };
   }
 
