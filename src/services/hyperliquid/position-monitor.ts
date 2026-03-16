@@ -21,8 +21,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "ai-directional": { activation: 20, distance: 5 },
-  "dtf-mr": { activation: 999, distance: 999 },
-  "ema-cross": { activation: 999, distance: 999 },
+  "dtf-mr": { activation: 15, distance: 5 },
+  "ema-cross": { activation: 15, distance: 5 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
