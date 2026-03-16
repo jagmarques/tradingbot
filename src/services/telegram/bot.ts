@@ -780,7 +780,6 @@ async function handlePnl(ctx: Context): Promise<void> {
     const quantPositions = getOpenQuantPositions();
     let quantUnrealized = 0;
     let quantLiveUnrealized = 0;
-    let hlUnrealized = 0;
     let ltUnrealized = 0;
     if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY && quantPositions.length > 0) {
       try {
@@ -850,7 +849,6 @@ async function handlePnl(ctx: Context): Promise<void> {
             if (pos.mode === "live") {
               quantLiveUnrealized += posUnr;
               if (pos.exchange === "lighter") ltUnrealized += posUnr;
-              else hlUnrealized += posUnr;
             }
           }
         }
@@ -875,43 +873,16 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     if (tm === "hybrid") {
       const db = (await import("../database/db.js")).getDb();
-      const hlClosedQ = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total, COUNT(*) as cnt FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange != 'lighter'`).get() as { total: number; cnt: number };
       const ltClosedQ = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total, COUNT(*) as cnt FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number; cnt: number };
-      const hlRealizedQ = hlClosedQ.total;
       const ltRealizedQ = ltClosedQ.total;
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
       const { getOpenQuantPositions: getQPos } = await import("../hyperliquid/executor.js");
       const qOpen = getQPos();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hlOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange !== "lighter");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ltOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange === "lighter");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hlDep = hlOpen.reduce((s: number, p: any) => s + p.size, 0);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ltDep = ltOpen.reduce((s: number, p: any) => s + p.size, 0);
-      // Fetch margin info from exchanges
-      let hlMarginLine = "";
       let ltMarginLine = "";
-      try {
-        const sdk = getClient();
-        const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
-        if (wallet) {
-          const state = await sdk.info.perpetuals.getClearinghouseState(wallet, true);
-          const hlUsed = parseFloat(state.marginSummary.totalMarginUsed) || 0;
-          let hlEq = parseFloat(state.marginSummary.accountValue) || 0;
-          if (hlEq <= hlUsed) {
-            try {
-              const spotState = await sdk.info.spot.getSpotClearinghouseState(wallet, true);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const usdcBal = spotState.balances?.find((b: any) => b.coin === "USDC");
-              if (usdcBal) hlEq = parseFloat(usdcBal.total) || 0;
-            } catch { /* ignore */ }
-          }
-          const hlFree = Math.max(0, hlEq - hlUsed);
-          hlMarginLine = `HL: $${hlUsed.toFixed(0)} locked | $${hlFree.toFixed(0)} free`;
-        }
-      } catch { /* non-fatal */ }
       try {
         const { getLighterAccountInfo, isLighterInitialized: ltInit } = await import("../lighter/client.js");
         if (ltInit()) {
@@ -922,21 +893,8 @@ async function handlePnl(ctx: Context): Promise<void> {
       } catch { /* non-fatal */ }
 
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-      message += `\n<b>Live HL: ${pnl(hlRealizedQ)} ${hlOpen.length}/${hlClosedQ.cnt + hlOpen.length}T ($${hlDep.toFixed(0)}) | unr ${pnl(hlUnrealized)}</b>`;
       message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const lastHl = hlOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const lastLt = ltOpen.sort((a: any, b: any) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())[0];
-      if (hlMarginLine || ltMarginLine) message += "\n";
-      if (hlMarginLine) message += hlMarginLine;
-      if (ltMarginLine) message += (hlMarginLine ? "\n" : "") + ltMarginLine;
-      if (lastHl || lastLt) {
-        const parts: string[] = [];
-        if (lastHl) parts.push(`HL: $${lastHl.size.toFixed(2)} ${lastHl.pair}`);
-        if (lastLt) parts.push(`LT: $${lastLt.size.toFixed(2)} ${lastLt.pair}`);
-        message += `\nLast trade: ${parts.join(" | ")}`;
-      }
+      if (ltMarginLine) message += `\n${ltMarginLine}`;
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
