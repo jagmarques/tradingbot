@@ -8,6 +8,8 @@ import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRE
 import type { QuantAIDecision } from "./types.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
 import { runMomentumCycle } from "./momentum-engine.js";
+import { runWickflowCycle } from "./wickflow-engine.js";
+import { runSkewMrCycle } from "./skewmr-engine.js";
 // import { runOrderbookCycle } from "./orderbook-engine.js";
 
 let fastInterval: ReturnType<typeof setInterval> | null = null;
@@ -146,11 +148,19 @@ async function runSlowCycle(): Promise<void> {
     try { const { runEmaCrossCycle } = await import("./ema-cross.js"); emaExecuted = await runEmaCrossCycle(); }
     catch (err) { console.error(`[QuantScheduler] EMA error: ${err instanceof Error ? err.message : String(err)}`); }
 
+    let wfExecuted = 0;
+    try { wfExecuted = await runWickflowCycle(); }
+    catch (err) { console.error(`[QuantScheduler] WickFlow error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    let skewExecuted = 0;
+    try { skewExecuted = await runSkewMrCycle(); }
+    catch (err) { console.error(`[QuantScheduler] SkewMR error: ${err instanceof Error ? err.message : String(err)}`); }
+
     // OB disabled to reduce API load
     // try { await runOrderbookCycle(); } catch {}
 
     const dtfLog = QUANT_DTF_MR_ENABLED ? `MR ${dtfMrExecuted}` : "MR OFF";
-    console.log(`[QuantScheduler] Slow cycle: ${dtfLog}, Mom ${momExecuted}, EMA ${emaExecuted}`);
+    console.log(`[QuantScheduler] Slow cycle: ${dtfLog}, Mom ${momExecuted}, EMA ${emaExecuted}, WF ${wfExecuted}, Skew ${skewExecuted}`);
   } finally { slowCycleRunning = false; }
 }
 

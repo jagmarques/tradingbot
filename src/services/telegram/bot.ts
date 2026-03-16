@@ -2006,6 +2006,8 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "dtf-mr" ? "[MR]" :
       pos.tradeType === "ema-cross" ? "[EMA]" :
       pos.tradeType === "mom-4h" ? "[MOM]" :
+      pos.tradeType === "wickflow" ? "[WF]" :
+      pos.tradeType === "skew-mr" ? "[SK]" :
       "[??]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2111,6 +2113,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["MR", "dtf-mr"],
     ["MOM", "mom-4h"],
     ["EMA", "ema-cross"],
+    ["WF", "wickflow"],
+    ["SK", "skew-mr"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

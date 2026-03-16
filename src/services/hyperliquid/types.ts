@@ -67,7 +67,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "ai-directional" | "dtf-mr" | "ema-cross" | "mom-4h";
+export type TradeType = "directional" | "funding" | "ai-directional" | "dtf-mr" | "ema-cross" | "mom-4h" | "wickflow" | "skew-mr";
 
 export type MarketRegime = "trending" | "ranging" | "volatile";
 

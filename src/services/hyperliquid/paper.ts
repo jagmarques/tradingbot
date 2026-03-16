@@ -18,6 +18,8 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "dtf-mr",
   "mom-4h",
   "ema-cross",
+  "wickflow",
+  "skew-mr",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

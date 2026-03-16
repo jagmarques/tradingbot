@@ -18,6 +18,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "dtf-mr": 80 * 45 * 60 * 1000,
   "mom-4h": 8 * 4 * 60 * 60 * 1000, // 32h
   "ema-cross": 100 * 60 * 60 * 1000, // 100h
+  "wickflow": 16 * 4 * 60 * 60 * 1000, // 64h
+  "skew-mr": 48 * 2 * 60 * 60 * 1000, // 96h
 };
 
 // Per-engine trailing stop config
@@ -26,6 +28,8 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "dtf-mr": { activation: 2, distance: 1 },
   "mom-4h": { activation: 2, distance: 1 },
   "ema-cross": { activation: 2, distance: 1 },
+  "wickflow": { activation: 2, distance: 1 },
+  "skew-mr": { activation: 2, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 

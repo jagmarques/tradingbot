@@ -74,6 +74,8 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "dtf-mr": "lighter",
   "ema-cross": "lighter",
   "mom-4h": "lighter",
+  "wickflow": "lighter",
+  "skew-mr": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

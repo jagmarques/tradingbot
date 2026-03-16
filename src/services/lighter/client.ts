@@ -264,17 +264,23 @@ export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS):
   return pending;
 }
 
+// Fetch all mids with aggressive caching to avoid 429
+let allMidsCache: { mids: Record<string, string>; at: number } | null = null;
+const ALL_MIDS_CACHE_MS = 30_000; // 30s cache
+
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
-  const entries = await Promise.all(pairs.map(async pair => {
+  if (allMidsCache && Date.now() - allMidsCache.at < ALL_MIDS_CACHE_MS) return allMidsCache.mids;
+  // Fetch sequentially with delays to avoid rate limits
+  const mids: Record<string, string> = {};
+  for (const pair of pairs) {
     try {
       const price = await getLighterMidPrice(pair);
-      return price !== null ? ([pair, price.toString()] as const) : null;
-    } catch (err) {
-      console.error(`[Lighter] Mid price fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-      return null;
-    }
-  }));
-  return Object.fromEntries(entries.filter((e): e is [string, string] => e !== null));
+      if (price !== null) mids[pair] = price.toString();
+    } catch {}
+    await new Promise(r => setTimeout(r, 100)); // 100ms between calls
+  }
+  allMidsCache = { mids, at: Date.now() };
+  return mids;
 }
 
 export async function getLighterOpenPositions(): Promise<{ marketId: number; symbol: string; size: number; side: "long" | "short"; entryPrice: number; unrealizedPnlPct: number }[]> {
