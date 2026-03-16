@@ -3,6 +3,7 @@ import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
+import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
@@ -184,6 +185,7 @@ async function checkPositionStops(): Promise<void> {
           await tryClose(position, `liquidation (equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
+          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }

@@ -97,7 +97,7 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   OP: 0.05,     // 10x max
   DOT: 0.05,    // 10x max
   APT: 0.05,    // 10x max
-  WIF: 0.1,     // 5x HL, 10x Lighter
+  WIF: 0.05,    // 10x Lighter
   ENA: 0.05,    // 10x max
   LDO: 0.05,    // 10x max
   SEI: 0.05,    // 10x max
