@@ -4,10 +4,10 @@ import { calculateQuantPositionSize } from "./kelly.js";
 import { runMarketDataPipeline } from "./pipeline.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, QUANT_DTF_MR_ENABLED, QUANT_EMA_CROSS_ENABLED } from "../../config/constants.js";
+import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED, QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
 import type { QuantAIDecision } from "./types.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
-import { runEmaCrossCycle } from "./ema-cross.js";
+import { runMomentumCycle } from "./momentum-engine.js";
 import { runOrderbookCycle } from "./orderbook-engine.js";
 
 let fastInterval: ReturnType<typeof setInterval> | null = null;
@@ -138,17 +138,14 @@ async function runSlowCycle(): Promise<void> {
       catch (err) { console.error(`[QuantScheduler] DtfMR error: ${err instanceof Error ? err.message : String(err)}`); }
     }
 
-    let emaExecuted = 0;
-    if (QUANT_EMA_CROSS_ENABLED) {
-      try { emaExecuted = await runEmaCrossCycle(); }
-      catch (err) { console.error(`[QuantScheduler] EmaCross error: ${err instanceof Error ? err.message : String(err)}`); }
-    }
+    let momExecuted = 0;
+    try { momExecuted = await runMomentumCycle(); }
+    catch (err) { console.error(`[QuantScheduler] Mom4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
     try { await runOrderbookCycle(); } catch {}
 
     const dtfLog = QUANT_DTF_MR_ENABLED ? `MR ${dtfMrExecuted}` : "MR OFF";
-    const emaLog = QUANT_EMA_CROSS_ENABLED ? `EMA ${emaExecuted}` : "EMA OFF";
-    console.log(`[QuantScheduler] Slow cycle: ${dtfLog}, ${emaLog}`);
+    console.log(`[QuantScheduler] Slow cycle: ${dtfLog}, Mom ${momExecuted}`);
   } finally { slowCycleRunning = false; }
 }
 
