@@ -31,7 +31,7 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "ema-cross": { activation: 2, distance: 1 },
   "wickflow": { activation: 2, distance: 1 },
   "skew-mr": { activation: 2, distance: 1 },
-  "psar": { activation: 999, distance: 999 }, // PSAR has its own trailing
+  "psar": { activation: 3, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -208,8 +208,8 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Hard stop: cut losers at -2%
-      const hardStopPct = 2;
+      // Hard stop: per-engine
+      const hardStopPct = position.tradeType === "psar" ? 7 : 2;
       const rawPnlPct = position.direction === "long"
         ? ((currentPrice - position.entryPrice) / position.entryPrice) * (position.leverage ?? 10) * 100
         : ((position.entryPrice - currentPrice) / position.entryPrice) * (position.leverage ?? 10) * 100;
