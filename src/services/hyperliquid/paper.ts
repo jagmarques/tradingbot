@@ -20,6 +20,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "ema-cross",
   "wickflow",
   "skew-mr",
+  "psar",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

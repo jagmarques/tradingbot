@@ -50,7 +50,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["ai", "dtf-mr", "mom-4h", "ema-cross", "wickflow", "skew-mr"];
+  const strategies = ["ai", "dtf-mr", "mom-4h", "ema-cross", "wickflow", "skew-mr", "psar"];
   const modes: Array<"live" | "paper"> = ["live", "paper"];
   for (const mode of modes) {
     for (const strategy of strategies) {

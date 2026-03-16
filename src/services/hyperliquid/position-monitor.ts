@@ -20,6 +20,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "ema-cross": 100 * 60 * 60 * 1000, // 100h
   "wickflow": 16 * 60 * 60 * 1000, // 16h
   "skew-mr": 48 * 2 * 60 * 60 * 1000, // 96h
+  "psar": 80 * 60 * 60 * 1000, // 80h
 };
 
 // Per-engine trailing stop config
@@ -30,6 +31,7 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "ema-cross": { activation: 2, distance: 1 },
   "wickflow": { activation: 2, distance: 1 },
   "skew-mr": { activation: 2, distance: 1 },
+  "psar": { activation: 999, distance: 999 }, // PSAR has its own trailing
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 

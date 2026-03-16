@@ -1,6 +1,7 @@
 import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
+import { runPsarCycle } from "./psar-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -31,7 +32,11 @@ export async function runDirectionalCycle(): Promise<void> {
       try { executed = await runDtfMrCycle(); }
       catch (err) { console.error(`[QuantScheduler] Chan error: ${err instanceof Error ? err.message : String(err)}`); }
     }
-    console.log(`[QuantScheduler] Cycle: Chan ${executed}`);
+    let psarExecuted = 0;
+    try { psarExecuted = await runPsarCycle(); }
+    catch (err) { console.error(`[QuantScheduler] PSAR error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: Chan ${executed}, SAR ${psarExecuted}`);
   } finally { cycleRunning = false; }
 }
 
