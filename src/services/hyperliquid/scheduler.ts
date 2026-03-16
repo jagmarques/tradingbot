@@ -2,6 +2,9 @@ import { isQuantKilled } from "./risk-manager.js";
 import { QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
 import { runPsarCycle } from "./psar-engine.js";
+import { runHaCycle } from "./ha-engine.js";
+import { runIftRsiCycle } from "./iftrsi-engine.js";
+import { runZlMacdCycle } from "./zlmacd-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -36,7 +39,19 @@ export async function runDirectionalCycle(): Promise<void> {
     try { psarExecuted = await runPsarCycle(); }
     catch (err) { console.error(`[QuantScheduler] PSAR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: Chan ${executed}, SAR ${psarExecuted}`);
+    let haExecuted = 0;
+    try { haExecuted = await runHaCycle(); }
+    catch (err) { console.error(`[QuantScheduler] HA error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    let iftExecuted = 0;
+    try { iftExecuted = await runIftRsiCycle(); }
+    catch (err) { console.error(`[QuantScheduler] IFT error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    let zlExecuted = 0;
+    try { zlExecuted = await runZlMacdCycle(); }
+    catch (err) { console.error(`[QuantScheduler] ZL error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: Chan ${executed}, SAR ${psarExecuted}, HA ${haExecuted}, IFT ${iftExecuted}, ZL ${zlExecuted}`);
   } finally { cycleRunning = false; }
 }
 

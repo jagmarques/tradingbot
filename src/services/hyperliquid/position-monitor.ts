@@ -21,6 +21,9 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "wickflow": 16 * 60 * 60 * 1000, // 16h
   "skew-mr": 48 * 2 * 60 * 60 * 1000, // 96h
   "psar": 80 * 60 * 60 * 1000, // 80h
+  "ha-psar": 80 * 60 * 60 * 1000, // 80h
+  "ift-rsi": 80 * 60 * 60 * 1000, // 80h
+  "zl-macd": 80 * 60 * 60 * 1000, // 80h
 };
 
 // Per-engine trailing stop config
@@ -32,6 +35,9 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "wickflow": { activation: 2, distance: 1 },
   "skew-mr": { activation: 2, distance: 1 },
   "psar": { activation: 3, distance: 1 },
+  "ha-psar": { activation: 3, distance: 1 },
+  "ift-rsi": { activation: 3, distance: 1 },
+  "zl-macd": { activation: 3, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 

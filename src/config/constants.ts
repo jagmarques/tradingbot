@@ -77,6 +77,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "wickflow": "lighter",
   "skew-mr": "lighter",
   "psar": "lighter",
+  "ha-psar": "lighter",
+  "ift-rsi": "lighter",
+  "zl-macd": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
