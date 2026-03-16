@@ -25,13 +25,23 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "ai-directional": { activation: 20, distance: 5 },
-  "dtf-mr": { activation: 1, distance: 0.5 },
-  "mom-4h": { activation: 1, distance: 0.5 },
-  "ema-cross": { activation: 1, distance: 0.5 },
-  "wickflow": { activation: 1, distance: 0.5 },
-  "skew-mr": { activation: 1, distance: 0.5 },
+  "dtf-mr": { activation: 2, distance: 1 },
+  "mom-4h": { activation: 2, distance: 1 },
+  "ema-cross": { activation: 2, distance: 1 },
+  "wickflow": { activation: 2, distance: 1 },
+  "skew-mr": { activation: 2, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
+
+// Intraday hard-stop counter: track recent stops, half size when 3+ in 2h
+const recentHardStops: number[] = []; // timestamps of hard stop exits
+const HARDSTOP_WINDOW_MS = 2 * 60 * 60 * 1000;
+const HARDSTOP_THRESHOLD = 3;
+export function isInDangerMode(): boolean {
+  const now = Date.now();
+  while (recentHardStops.length > 0 && now - recentHardStops[0] > HARDSTOP_WINDOW_MS) recentHardStops.shift();
+  return recentHardStops.length >= HARDSTOP_THRESHOLD;
+}
 
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
@@ -196,13 +206,14 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Hard stop: cut losers at -2% unrealized PnL
-      const hardStopPct = 1;
+      // Hard stop: cut losers at -2%
+      const hardStopPct = 2;
       const rawPnlPct = position.direction === "long"
         ? ((currentPrice - position.entryPrice) / position.entryPrice) * (position.leverage ?? 10) * 100
         : ((position.entryPrice - currentPrice) / position.entryPrice) * (position.leverage ?? 10) * 100;
       if (rawPnlPct < -hardStopPct) {
         console.log(`[PositionMonitor] Hard stop: ${position.pair} ${position.direction} pnl=${rawPnlPct.toFixed(1)}% < -${hardStopPct}%`);
+        recentHardStops.push(Date.now());
         await tryClose(position, `hard-stop (${rawPnlPct.toFixed(1)}%)`);
         recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
         continue;

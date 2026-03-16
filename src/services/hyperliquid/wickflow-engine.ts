@@ -73,8 +73,8 @@ export async function runWickflowCycle(): Promise<number> {
 
       // Dummy SL at 10% for risk gate
       const dummySL = signal.direction === "long"
-        ? signal.entryPrice * 0.99
-        : signal.entryPrice * 1.01;
+        ? signal.entryPrice * 0.98
+        : signal.entryPrice * 1.02;
 
       const position = await openPosition(
         pair, signal.direction, QUANT_FIXED_POSITION_SIZE_USD, LEVERAGE,
