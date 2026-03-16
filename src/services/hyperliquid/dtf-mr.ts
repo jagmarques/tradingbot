@@ -8,10 +8,10 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "dtf-mr" as const;
 const LEVERAGE = 10;
 
-// Chandelier 1h: EMA(8) cross, trail = HH - 4×ATR(14)
+// Chandelier 1h: EMA(8) cross, trail = HH - 2×ATR(14)
 const EMA_PERIOD = 8;
 const ATR_PERIOD = 14;
-const CHAN_MULT = 4;
+const CHAN_MULT = 2;
 const HARD_SL_PCT = 0.04;
 const MAX_HOLD_MS = 80 * 45 * 60 * 1000;
 
