@@ -208,17 +208,18 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Hard stop: per-engine
-      const hardStopPct = position.tradeType === "psar" ? 7 : 2;
-      const rawPnlPct = position.direction === "long"
-        ? ((currentPrice - position.entryPrice) / position.entryPrice) * (position.leverage ?? 10) * 100
-        : ((position.entryPrice - currentPrice) / position.entryPrice) * (position.leverage ?? 10) * 100;
-      if (rawPnlPct < -hardStopPct) {
-        console.log(`[PositionMonitor] Hard stop: ${position.pair} ${position.direction} pnl=${rawPnlPct.toFixed(1)}% < -${hardStopPct}%`);
-        recentHardStops.push(Date.now());
-        await tryClose(position, `hard-stop (${rawPnlPct.toFixed(1)}%)`);
-        recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
-        continue;
+      // Stop-loss check: use position.stopLoss (Chandelier/PSAR update it each cycle)
+      const sl = position.stopLoss;
+      if (sl && isFinite(sl) && sl > 0) {
+        const slHit = (position.direction === "long" && currentPrice <= sl) ||
+          (position.direction === "short" && currentPrice >= sl);
+        if (slHit) {
+          console.log(`[PositionMonitor] Stop hit: ${position.pair} ${position.direction} price=${currentPrice.toFixed(4)} sl=${sl.toFixed(4)}`);
+          recentHardStops.push(Date.now());
+          await tryClose(position, `stop-loss (price=${currentPrice.toPrecision(5)})`);
+          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
+          continue;
+        }
       }
 
       // Trailing stop
