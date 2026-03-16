@@ -8,7 +8,7 @@ import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRE
 import type { QuantAIDecision } from "./types.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
 import { runMomentumCycle } from "./momentum-engine.js";
-import { runOrderbookCycle } from "./orderbook-engine.js";
+// import { runOrderbookCycle } from "./orderbook-engine.js";
 
 let fastInterval: ReturnType<typeof setInterval> | null = null;
 let slowInterval: ReturnType<typeof setInterval> | null = null;
