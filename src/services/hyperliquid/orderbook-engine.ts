@@ -243,7 +243,8 @@ export async function runOrderbookCycle(): Promise<void> {
             ofiAtEntry: signals.ofi,
           });
         } else if (action.action === "exit-neutral" || action.action === "exit-time") {
-          const vPos = virtualPositions.get(pair)!;
+          const vPos = virtualPositions.get(pair);
+          if (!vPos) continue;
           const pnlPct = vPos.direction === "long"
             ? ((signals.midPrice - vPos.entryPrice) / vPos.entryPrice) * 100
             : ((vPos.entryPrice - signals.midPrice) / vPos.entryPrice) * 100;
@@ -252,7 +253,8 @@ export async function runOrderbookCycle(): Promise<void> {
           );
           virtualPositions.delete(pair);
         } else if (action.action === "hold") {
-          const vPos = virtualPositions.get(pair)!;
+          const vPos = virtualPositions.get(pair);
+          if (!vPos) continue;
           const pnlPct = vPos.direction === "long"
             ? ((signals.midPrice - vPos.entryPrice) / vPos.entryPrice) * 100
             : ((vPos.entryPrice - signals.midPrice) / vPos.entryPrice) * 100;
