@@ -12,7 +12,7 @@ const LEVERAGE = 10;
 const EMA_PERIOD = 8;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 3;
-const HARD_SL_PCT = 0.02;
+const HARD_SL_PCT = 0.01;
 const MAX_HOLD_MS = 80 * 45 * 60 * 1000;
 
 function computeEma(candles: OhlcvCandle[]): number[] {

@@ -1,4 +1,4 @@
-// WickFlow: wick-to-body pressure scoring over 6 bars (4h), fixed 64h hold
+// WickFlow: wick-to-body pressure scoring over 6 bars (1h), fixed 16h hold
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_TRADING_PAIRS } from "../../config/constants.js";
@@ -7,9 +7,9 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "wickflow" as const;
 const LEVERAGE = 10;
 const SCORE_BARS = 6;
-const SCORE_THRESHOLD = 2;
-const HOLD_BARS = 16; // 16 × 4h = 64h
-const HOLD_MS = HOLD_BARS * 4 * 60 * 60 * 1000;
+const SCORE_THRESHOLD = 1.5;
+const HOLD_BARS = 16; // 16 × 1h = 16h
+const HOLD_MS = HOLD_BARS * 60 * 60 * 1000;
 
 function wickScore(candles: OhlcvCandle[]): number {
   let score = 0;
@@ -33,7 +33,7 @@ interface WickSignal {
 }
 
 async function analyzeSignal(pair: string): Promise<WickSignal | null> {
-  const candles = await fetchCandles(pair, "4h", 20);
+  const candles = await fetchCandles(pair, "1h", 20);
   if (candles.length < SCORE_BARS + 2) return null;
 
   const last = candles.length - 1;
@@ -73,8 +73,8 @@ export async function runWickflowCycle(): Promise<number> {
 
       // Dummy SL at 10% for risk gate
       const dummySL = signal.direction === "long"
-        ? signal.entryPrice * 0.98
-        : signal.entryPrice * 1.02;
+        ? signal.entryPrice * 0.99
+        : signal.entryPrice * 1.01;
 
       const position = await openPosition(
         pair, signal.direction, QUANT_FIXED_POSITION_SIZE_USD, LEVERAGE,
