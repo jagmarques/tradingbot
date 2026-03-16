@@ -27,7 +27,7 @@ export function calculateQuantPositionSize(
 
   if (effectiveStop <= 0) return 0;
 
-  const minConfidence = 65;
+  const minConfidence = 50;
   if (confidence < minConfidence) return 0;
 
   const edge = winProb - 0.5;
