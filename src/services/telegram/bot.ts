@@ -2188,7 +2188,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       liveOpenTotal += openCountByKey.get(lk) ?? 0;
     }
 
-    const paper = renderEngineBlock(engines.filter(([, t]) => (t !== "ai-directional" || !QUANT_AI_DIRECTIONAL_ENABLED) && !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
+    const paper = renderEngineBlock(engines.filter(([, t]) => !QUANT_HYBRID_LIVE_ENGINES.has(t)), "paper");
 
     if (liveBlock) {
       text += `\n<b>-- Live --</b>\n`;
