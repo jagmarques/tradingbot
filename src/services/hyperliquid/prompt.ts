@@ -160,7 +160,15 @@ You are NOT a retail trader. Ignore what indicators "say." Instead:
 === RISK ===
 ATR(4h): ${formatNum(analysis.indicators["4h"].atr, 4)}
 Stop distance: 2-3x ATR from entry (max 5% capped).
-Be decisive. Take trades when you see any edge. Use confidence 60-80 for normal setups, 80+ for strong ones. Only return flat when the data is truly contradictory.
+Be decisive. Take trades when you see edge. Only return flat when the data is truly contradictory or there is no identifiable setup.
+
+=== CONFIDENCE CALIBRATION ===
+Your confidence MUST reflect actual setup quality. Do NOT default to the same number for every trade.
+- 55-64: Marginal edge, weak signal alignment, one timeframe agrees
+- 65-74: Moderate edge, two timeframes agree, some volume confirmation
+- 75-84: Strong setup, multiple signals align (price action + volume + orderbook + funding)
+- 85-95: Exceptional, rare — extreme positioning (funding/OI), climax volume, clear multi-TF trend
+Think about what SPECIFICALLY makes this setup stronger or weaker than average, and let that drive your number. Avoid round numbers like 65, 70, 75 — use precise values like 67, 73, 81.
 
 OUTPUT JSON ONLY:
 {
@@ -170,7 +178,7 @@ OUTPUT JSON ONLY:
   "entryPrice": <number>,
   "stopLoss": <number>,
   "takeProfit": <number>,
-  "confidence": <0-100>,
+  "confidence": <55-95, calibrated to setup quality — see above>,
   "reasoning": "<2-3 sentences: what raw data pattern convinced you>"
 }`;
 }

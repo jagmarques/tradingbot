@@ -20,7 +20,9 @@ const AI_CYCLE_MS = 60 * 1000; // 1 min for AI
 const SLOW_CYCLE_MS = 15 * 60 * 1000; // 15 min for Chandelier/EMA
 
 const STOP_LOSS_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const FLIP_COOLDOWN_MS = 30 * 60 * 1000; // 30 min after signal-flip before re-entering same pair
 const stopLossCooldowns = new Map<string, number>();
+const flipCooldowns = new Map<string, number>(); // pair -> timestamp of last flip close
 
 export function recordStopLossCooldown(pair: string, direction: string, tradeType = "directional"): void {
   const key = `${pair}:${direction}:${tradeType}`;
@@ -33,6 +35,18 @@ function isInStopLossCooldown(pair: string, direction: string, tradeType = "dire
   const ts = stopLossCooldowns.get(key);
   if (!ts) return false;
   if (Date.now() - ts > STOP_LOSS_COOLDOWN_MS) { stopLossCooldowns.delete(key); return false; }
+  return true;
+}
+
+function recordFlipCooldown(pair: string): void {
+  flipCooldowns.set(pair, Date.now());
+  console.log(`[QuantScheduler] Flip cooldown: ${pair} (30m)`);
+}
+
+function isInFlipCooldown(pair: string): boolean {
+  const ts = flipCooldowns.get(pair);
+  if (!ts) return false;
+  if (Date.now() - ts > FLIP_COOLDOWN_MS) { flipCooldowns.delete(pair); return false; }
   return true;
 }
 
@@ -90,7 +104,7 @@ async function runAICycle(): Promise<void> {
       if (signal !== "flat" && signal !== pos.direction) {
         console.log(`[QuantScheduler] Signal flip: ${pos.pair} ${pos.direction}->${signal}`);
         const result = await closePosition(pos.id, `signal-flip (${pos.direction}->${signal})`);
-        if (result.success) { aiOpenPairs.delete(pos.pair); clearAICacheForPair(pos.pair); }
+        if (result.success) { aiOpenPairs.delete(pos.pair); clearAICacheForPair(pos.pair); recordFlipCooldown(pos.pair); }
       }
     }
 
@@ -100,6 +114,7 @@ async function runAICycle(): Promise<void> {
       if (decision.suggestedSizeUsd <= 0 || decision.direction === "flat") continue;
       if (aiOpenPairs.has(decision.pair)) continue;
       if (isInStopLossCooldown(decision.pair, decision.direction, "ai-directional")) continue;
+      if (isInFlipCooldown(decision.pair)) continue;
       const invConflict = openPositions.find(p => p.mode === "live" && p.exchange === "lighter" && QUANT_HYBRID_LIVE_ENGINES.has(p.tradeType ?? "") && p.pair === decision.pair && p.direction !== decision.direction);
       if (invConflict) continue;
       const position = await openPosition(decision.pair, decision.direction, QUANT_FIXED_POSITION_SIZE_USD, 10, decision.stopLoss, decision.takeProfit, decision.regime, "ai-directional", undefined, decision.entryPrice);
