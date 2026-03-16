@@ -44,7 +44,7 @@ export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant Position Sizing
-export const QUANT_AI_DIRECTIONAL_ENABLED = true;
+export const QUANT_AI_DIRECTIONAL_ENABLED = false;
 export const QUANT_DTF_MR_ENABLED = true;
 export const QUANT_EMA_CROSS_ENABLED = true;
 export const QUANT_AI_KELLY_FRACTION = 0.25;
