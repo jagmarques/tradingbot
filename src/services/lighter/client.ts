@@ -266,7 +266,7 @@ export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS):
 
 // Fetch all mids with aggressive caching to avoid 429
 let allMidsCache: { mids: Record<string, string>; at: number } | null = null;
-const ALL_MIDS_CACHE_MS = 30_000; // 30s cache
+const ALL_MIDS_CACHE_MS = 15_000; // 15s cache
 
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   if (allMidsCache && Date.now() - allMidsCache.at < ALL_MIDS_CACHE_MS) return allMidsCache.mids;
