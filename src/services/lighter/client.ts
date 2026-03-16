@@ -222,7 +222,7 @@ export function toPriceUnits(price: number, decimals: number): number {
 
 const midPriceCache = new Map<string, { price: number; at: number }>();
 const midPricePending = new Map<string, Promise<number | null>>();
-const MID_PRICE_CACHE_MS = 5_000;
+const MID_PRICE_CACHE_MS = 10_000;
 
 // On error, returns stale cached price (never null if cache exists)
 export function getLighterMidPrice(pair: string, maxAgeMs = MID_PRICE_CACHE_MS): Promise<number | null> {

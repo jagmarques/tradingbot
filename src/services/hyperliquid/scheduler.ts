@@ -146,7 +146,8 @@ async function runSlowCycle(): Promise<void> {
     try { const { runEmaCrossCycle } = await import("./ema-cross.js"); emaExecuted = await runEmaCrossCycle(); }
     catch (err) { console.error(`[QuantScheduler] EMA error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    try { await runOrderbookCycle(); } catch {}
+    // OB disabled to reduce API load
+    // try { await runOrderbookCycle(); } catch {}
 
     const dtfLog = QUANT_DTF_MR_ENABLED ? `MR ${dtfMrExecuted}` : "MR OFF";
     console.log(`[QuantScheduler] Slow cycle: ${dtfLog}, Mom ${momExecuted}, EMA ${emaExecuted}`);

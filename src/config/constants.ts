@@ -54,8 +54,8 @@ export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;
 export const QUANT_MAX_SL_PCT = 3.5;
-export const QUANT_POSITION_MONITOR_INTERVAL_MS = 30_000;
-export const QUANT_TRAIL_FAST_POLL_MS = 15_000;
+export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
+export const QUANT_TRAIL_FAST_POLL_MS = 3_000;
 
 // Directional Trading Scheduler
 export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
