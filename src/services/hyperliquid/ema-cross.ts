@@ -60,10 +60,11 @@ async function checkSignalExit(pair: string, direction: "long" | "short"): Promi
   const sOff = closes.length - slowVals.length;
   const last = closes.length - 1;
 
-  const fPrev = fastVals[last - 1 - fOff]!;
-  const sPrev = slowVals[last - 1 - sOff]!;
-  const fPrev2 = fastVals[last - 2 - fOff]!;
-  const sPrev2 = slowVals[last - 2 - sOff]!;
+  const fPrev = fastVals[last - 1 - fOff];
+  const sPrev = slowVals[last - 1 - sOff];
+  const fPrev2 = fastVals[last - 2 - fOff];
+  const sPrev2 = slowVals[last - 2 - sOff];
+  if (fPrev === undefined || sPrev === undefined || fPrev2 === undefined || sPrev2 === undefined) return false;
 
   const flipUp = fPrev > sPrev && fPrev2 <= sPrev2;
   const flipDn = fPrev < sPrev && fPrev2 >= sPrev2;

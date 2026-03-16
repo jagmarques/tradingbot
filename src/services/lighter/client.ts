@@ -276,7 +276,7 @@ export async function getLighterAllMids(pairs: string[]): Promise<Record<string,
     try {
       const price = await getLighterMidPrice(pair);
       if (price !== null) mids[pair] = price.toString();
-    } catch {}
+    } catch { /* skip pair */ }
     await new Promise(r => setTimeout(r, 100)); // 100ms between calls
   }
   allMidsCache = { mids, at: Date.now() };

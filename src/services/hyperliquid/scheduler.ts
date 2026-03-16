@@ -57,7 +57,7 @@ let pipelineCache: Awaited<ReturnType<typeof runMarketDataPipeline>> | null = nu
 let pipelineCacheAt = 0;
 const PIPELINE_CACHE_MS = 2 * 60 * 1000; // 2 min
 
-async function getCachedPipeline() {
+async function getCachedPipeline(): Promise<Awaited<ReturnType<typeof runMarketDataPipeline>>> {
   if (pipelineCache && Date.now() - pipelineCacheAt < PIPELINE_CACHE_MS) return pipelineCache;
   pipelineCache = await runMarketDataPipeline();
   pipelineCacheAt = Date.now();
