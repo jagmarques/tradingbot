@@ -23,7 +23,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "dtf-mr": { activation: 2, distance: 1 },
   "psar": { activation: 3, distance: 1 },
-  "ha-chan": { activation: 1, distance: 0.5 },
+  "ha-chan": { activation: 2, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -286,8 +286,9 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Near-SL recovery exit
-      if (hasValidStopLoss) {
+      // Skip near-SL for Chandelier engines
+      const skipNearSl = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan";
+      if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
           position.direction === "long"
@@ -470,12 +471,13 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Near-SL recovery
+      // Skip near-SL for Chandelier engines
+      const skipNearSlFast = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)
         : null;
-      if (sl) {
+      if (sl && !skipNearSlFast) {
         const slDistance = Math.abs(position.entryPrice - sl);
         const priceDistanceTowardSl =
           position.direction === "long"

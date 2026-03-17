@@ -10,7 +10,7 @@ const TRADE_TYPE = "ha-chan" as const;
 const LEVERAGE = 10;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 6;
-const MAX_HOLD_MS = 60 * 60 * 60 * 1000;
+const MAX_HOLD_MS = 80 * 60 * 60 * 1000;
 
 interface HaBar { open: number; close: number; }
 
