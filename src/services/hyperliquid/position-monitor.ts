@@ -23,7 +23,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "dtf-mr": { activation: 2, distance: 1 },
   "psar": { activation: 3, distance: 1 },
-  "ha-chan": { activation: 2, distance: 1 },
+  "ha-chan": { activation: 1, distance: 0.5 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
