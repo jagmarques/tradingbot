@@ -17,6 +17,7 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "dtf-mr",
   "psar",
   "ha-chan",
+  "ema3-chan",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

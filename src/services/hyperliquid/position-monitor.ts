@@ -17,6 +17,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "dtf-mr": 80 * 60 * 60 * 1000,
   "psar": 80 * 60 * 60 * 1000,
   "ha-chan": 80 * 60 * 60 * 1000,
+  "ema3-chan": 80 * 60 * 60 * 1000,
 };
 
 // Per-engine trailing stop config
@@ -24,6 +25,7 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
   "dtf-mr": { activation: 2, distance: 1 },
   "psar": { activation: 3, distance: 1 },
   "ha-chan": { activation: 2, distance: 1 },
+  "ema3-chan": { activation: 2, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -287,7 +289,7 @@ async function checkPositionStops(): Promise<void> {
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       // Skip near-SL for Chandelier engines
-      const skipNearSl = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan";
+      const skipNearSl = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan" || position.tradeType === "ema3-chan";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
@@ -472,7 +474,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for Chandelier engines
-      const skipNearSlFast = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan";
+      const skipNearSlFast = position.tradeType === "dtf-mr" || position.tradeType === "ha-chan" || position.tradeType === "ema3-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)

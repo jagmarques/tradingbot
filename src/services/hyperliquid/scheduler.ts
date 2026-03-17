@@ -2,6 +2,7 @@ import { isQuantKilled } from "./risk-manager.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
 import { runPsarCycle } from "./psar-engine.js";
 import { runHaChanCycle } from "./ha-chan-engine.js";
+import { runEma3ChanCycle } from "./ema3-chan-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -39,7 +40,11 @@ export async function runDirectionalCycle(): Promise<void> {
     try { hcExecuted = await runHaChanCycle(); }
     catch (err) { console.error(`[QuantScheduler] HAChan error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: Chan ${chanExecuted}, SAR ${psarExecuted}, HAChan ${hcExecuted}`);
+    let e3Executed = 0;
+    try { e3Executed = await runEma3ChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] EMA3 error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: Chan ${chanExecuted}, SAR ${psarExecuted}, HAChan ${hcExecuted}, EMA3 ${e3Executed}`);
   } finally { cycleRunning = false; }
 }
 
