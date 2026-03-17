@@ -16,16 +16,14 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "ha-chan": 80 * 60 * 60 * 1000,
   "accel-chan": 80 * 60 * 60 * 1000,
-  "zlema-chan": 80 * 60 * 60 * 1000,
-  "elder-chan": 80 * 60 * 60 * 1000,
+  "garch-chan": 80 * 60 * 60 * 1000,
 };
 
-// Per-engine trailing stop config
+// Per-engine trailing stop config (validated on 1m candles)
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "ha-chan": { activation: 2, distance: 1 },
-  "accel-chan": { activation: 2, distance: 1 },
-  "zlema-chan": { activation: 2, distance: 1 },
-  "elder-chan": { activation: 2, distance: 1 },
+  "ha-chan": { activation: 8, distance: 5 },
+  "accel-chan": { activation: 8, distance: 5 },
+  "garch-chan": { activation: 8, distance: 5 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -289,7 +287,7 @@ async function checkPositionStops(): Promise<void> {
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       // Skip near-SL for Chandelier engines
-      const skipNearSl = position.tradeType === "ha-chan" || position.tradeType === "accel-chan" || position.tradeType === "zlema-chan" || position.tradeType === "elder-chan";
+      const skipNearSl = position.tradeType === "ha-chan" || position.tradeType === "accel-chan" || position.tradeType === "garch-chan";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
@@ -474,7 +472,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for Chandelier engines
-      const skipNearSlFast = position.tradeType === "ha-chan" || position.tradeType === "accel-chan" || position.tradeType === "zlema-chan" || position.tradeType === "elder-chan";
+      const skipNearSlFast = position.tradeType === "ha-chan" || position.tradeType === "accel-chan" || position.tradeType === "garch-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)

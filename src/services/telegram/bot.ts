@@ -2004,6 +2004,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     const typeTag =
       pos.tradeType === "ha-chan" ? "[HC]" :
       pos.tradeType === "accel-chan" ? "[AC]" :
+      pos.tradeType === "garch-chan" ? "[GR]" :
       pos.tradeType === "zlema-chan" ? "[ZL]" :
       pos.tradeType === "elder-chan" ? "[EL]" :
       "[??]";
@@ -2109,8 +2110,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const engines: [string, string][] = [
     ["HC", "ha-chan"],
     ["AC", "accel-chan"],
-    ["ZL", "zlema-chan"],
-    ["EL", "elder-chan"],
+    ["GR", "garch-chan"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

@@ -67,8 +67,7 @@ export type QuantExchange = "hyperliquid" | "lighter";
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "ha-chan": "lighter",
   "accel-chan": "lighter",
-  "zlema-chan": "lighter",
-  "elder-chan": "lighter",
+  "garch-chan": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

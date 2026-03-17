@@ -1,8 +1,7 @@
 import { isQuantKilled } from "./risk-manager.js";
 import { runHaChanCycle } from "./ha-chan-engine.js";
 import { runAccelChanCycle } from "./accel-chan-engine.js";
-import { runZlemaChanCycle } from "./zlema-chan-engine.js";
-import { runElderChanCycle } from "./elder-chan-engine.js";
+import { runGarchChanCycle } from "./garch-chan-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -37,15 +36,11 @@ export async function runDirectionalCycle(): Promise<void> {
     try { ac = await runAccelChanCycle(); }
     catch (err) { console.error(`[QuantScheduler] Accel error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let zl = 0;
-    try { zl = await runZlemaChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] ZLEMA error: ${err instanceof Error ? err.message : String(err)}`); }
+    let gr = 0;
+    try { gr = await runGarchChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] GARCH error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let el = 0;
-    try { el = await runElderChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] Elder error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    console.log(`[QuantScheduler] Cycle: HC ${hc}, Accel ${ac}, ZLEMA ${zl}, Elder ${el}`);
+    console.log(`[QuantScheduler] Cycle: HC ${hc}, Accel ${ac}, GARCH ${gr}`);
   } finally { cycleRunning = false; }
 }
 
