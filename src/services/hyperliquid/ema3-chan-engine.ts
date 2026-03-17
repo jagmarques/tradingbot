@@ -1,4 +1,4 @@
-// EMA(3) cross entry + Chandelier m6 exit engine
+// EMA(2) cross entry + Chandelier m6 exit engine
 import { EMA, ATR } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
@@ -8,7 +8,7 @@ import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "ema3-chan" as const;
 const LEVERAGE = 10;
-const EMA_PERIOD = 3;
+const EMA_PERIOD = 2;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 6;
 const MAX_HOLD_MS = 80 * 60 * 60 * 1000;
