@@ -13,7 +13,7 @@ const EMA_PERIOD = 5;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 5;
 const HARD_SL_PCT = 0.02;
-const MAX_HOLD_MS = 80 * 45 * 60 * 1000;
+const MAX_HOLD_MS = 80 * 60 * 60 * 1000; // 80 bars * 1h
 
 function computeEma(candles: OhlcvCandle[]): number[] {
   const closes = candles.map(c => c.close);
@@ -176,9 +176,4 @@ export async function runDtfMrCycle(): Promise<number> {
   }
 
   return executed;
-}
-
-// No-op: stops handled by position monitor
-export async function checkDtfMrSignalExit(_positionId: string, _pair: string, _direction: "long" | "short"): Promise<boolean> {
-  return false;
 }

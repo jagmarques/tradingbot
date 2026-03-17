@@ -9,12 +9,12 @@ import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifications.js";
-import { checkDtfMrSignalExit } from "./dtf-mr.js";
+
 
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "dtf-mr": 80 * 45 * 60 * 1000,
+  "dtf-mr": 80 * 60 * 60 * 1000,
   "psar": 80 * 60 * 60 * 1000,
   "ha-chan": 80 * 60 * 60 * 1000,
 };
@@ -41,9 +41,6 @@ let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let monitorRunning = false;
 let fastPollInterval: ReturnType<typeof setInterval> | null = null;
 let fastPollRunning = false;
-
-const DTF_MR_CHECK_INTERVAL_MS = 60_000; // check RSI exit once per minute
-const dtfMrLastCheck = new Map<string, number>();
 
 const trailActivatedIds = new Set<string>(); // trail alert dedup
 const closingInProgress = new Set<string>(); // prevent double-close across loops
@@ -259,21 +256,6 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // DtfMR RSI signal exit (throttled to once per 60s per position)
-      if (position.tradeType === "dtf-mr") {
-        const lastCheck = dtfMrLastCheck.get(position.id) ?? 0;
-        if (Date.now() - lastCheck >= DTF_MR_CHECK_INTERVAL_MS) {
-          dtfMrLastCheck.set(position.id, Date.now());
-          try {
-            const exited = await checkDtfMrSignalExit(position.id, position.pair, position.direction);
-            if (exited) continue;
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error(`[PositionMonitor] DtfMR signal check failed for ${position.pair}: ${msg}`);
-          }
-        }
-      }
-
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
@@ -375,9 +357,6 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
-    }
-    for (const id of dtfMrLastCheck.keys()) {
-      if (!openIds.has(id)) dtfMrLastCheck.delete(id);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
