@@ -14,30 +14,16 @@ import { checkDtfMrSignalExit } from "./dtf-mr.js";
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "ai-directional": Infinity, // signal-flip only
   "dtf-mr": 80 * 45 * 60 * 1000,
-  "mom-4h": 8 * 4 * 60 * 60 * 1000, // 32h
-  "ema-cross": 100 * 60 * 60 * 1000, // 100h
-  "wickflow": 16 * 60 * 60 * 1000, // 16h
-  "skew-mr": 48 * 2 * 60 * 60 * 1000, // 96h
-  "psar": 80 * 60 * 60 * 1000, // 80h
-  "ha-psar": 80 * 60 * 60 * 1000, // 80h
-  "ift-rsi": 80 * 60 * 60 * 1000, // 80h
-  "zl-macd": 80 * 60 * 60 * 1000, // 80h
+  "psar": 80 * 60 * 60 * 1000,
+  "ha-chan": 80 * 60 * 60 * 1000,
 };
 
 // Per-engine trailing stop config
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "ai-directional": { activation: 20, distance: 5 },
   "dtf-mr": { activation: 2, distance: 1 },
-  "mom-4h": { activation: 2, distance: 1 },
-  "ema-cross": { activation: 2, distance: 1 },
-  "wickflow": { activation: 2, distance: 1 },
-  "skew-mr": { activation: 2, distance: 1 },
   "psar": { activation: 3, distance: 1 },
-  "ha-psar": { activation: 3, distance: 1 },
-  "ift-rsi": { activation: 3, distance: 1 },
-  "zl-macd": { activation: 3, distance: 1 },
+  "ha-chan": { activation: 2, distance: 1 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 

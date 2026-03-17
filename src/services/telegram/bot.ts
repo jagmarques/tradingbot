@@ -1,7 +1,7 @@
 import { Bot, Context } from "grammy";
 import { readFileSync, writeFileSync } from "fs";
 import { loadEnv, isPaperMode, setTradingMode, getTradingMode } from "../../config/env.js";
-import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES, QUANT_AI_DIRECTIONAL_ENABLED } from "../../config/constants.js";
+import { STARTING_CAPITAL_USD, CAPITAL_PER_STRATEGY_USD, QUANT_DAILY_DRAWDOWN_LIMIT, QUANT_PAPER_VALIDATION_DAYS, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
 import {
   getRiskStatus,
   getDailyPnl,
@@ -2138,7 +2138,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     // Live engines (AI + any live technical)
     let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
     for (const [label, typeKey] of engines) {
-      const isLiveEngine = (typeKey === "ai-directional" && QUANT_AI_DIRECTIONAL_ENABLED) || QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
+      const isLiveEngine = QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
       if (!isLiveEngine) continue;
       const stats = getQuantStats(typeKey, "live");
       liveBlock += sl(label, stats, typeKey, "live");

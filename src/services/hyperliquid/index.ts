@@ -100,9 +100,6 @@ export { computeIndicators } from "./indicators.js";
 export { classifyRegime } from "./regime.js";
 export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
 
-// Position Sizing
-export { calculateQuantPositionSize } from "./kelly.js";
-
 // Risk Management
 export {
   validateRiskGates,
@@ -120,9 +117,6 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
-
-// AI Engine
-export { analyzeWithAI, runAIDecisionEngine, clearAICache, clearAICacheForPair, getCachedAIDecision } from "./ai-analyzer.js";
 
 // Lighter DEX
 export { getLighterLivePositions } from "../lighter/executor.js";

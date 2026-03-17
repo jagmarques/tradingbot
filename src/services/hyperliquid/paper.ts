@@ -14,16 +14,9 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
-  "ai-directional",
   "dtf-mr",
-  "mom-4h",
-  "ema-cross",
-  "wickflow",
-  "skew-mr",
   "psar",
-  "ha-psar",
-  "ift-rsi",
-  "zl-macd",
+  "ha-chan",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

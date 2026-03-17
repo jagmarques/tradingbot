@@ -8,7 +8,6 @@ import { formatPrice } from "../../utils/format.js";
 function quantTypeLabel(tradeType: string): string {
   const labels: Record<string, string> = {
     "funding": "Funding",
-    "ai-directional": "AI",
   };
   return labels[tradeType] ?? tradeType;
 }

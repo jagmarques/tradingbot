@@ -175,10 +175,6 @@ export function getQuantStats(tradeType?: TradeType | string, mode?: "live" | "p
     stats = db.prepare(
       `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed'${modeClause}`,
     ).get() as typeof stats;
-  } else if (tradeType === "ai-directional") {
-    stats = db.prepare(
-      `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type IN ('ai-directional', 'directional')${modeClause}`,
-    ).get() as typeof stats;
   } else {
     stats = db.prepare(
       `SELECT COUNT(*) as total, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins, SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses, SUM(pnl) as total_pnl FROM quant_trades WHERE status = 'closed' AND trade_type = ?${modeClause}`,
@@ -291,7 +287,7 @@ export function getQuantValidationMetrics(): {
   }
 
   // Paper stats only
-  const stats = getQuantStats("ai-directional", "paper");
+  const stats = getQuantStats(undefined, "paper");
 
   return {
     sharpeRatio,

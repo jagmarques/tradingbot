@@ -1,10 +1,7 @@
 import { isQuantKilled } from "./risk-manager.js";
-import { QUANT_DTF_MR_ENABLED } from "../../config/constants.js";
 import { runDtfMrCycle } from "./dtf-mr.js";
 import { runPsarCycle } from "./psar-engine.js";
-import { runHaCycle } from "./ha-engine.js";
-import { runIftRsiCycle } from "./iftrsi-engine.js";
-import { runZlMacdCycle } from "./zlmacd-engine.js";
+import { runHaChanCycle } from "./ha-chan-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -30,28 +27,19 @@ export async function runDirectionalCycle(): Promise<void> {
   cycleRunning = true;
   try {
     if (isQuantKilled()) return;
-    let executed = 0;
-    if (QUANT_DTF_MR_ENABLED) {
-      try { executed = await runDtfMrCycle(); }
-      catch (err) { console.error(`[QuantScheduler] Chan error: ${err instanceof Error ? err.message : String(err)}`); }
-    }
+    let chanExecuted = 0;
+    try { chanExecuted = await runDtfMrCycle(); }
+    catch (err) { console.error(`[QuantScheduler] Chan error: ${err instanceof Error ? err.message : String(err)}`); }
+
     let psarExecuted = 0;
     try { psarExecuted = await runPsarCycle(); }
     catch (err) { console.error(`[QuantScheduler] PSAR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let haExecuted = 0;
-    try { haExecuted = await runHaCycle(); }
-    catch (err) { console.error(`[QuantScheduler] HA error: ${err instanceof Error ? err.message : String(err)}`); }
+    let hcExecuted = 0;
+    try { hcExecuted = await runHaChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] HAChan error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let iftExecuted = 0;
-    try { iftExecuted = await runIftRsiCycle(); }
-    catch (err) { console.error(`[QuantScheduler] IFT error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    let zlExecuted = 0;
-    try { zlExecuted = await runZlMacdCycle(); }
-    catch (err) { console.error(`[QuantScheduler] ZL error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    console.log(`[QuantScheduler] Cycle: Chan ${executed}, SAR ${psarExecuted}, HA ${haExecuted}, IFT ${iftExecuted}, ZL ${zlExecuted}`);
+    console.log(`[QuantScheduler] Cycle: Chan ${chanExecuted}, SAR ${psarExecuted}, HAChan ${hcExecuted}`);
   } finally { cycleRunning = false; }
 }
 

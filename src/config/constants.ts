@@ -44,11 +44,6 @@ export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant Position Sizing
-export const QUANT_AI_DIRECTIONAL_ENABLED = false;
-export const QUANT_DTF_MR_ENABLED = true;
-export const QUANT_EMA_CROSS_ENABLED = true;
-export const QUANT_AI_KELLY_FRACTION = 0.25;
-export const QUANT_AI_CACHE_TTL_MS = 30 * 60 * 1000; // 30min cache
 export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 
 // Quant Risk Management
@@ -70,16 +65,9 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
-  "ai-directional": "lighter",
   "dtf-mr": "lighter",
-  "ema-cross": "lighter",
-  "mom-4h": "lighter",
-  "wickflow": "lighter",
-  "skew-mr": "lighter",
   "psar": "lighter",
-  "ha-psar": "lighter",
-  "ift-rsi": "lighter",
-  "zl-macd": "lighter",
+  "ha-chan": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
