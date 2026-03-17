@@ -14,10 +14,10 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
-  "dtf-mr",
-  "psar",
   "ha-chan",
-  "ema3-chan",
+  "accel-chan",
+  "zlema-chan",
+  "elder-chan",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

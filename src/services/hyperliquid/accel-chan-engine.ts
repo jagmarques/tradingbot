@@ -1,21 +1,16 @@
-// EMA(2) cross entry + Chandelier m6 exit engine
-import { EMA, ATR } from "technicalindicators";
+// Price acceleration entry + Chandelier m6 exit
+import { ATR } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { saveQuantPosition } from "../database/quant.js";
 import type { OhlcvCandle } from "./types.js";
 
-const TRADE_TYPE = "ema3-chan" as const;
+const TRADE_TYPE = "accel-chan" as const;
 const LEVERAGE = 10;
-const EMA_PERIOD = 2;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 6;
 const MAX_HOLD_MS = 80 * 60 * 60 * 1000;
-
-function computeEma(candles: OhlcvCandle[]): number[] {
-  return EMA.calculate({ period: EMA_PERIOD, values: candles.map(c => c.close) });
-}
 
 function computeAtr(candles: OhlcvCandle[]): number[] {
   return ATR.calculate({
@@ -26,35 +21,34 @@ function computeAtr(candles: OhlcvCandle[]): number[] {
   });
 }
 
-interface Ema3ChanSignal {
+interface AccelSignal {
   pair: string;
   direction: "long" | "short";
   entryPrice: number;
   stopLoss: number;
 }
 
-async function analyzeSignal(pair: string): Promise<Ema3ChanSignal | null> {
+async function analyzeSignal(pair: string): Promise<AccelSignal | null> {
   const cs = await fetchCandles(pair, "1h", 80);
-  if (cs.length < EMA_PERIOD + ATR_PERIOD + 3) return null;
+  if (cs.length < 20) return null;
 
-  const emaVals = computeEma(cs);
   const atrVals = computeAtr(cs);
-  if (emaVals.length < 3 || atrVals.length < 2) return null;
+  if (atrVals.length < 2) return null;
 
-  const emaOff = cs.length - emaVals.length;
-  const atrOff = cs.length - atrVals.length;
   const last = cs.length - 1;
-
-  const prevClose = cs[last - 1].close;
-  const prev2Close = cs[last - 2].close;
-  const emaLast = emaVals[last - 1 - emaOff];
-  const emaPrev = emaVals[last - 2 - emaOff];
+  const atrOff = cs.length - atrVals.length;
   const atr = atrVals[last - 1 - atrOff];
+  if (atr === undefined) return null;
 
-  if (emaLast === undefined || emaPrev === undefined || atr === undefined) return null;
+  // Price acceleration: second derivative crosses zero on bars i-1 vs i-2
+  const acc1 = cs[last - 1].close - 2 * cs[last - 2].close + cs[last - 3].close;
+  const acc2 = cs[last - 2].close - 2 * cs[last - 3].close + cs[last - 4].close;
 
-  const crossUp = prevClose > emaLast && prev2Close <= emaPrev;
-  const crossDn = prevClose < emaLast && prev2Close >= emaPrev;
+  const crossUp = acc1 > 0 && acc2 <= 0;
+  const crossDn = acc1 < 0 && acc2 >= 0;
+
+  if (!crossUp && !crossDn) return null;
+
   const entryPrice = cs[last].open;
 
   if (crossUp) {
@@ -82,7 +76,6 @@ async function updateChanStops(): Promise<void> {
       if (cs.length < 30) continue;
       const atrVals = computeAtr(cs);
       if (atrVals.length < 1) continue;
-
       const last = cs.length - 1;
       const atrOff = cs.length - atrVals.length;
       const atr = atrVals[last - 1 - atrOff];
@@ -91,33 +84,26 @@ async function updateChanStops(): Promise<void> {
       if (pos.direction === "long") {
         const hh = Math.max(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.high));
         const newStop = hh - CHAN_MULT * atr;
-        if (pos.stopLoss && newStop > pos.stopLoss) {
-          pos.stopLoss = newStop;
-          saveQuantPosition(pos);
-        }
+        if (pos.stopLoss && newStop > pos.stopLoss) { pos.stopLoss = newStop; saveQuantPosition(pos); }
       } else {
         const ll = Math.min(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.low));
         const newStop = ll + CHAN_MULT * atr;
-        if (pos.stopLoss && newStop < pos.stopLoss) {
-          pos.stopLoss = newStop;
-          saveQuantPosition(pos);
-        }
+        if (pos.stopLoss && newStop < pos.stopLoss) { pos.stopLoss = newStop; saveQuantPosition(pos); }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[EMA3] Stop update error ${pos.pair}: ${msg}`);
+      console.error(`[Accel] Stop update error ${pos.pair}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
 
-export async function runEma3ChanCycle(): Promise<number> {
+export async function runAccelChanCycle(): Promise<number> {
   const openPositions = getOpenQuantPositions();
-  const ecPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
+  const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
 
-  for (const pos of ecPositions) {
+  for (const pos of myPositions) {
     const holdMs = Date.now() - new Date(pos.openedAt).getTime();
     if (holdMs >= MAX_HOLD_MS) {
-      console.log(`[EMA3] Max hold exit: ${pos.pair} ${pos.direction}`);
+      console.log(`[Accel] Max hold exit: ${pos.pair} ${pos.direction}`);
       await closePosition(pos.id, "max-hold");
     }
   }
@@ -133,22 +119,18 @@ export async function runEma3ChanCycle(): Promise<number> {
     try {
       const signal = await analyzeSignal(pair);
       if (!signal) continue;
-
       const position = await openPosition(
         pair, signal.direction, QUANT_FIXED_POSITION_SIZE_USD, LEVERAGE,
         signal.stopLoss, 0, "trending", TRADE_TYPE, undefined, signal.entryPrice,
       );
-
       if (position) {
         executed++;
         openPairs.add(pair);
-        console.log(`[EMA3] Opened ${pair} ${signal.direction} $${QUANT_FIXED_POSITION_SIZE_USD} @${signal.entryPrice.toFixed(2)} SL=${signal.stopLoss.toFixed(4)}`);
+        console.log(`[Accel] Opened ${pair} ${signal.direction} $${QUANT_FIXED_POSITION_SIZE_USD} @${signal.entryPrice.toFixed(2)} SL=${signal.stopLoss.toFixed(4)}`);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[EMA3] Error ${pair}: ${msg}`);
+      console.error(`[Accel] Error ${pair}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-
   return executed;
 }

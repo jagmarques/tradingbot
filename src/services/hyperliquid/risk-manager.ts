@@ -50,7 +50,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["dtf-mr", "psar", "ha-chan", "ema3-chan"];
+  const strategies = ["ha-chan", "accel-chan", "zlema-chan", "elder-chan"];
   const modes: Array<"live" | "paper"> = ["live", "paper"];
   for (const mode of modes) {
     for (const strategy of strategies) {

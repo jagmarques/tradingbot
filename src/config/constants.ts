@@ -65,10 +65,10 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
-  "dtf-mr": "lighter",
-  "psar": "lighter",
   "ha-chan": "lighter",
-  "ema3-chan": "lighter",
+  "accel-chan": "lighter",
+  "zlema-chan": "lighter",
+  "elder-chan": "lighter",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

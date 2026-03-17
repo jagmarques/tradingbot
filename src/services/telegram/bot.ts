@@ -2002,10 +2002,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
     const typeTag =
-      pos.tradeType === "dtf-mr" ? "[MR]" :
-      pos.tradeType === "psar" ? "[SAR]" :
       pos.tradeType === "ha-chan" ? "[HC]" :
-      pos.tradeType === "ema3-chan" ? "[E3]" :
+      pos.tradeType === "accel-chan" ? "[AC]" :
+      pos.tradeType === "zlema-chan" ? "[ZL]" :
+      pos.tradeType === "elder-chan" ? "[EL]" :
       "[??]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2107,10 +2107,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
-    ["MR", "dtf-mr"],
-    ["SAR", "psar"],
     ["HC", "ha-chan"],
-    ["E3", "ema3-chan"],
+    ["AC", "accel-chan"],
+    ["ZL", "zlema-chan"],
+    ["EL", "elder-chan"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");

@@ -1,8 +1,8 @@
 import { isQuantKilled } from "./risk-manager.js";
-import { runDtfMrCycle } from "./dtf-mr.js";
-import { runPsarCycle } from "./psar-engine.js";
 import { runHaChanCycle } from "./ha-chan-engine.js";
-import { runEma3ChanCycle } from "./ema3-chan-engine.js";
+import { runAccelChanCycle } from "./accel-chan-engine.js";
+import { runZlemaChanCycle } from "./zlema-chan-engine.js";
+import { runElderChanCycle } from "./elder-chan-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -28,23 +28,24 @@ export async function runDirectionalCycle(): Promise<void> {
   cycleRunning = true;
   try {
     if (isQuantKilled()) return;
-    let chanExecuted = 0;
-    try { chanExecuted = await runDtfMrCycle(); }
-    catch (err) { console.error(`[QuantScheduler] Chan error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let psarExecuted = 0;
-    try { psarExecuted = await runPsarCycle(); }
-    catch (err) { console.error(`[QuantScheduler] PSAR error: ${err instanceof Error ? err.message : String(err)}`); }
+    let hc = 0;
+    try { hc = await runHaChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] HC error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let hcExecuted = 0;
-    try { hcExecuted = await runHaChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] HAChan error: ${err instanceof Error ? err.message : String(err)}`); }
+    let ac = 0;
+    try { ac = await runAccelChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] Accel error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    let e3Executed = 0;
-    try { e3Executed = await runEma3ChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] EMA3 error: ${err instanceof Error ? err.message : String(err)}`); }
+    let zl = 0;
+    try { zl = await runZlemaChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] ZLEMA error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: Chan ${chanExecuted}, SAR ${psarExecuted}, HAChan ${hcExecuted}, EMA3 ${e3Executed}`);
+    let el = 0;
+    try { el = await runElderChanCycle(); }
+    catch (err) { console.error(`[QuantScheduler] Elder error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: HC ${hc}, Accel ${ac}, ZLEMA ${zl}, Elder ${el}`);
   } finally { cycleRunning = false; }
 }
 
