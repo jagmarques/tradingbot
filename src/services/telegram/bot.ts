@@ -873,14 +873,7 @@ async function handlePnl(ctx: Context): Promise<void> {
     const rugStats = getRugStats();
     const total = data.totalPnl + totalUnrealized;
 
-    if (tm === "hybrid") {
-      const db = (await import("../database/db.js")).getDb();
-      const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
-
-      message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-    } else {
-      message += `<b>Total: ${pnl(total)}</b>`;
-    }
+    message += `<b>Total: ${pnl(total)}</b>`;
 
     // Realized
     message += `\n-------------------\n`;
