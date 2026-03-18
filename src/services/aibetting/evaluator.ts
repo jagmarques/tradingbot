@@ -9,6 +9,7 @@ import { hoursUntil } from "../../utils/dates.js";
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
+import { isLiquidEnough, type CLOBMetrics } from "./clob.js";
 
 const CATEGORY_EDGE_BONUS: Record<string, number> = {
   entertainment: 0.03,
@@ -174,13 +175,14 @@ export function evaluateBetOpportunity(
   analysis: AIAnalysis,
   config: AIBettingConfig,
   currentExposure: number,
-  bankroll: number
+  bankroll: number,
+  clobMetrics?: CLOBMetrics | null
 ): BetDecision {
   const yesOutcome = market.outcomes.find((o) => o.name === "Yes");
   const marketPrice = yesOutcome?.price || 0.5;
   const tokenId = yesOutcome?.tokenId || "";
 
-  // analysis.probability is already Bayesian-weighted (0.50*market + 0.50*R1)
+  // analysis.probability is Bayesian posterior (Beta model + R1 signal)
   const aiProbability = analysis.probability;
 
   const edge = aiProbability - marketPrice;
@@ -190,14 +192,29 @@ export function evaluateBetOpportunity(
 
   const categoryBonus = CATEGORY_EDGE_BONUS[market.category] ?? 0;
   const sideBonus = side === "NO" ? NO_SIDE_EDGE_BONUS : -NO_SIDE_EDGE_BONUS;
-  const effectiveEdge = absEdge + categoryBonus + sideBonus;
 
+  // Real edge = raw edge minus friction (spread/2 + fees + slippage)
+  // Default 1% friction when CLOB data unavailable (conservative)
+  const frictionCost = clobMetrics?.frictionCost ?? 0.01;
+  const realEdge = absEdge - frictionCost;
+
+  // Bonuses lower the threshold, not inflate the edge
   const priceZoneMultiplier = getPriceZoneMultiplier(marketPrice);
-  const adjustedMinEdge = config.minEdge * priceZoneMultiplier;
+  const adjustedMinEdge = Math.max(0, config.minEdge * priceZoneMultiplier - categoryBonus - sideBonus);
+  const effectiveEdge = realEdge;
+
+  // Liquidity gate
+  const liquidityOk = isLiquidEnough(clobMetrics ?? null, 25);
+
+  const clobTag = clobMetrics
+    ? `friction=${(frictionCost * 100).toFixed(2)}% liq=${clobMetrics.liquidityScore}/100`
+    : "no-clob";
 
   console.log(
-    `[Evaluator] SHADOW: ${market.title} | market=${(marketPrice * 100).toFixed(0)}c ai=${(aiProbability * 100).toFixed(0)}% ` +
-    `edge=${(absEdge * 100).toFixed(1)}% cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% effective=${(effectiveEdge * 100).toFixed(1)}% zone=${priceZoneMultiplier}x minEdge=${(adjustedMinEdge * 100).toFixed(1)}%`
+    `[Evaluator] ${market.title} | market=${(marketPrice * 100).toFixed(0)}c ai=${(aiProbability * 100).toFixed(0)}% ` +
+    `edge=${(absEdge * 100).toFixed(1)}% -friction=${(frictionCost * 100).toFixed(2)}% ` +
+    `cat=${(categoryBonus * 100).toFixed(1)}% side=${(sideBonus * 100).toFixed(1)}% ` +
+    `effective=${(effectiveEdge * 100).toFixed(1)}% zone=${priceZoneMultiplier}x minEdge=${(adjustedMinEdge * 100).toFixed(1)}% ${clobTag}`
   );
 
   const expectedValue = calculateEV(aiProbability, marketPrice, side);
@@ -221,17 +238,19 @@ export function evaluateBetOpportunity(
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
 
-  const shouldBet = meetsConfidence && meetsEdge && withinDisagreement && hasBudget && hasTokenId;
+  const shouldBet = meetsConfidence && meetsEdge && withinDisagreement && hasBudget && hasTokenId && liquidityOk;
 
   let reason: string;
   if (shouldBet) {
-    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}% cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}% ${side}), Confidence ${(analysis.confidence * 100).toFixed(0)}%`;
+    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% -${(frictionCost * 100).toFixed(2)}%friction ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}%cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}%${side}), C=${(analysis.confidence * 100).toFixed(0)}%`;
+  } else if (!liquidityOk) {
+    reason = `Illiquid: score ${clobMetrics?.liquidityScore ?? 0}/100 < 15`;
   } else if (!meetsConfidence) {
     reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
   } else if (!meetsEdge) {
-    reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(adjustedMinEdge * 100).toFixed(1)}% (${priceZoneMultiplier}x zone)`;
+    reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(adjustedMinEdge * 100).toFixed(1)}% (${priceZoneMultiplier}x zone, friction ${(frictionCost * 100).toFixed(2)}%)`;
   } else if (!hasBudget) {
     reason = "Insufficient bankroll or exposure limit reached";
   } else {
@@ -250,6 +269,8 @@ export function evaluateBetOpportunity(
     expectedValue,
     recommendedSize: Math.floor(recommendedSize * 100) / 100,
     reason,
+    frictionCost,
+    liquidityScore: clobMetrics?.liquidityScore,
   };
 }
 
@@ -259,6 +280,7 @@ export function evaluateAllOpportunities(
   config: AIBettingConfig,
   currentPositions: AIBettingPosition[],
   bankroll: number,
+  clobMetricsMap?: Map<string, CLOBMetrics>,
 ): BetDecision[] {
   const decisions: BetDecision[] = [];
 
@@ -271,12 +293,17 @@ export function evaluateAllOpportunities(
     const analysis = analyses.get(market.conditionId);
     if (!analysis) continue;
 
+    // Look up CLOB metrics by YES token ID
+    const yesTokenId = market.outcomes.find(o => o.name === "Yes")?.tokenId;
+    const clobMetrics = yesTokenId ? clobMetricsMap?.get(yesTokenId) : undefined;
+
     const decision = evaluateBetOpportunity(
       market,
       analysis,
       config,
       currentExposure,
-      bankroll
+      bankroll,
+      clobMetrics
     );
 
     decisions.push(decision);

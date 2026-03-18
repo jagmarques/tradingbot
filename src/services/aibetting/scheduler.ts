@@ -19,6 +19,14 @@ import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { updateCalibrationScores } from "../database/calibration.js";
 import { canTrade } from "../risk/manager.js";
+import {
+  createPrior,
+  updateWithSignal,
+  computeSignalWeight,
+  averageNewsRecency,
+  scanSiblingConsistency,
+} from "./bayesian.js";
+import { getCLOBMetrics, type CLOBMetrics } from "./clob.js";
 import cron from "node-cron";
 
 const AI_BETTING_STARTING_BALANCE = 100; // $100 realistic paper bankroll
@@ -310,13 +318,45 @@ OUTPUT JSON ONLY:
         }
       }
 
-      // Apply Bayesian prior ONCE: 50% market price + 50% R1
+      // Bayesian Engine: Beta-Bernoulli conjugate model with log-odds signal fusion
       analysis.r1RawProbability = r1FinalRaw;
-      const bw = config.bayesianWeight;
-      analysis.probability = bw * yesPrice + (1 - bw) * r1FinalRaw;
-      analysis.probability = Math.max(0.01, Math.min(0.99, analysis.probability));
 
-      console.log(`[AIBetting] Ensemble (${ensembleResults.length}/${ENSEMBLE_SIZE}): R1mean=${(meanRawProb * 100).toFixed(1)}% spread=${(spread * 100).toFixed(0)}pp | Bayesian: ${bw.toFixed(2)}*${(yesPrice * 100).toFixed(0)}% + ${(1-bw).toFixed(2)}*${(r1FinalRaw * 100).toFixed(1)}% = ${(analysis.probability * 100).toFixed(1)}%`);
+      // 1. Create prior from market price (strength controls market trust)
+      const priorStrength = 20; // Market aggregates many participants, respect it
+      const prior = createPrior(yesPrice, priorStrength);
+
+      // 2. Compute signal weight from R1 confidence, citation accuracy, and news recency
+      const newsTimestamps = news
+        .filter(n => n.publishedAt)
+        .map(n => new Date(n.publishedAt).getTime())
+        .filter(t => !isNaN(t));
+      const newsRecency = averageNewsRecency(newsTimestamps);
+      const citationAcc = analysis.citationAccuracy ?? 0.5; // Conservative when no citations
+      const signalWeight = computeSignalWeight(
+        analysis.confidence,
+        citationAcc,
+        newsRecency,
+        0.5  // base weight: R1 can move posterior up to 50% of log-odds
+      );
+
+      // 3. Update prior with R1 signal
+      const posterior = updateWithSignal(prior, r1FinalRaw, signalWeight);
+
+      analysis.probability = posterior.probability;
+      analysis.bayesianPrior = posterior.priorProbability;
+      analysis.bayesianPosterior = posterior.probability;
+      analysis.credibleLow = posterior.credibleLow;
+      analysis.credibleHigh = posterior.credibleHigh;
+      analysis.signalWeight = signalWeight;
+      analysis.newsRecencyFactor = newsRecency;
+
+      console.log(
+        `[AIBetting] Bayesian: prior=${(posterior.priorProbability * 100).toFixed(1)}% ` +
+        `R1=${(r1FinalRaw * 100).toFixed(1)}% weight=${signalWeight.toFixed(2)} ` +
+        `→ posterior=${(posterior.probability * 100).toFixed(1)}% ` +
+        `CI=[${(posterior.credibleLow * 100).toFixed(0)}-${(posterior.credibleHigh * 100).toFixed(0)}%] ` +
+        `news=${newsRecency.toFixed(2)} cite=${citationAcc.toFixed(2)}`
+      );
 
       if (analysis) {
         cacheAnalysis(market.conditionId, analysis);
@@ -365,6 +405,56 @@ OUTPUT JSON ONLY:
       }
     }
 
+    // ── CLOB Enrichment: fetch order book metrics for candidate markets ──
+    const clobMetricsMap = new Map<string, CLOBMetrics>();
+    const marketTokenIds = markets
+      .map(m => m.outcomes.find(o => o.name === "Yes")?.tokenId)
+      .filter((id): id is string => !!id);
+
+    for (const tokenId of marketTokenIds) {
+      if (cycleAborted) break;
+      try {
+        const metrics = await getCLOBMetrics(tokenId, config.maxBetSize);
+        if (metrics) {
+          clobMetricsMap.set(tokenId, metrics);
+        }
+      } catch (err) {
+        // Non-critical: continue without CLOB data
+      }
+      await new Promise(r => setTimeout(r, 150)); // Rate limit
+    }
+    if (clobMetricsMap.size > 0) {
+      const avgLiquidity = Array.from(clobMetricsMap.values())
+        .reduce((s, m) => s + m.liquidityScore, 0) / clobMetricsMap.size;
+      console.log(`[AIBetting] CLOB: ${clobMetricsMap.size} books fetched, avg liquidity=${avgLiquidity.toFixed(0)}/100`);
+    }
+
+    // ── Cross-Market KL Divergence Analysis ──
+    for (const cluster of siblingClusters) {
+      const siblings = cluster
+        .map(id => {
+          const a = analyses.get(id);
+          const m = markets.find(mk => mk.conditionId === id);
+          if (!a || !m) return null;
+          const mp = m.outcomes.find(o => o.name === "Yes")?.price ?? 0.5;
+          return { id, title: m.title, probability: a.probability, marketPrice: mp };
+        })
+        .filter((s): s is NonNullable<typeof s> => !!s);
+
+      if (siblings.length < 2) continue;
+
+      const signals = scanSiblingConsistency(siblings);
+      for (const signal of signals) {
+        const a = analyses.get(signal.marketIdA);
+        if (a && signal.edgeBoost > 0) {
+          console.log(
+            `[AIBetting] KL signal: ${signal.titleA.substring(0, 50)} ` +
+            `KL=${signal.klDiv.toFixed(4)} boost=${(signal.edgeBoost * 100).toFixed(1)}% ${signal.direction}`
+          );
+        }
+      }
+    }
+
     let usdcBalance: number;
     if (isPaperMode()) {
       const currentExposure = getTotalExposure();
@@ -386,6 +476,7 @@ OUTPUT JSON ONLY:
       config,
       openPositions,
       usdcBalance,
+      clobMetricsMap,
     );
     result.opportunitiesFound = decisions.length;
 

@@ -47,6 +47,13 @@ export interface AIAnalysis {
   citationAccuracy?: number; // 0.0-1.0, fraction of cited evidence verified in article text
   timeline?: string | null; // What needs to happen by when (for date-based markets), or null
   r1RawProbability?: number; // Raw R1 output before Bayesian market price weighting
+  // Bayesian engine fields
+  bayesianPrior?: number;      // Prior probability from market price
+  bayesianPosterior?: number;  // Posterior after signal fusion
+  credibleLow?: number;        // 95% credible interval lower bound
+  credibleHigh?: number;       // 95% credible interval upper bound
+  signalWeight?: number;       // Effective signal weight used
+  newsRecencyFactor?: number;  // Average news recency decay factor
 }
 
 
@@ -62,6 +69,10 @@ export interface BetDecision {
   expectedValue: number;
   recommendedSize: number;
   reason: string;
+  // CLOB + cross-market fields
+  frictionCost?: number;      // Total friction: spread/2 + fees + slippage
+  liquidityScore?: number;    // 0-100 composite CLOB liquidity
+  crossMarketBoost?: number;  // Edge boost from KL divergence analysis
 }
 
 export type PositionStatus = "open" | "closed";
