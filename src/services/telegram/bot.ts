@@ -922,43 +922,39 @@ async function handlePnl(ctx: Context): Promise<void> {
       : "";
     message += `\nRugs: ${rugStats.count}${rugPnlStr}`;
 
-    // Unrealized (open positions)
+    // Unrealized (open positions) - grouped by platform
     message += `\n-------------------\n`;
-    const unrealizedLines: string[] = [];
 
-    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
-    const aiPnlStr = openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : "";
+    // Polymarket section
     const schedulerStatus = getAIBettingStatus();
-    const logOnly = schedulerStatus.logOnly ? " Log" : "";
-    const aiDepStr = aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : "";
-    unrealizedLines.push(`AI Bets: ${openBets.length}${aiDepStr}${aiPnlStr}${logOnly}`);
-
-    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const copyPnlStr = copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : "";
-    const copyDepStr = copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : "";
-    unrealizedLines.push(`Poly Copy: ${copyPositions.length}${copyDepStr}${copyPnlStr}`);
-
-    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
-    const insiderDepStr = insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : "";
-    let insiderLine = `Insider: ${openInsider.length}${insiderDepStr}`;
-    if (openInsider.length > 0) insiderLine += ` ${pnl(insiderUnrealized)}`;
-    unrealizedLines.push(insiderLine);
-
-    const quantKillStr = isQuantKilled() ? " HALTED" : "";
-    const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
-    const quantPnlStr = quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : "";
-    const quantDepStr = quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : "";
-    unrealizedLines.push(`Quant: ${quantPositions.length}${quantDepStr}${quantPnlStr}${quantKillStr}`);
-
     const hfPaperSt = getHFPaperStats();
     const nrPaperSt = getNegRiskPaperStats();
-    const hfNrPnl = hfPaperSt.totalPnl + nrPaperSt.totalPnl;
-    const hfNrOpen = hfPaperSt.openTrades + nrPaperSt.openTrades;
-    if (hfPaperSt.totalTrades + nrPaperSt.totalTrades > 0) {
-      unrealizedLines.push(`HF/NR: ${hfNrOpen} open ${hfNrPnl >= 0 ? "+" : ""}$${Math.abs(hfNrPnl).toFixed(2)}`);
-    }
 
-    message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
+    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
+    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
+    const polyOpen = openBets.length + copyPositions.length + hfPaperSt.openTrades + nrPaperSt.openTrades;
+    const polyUnr = aiBetUnrealized + copyUnrealized + hfPaperSt.totalPnl + nrPaperSt.totalPnl;
+
+    message += `<b>Polymarket</b> ${pnl(polyUnr)} | ${polyOpen} open\n`;
+    const logOnly = schedulerStatus.logOnly ? " Log" : "";
+    message += `  AI: ${openBets.length}${aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : ""}${openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : ""}${logOnly}\n`;
+    message += `  Copy: ${copyPositions.length}${copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : ""}${copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : ""}\n`;
+    message += `  HF 15m: ${hfPaperSt.openTrades} open ${hfPaperSt.totalTrades > 0 ? `${pnl(hfPaperSt.totalPnl)} ${hfPaperSt.winRate.toFixed(0)}%WR` : ""}\n`;
+    message += `  NegRisk: ${nrPaperSt.openTrades} open ${nrPaperSt.totalTrades > 0 ? `${pnl(nrPaperSt.totalPnl)} ${nrPaperSt.winRate.toFixed(0)}%WR` : ""}\n`;
+
+    // EVM section
+    const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
+    message += `<b>EVM</b>${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""} | ${openInsider.length} open\n`;
+    message += `  Insider: ${openInsider.length}${insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : ""}${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""}\n`;
+
+    // Perps section
+    const quantKillStr = isQuantKilled() ? " HALTED" : "";
+    const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
+    message += `<b>Perps</b>${quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : ""} | ${quantPositions.length} open${quantKillStr}\n`;
+    message += `  Quant: ${quantPositions.length}${quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : ""}${quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : ""}\n`;
+
+    const totalUnrAll = totalUnrealized + hfPaperSt.totalPnl + nrPaperSt.totalPnl;
+    message += `\n<b>Unrealized</b> ${pnl(totalUnrAll)}`;
 
     // Hold comparison
     try {
@@ -1246,26 +1242,44 @@ async function handlePoly(ctx: Context): Promise<void> {
     }
   }
 
+  // Copy betting stats
+  const copyStats = getCopyStats();
+  let copyPositions: Awaited<ReturnType<typeof getOpenPositionsWithValues>> = [];
+  try { copyPositions = await getOpenPositionsWithValues(); } catch { /* non-fatal */ }
+  let copyUnrealized = 0;
+  for (const pos of copyPositions) {
+    if (pos.currentValue !== null) copyUnrealized += (pos.currentValue ?? 0) - pos.size;
+  }
+
   if (activeOpId !== myOpId) return;
 
+  // Combined totals
+  const totalPolyPnl = aiStats.totalPnl + copyStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl;
+  const totalPolyOpen = openBets.length + copyStats.openPositions + hfPaper.openTrades + nrPaper.openTrades;
+
   let text = `<b>Polymarket</b> | Paper\n`;
-  text += `-------------------\n`;
+  text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
 
   // 1. AI Betting
+  text += `-------------------\n`;
   const aiRunning = aiStatus.running ? "ON" : "OFF";
   text += `<b>AI Betting</b> ${aiRunning}\n`;
   text += `${openBets.length} open | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% WR\n`;
   text += `Real: ${pnl(aiStats.totalPnl)} | Unreal: ${pnl(aiUnrealized)}\n`;
-  text += `Cache: ${aiStatus.analysisCacheSize} | Exposure: $${aiStatus.totalExposure.toFixed(0)}\n`;
 
-  // 2. HF Momentum (15-min)
+  // 2. Copy Betting
+  text += `-------------------\n`;
+  text += `<b>Copy Betting</b>\n`;
+  text += `${copyStats.openPositions} open | ${copyStats.closedPositions} closed | ${copyStats.winRate.toFixed(0)}% WR\n`;
+  text += `Real: ${pnl(copyStats.totalPnl)} | Unreal: ${pnl(copyUnrealized)}\n`;
+
+  // 3. HF Momentum (15-min)
   text += `-------------------\n`;
   const hfRunning = hfStatus.running ? "ON" : "OFF";
   const binTag = hfStatus.binanceConnected ? "WS" : "OFF";
   text += `<b>HF Momentum</b> ${hfRunning} | Binance: ${binTag}\n`;
   text += `${hfPaper.totalTrades} trades (${hfPaper.openTrades} open) | ${hfPaper.winRate.toFixed(0)}% WR\n`;
-  text += `P&L: ${pnl(hfPaper.totalPnl)} | Bal: $${hfPaper.balance.toFixed(0)}\n`;
-  text += `15-min mkts: ${hfStatus.activeUpDownMarkets} | Pairs: ${hfStatus.trackedPairs}\n`;
+  text += `P&L: ${pnl(hfPaper.totalPnl)} | 15m mkts: ${hfStatus.activeUpDownMarkets}\n`;
 
   if (hfPaper.recentTrades.length > 0) {
     for (const t of hfPaper.recentTrades.slice(0, 3)) {
@@ -1275,11 +1289,11 @@ async function handlePoly(ctx: Context): Promise<void> {
     }
   }
 
-  // 3. NegRisk Arb
+  // 4. NegRisk Arb
   text += `-------------------\n`;
   text += `<b>NegRisk Arb</b>\n`;
   text += `${nrPaper.totalTrades} trades (${nrPaper.openTrades} open) | ${nrPaper.winRate.toFixed(0)}% WR\n`;
-  text += `P&L: ${pnl(nrPaper.totalPnl)} | Bal: $${nrPaper.balance.toFixed(0)}\n`;
+  text += `P&L: ${pnl(nrPaper.totalPnl)}\n`;
 
   if (nrPaper.recentTrades.length > 0) {
     for (const t of nrPaper.recentTrades.slice(0, 3)) {
@@ -1289,14 +1303,12 @@ async function handlePoly(ctx: Context): Promise<void> {
     }
   }
 
-  // Combined P&L
-  const totalPolyPnl = aiStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl;
-  text += `-------------------\n`;
-  text += `<b>Total Poly P&L: ${pnl(totalPolyPnl)}</b>`;
-
   const buttons = [
     [
       { text: "AI Bets", callback_data: "poly_bets" },
+      { text: "Copy Bets", callback_data: "bets_copy" },
+    ],
+    [
       { text: "HF Detail", callback_data: "hf_detail" },
     ],
     [{ text: "Back", callback_data: "main_menu" }],
