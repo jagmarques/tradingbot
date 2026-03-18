@@ -1299,13 +1299,6 @@ async function handlePoly(ctx: Context): Promise<void> {
   }
 
   const buttons = [
-    [
-      { text: "AI Bets", callback_data: "poly_bets" },
-      { text: "Copy Bets", callback_data: "bets_copy" },
-    ],
-    [
-      { text: "HF Detail", callback_data: "hf_detail" },
-    ],
     [{ text: "Back", callback_data: "main_menu" }],
   ];
 
