@@ -68,7 +68,6 @@ export interface FastScanResult {
 const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws";
 const MOMENTUM_WINDOW_MS = 30_000;
 const MOMENTUM_THRESHOLD_PCT = 0.15;     // 0.15% move triggers signal
-const STRONG_MOMENTUM_PCT = 0.40;
 const PRICE_SAMPLE_INTERVAL_MS = 500;
 const MAX_PRICE_HISTORY = 120;           // 60s of history at 500ms
 const MIN_SAMPLES_FOR_SIGNAL = 40;       // Need 20s of data before signaling
