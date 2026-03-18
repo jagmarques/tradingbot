@@ -13,7 +13,7 @@ const CHAN_MULT = 6;
 const MAX_HOLD_MS = 80 * 60 * 60 * 1000;
 const GARCH_LOOKBACK = 3; // momentum lookback
 const GARCH_VOL_WINDOW = 20; // rolling stddev window
-const GARCH_THRESHOLD = 1; // z-score threshold
+const GARCH_THRESHOLD = 0.7; // z-score threshold
 
 function computeAtr(candles: OhlcvCandle[]): number[] {
   return ATR.calculate({
