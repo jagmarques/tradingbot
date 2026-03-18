@@ -113,6 +113,8 @@ function checkStopLossPresent(stopLoss: number): {
 }
 
 function checkDailyDrawdown(strategy: string, mode: "live" | "paper" = "live", limit: number = QUANT_DAILY_DRAWDOWN_LIMIT): { allowed: boolean; reason: string } {
+  // Paper: no daily loss limit
+  if (mode === "paper") return { allowed: true, reason: "" };
   const key = `${mode}:${strategy}`;
   resetIfStale(key);
   const loss = dailyLossMap.get(key) ?? 0;
