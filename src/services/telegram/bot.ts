@@ -875,28 +875,9 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     if (tm === "hybrid") {
       const db = (await import("../database/db.js")).getDb();
-      const ltClosedQ = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total, COUNT(*) as cnt FROM quant_trades WHERE status = 'closed' AND mode = 'live' AND exchange = 'lighter'`).get() as { total: number; cnt: number };
-      const ltRealizedQ = ltClosedQ.total;
       const paperRealizedQ = (db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM quant_trades WHERE status = 'closed' AND mode != 'live'`).get() as { total: number }).total;
-      const { getOpenQuantPositions: getQPos } = await import("../hyperliquid/executor.js");
-      const qOpen = getQPos();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ltOpen = qOpen.filter((p: any) => p.mode === "live" && p.exchange === "lighter");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ltDep = ltOpen.reduce((s: number, p: any) => s + p.size, 0);
-      let ltMarginLine = "";
-      try {
-        const { getLighterAccountInfo, isLighterInitialized: ltInit } = await import("../lighter/client.js");
-        if (ltInit()) {
-          const ltAcc = await getLighterAccountInfo();
-          const ltFree = Math.max(0, ltAcc.equity - ltAcc.marginUsed);
-          ltMarginLine = `LT: $${Math.max(0, ltAcc.marginUsed).toFixed(0)} locked | $${ltFree.toFixed(0)} free`;
-        }
-      } catch { /* non-fatal */ }
 
       message += `Paper: ${pnl(paperRealizedQ + (data.totalPnl - data.quantPnl))} | unr ${pnl(totalUnrealized - quantLiveUnrealized)}`;
-      message += `\n<b>Live LT: ${pnl(ltRealizedQ)} ${ltOpen.length}/${ltClosedQ.cnt + ltOpen.length}T ($${ltDep.toFixed(0)}) | unr ${pnl(ltUnrealized)}</b>`;
-      if (ltMarginLine) message += `\n${ltMarginLine}`;
     } else {
       message += `<b>Total: ${pnl(total)}</b>`;
     }
