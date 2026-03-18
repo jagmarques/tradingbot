@@ -2002,11 +2002,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
     const typeTag =
-      pos.tradeType === "ha-chan" ? "[HC]" :
-      pos.tradeType === "accel-chan" ? "[AC]" :
       pos.tradeType === "garch-chan" ? "[GR]" :
-      pos.tradeType === "zlema-chan" ? "[ZL]" :
-      pos.tradeType === "elder-chan" ? "[EL]" :
       "[??]";
     const exchTag = pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2108,8 +2104,6 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
-    ["HC", "ha-chan"],
-    ["AC", "accel-chan"],
     ["GR", "garch-chan"],
   ];
 

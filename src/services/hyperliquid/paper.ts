@@ -14,8 +14,6 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
-  "ha-chan",
-  "accel-chan",
   "garch-chan",
 ];
 
