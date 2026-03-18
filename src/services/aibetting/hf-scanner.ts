@@ -489,6 +489,16 @@ async function runFastScan(): Promise<FastScanResult[]> {
       } catch { /* skip */ }
     }
 
+    // Paper trade NegRisk signals
+    for (const r of results) {
+      if (r.edge >= 0.02) {
+        handleNegRiskSignal(r);
+      }
+    }
+
+    // Check NegRisk position resolutions
+    await checkNegRiskResolutions();
+
     // Flag high-edge for R1, with bounded queue
     for (const r of results) {
       if (r.edge > 0.05 && flaggedForR1.length < MAX_FLAGGED_R1) {
@@ -519,18 +529,41 @@ export interface HFPaperTrade {
   entryTime: number;
   windowStart: number;
   windowEnd: number;
-  windowStartPrice: number;  // Binance price at window open (resolution reference)
+  windowStartPrice: number;
   binancePriceAtEntry: number;
   momentumAtEntry: number;
   edgeAtEntry: number;
   status: "open" | "won" | "lost";
   pnl: number;
   resolvedAt?: number;
+  type: "momentum" | "negrisk";
+}
+
+export interface NegRiskPaperTrade {
+  id: string;
+  marketId: string;
+  title: string;
+  side: "YES" | "NO";
+  entryPrice: number;
+  shares: number;
+  size: number;
+  entryTime: number;
+  entrySum: number;       // Yes+No sum at entry (e.g. 1.06)
+  edgeAtEntry: number;
+  status: "open" | "won" | "lost";
+  pnl: number;
+  resolvedAt?: number;
+  type: "negrisk";
 }
 
 const PAPER_POSITION_SIZE = 10;
+const NEGRISK_POSITION_SIZE = 5;
+const NEGRISK_MAX_OPEN = 10;
+const NEGRISK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h max hold
 const paperTrades: HFPaperTrade[] = [];
+const negRiskTrades: NegRiskPaperTrade[] = [];
 let paperBalance = 200;
+let negRiskBalance = 100;
 let resolutionCheckInterval: NodeJS.Timeout | null = null;
 
 function handleTradeSignalPaper(signal: TradeSignal): void {
@@ -561,6 +594,7 @@ function handleTradeSignalPaper(signal: TradeSignal): void {
     edgeAtEntry: signal.edgeEstimate,
     status: "open",
     pnl: 0,
+    type: "momentum",
   };
 
   paperTrades.push(trade);
@@ -626,6 +660,189 @@ function checkPaperResolutions(): void {
       `resolved=$${currentState.price.toFixed(2)}) bal=$${paperBalance.toFixed(2)}`
     );
   }
+}
+
+// ---- NegRisk Paper Trading -----------------------------------------------
+
+function handleNegRiskSignal(result: FastScanResult): void {
+  if (negRiskBalance < NEGRISK_POSITION_SIZE) return;
+
+  const openCount = negRiskTrades.filter(t => t.status === "open").length;
+  if (openCount >= NEGRISK_MAX_OPEN) return;
+
+  // Don't double up on same market
+  if (negRiskTrades.some(t => t.marketId === result.marketId && t.status === "open")) return;
+
+  // If sum > 1.0, both sides are overpriced. Buy the cheaper side (higher expected return)
+  // If sum < 1.0, both sides are underpriced. Buy the cheaper side.
+  const side: "YES" | "NO" = result.marketPrice <= 0.5 ? "YES" : "NO";
+  const entryPrice = side === "YES" ? result.marketPrice : 1 - result.marketPrice;
+  if (entryPrice <= 0.01 || entryPrice >= 0.99) return;
+
+  const shares = NEGRISK_POSITION_SIZE / entryPrice;
+  negRiskBalance -= NEGRISK_POSITION_SIZE;
+
+  // Parse the sum from source string
+  const sumMatch = result.source.match(/sum=([\d.]+)/);
+  const entrySum = sumMatch ? parseFloat(sumMatch[1]) : 1.0;
+
+  const trade: NegRiskPaperTrade = {
+    id: `nr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    marketId: result.marketId,
+    title: result.title,
+    side,
+    entryPrice,
+    shares,
+    size: NEGRISK_POSITION_SIZE,
+    entryTime: Date.now(),
+    entrySum,
+    edgeAtEntry: result.edge,
+    status: "open",
+    pnl: 0,
+    type: "negrisk",
+  };
+
+  negRiskTrades.push(trade);
+
+  if (negRiskTrades.length > MAX_PAPER_TRADES) {
+    const oldest = negRiskTrades.findIndex(t => t.status !== "open");
+    if (oldest >= 0) negRiskTrades.splice(oldest, 1);
+  }
+
+  console.log(
+    `[NRPaper] OPEN: ${side} "${trade.title.substring(0, 40)}" ` +
+    `@ ${(entryPrice * 100).toFixed(0)}c ($${NEGRISK_POSITION_SIZE}) ` +
+    `sum=${entrySum.toFixed(3)} edge=${(trade.edgeAtEntry * 100).toFixed(1)}% ` +
+    `bal=$${negRiskBalance.toFixed(2)}`
+  );
+}
+
+/**
+ * Check NegRisk trades: resolve if prices converged or max age exceeded.
+ * Re-fetches current prices for open positions.
+ */
+async function checkNegRiskResolutions(): Promise<void> {
+  const openTrades = negRiskTrades.filter(t => t.status === "open");
+  if (openTrades.length === 0) return;
+
+  try {
+    const response = await fetchWithTimeout(
+      `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
+      { timeoutMs: 10000 }
+    );
+    if (!response.ok) return;
+
+    const markets = await response.json() as Array<{
+      conditionId: string;
+      outcomePrices: string;
+      closed: boolean;
+    }>;
+
+    const priceMap = new Map<string, { yes: number; no: number; sum: number; closed: boolean }>();
+    for (const m of markets) {
+      try {
+        const prices = JSON.parse(m.outcomePrices) as string[];
+        if (prices.length !== 2) continue;
+        const yes = parseFloat(prices[0]);
+        const no = parseFloat(prices[1]);
+        if (isNaN(yes) || isNaN(no)) continue;
+        priceMap.set(m.conditionId, { yes, no, sum: yes + no, closed: !!m.closed });
+      } catch { /* skip */ }
+    }
+
+    for (const trade of openTrades) {
+      const current = priceMap.get(trade.marketId);
+      const age = Date.now() - trade.entryTime;
+
+      if (!current) {
+        // Market no longer in active list - likely resolved
+        if (age > 5 * 60 * 1000) {
+          // Assume win (market resolved, our side likely paid $1)
+          trade.status = "won";
+          const payout = trade.shares * 1.0;
+          trade.pnl = payout - trade.size;
+          negRiskBalance += payout;
+          trade.resolvedAt = Date.now();
+          const pnlStr = `+$${trade.pnl.toFixed(2)}`;
+          console.log(`[NRPaper] RESOLVED: "${trade.title.substring(0, 40)}" ${pnlStr}`);
+        }
+        continue;
+      }
+
+      const currentPrice = trade.side === "YES" ? current.yes : current.no;
+      const currentSum = current.sum;
+
+      // Exit conditions:
+      // 1. Prices converged (sum within 1% of 1.0) - take profit
+      // 2. Price moved in our favor by >5% - take profit
+      // 3. Max age exceeded - close at current price
+      // 4. Price moved against us by >15% - stop loss
+
+      const priceChange = (currentPrice - trade.entryPrice) / trade.entryPrice;
+      const converged = Math.abs(currentSum - 1.0) < 0.01;
+
+      let shouldClose = false;
+      let reason = "";
+
+      if (converged) {
+        shouldClose = true;
+        reason = "converged";
+      } else if (priceChange > 0.05) {
+        shouldClose = true;
+        reason = "take-profit";
+      } else if (priceChange < -0.15) {
+        shouldClose = true;
+        reason = "stop-loss";
+      } else if (age > NEGRISK_MAX_AGE_MS) {
+        shouldClose = true;
+        reason = "max-age";
+      }
+
+      if (shouldClose) {
+        const payout = trade.shares * currentPrice;
+        trade.pnl = payout - trade.size;
+        trade.status = trade.pnl >= 0 ? "won" : "lost";
+        negRiskBalance += payout;
+        trade.resolvedAt = Date.now();
+
+        const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
+        console.log(
+          `[NRPaper] ${trade.status.toUpperCase()}: "${trade.title.substring(0, 40)}" ` +
+          `${pnlStr} (${reason}, sum=${currentSum.toFixed(3)}) bal=$${negRiskBalance.toFixed(2)}`
+        );
+      }
+    }
+  } catch {
+    // Non-critical
+  }
+}
+
+export function getNegRiskPaperStats(): {
+  balance: number;
+  totalTrades: number;
+  openTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalPnl: number;
+  recentTrades: NegRiskPaperTrade[];
+} {
+  const closed = negRiskTrades.filter(t => t.status !== "open");
+  const wins = closed.filter(t => t.status === "won").length;
+  const losses = closed.filter(t => t.status === "lost").length;
+  const totalPnl = closed.reduce((s, t) => s + t.pnl, 0);
+  const recent = negRiskTrades.slice(-10).reverse();
+
+  return {
+    balance: negRiskBalance,
+    totalTrades: negRiskTrades.length,
+    openTrades: negRiskTrades.filter(t => t.status === "open").length,
+    wins,
+    losses,
+    winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
+    totalPnl,
+    recentTrades: recent,
+  };
 }
 
 export function getHFPaperStats(): {

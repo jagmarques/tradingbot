@@ -15,7 +15,7 @@ import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../aibetting/deepseek.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getHFScannerStatus, getPriceState, getHFPaperStats } from "../aibetting/hf-scanner.js";
+import { getHFScannerStatus, getPriceState, getHFPaperStats, getNegRiskPaperStats } from "../aibetting/hf-scanner.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
@@ -1549,11 +1549,32 @@ async function handleHF(ctx: Context): Promise<void> {
   ];
 
   if (paper.recentTrades.length > 0) {
-    lines.push("", "Recent:");
-    for (const t of paper.recentTrades.slice(0, 5)) {
+    lines.push("", "Recent 15-min:");
+    for (const t of paper.recentTrades.slice(0, 3)) {
       const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
       const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
       lines.push(`  ${tag} ${t.coin.toUpperCase()} ${t.side} @ ${(t.entryPrice * 100).toFixed(0)}c ${tPnl}`);
+    }
+  }
+
+  // NegRisk arb stats
+  const nr = getNegRiskPaperStats();
+  const nrPnl = nr.totalPnl >= 0 ? `+$${nr.totalPnl.toFixed(2)}` : `-$${Math.abs(nr.totalPnl).toFixed(2)}`;
+  lines.push(
+    "",
+    "NegRisk Arb:",
+    `  Balance: $${nr.balance.toFixed(2)}`,
+    `  Trades: ${nr.totalTrades} (${nr.openTrades} open)`,
+    `  W/L: ${nr.wins}/${nr.losses} (${nr.winRate.toFixed(0)}%)`,
+    `  P&L: ${nrPnl}`,
+  );
+
+  if (nr.recentTrades.length > 0) {
+    lines.push("", "Recent NR:");
+    for (const t of nr.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      lines.push(`  ${tag} ${t.side} "${t.title.substring(0, 30)}" ${tPnl}`);
     }
   }
 
