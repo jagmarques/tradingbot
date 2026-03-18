@@ -12,7 +12,7 @@ import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
 import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
 import { getSettings } from "../settings/settings.js";
-import { callDeepSeek } from "../aibetting/deepseek.js";
+import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getHFScannerStatus, getPriceState, getHFPaperStats, getNegRiskPaperStats } from "../aibetting/hf-scanner.js";
@@ -1806,7 +1806,7 @@ Be concise. Answer based on the data above. If asked about something not in the 
 
     const response = await callDeepSeek(
       `${context}\n\nUSER QUESTION: ${question}`,
-      "deepseek-chat",
+      undefined,
       "You are a helpful trading bot assistant. Answer questions concisely in plain text only. NO JSON, NO code blocks, NO markdown.",
       undefined,
       "telegram"

@@ -494,8 +494,7 @@ async function validateWithAI(
     // Fetch news (4h cached)
     const news = await fetchNewsForMarket(marketData);
 
-    // Single fast deepseek-chat call
-    const analysis = await analyzeMarket(marketData, news, "deepseek-chat");
+    const analysis = await analyzeMarket(marketData, news);
     if (!analysis) {
       return { approved: true, reason: "AI analysis failed" };
     }

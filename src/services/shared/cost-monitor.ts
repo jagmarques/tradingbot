@@ -1,8 +1,7 @@
-import { loadEnv } from "../../config/env.js";
 
-// DeepSeek pricing ($/M tokens) - as of 2026-02
-const INPUT_COST_PER_M = 0.14;
-const OUTPUT_COST_PER_M = 2.19;
+// Groq K2 pricing (free tier, track for monitoring)
+const INPUT_COST_PER_M = 0.0;
+const OUTPUT_COST_PER_M = 0.0;
 
 interface CallerStats {
   inputTokens: number;
@@ -65,19 +64,8 @@ export function trackUsage(inputTokens: number, outputTokens: number, caller: st
   daily.byCaller[caller].calls += 1;
   daily.byCaller[caller].costUsd += cost;
 
-  // Budget alerts
-  const env = loadEnv();
-  const budget = env.DEEPSEEK_DAILY_BUDGET;
-  const pct = (daily.costUsd / budget) * 100;
-
-  if (daily.costUsd > budget) {
-    console.warn(
-      `[CostMonitor] ALERT: Daily DeepSeek spend $${daily.costUsd.toFixed(4)} exceeded budget $${budget.toFixed(2)}`
-    );
-  } else if (pct >= 80) {
-    console.warn(
-      `[CostMonitor] WARNING: Daily DeepSeek spend $${daily.costUsd.toFixed(4)} approaching budget $${budget.toFixed(2)} (${pct.toFixed(0)}%)`
-    );
+  if (daily.byCaller[caller].calls > 500) {
+    console.warn(`[CostMonitor] High usage: ${caller} ${daily.byCaller[caller].calls} calls today`);
   }
 }
 

@@ -1,8 +1,8 @@
 import type { PolymarketEvent, NewsItem, AIAnalysis } from "./types.js";
-import { callDeepSeek } from "./deepseek.js";
+import { callDeepSeek } from "../shared/llm.js";
 import { getMarketAnalysisHistory, getBettingStats, saveAnalysis, savePrediction } from "../database/aibetting.js";
 
-interface DeepSeekAnalysisResponse {
+interface AnalysisResponse {
   probability: number;
   confidence: number;
   reasoning: string;
@@ -198,7 +198,7 @@ export function parseAnalysisResponse(
       jsonStr = jsonMatch[0];
     }
 
-    const parsed = JSON.parse(jsonStr) as DeepSeekAnalysisResponse;
+    const parsed = JSON.parse(jsonStr) as AnalysisResponse;
 
     // Validate fields
     if (
@@ -247,7 +247,7 @@ export function parseAnalysisResponse(
 export async function analyzeMarket(
   market: PolymarketEvent,
   news: NewsItem[],
-  model?: "deepseek-chat" | "deepseek-reasoner",
+  _model?: string,
   siblingTitles?: string[]
 ): Promise<AIAnalysis | null> {
   console.log(`[Analyzer] Analyzing: ${market.title}`);
@@ -260,7 +260,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
-    const response = await callDeepSeek(prompt, model ?? "deepseek-chat", undefined, undefined, "aibetting");
+    const response = await callDeepSeek(prompt, undefined, undefined, undefined, "aibetting");
     const analysis = parseAnalysisResponse(response, market.conditionId);
 
     if (analysis) {

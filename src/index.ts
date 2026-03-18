@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     await validateApiConnection();
 
     // AI-powered Polymarket betting
-    if (env.AIBETTING_ENABLED === "true" && env.DEEPSEEK_API_KEY) {
+    if (env.AIBETTING_ENABLED === "true" && env.GROQ_API_KEY) {
       const recoveredAIBets = initAIBettingPositions();
       if (recoveredAIBets > 0) {
         console.log(`[Bot] Recovered ${recoveredAIBets} AI betting positions`);
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
       });
       console.log("[Bot] AI Betting started");
     } else {
-      console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and DEEPSEEK_API_KEY to enable)");
+      console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and GROQ_API_KEY to enable)");
     }
 
     // High-frequency scanner (Binance WS + Polymarket 15-min markets)

@@ -37,9 +37,8 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
-  // AI (DeepSeek for Polymarket betting)
-  DEEPSEEK_API_KEY: z.string().min(1).optional(),
-  DEEPSEEK_DAILY_BUDGET: numericString("1.00"),
+  // AI (Groq / Kimi K2 for Polymarket betting)
+  GROQ_API_KEY: z.string().min(1).optional(),
 
   // AI Betting Config
   AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
