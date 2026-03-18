@@ -65,7 +65,7 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
-  "garch-chan": "lighter",
+  "garch-chan": "hyperliquid",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
