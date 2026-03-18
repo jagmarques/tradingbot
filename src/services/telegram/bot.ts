@@ -74,7 +74,7 @@ const MAIN_MENU_BUTTONS = [
   ],
   [
     { text: "🔄 Trades", callback_data: "trades" },
-    { text: "🎯 Bets", callback_data: "bets" },
+    { text: "🎯 Poly", callback_data: "poly" },
     { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
@@ -236,6 +236,44 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
 
+  bot.callbackQuery("poly", async (ctx) => {
+    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
+    callbackProcessing = true;
+    try {
+      await handlePoly(ctx);
+      await ctx.answerCallbackQuery();
+    } catch (err) {
+      console.error("[Telegram] Callback error (poly):", err);
+      await ctx.reply("Failed to load poly. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
+    } finally {
+      callbackProcessing = false;
+    }
+  });
+  bot.callbackQuery("poly_bets", async (ctx) => {
+    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
+    callbackProcessing = true;
+    try {
+      await handleBets(ctx, "open");
+      await ctx.answerCallbackQuery();
+    } catch (err) {
+      await ctx.answerCallbackQuery().catch(() => {});
+    } finally {
+      callbackProcessing = false;
+    }
+  });
+  bot.callbackQuery("hf_detail", async (ctx) => {
+    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
+    callbackProcessing = true;
+    try {
+      await handleHF(ctx);
+      await ctx.answerCallbackQuery();
+    } catch (err) {
+      await ctx.answerCallbackQuery().catch(() => {});
+    } finally {
+      callbackProcessing = false;
+    }
+  });
   bot.callbackQuery("bets", async (ctx) => {
     if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     callbackProcessing = true;
@@ -912,6 +950,14 @@ async function handlePnl(ctx: Context): Promise<void> {
     const quantDepStr = quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : "";
     unrealizedLines.push(`Quant: ${quantPositions.length}${quantDepStr}${quantPnlStr}${quantKillStr}`);
 
+    const hfPaperSt = getHFPaperStats();
+    const nrPaperSt = getNegRiskPaperStats();
+    const hfNrPnl = hfPaperSt.totalPnl + nrPaperSt.totalPnl;
+    const hfNrOpen = hfPaperSt.openTrades + nrPaperSt.openTrades;
+    if (hfPaperSt.totalTrades + nrPaperSt.totalTrades > 0) {
+      unrealizedLines.push(`HF/NR: ${hfNrOpen} open ${hfNrPnl >= 0 ? "+" : ""}$${Math.abs(hfNrPnl).toFixed(2)}`);
+    }
+
     message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n${unrealizedLines.join("\n")}`;
 
     // Hold comparison
@@ -1175,6 +1221,88 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
     const backButton = [...errorButtons, [{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to fetch insiders", backButton);
   }
+}
+
+async function handlePoly(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+
+  const myOpId = activeOpId;
+  const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+
+  const aiStatus = getAIBettingStatus();
+  const hfStatus = getHFScannerStatus();
+  const hfPaper = getHFPaperStats();
+  const nrPaper = getNegRiskPaperStats();
+  const aiStats = getBettingStats();
+
+  // AI Betting unrealized
+  const openBets = loadOpenPositions();
+  let aiUnrealized = 0;
+  for (const bet of openBets) {
+    const price = await getAIBetCurrentPrice(bet.tokenId);
+    if (price !== null) {
+      const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
+      aiUnrealized += (bet.size / bet.entryPrice) * diff;
+    }
+  }
+
+  if (activeOpId !== myOpId) return;
+
+  let text = `<b>Polymarket</b> | Paper\n`;
+  text += `-------------------\n`;
+
+  // 1. AI Betting
+  const aiRunning = aiStatus.running ? "ON" : "OFF";
+  text += `<b>AI Betting</b> ${aiRunning}\n`;
+  text += `${openBets.length} open | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% WR\n`;
+  text += `Real: ${pnl(aiStats.totalPnl)} | Unreal: ${pnl(aiUnrealized)}\n`;
+  text += `Cache: ${aiStatus.analysisCacheSize} | Exposure: $${aiStatus.totalExposure.toFixed(0)}\n`;
+
+  // 2. HF Momentum (15-min)
+  text += `-------------------\n`;
+  const hfRunning = hfStatus.running ? "ON" : "OFF";
+  const binTag = hfStatus.binanceConnected ? "WS" : "OFF";
+  text += `<b>HF Momentum</b> ${hfRunning} | Binance: ${binTag}\n`;
+  text += `${hfPaper.totalTrades} trades (${hfPaper.openTrades} open) | ${hfPaper.winRate.toFixed(0)}% WR\n`;
+  text += `P&L: ${pnl(hfPaper.totalPnl)} | Bal: $${hfPaper.balance.toFixed(0)}\n`;
+  text += `15-min mkts: ${hfStatus.activeUpDownMarkets} | Pairs: ${hfStatus.trackedPairs}\n`;
+
+  if (hfPaper.recentTrades.length > 0) {
+    for (const t of hfPaper.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      text += `  ${tag} ${t.coin.toUpperCase()} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
+    }
+  }
+
+  // 3. NegRisk Arb
+  text += `-------------------\n`;
+  text += `<b>NegRisk Arb</b>\n`;
+  text += `${nrPaper.totalTrades} trades (${nrPaper.openTrades} open) | ${nrPaper.winRate.toFixed(0)}% WR\n`;
+  text += `P&L: ${pnl(nrPaper.totalPnl)} | Bal: $${nrPaper.balance.toFixed(0)}\n`;
+
+  if (nrPaper.recentTrades.length > 0) {
+    for (const t of nrPaper.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      text += `  ${tag} ${t.side} ${t.title.substring(0, 25)} ${tPnl}\n`;
+    }
+  }
+
+  // Combined P&L
+  const totalPolyPnl = aiStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl;
+  text += `-------------------\n`;
+  text += `<b>Total Poly P&L: ${pnl(totalPolyPnl)}</b>`;
+
+  const buttons = [
+    [
+      { text: "AI Bets", callback_data: "poly_bets" },
+      { text: "HF Detail", callback_data: "hf_detail" },
+    ],
+    [{ text: "Back", callback_data: "main_menu" }],
+  ];
+
+  await sendDataMessage(text, buttons);
 }
 
 async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_closed"): Promise<void> {
