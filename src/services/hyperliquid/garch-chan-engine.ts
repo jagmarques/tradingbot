@@ -66,10 +66,13 @@ async function analyzeSignal(pair: string): Promise<GarchSignal | null> {
 
   const entryPrice = cs[last].open;
 
+  const MIN_SL_DIST_PCT = 0.01; // skip if stop < 1% from entry
+
   if (goLong) {
     const hh = Math.max(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.high));
     const sl = hh - CHAN_MULT * atr;
     if (sl >= entryPrice) return null;
+    if ((entryPrice - sl) / entryPrice < MIN_SL_DIST_PCT) return null;
     return { pair, direction: "long", entryPrice, stopLoss: sl };
   }
 
@@ -77,6 +80,7 @@ async function analyzeSignal(pair: string): Promise<GarchSignal | null> {
     const ll = Math.min(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.low));
     const sl = ll + CHAN_MULT * atr;
     if (sl <= entryPrice) return null;
+    if ((sl - entryPrice) / entryPrice < MIN_SL_DIST_PCT) return null;
     return { pair, direction: "short", entryPrice, stopLoss: sl };
   }
 
