@@ -246,7 +246,7 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
       const ensembleResults: AIAnalysis[] = [];
 
       for (let i = 0; i < ENSEMBLE_SIZE; i++) {
-        const singleAnalysis = await analyzeMarket(market, news, "deepseek-reasoner", siblingTitles);
+        const singleAnalysis = await analyzeMarket(market, news, "deepseek-chat", siblingTitles);
         if (singleAnalysis) {
           ensembleResults.push(singleAnalysis);
           console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: R1=${(singleAnalysis.probability * 100).toFixed(1)}%`);
@@ -305,7 +305,7 @@ OUTPUT JSON ONLY:
 }`;
 
         try {
-          const supervisorResponse = await callDeepSeek(supervisorPrompt, "deepseek-reasoner", undefined, undefined, "supervisor");
+          const supervisorResponse = await callDeepSeek(supervisorPrompt, "deepseek-chat", undefined, undefined, "supervisor");
           const supervisorAnalysis = parseAnalysisResponse(supervisorResponse, market.conditionId);
           if (supervisorAnalysis) {
             r1FinalRaw = supervisorAnalysis.probability;
