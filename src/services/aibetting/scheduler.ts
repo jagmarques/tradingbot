@@ -322,21 +322,31 @@ OUTPUT JSON ONLY:
       analysis.r1RawProbability = r1FinalRaw;
 
       // 1. Create prior from market price (strength controls market trust)
-      const priorStrength = 20; // Market aggregates many participants, respect it
+      const priorStrength = 8; // Balance: respect market but let AI have real influence
       const prior = createPrior(yesPrice, priorStrength);
 
       // 2. Compute signal weight from R1 confidence, citation accuracy, and news recency
+      // Parse GDELT seendate format: "20260318T120000Z" -> timestamp
       const newsTimestamps = news
         .filter(n => n.publishedAt)
-        .map(n => new Date(n.publishedAt).getTime())
+        .map(n => {
+          const raw = n.publishedAt;
+          // Try ISO first, then GDELT format (YYYYMMDDTHHMMSSZ)
+          let ts = new Date(raw).getTime();
+          if (isNaN(ts) && raw.length >= 15) {
+            const iso = `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}:${raw.slice(13,15)}Z`;
+            ts = new Date(iso).getTime();
+          }
+          return ts;
+        })
         .filter(t => !isNaN(t));
       const newsRecency = averageNewsRecency(newsTimestamps);
-      const citationAcc = analysis.citationAccuracy ?? 0.5; // Conservative when no citations
+      const citationAcc = analysis.citationAccuracy ?? 0.5;
       const signalWeight = computeSignalWeight(
         analysis.confidence,
         citationAcc,
         newsRecency,
-        0.5  // base weight: R1 can move posterior up to 50% of log-odds
+        0.8  // base weight: let AI move the posterior meaningfully
       );
 
       // 3. Update prior with R1 signal
