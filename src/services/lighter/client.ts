@@ -270,16 +270,28 @@ const ALL_MIDS_CACHE_MS = 15_000; // 15s cache
 
 export async function getLighterAllMids(pairs: string[]): Promise<Record<string, string>> {
   if (allMidsCache && Date.now() - allMidsCache.at < ALL_MIDS_CACHE_MS) return allMidsCache.mids;
-  // Fetch sequentially with delays to avoid rate limits
+  // Fetch in parallel batches of 5 to balance speed vs rate limits
   const mids: Record<string, string> = {};
-  for (const pair of pairs) {
-    try {
-      const price = await getLighterMidPrice(pair);
-      if (price !== null) mids[pair] = price.toString();
-    } catch { /* skip pair */ }
-    await new Promise(r => setTimeout(r, 100)); // 100ms between calls
+  const BATCH = 5;
+  let failed = 0;
+  for (let i = 0; i < pairs.length; i += BATCH) {
+    const batch = pairs.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(p => getLighterMidPrice(p)));
+    for (let j = 0; j < batch.length; j++) {
+      const r = results[j];
+      if (r.status === "fulfilled" && r.value !== null) {
+        mids[batch[j]] = r.value.toString();
+      } else {
+        failed++;
+      }
+    }
+    if (i + BATCH < pairs.length) await new Promise(r => setTimeout(r, 50));
   }
-  allMidsCache = { mids, at: Date.now() };
+  if (failed > 0) console.warn(`[Lighter] getAllMids: ${Object.keys(mids).length}/${pairs.length} ok, ${failed} failed`);
+  // Only cache if we got at least half the pairs
+  if (Object.keys(mids).length >= pairs.length / 2) {
+    allMidsCache = { mids, at: Date.now() };
+  }
   return mids;
 }
 

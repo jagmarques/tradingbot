@@ -120,8 +120,12 @@ async function checkPositionStops(): Promise<void> {
       try {
         lighterMids = await withTimeout(
           getLighterAllMids(lighterPairs),
-          API_PRICE_TIMEOUT_MS + 1_000, "Lighter getAllMids",
+          API_PRICE_TIMEOUT_MS + 5_000, "Lighter getAllMids",
         );
+        const missing = lighterPairs.filter(p => !lighterMids[p]);
+        if (missing.length > 0) {
+          console.warn(`[PositionMonitor] Lighter missing prices for: ${missing.join(", ")}`);
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[PositionMonitor] Lighter price fetch failed: ${msg}`);
