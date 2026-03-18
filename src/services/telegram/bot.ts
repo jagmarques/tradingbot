@@ -944,16 +944,12 @@ async function handlePnl(ctx: Context): Promise<void> {
     message += `  HF 15m: ${hfPaperSt.openTrades} open ${hfPaperSt.totalTrades > 0 ? `${pnl(hfPaperSt.totalPnl)} ${hfPaperSt.winRate.toFixed(0)}%WR` : ""}\n`;
     message += `  NegRisk: ${nrPaperSt.openTrades} open ${nrPaperSt.totalTrades > 0 ? `${pnl(nrPaperSt.totalPnl)} ${nrPaperSt.winRate.toFixed(0)}%WR` : ""}\n`;
 
-    // EVM
     const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
-    message += `<b>EVM</b>${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""} | ${openInsider.length} open\n`;
-    message += `  Insider: ${openInsider.length}${insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : ""}${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""}\n`;
+    message += `<b>Insider</b> ${openInsider.length}${insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : ""}${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""}\n`;
 
-    // Perps
     const quantKillStr = isQuantKilled() ? " HALTED" : "";
     const quantInvested = quantPositions.reduce((sum, p) => sum + p.size, 0);
-    message += `<b>Perps</b>${quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : ""} | ${quantPositions.length} open${quantKillStr}\n`;
-    message += `  Quant: ${quantPositions.length}${quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : ""}${quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : ""}`;
+    message += `<b>Quant</b> ${quantPositions.length}${quantInvested > 0 ? ` ($${quantInvested.toFixed(0)})` : ""}${quantPositions.length > 0 ? ` ${pnl(quantUnrealized)}` : ""}${quantKillStr}`;
 
     // Hold comparison
     try {
