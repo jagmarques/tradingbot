@@ -64,6 +64,7 @@ interface GammaMarketResponse {
   question: string;
   clobTokenIds: string;
   outcomePrices: string;
+  outcomes: string;
   endDate: string;
   active: boolean;
   closed: boolean;
