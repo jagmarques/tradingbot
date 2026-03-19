@@ -384,13 +384,13 @@ function updateChandelierStop(
 // ---- GARCH-Chan Engine (mirrors live exactly) ----------------------------
 
 const GARCH_ATR_PERIOD = 14;
-const GARCH_CHAN_MULT = 6;
-const GARCH_MAX_HOLD_MS = 80 * HOUR_MS;
+const GARCH_CHAN_MULT = parseFloat(process.env.BT_CHAN_MULT || "6");
+const GARCH_MAX_HOLD_MS = parseFloat(process.env.BT_MAX_HOLD || "80") * HOUR_MS;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-const GARCH_THRESHOLD = 0.7;
-const GARCH_TRAIL_ACTIVATION = 8;
-const GARCH_TRAIL_DISTANCE = 5;
+const GARCH_THRESHOLD = parseFloat(process.env.BT_GARCH_THRESHOLD || "0.7");
+const GARCH_TRAIL_ACTIVATION = parseFloat(process.env.BT_TRAIL_A || "8");
+const GARCH_TRAIL_DISTANCE = parseFloat(process.env.BT_TRAIL_D || "5");
 
 function garchChanSignal(candles1h: Candle[], pair: string, barIndex: number): Signal | null {
   if (barIndex < 30) return null;
@@ -731,7 +731,7 @@ function parseArgs(): BacktestConfig & { engine: string } {
     trailActivation: parseFloat(get("--trail-a", "8")),
     trailDistance: parseFloat(get("--trail-d", "5")),
     maxHoldMs: parseFloat(get("--max-hold", "80")) * HOUR_MS,
-    slCapPct: parseFloat(get("--sl-cap", "3.5")),
+    slCapPct: parseFloat(get("--sl-cap", process.env.BT_SL_CAP || "3.5")),
     trainStart: new Date(get("--train-start", "2024-01-01")).getTime(),
     trainEnd: new Date(get("--train-end", "2025-06-01")).getTime(),
     testStart: new Date(get("--test-start", "2025-06-01")).getTime(),
