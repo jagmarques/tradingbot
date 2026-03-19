@@ -515,6 +515,20 @@ export function startPositionMonitor(): void {
   if (monitorInterval !== null) {
     return;
   }
+
+  // Pre-populate trail dedup so we don't re-fire alerts on restart
+  const existing = getOpenQuantPositions();
+  for (const pos of existing) {
+    if (pos.mode !== "live") continue;
+    const trailCfg = TRAIL_CONFIG_BY_ENGINE[pos.tradeType ?? ""] ?? DEFAULT_TRAIL;
+    if ((pos.maxUnrealizedPnlPct ?? 0) > trailCfg.activation) {
+      trailActivatedIds.add(pos.id);
+    }
+  }
+  if (trailActivatedIds.size > 0) {
+    console.log(`[PositionMonitor] Pre-populated ${trailActivatedIds.size} trail-activated positions`);
+  }
+
   console.log(`[PositionMonitor] Started (interval: ${QUANT_POSITION_MONITOR_INTERVAL_MS}ms)`);
   monitorInterval = setInterval(() => {
     void checkPositionStops();
