@@ -31,6 +31,9 @@ export const CLOB_API_URL = "https://clob.polymarket.com";
 export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
 export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
+// Kalshi API URL
+export const KALSHI_API_URL = "https://api.elections.kalshi.com/trade-api/v2";
+
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10;
 export const QUANT_DEFAULT_VIRTUAL_BALANCE = 200; // $200 for AI engine
