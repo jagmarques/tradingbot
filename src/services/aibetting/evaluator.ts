@@ -58,7 +58,7 @@ function calculateBetSize(
   side: "YES" | "NO",
   bankroll: number,
   maxBet: number,
-  kellyMultiplier: number = 0.25 // 1/4 Kelly
+  kellyMultiplier: number = 0.50 // 1/2 Kelly
 ): number {
   const price = side === "YES" ? marketPrice : 1 - marketPrice;
   const odds = (1 - price) / price;

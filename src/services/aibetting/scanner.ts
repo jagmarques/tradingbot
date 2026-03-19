@@ -161,7 +161,7 @@ function filterCandidateMarkets(
     }
 
     // Must have sufficient volume (lowered from 500 to 100 for more opportunities)
-    if (market.volume24h < 100) {
+    if (market.volume24h < 1000) {
       rejectReasons.volume++;
       continue;
     }
