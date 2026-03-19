@@ -37,7 +37,8 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
-  // AI (Groq / Kimi K2 for Polymarket betting)
+  // AI (Cerebras / Groq for Polymarket betting)
+  CEREBRAS_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),
 
   // AI Betting Config

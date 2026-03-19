@@ -1,11 +1,14 @@
 import { loadEnv } from "../../config/env.js";
 import { trackUsage } from "./cost-monitor.js";
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "moonshotai/kimi-k2-instruct";
+const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
+const CEREBRAS_MODEL = "llama-3.3-70b";
+
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
-
 
 interface LLMMessage {
   role: "system" | "user" | "assistant";
@@ -29,9 +32,19 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Rate limiter: Groq free tier = 10K TPM, ~2.5K per call = max 4 calls/min
-let lastCallTime = 0;
-const MIN_CALL_GAP_MS = 15000; // 15s between calls = 4/min = ~10K TPM
+// Pick provider: Cerebras (1M TPD) > Groq (300K TPD) fallback
+function getProvider(): { url: string; key: string; model: string; name: string } {
+  const env = loadEnv();
+
+  if (env.CEREBRAS_API_KEY) {
+    return { url: CEREBRAS_URL, key: env.CEREBRAS_API_KEY, model: CEREBRAS_MODEL, name: "Cerebras" };
+  }
+  if (env.GROQ_API_KEY) {
+    return { url: GROQ_URL, key: env.GROQ_API_KEY, model: GROQ_MODEL, name: "Groq" };
+  }
+
+  throw new Error("No LLM API key (CEREBRAS_API_KEY or GROQ_API_KEY)");
+}
 
 export async function callDeepSeek(
   prompt: string,
@@ -40,19 +53,7 @@ export async function callDeepSeek(
   temperature?: number,
   caller: string = "unknown"
 ): Promise<string> {
-  const env = loadEnv();
-
-  // Respect Groq rate limits
-  const now = Date.now();
-  const gap = MIN_CALL_GAP_MS - (now - lastCallTime);
-  if (gap > 0) {
-    await sleep(gap);
-  }
-  lastCallTime = Date.now();
-
-  if (!env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY not configured");
-  }
+  const provider = getProvider();
 
   const messages: LLMMessage[] = [
     {
@@ -64,7 +65,7 @@ export async function callDeepSeek(
   ];
 
   const body = {
-    model: GROQ_MODEL,
+    model: provider.model,
     messages,
     max_tokens: 1000,
     temperature: temperature ?? 0.3,
@@ -77,11 +78,11 @@ export async function callDeepSeek(
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const response = await fetch(GROQ_API_URL, {
+      const response = await fetch(provider.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${env.GROQ_API_KEY}`,
+          Authorization: `Bearer ${provider.key}`,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -92,40 +93,40 @@ export async function callDeepSeek(
       if (!response.ok) {
         const errorText = await response.text();
         if (response.status >= 500 || response.status === 429) {
-          lastError = new Error(`Groq ${response.status}: ${errorText}`);
-          const delay = response.status === 429 ? 20000 : RETRY_DELAY_MS * attempt;
-          console.warn(`[Groq] Attempt ${attempt}/${MAX_RETRIES} failed (${response.status}), wait ${(delay/1000).toFixed(0)}s`);
+          const delay = response.status === 429 ? 15000 : RETRY_DELAY_MS * attempt;
+          lastError = new Error(`${provider.name} ${response.status}: ${errorText.slice(0, 200)}`);
+          console.warn(`[${provider.name}] Attempt ${attempt}/${MAX_RETRIES} (${response.status}), wait ${(delay/1000).toFixed(0)}s`);
           await sleep(delay);
           continue;
         }
-        throw new Error(`Groq API error ${response.status}: ${errorText}`);
+        throw new Error(`${provider.name} ${response.status}: ${errorText.slice(0, 200)}`);
       }
 
       const data = (await response.json()) as LLMResponse;
 
       if (!data.choices?.length) {
-        lastError = new Error("Groq returned no choices");
+        lastError = new Error("No choices");
         await sleep(RETRY_DELAY_MS * attempt);
         continue;
       }
 
       const content = data.choices[0].message.content;
       if (!content?.trim()) {
-        lastError = new Error("Groq returned empty content");
+        lastError = new Error("Empty content");
         await sleep(RETRY_DELAY_MS * attempt);
         continue;
       }
 
       trackUsage(data.usage.prompt_tokens, data.usage.completion_tokens, caller);
-      console.log(`[Groq/K2] ${data.usage.total_tokens} tokens (${caller})`);
+      console.log(`[${provider.name}] ${data.usage.total_tokens} tokens (${caller})`);
       return content;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const isTimeout = lastError.name === "AbortError";
-      console.warn(`[Groq] Attempt ${attempt}/${MAX_RETRIES}: ${isTimeout ? "timeout" : lastError.message}`);
+      console.warn(`[${provider.name}] Attempt ${attempt}/${MAX_RETRIES}: ${isTimeout ? "timeout" : lastError.message.slice(0, 100)}`);
       if (attempt < MAX_RETRIES) await sleep(RETRY_DELAY_MS * attempt);
     }
   }
 
-  throw lastError || new Error("Groq call failed");
+  throw lastError || new Error("LLM call failed");
 }

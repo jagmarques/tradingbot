@@ -190,7 +190,7 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
     const openPositions = getOpenPositions();
     const positionMarketIds = new Set(openPositions.map((p) => p.marketId));
 
-    const markets = await discoverMarkets(config, positionMarketIds, 15);
+    const markets = await discoverMarkets(config, positionMarketIds, 8);
     if (markets.length === 0) {
       console.log("[AIBetting] No candidate markets");
       return result;
@@ -242,7 +242,7 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
       }
 
       // Ensemble: 2 R1 calls, take mean probability
-      const ENSEMBLE_SIZE = 2;
+      const ENSEMBLE_SIZE = 1;
       const ensembleResults: AIAnalysis[] = [];
 
       for (let i = 0; i < ENSEMBLE_SIZE; i++) {
