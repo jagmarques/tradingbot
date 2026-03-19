@@ -93,14 +93,14 @@ function computeSlippage(
   }
 
   if (remainingDollars > 0) {
-    return 0.05; // 5% penalty if book can't fill
+    return 0.02; // 2 cents penalty if book can't fill
   }
 
-  if (totalShares === 0) return 0.01;
+  if (totalShares === 0) return 0.005;
 
-  // Average execution price vs midpoint
+  // Absolute price impact (prediction markets are 0-1, not % based)
   const avgPrice = totalSpent / totalShares;
-  return Math.abs(avgPrice - midpoint) / midpoint;
+  return Math.abs(avgPrice - midpoint);
 }
 
 /**
@@ -175,8 +175,9 @@ export async function getCLOBMetrics(
 
   const liquidityScore = computeLiquidityScore(spreadPct, bidDepth, askDepth);
 
-  // Total friction = half-spread + taker fee + slippage
-  const frictionCost = spreadPct / 2 + POLYMARKET_TAKER_FEE_PCT + slippageCost;
+  // Total friction in absolute terms (same units as edge = probability difference)
+  // halfSpread in absolute price + taker fee (small) + slippage in absolute price
+  const frictionCost = spread / 2 + POLYMARKET_TAKER_FEE_PCT + slippageCost;
 
   return {
     tokenId,
