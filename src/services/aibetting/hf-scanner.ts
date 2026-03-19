@@ -370,7 +370,7 @@ export function getHFPaperStats(): {
     entryTime: t.entryTime,
     windowStart: t.entryTime,
     windowEnd: t.windowEnd,
-    windowStartPrice: t.binancePriceAtEntry,
+    windowStartPrice: t.windowStartPrice ?? t.binancePriceAtEntry,
     binancePriceAtEntry: t.binancePriceAtEntry,
     momentumAtEntry: t.momentumMagnitude,
     edgeAtEntry: 0,

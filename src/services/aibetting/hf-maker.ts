@@ -22,9 +22,9 @@ const RECONNECT_MAX_MS = 30_000;
 const INITIAL_BALANCE = 100;
 
 // Late-entry strategy params
-const ENTRY_WINDOW_SECS = 60; // only enter in last 60s of window
-const MIN_MOVE_PCT = 0.003; // 0.3% min move from window start
-const STRONG_MOVE_PCT = 0.008; // 0.8%+ = strong confidence
+const ENTRY_WINDOW_SECS = 45; // only enter in last 45s of window
+const MIN_MOVE_PCT = 0.005; // 0.5% min move from window start (filters noise)
+const STRONG_MOVE_PCT = 0.01; // 1%+ = strong confidence
 const ONE_TRADE_PER_WINDOW = true; // max 1 trade per coin per window
 
 // ---- Types -------------------------------------------------------------------
@@ -250,16 +250,17 @@ function checkLateEntry(): void {
     // Direction is determined by price movement from window start
     const direction: "up" | "down" = movePct > 0 ? "up" : "down";
 
-    // Entry price scales with confidence:
-    // 0.3% move -> ~80c entry (lower confidence, more profit if right)
-    // 0.8%+ move -> ~88c entry (high confidence, still good profit)
+    // Entry price scales with move magnitude:
+    // Bigger move = higher confidence = can afford higher entry price
+    // Break-even win rates: 75c=75%, 78c=78%, 82c=82%
+    // With 0.5%+ move at T-45s, expected win rate ~83-90%
     let entryPrice: number;
     if (absMove >= STRONG_MOVE_PCT) {
-      entryPrice = 0.88; // strong move, high confidence
-    } else if (absMove >= 0.005) {
-      entryPrice = 0.85; // moderate move
+      entryPrice = 0.82; // 1%+ move, ~90% win rate, needs 82% to break even
+    } else if (absMove >= 0.007) {
+      entryPrice = 0.78; // 0.7% move, ~85% win rate, needs 78%
     } else {
-      entryPrice = 0.80; // minimum threshold move
+      entryPrice = 0.75; // 0.5% move (minimum), ~83% win rate, needs 75%
     }
 
     if (balance < HF_MAKER_POSITION_SIZE) continue;
@@ -401,10 +402,22 @@ function resolvePosition(trade: HFMakerTrade): void {
   const currentBinancePrice = latestPrices.get(trade.coin) ?? 0;
   trade.binancePriceAtClose = currentBinancePrice;
 
-  // Resolution: compare current price to WINDOW START price (not entry price)
-  const priceUp = currentBinancePrice > trade.windowStartPrice;
+  // Skip resolution if we don't have a valid price
+  if (currentBinancePrice <= 0 || trade.windowStartPrice <= 0) {
+    trade.status = "cancelled";
+    balance += trade.size;
+    console.log(`[HFMaker] CANCEL ${trade.coin} ${trade.side} (missing price data)`);
+    return;
+  }
+
+  // Resolution: compare current price to WINDOW START price
+  // Polymarket: "Up" wins if close > start, "Down" wins if close < start
+  // If flat (close == start), "Down" wins on Polymarket (price didn't go up)
+  const priceDiff = currentBinancePrice - trade.windowStartPrice;
+  const priceUp = priceDiff > 0;
+  const priceDown = priceDiff < 0;
   const directionMatched =
-    (trade.side === "up" && priceUp) || (trade.side === "down" && !priceUp);
+    (trade.side === "up" && priceUp) || (trade.side === "down" && (priceDown || priceDiff === 0));
 
   if (directionMatched) {
     const payout = trade.shares * 1.0;
