@@ -225,7 +225,7 @@ function checkMomentum(): void {
     if (absMomentum < MOMENTUM_THRESHOLD_PCT) continue;
     if (Date.now() - state.timestamp > STALE_PRICE_MS) continue;
 
-    // Confidence: consistency of direction
+    // Consistency: what % of ticks moved in the momentum direction
     const windowSamples = Math.floor(MOMENTUM_WINDOW_MS / PRICE_SAMPLE_INTERVAL_MS);
     const start = Math.max(0, state.priceHistory.length - windowSamples);
     let consistentMoves = 0;
@@ -239,7 +239,8 @@ function checkMomentum(): void {
     const totalMoves = state.priceHistory.length - start - 1;
     const consistency = totalMoves > 0 ? consistentMoves / totalMoves : 0;
 
-    if (consistency < 0.60) continue;
+    // 50% consistency = net directional move (not just noise)
+    if (consistency < 0.50) continue;
 
     const signal: MomentumSignal = {
       symbol,
@@ -382,45 +383,51 @@ function mapCoinToSymbol(coin: string): string {
   return map[coin] || `${coin}usdt`;
 }
 
+let lastHandleLog = 0;
+
 function handleMomentumSignal(signal: MomentumSignal): void {
+  if (activeMarkets.length === 0) return;
+
   for (const market of activeMarkets) {
     const expectedSymbol = mapCoinToSymbol(market.coin);
     if (signal.symbol !== expectedSymbol) continue;
 
     const lastTime = lastSignalTime.get(market.coin) || 0;
-    if (Date.now() - lastTime < SIGNAL_COOLDOWN_MS) continue;
+    if (Date.now() - lastTime < SIGNAL_COOLDOWN_MS) {
+      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} cooldown`); }
+      continue;
+    }
 
     const timeLeft = market.windowEnd - Math.floor(Date.now() / 1000);
-    if (timeLeft < 120 || timeLeft > 840) continue;
+    if (timeLeft < 120 || timeLeft > 840) {
+      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} timeLeft=${timeLeft}s (need 120-840)`); }
+      continue;
+    }
 
-    // Get window start price for this market
     const snapshotKey = `${market.coin}-${market.windowStart}`;
     const windowStartPrice = windowStartPrices.get(snapshotKey);
-    if (!windowStartPrice) continue; // Can't trade without reference price
+    if (!windowStartPrice) {
+      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} no window start price`); }
+      continue;
+    }
 
-    // Estimate probability: how likely is current price direction to hold?
-    // Conservative model: use magnitude relative to volatility if available
     const state = priceStates.get(signal.symbol);
     const vol = state?.volatility || 0.001;
-    // Z-score: how many volatility units has price moved
     const zScore = (signal.magnitude / 100) / Math.max(vol, 0.0005);
-    // Cap the z-score to prevent overconfidence
-    // Cap z-score and use very conservative probability mapping
-    // z=1 -> 55%, z=2 -> 60%, z=3 -> 65% (max)
-    // A 30s momentum tells you very little about 15-min outcome
     const cappedZ = Math.min(zScore, 3.0);
     const momentumProb = 0.50 + 0.05 * cappedZ;
 
     const currentPrice = signal.direction === "up" ? market.priceUp : market.priceDown;
 
-    // Skip markets where odds are already extreme (below 35c or above 65c)
-    // Momentum is only meaningful when market is uncertain (~50/50)
-    if (currentPrice < 0.35 || currentPrice > 0.65) continue;
+    if (currentPrice < 0.35 || currentPrice > 0.65) {
+      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} price=${(currentPrice*100).toFixed(0)}c (need 35-65c)`); }
+      continue;
+    }
 
     const probEstimate = momentumProb;
     const edge = probEstimate - currentPrice;
 
-    if (edge < 0.08) continue; // Need 8%+ edge to overcome noise
+    if (edge < 0.05) continue; // 5% edge minimum
 
     const targetPrice = currentPrice + edge * 0.3;
 
