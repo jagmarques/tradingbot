@@ -43,12 +43,12 @@ const envSchema = z.object({
 
   // AI Betting Config
   AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
-  AIBETTING_MAX_BET: numericString("10"),
-  AIBETTING_MAX_EXPOSURE: numericString("50"),
+  AIBETTING_MAX_BET: numericString("20"),
+  AIBETTING_MAX_EXPOSURE: numericString("100"),
   AIBETTING_MAX_POSITIONS: numericString("999"),
-  AIBETTING_MIN_EDGE: numericStringMax1("0.05"),
+  AIBETTING_MIN_EDGE: numericStringMax1("0.03"),
   AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.60"),
-  AIBETTING_SCAN_INTERVAL: numericString("1800000"), // 30 min (markets resolve in days)
+  AIBETTING_SCAN_INTERVAL: numericString("900000"), // 15 min
   AIBETTING_BAYESIAN_WEIGHT: numericStringMax1("0.50"),
   AIBETTING_TAKE_PROFIT: numericStringMax1("0.40"),
   AIBETTING_STOP_LOSS: numericStringMax1("0.15"), // Used as negative threshold in evaluator (-0.15 = -15% P&L)

@@ -190,7 +190,7 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
     const openPositions = getOpenPositions();
     const positionMarketIds = new Set(openPositions.map((p) => p.marketId));
 
-    const markets = await discoverMarkets(config, positionMarketIds, 8);
+    const markets = await discoverMarkets(config, positionMarketIds, 15);
     if (markets.length === 0) {
       console.log("[AIBetting] No candidate markets");
       return result;

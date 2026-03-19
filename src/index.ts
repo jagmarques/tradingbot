@@ -20,7 +20,7 @@ import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { validateApiConnection } from "./services/polygon/polymarket.js";
 import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
-import { startHFScanner, stopHFScanner, onTradeSignal, onMomentumSignal } from "./services/aibetting/hf-scanner.js";
+import { startHFScanner, stopHFScanner } from "./services/aibetting/hf-scanner.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -95,27 +95,7 @@ async function main(): Promise<void> {
     // High-frequency scanner (Binance WS + Polymarket 15-min markets)
     if (env.AIBETTING_ENABLED === "true") {
       await startHFScanner();
-
-      // Log momentum signals (paper mode - observe only)
-      onMomentumSignal((signal) => {
-        if (signal.magnitude > 0.30) {
-          console.log(
-            `[HFScanner] Momentum: ${signal.symbol.toUpperCase()} ${signal.direction} ` +
-            `${signal.magnitude.toFixed(2)}% conf=${signal.confidence.toFixed(2)}`
-          );
-        }
-      });
-
-      // Log trade signals (paper mode - observe only, no execution yet)
-      onTradeSignal((signal) => {
-        console.log(
-          `[HFScanner] TRADE SIGNAL: ${signal.market.coin.toUpperCase()} ${signal.side} ` +
-          `edge=${(signal.edgeEstimate * 100).toFixed(1)}% limit=${(signal.targetPrice * 100).toFixed(0)}c ` +
-          `momentum=${signal.momentum.magnitude.toFixed(2)}%`
-        );
-      });
-
-      console.log("[Bot] HF Scanner started (paper observation mode)");
+      console.log("[Bot] NegRisk scanner started");
     }
 
     // Quant trading on Hyperliquid (opt-in)

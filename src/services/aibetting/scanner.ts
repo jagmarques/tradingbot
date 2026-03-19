@@ -222,16 +222,21 @@ function filterCandidateMarkets(
 function scoreMarket(market: PolymarketEvent): number {
   let score = 0;
 
-  // Higher volume = more liquid, easier to trade
   score += Math.min(market.volume24h / 10000, 10);
-
-  // Higher liquidity = less slippage
   score += Math.min(market.liquidity / 5000, 5);
 
-  // Prefer prices closer to 0.5 (more uncertainty = more opportunity)
+  // Prefer uncertain markets (closer to 50%)
   const yesPrice = market.outcomes.find((o) => o.name === "Yes")?.price || 0.5;
   const distanceFrom50 = Math.abs(yesPrice - 0.5);
   score += (0.5 - distanceFrom50) * 10;
+
+  // Prefer markets resolving in 1-30 days (most price action, most mispricing)
+  const endTime = parseDate(market.endDate);
+  if (endTime) {
+    const daysUntil = (endTime - Date.now()) / (24 * 60 * 60 * 1000);
+    if (daysUntil >= 1 && daysUntil <= 30) score += 5;
+    else if (daysUntil <= 90) score += 2;
+  }
 
   return score;
 }
