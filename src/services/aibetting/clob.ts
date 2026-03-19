@@ -62,38 +62,6 @@ async function fetchOrderBook(tokenId: string): Promise<OrderBookResponse | null
 // ─── Metrics Computation ──────────────────────────────────────────────────
 
 /**
- * Walk the order book to compute average execution price, return slippage as fraction.
- * tradeSize is in dollars. levels have size in shares, price in 0-1.
- */
-function computeSlippage(
-  levels: OrderBookLevel[],
-  midpoint: number
-): number {
-  if (levels.length === 0 || midpoint === 0) return 0.005;
-
-  // Only check top 3 levels for realistic slippage
-  let totalWeight = 0;
-  let weightedPrice = 0;
-  const maxLevels = Math.min(levels.length, 3);
-
-  for (let i = 0; i < maxLevels; i++) {
-    const price = parseFloat(levels[i].price);
-    const shares = parseFloat(levels[i].size);
-    if (isNaN(price) || isNaN(shares) || price <= 0) continue;
-
-    const dollars = price * shares;
-    weightedPrice += price * dollars;
-    totalWeight += dollars;
-  }
-
-  if (totalWeight === 0) return 0.005;
-
-  const avgPrice = weightedPrice / totalWeight;
-  // Cap slippage at 3 cents max
-  return Math.min(0.03, Math.abs(avgPrice - midpoint));
-}
-
-/**
  * Compute depth (total $) on one side of the book (top N levels).
  */
 function computeDepth(levels: OrderBookLevel[], maxLevels: number = 10): number {
@@ -179,7 +147,7 @@ export async function getCLOBMetrics(
     bidDepth,
     askDepth,
     liquidityScore,
-    slippageCost,
+    slippageCost: 0,
     frictionCost,
   };
 }
