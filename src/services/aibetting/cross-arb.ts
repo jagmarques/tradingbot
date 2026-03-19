@@ -98,7 +98,7 @@ async function fetchKalshiMarkets(): Promise<KalshiMarket[]> {
   try {
     const response = await fetchWithTimeout(
       `${KALSHI_API_URL}/markets?limit=200&status=open`,
-      { timeoutMs: 10000 }
+      { timeoutMs: 10000, retries: 0 }
     );
     if (!response.ok) return [];
 

@@ -90,6 +90,9 @@ export async function runBondsScan(sharedMarkets?: PolyMarket[]): Promise<void> 
         const prices = parsePrices(market);
         if (!prices) continue;
 
+        // Skip low-volume markets (stale/illiquid prices)
+        if (market.volume24hr < 100) continue;
+
         const endTime = new Date(market.endDate).getTime();
         if (isNaN(endTime)) continue;
 
