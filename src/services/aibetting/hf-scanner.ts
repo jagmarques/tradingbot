@@ -394,20 +394,22 @@ function handleMomentumSignal(signal: MomentumSignal): void {
     // Z-score: how many volatility units has price moved
     const zScore = (signal.magnitude / 100) / Math.max(vol, 0.0005);
     // Cap the z-score to prevent overconfidence
-    const cappedZ = Math.min(zScore, 2.5);
-    // Probability via probit approximation (more conservative than sigmoid)
-    const momentumProb = 0.5 + 0.5 * Math.tanh(cappedZ * 0.6);
+    // Cap z-score and use very conservative probability mapping
+    // z=1 -> 55%, z=2 -> 60%, z=3 -> 65% (max)
+    // A 30s momentum tells you very little about 15-min outcome
+    const cappedZ = Math.min(zScore, 3.0);
+    const momentumProb = 0.50 + 0.05 * cappedZ;
 
-    // For "up" direction: probability that coin stays above window start
-    // For "down" direction: probability that coin stays below window start
-    // momentumProb already represents P(direction continues)
     const currentPrice = signal.direction === "up" ? market.priceUp : market.priceDown;
-    const probEstimate = momentumProb;
 
-    // Edge = our estimate - market price
+    // Skip markets where odds are already extreme (below 35c or above 65c)
+    // Momentum is only meaningful when market is uncertain (~50/50)
+    if (currentPrice < 0.35 || currentPrice > 0.65) continue;
+
+    const probEstimate = momentumProb;
     const edge = probEstimate - currentPrice;
 
-    if (edge < 0.05) continue; // Need at least 5% edge (conservative)
+    if (edge < 0.08) continue; // Need 8%+ edge to overcome noise
 
     const targetPrice = currentPrice + edge * 0.3;
 
