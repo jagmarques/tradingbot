@@ -1347,7 +1347,7 @@ async function handlePoly(ctx: Context): Promise<void> {
 
   // 7. Bonds
   text += `-------------------\n`;
-  text += `<b>Bonds</b> (&gt;95c, &lt;7d)\n`;
+  text += `<b>Bonds</b> (&gt;90c)\n`;
   text += `${bonds.totalTrades} trades (${bonds.openTrades} open) | ${bonds.winRate.toFixed(0)}% WR\n`;
   text += `P&L: ${pnl(bonds.totalPnl)}\n`;
 

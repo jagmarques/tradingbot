@@ -40,12 +40,12 @@ interface PolyMarket {
 const POSITION_SIZE = 10;
 const MAX_OPEN = 15;
 const STARTING_BALANCE = 150;
-const MIN_PRICE = 0.95;
-const MAX_DAYS = 7;
+const MIN_PRICE = 0.90;
+const MAX_DAYS = 120;
 const FEE_PCT = 0.02;
 const MIN_ANNUALIZED_YIELD = 20;
-const STOP_LOSS_PRICE = 0.90;
-const MAX_AGE_DAYS = 7;
+const STOP_LOSS_PRICE = 0.80;
+const MAX_AGE_DAYS = 120;
 
 // ---- State ---------------------------------------------------------------
 
