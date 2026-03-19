@@ -1,25 +1,48 @@
 # Trading Bot
 
-Polymarket AI betting, Polymarket copy trading, EVM insider copy trading, Hyperliquid + Lighter DEX quant trading, rug monitoring. TypeScript, Docker, Coolify.
+Polymarket AI betting, high-frequency crypto markets, high-probability bonds, Polymarket copy trading, EVM insider copy trading, Hyperliquid quant trading. TypeScript, Docker, Coolify.
 
 ## Strategies
 
 ### AI Betting (Polymarket)
 
-Scans markets, fetches news via GDELT, runs blind probability estimation with DeepSeek R1, evaluates with Kelly criterion, places bets.
+Scans markets, fetches news via GDELT, runs blind probability estimation with Cerebras (Llama 3.3 70B), evaluates with Kelly criterion, places bets.
 
-**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (DeepSeek R1) -> Evaluator (Kelly) -> Executor (CLOB/Paper)
+**Pipeline:** Scanner (GAMMA API) -> News (GDELT + Readability) -> Analyzer (Cerebras) -> Evaluator (Kelly) -> Executor (CLOB/Paper)
 
 - Blind probability: market prices hidden from AI to prevent anchoring
-- Round-number debiasing: R1 avoids 40%, 35%, uses 37%, 43%
+- Round-number debiasing: avoids 40%, 35%, uses 37%, 43%
 - Sibling detection: injects competitor names for multi-candidate markets
 - 8h analysis cache, auto-invalidated on new news
 - GDELT circuit breaker: 3 consecutive timeout failures pauses news fetching 30min
 - Prediction market article filter: drops Polymarket/Kalshi articles
+- KL divergence scoring: detects significant AI vs market disagreement
 
 **Edge modifiers:** category bonuses, NO-side +1.5% bias, price zone multiplier
 
 **Exit rules:** stop-loss -15%, take-profit +40%, -10% price drop triggers re-analysis (exits if conviction flips or EV negative), settlement risk <6h
+
+### HF Maker (Polymarket 15-min Crypto Markets)
+
+Late-entry maker strategy on BTC/ETH/SOL 15-minute up/down markets.
+
+- Binance WebSocket for real-time price feeds
+- Only enters in last 45-60 seconds of each 15-min window
+- Requires 0.3%+ price move from window start to confirm direction
+- Entry prices scale with move magnitude: 70c (0.3% move), 75c (0.5% move), 80c (0.8%+ move)
+- Resolution compares final price to window start price (not entry price)
+- Handles flat price (down wins) and missing price (cancel + refund)
+- Paper mode with simulated fills
+
+### High-Probability Bonds (Polymarket)
+
+Buys markets with YES or NO price > 90c resolving within 120 days.
+
+- Scans via shared GAMMA API fetch (15s interval)
+- Min volume $100, min annualized yield 20%
+- Stop-loss at 80c
+- Paper mode with position tracking to resolution
+- 1-hour guard before counting disappeared markets as resolved
 
 ### Copy Betting (Polymarket)
 
@@ -69,40 +92,43 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 - Tracks rugged tokens in DB to skip future buys
 - Rug count and USD lost shown in Status view
 
-### Hyperliquid Quant Trading
+### Hyperliquid Quant Trading (GARCH-chan)
 
-Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian breakout + AI).
+GARCH z-score momentum with Chandelier ATR stop-loss on 19 perpetual futures pairs.
 
 **Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, XRP, SUI, TON, UNI
 
-**1 directional engine (15m cycle):**
-- AI (1): DeepSeek R1 (reasoner) with 15m+1h+4h+1d candles, indicators, microstructure, funding, regime context. Currently disabled.
-- Donchian 4h engines removed (unprofitable in paper).
+**Engine:**
+- GARCH(1,1) volatility model with z-score entry signals
+- Chandelier ATR trailing stop-loss
+- 15-minute scheduler cycle
+- $10 fixed margin per trade, 10x leverage
 
 **Execution:**
-- $10 fixed margin per trade, 10x leverage, $200 virtual balance (AI engine)
 - $25 rolling 24h drawdown limit per strategy
-- 15-minute cycle, 10s position monitor
-- ATR×3 stop-loss (capped 3.5%), trailing stop activation 25% / distance 5%
-- Donchian stagnation: 48h. AI: signal-flip only (no stagnation)
-- Channel exit fires once per 4h bar (deduplicated by bar timestamp)
-- Paper spread: 0.04% per side on Lighter
-- Exchange-level stop-loss orders on Lighter
+- 10s position monitor
+- ATR-based stop-loss (capped 3.5%), trailing stop activation/distance configurable
 - Bidirectional reconciliation: orphan close + phantom detection
-- 14-day paper validation before live
+- Paper spread: 0.04% per side
+- Exchange-level stop-loss orders on Hyperliquid
+
+**Unified Account (Hyperliquid):**
+- `getSpotClearinghouseState` returns real portfolio value
+- When perps equity <= marginUsed, use spot USDC as equity
 
 ## Trading Modes
 
 | | Paper | Hybrid | Live |
 |---|-------|--------|------|
-| Description | All strategies paper | AI + select engines live, rest paper | All live |
+| Description | All strategies paper | Quant live, rest paper | All live |
 | AI Betting | Virtual bankroll | Virtual bankroll | Real USDC |
-| Quant AI engine (R1) | Paper | Live ($10 margin, Lighter) | Live |
-| Quant Donchian engines (4) | Paper | Paper (Lighter) | Live |
+| HF Maker | Paper simulation | Paper simulation | Real CLOB |
+| Bonds | Paper simulation | Paper simulation | Real CLOB |
+| Quant (GARCH-chan) | Paper | Live ($10 margin) | Live |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 **Paper simulation:**
-- Virtual $1000 quant bankroll ($200/engine x 5 engines)
+- Virtual $100 AI betting bankroll
 - Simulated fees: 0.15%/side CLOB + 0.5% slippage (Polymarket), dynamic 3-15% (insider copy)
 - Simulated funding: accrued hourly from live predicted rates
 - Simulated liquidation: per-pair maintenance margin rates
@@ -113,23 +139,24 @@ Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian break
 
 | Command | Description |
 |---------|-------------|
-| `/balance` | Portfolio value (HL + LT equity) |
+| `/balance` | Portfolio value (HL equity) |
 | `/pnl` | P&L with period tabs (today/7d/30d/all-time) |
 | `/trades` | Open positions and recent trades |
 | `/insiders` | Insider wallets and holdings (2 tabs + chain filter) |
+| `/poly` | Polymarket strategies (AI bets, HF Maker, Bonds) |
 | `/stop` / `/resume` | Kill switch |
 | `/mode` | Switch paper/hybrid/live |
 | `/resetpaper` | Wipe paper data (preserves scoring history) |
 | `/clearcopies` | Clear copied positions |
-| `/ai <question>` | Query DeepSeek |
+| `/ai <question>` | Query AI |
 | `/timezone` | Set display timezone |
 
 **Menu buttons:** Status, Balance, Trades, Bets, Quant, Insiders, Bettors, Mode, Settings, Stop, Resume, Manage
 
-- **Status** - P&L summary (live/paper split in hybrid mode)
+- **Status** - P&L summary (live/paper split in hybrid mode), HF Maker stats, Bonds stats
 - **Bets** - AI bet positions (open/closed/copy/copy_closed tabs)
 - **Bettors** - Tracked Polymarket bettors by ROI
-- **Quant** - Quant positions (HL + LT), engine stats, live/paper P&L split in hybrid
+- **Quant** - Quant positions, engine stats, live/paper P&L split in hybrid
 - **Settings** - Copy trading and AI betting configuration
 - **Manage** - Close all positions, clear copies
 
@@ -138,7 +165,7 @@ Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian break
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TRADING_MODE` | `paper` | paper, hybrid, or live |
-| `AIBETTING_ENABLED` | `false` | Enable AI betting |
+| `AIBETTING_ENABLED` | `false` | Enable AI betting + HF Maker + Bonds |
 | `AIBETTING_MAX_BET` | `$10` | Max per position |
 | `AIBETTING_MAX_EXPOSURE` | `$50` | Total open exposure |
 | `AIBETTING_MIN_EDGE` | `8%` | Min edge vs market |
@@ -147,12 +174,10 @@ Directional trades on 19 perpetual futures pairs via Lighter DEX (Donchian break
 | `AIBETTING_STOP_LOSS` | `15%` | Stop-loss threshold |
 | `AIBETTING_TAKE_PROFIT` | `40%` | Take-profit threshold |
 | `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit |
-| `DEEPSEEK_DAILY_BUDGET` | `$1.00` | Daily DeepSeek spend cap |
 | `QUANT_ENABLED` | `false` | Enable Hyperliquid quant trading |
-| `QUANT_VIRTUAL_BALANCE` | `$200` | Quant paper trading balance (AI engine) |
 | `ALCHEMY_API_KEY` | - | Alchemy API key for real-time rug detection |
 
-**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `DEEPSEEK_API_KEY`
+**Required keys:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, `POLYGON_PRIVATE_KEY`, `GROQ_API_KEY`
 
 **Optional keys:** `POLYMARKET_PASSPHRASE`, `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `SNOWTRACE_API_KEY`, `ALCHEMY_API_KEY`, `ONEINCH_API_KEY`
 
@@ -172,7 +197,7 @@ npm run dev
 
 ## Tech Stack
 
-TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Hyperliquid SDK, zklighter-sdk, Docker, Coolify
+TypeScript (strict), Node 22, Vitest, SQLite, Grammy (Telegram), ethers.js, Hyperliquid SDK, Docker, Coolify
 
 ## License
 
