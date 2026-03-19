@@ -17,7 +17,7 @@ const MOMENTUM_COOLDOWN_MS = 5 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const WINDOW_SCAN_INTERVAL_MS = 60_000;
 const MAX_TRADES = 500;
-const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_1m/ethusdt@kline_1m";
+const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_1m/ethusdt@kline_1m/solusdt@kline_1m";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 const PAPER_FILL_MIN_MS = 2000;
@@ -44,7 +44,7 @@ export interface HFMakerTrade {
 }
 
 interface MomentumSignal {
-  symbol: "BTC" | "ETH";
+  symbol: string;
   direction: "up" | "down";
   magnitude: number;
   binancePrice: number;
@@ -141,7 +141,10 @@ function scheduleReconnect(): void {
 // ---- Kline Processing --------------------------------------------------------
 
 function handleKline(symbol: string, kline: { c: string; v: string; x: boolean }): void {
-  const coin = symbol === "BTCUSDT" ? "BTC" : symbol === "ETHUSDT" ? "ETH" : null;
+  const SYMBOL_MAP: Record<string, string> = {
+    BTCUSDT: "BTC", ETHUSDT: "ETH", SOLUSDT: "SOL",
+  };
+  const coin = SYMBOL_MAP[symbol];
   if (!coin) return;
 
   const close = parseFloat(kline.c);
@@ -156,13 +159,13 @@ function handleKline(symbol: string, kline: { c: string; v: string; x: boolean }
   priceBuffers.set(coin, buffer);
 
   if (buffer.length >= 4) {
-    checkMomentum(coin as "BTC" | "ETH", buffer, close);
+    checkMomentum(coin, buffer, close);
   }
 }
 
 // ---- Momentum Detection ------------------------------------------------------
 
-function checkMomentum(coin: "BTC" | "ETH", buffer: number[], currentPrice: number): void {
+function checkMomentum(coin: string, buffer: number[], currentPrice: number): void {
   const ref = buffer[buffer.length - 4]; // 3 candles ago
   const momentum = (currentPrice - ref) / ref;
 
@@ -193,51 +196,52 @@ function checkMomentum(coin: "BTC" | "ETH", buffer: number[], currentPrice: numb
 
 async function scanWindows(): Promise<void> {
   try {
-    const response = await fetchWithTimeout(
-      `${GAMMA_API_URL}/markets?active=true&closed=false&tag=15-minute&limit=50`,
-      { timeoutMs: 10000 }
-    );
-    if (!response.ok) return;
-
-    const markets = (await response.json()) as GammaMarketResponse[];
-    const titleRegex = /Will\s+(BTC|ETH|Bitcoin|Ethereum).*(up|down|rise|fall).*\d+\s*min/i;
-    const now = Date.now();
+    const coins = ["btc", "eth", "sol"];
+    const nowSec = Math.floor(Date.now() / 1000);
+    const windowTs = Math.floor(nowSec / 900) * 900;
 
     activeWindows.clear();
 
-    for (const m of markets) {
+    for (const coin of coins) {
       try {
-        if (m.closed || !m.active) continue;
+        const slug = `${coin}-updown-15m-${windowTs}`;
+        const response = await fetchWithTimeout(
+          `${GAMMA_API_URL}/events?slug=${slug}`,
+          { timeoutMs: 5000 }
+        );
+        if (!response.ok) continue;
 
-        const endTime = new Date(m.endDate).getTime();
-        if (isNaN(endTime)) continue;
-        // Must be an active window (ending in the future, within 15 min)
-        if (endTime <= now || endTime - now > 15 * 60 * 1000) continue;
+        const events = (await response.json()) as Array<{
+          markets: GammaMarketResponse[];
+        }>;
+        if (!events?.length || !events[0]?.markets?.length) continue;
 
-        // Match by title
-        const match = titleRegex.exec(m.question);
-        if (!match) continue;
+        for (const m of events[0].markets) {
+          try {
+            const tokenIds = JSON.parse(m.clobTokenIds) as string[];
+            if (tokenIds.length < 2) continue;
 
-        const rawCoin = match[1].toUpperCase();
-        const coin = rawCoin === "BITCOIN" ? "BTC" : rawCoin === "ETHEREUM" ? "ETH" : rawCoin;
-        if (coin !== "BTC" && coin !== "ETH") continue;
+            const outcomes = JSON.parse(m.outcomes) as string[];
+            const upIdx = outcomes.findIndex(o => o.toLowerCase() === "up");
+            const downIdx = outcomes.findIndex(o => o.toLowerCase() === "down");
+            if (upIdx === -1 || downIdx === -1) continue;
 
-        const tokenIds = JSON.parse(m.clobTokenIds) as string[];
-        if (tokenIds.length < 2) continue;
-
-        const key = `${coin}-${endTime}`;
-        activeWindows.set(key, {
-          marketId: m.conditionId,
-          yesTokenId: tokenIds[0],
-          noTokenId: tokenIds[1],
-          endTime,
-          coin,
-        });
-      } catch { /* skip */ }
+            const endTime = (windowTs + 900) * 1000;
+            const key = `${coin.toUpperCase()}-${windowTs}`;
+            activeWindows.set(key, {
+              marketId: m.conditionId,
+              yesTokenId: tokenIds[upIdx],
+              noTokenId: tokenIds[downIdx],
+              endTime,
+              coin: coin.toUpperCase(),
+            });
+          } catch { /* skip */ }
+        }
+      } catch { /* skip coin */ }
     }
 
     if (activeWindows.size > 0) {
-      console.log(`[HFMaker] ${activeWindows.size} active 15m windows`);
+      console.log(`[HFMaker] ${activeWindows.size} active 15m windows: ${[...activeWindows.keys()].join(", ")}`);
     }
   } catch (err) {
     console.error("[HFMaker] Window scan error:", err);
