@@ -1952,10 +1952,12 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     const { clearWatcherMemory } = await import("../traders/watcher.js");
     const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
     const { clearPaperMemory, resetDailyDrawdown } = await import("../hyperliquid/index.js");
+    const { resetHFPaperData } = await import("../aibetting/hf-scanner.js");
     clearWatcherMemory();
     clearCopyPriceFailures();
     clearPaperMemory();
     resetDailyDrawdown();
+    resetHFPaperData();
 
     const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
       + polyCopiesDeleted + cryptoResult.changes + insiderCopyResult.changes

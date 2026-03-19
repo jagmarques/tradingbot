@@ -981,6 +981,14 @@ export function stopHFScanner(): void {
   console.log("[HFScanner] Stopped");
 }
 
+export function resetHFPaperData(): void {
+  paperTrades.length = 0;
+  negRiskTrades.length = 0;
+  paperBalance = 200;
+  negRiskBalance = 100;
+  console.log("[HFScanner] Paper data reset");
+}
+
 export function getHFScannerStatus(): {
   running: boolean;
   binanceConnected: boolean;
