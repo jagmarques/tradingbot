@@ -164,9 +164,9 @@ export async function getCLOBMetrics(
 
   const liquidityScore = computeLiquidityScore(spreadPct, bidDepth, askDepth);
 
-  // Total friction in absolute terms (same units as edge = probability difference)
-  // halfSpread in absolute price + taker fee (small) + slippage in absolute price
-  const frictionCost = spread / 2 + POLYMARKET_TAKER_FEE_PCT + slippageCost;
+  // Friction = half the spread + taker fee. That's it.
+  // For $10 bets, slippage is negligible on liquid Polymarket markets.
+  const frictionCost = spread / 2 + POLYMARKET_TAKER_FEE_PCT;
 
   return {
     tokenId,
