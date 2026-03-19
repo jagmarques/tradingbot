@@ -205,12 +205,23 @@ function updatePrice(ticker: BinanceTicker): void {
 const momentumCallbacks: Array<(signal: MomentumSignal) => void> = [];
 let momentumCheckInterval: NodeJS.Timeout | null = null;
 
+let lastMomentumLog = 0;
+
 function checkMomentum(): void {
+  // Log momentum stats every 60s
+  const now = Date.now();
+  if (now - lastMomentumLog > 60000) {
+    lastMomentumLog = now;
+    const btc = priceStates.get("btcusdt");
+    if (btc) {
+      console.log(`[HFMomentum] BTC $${btc.price.toFixed(0)} mom=${(btc.momentum * 100).toFixed(3)}% samples=${btc.priceHistory.length} vol=${btc.volatility.toFixed(6)}`);
+    }
+  }
+
   for (const [symbol, state] of priceStates) {
-    // Need enough samples before signaling (prevents false signals on startup)
     if (state.priceHistory.length < MIN_SAMPLES_FOR_SIGNAL) continue;
 
-    const absMomentum = Math.abs(state.momentum) * 100; // to percentage
+    const absMomentum = Math.abs(state.momentum) * 100;
     if (absMomentum < MOMENTUM_THRESHOLD_PCT) continue;
     if (Date.now() - state.timestamp > STALE_PRICE_MS) continue;
 
