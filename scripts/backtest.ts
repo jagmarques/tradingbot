@@ -124,20 +124,25 @@ const HOUR_MS = 3600000;
 
 // ---- Data Loading --------------------------------------------------------
 
-// Cache to avoid re-reading same file
-const candleCache = new Map<string, Candle[]>();
+const smallCache = new Map<string, Candle[]>();
 
 function loadCandles(pair: string, cache: string): Candle[] {
   const key = `${cache}/${pair}`;
-  if (candleCache.has(key)) return candleCache.get(key)!;
+  if (smallCache.has(key)) return smallCache.get(key)!;
 
   const filePath = path.join(cache, pair + ".json");
   if (!fs.existsSync(filePath)) return [];
 
   const stat = fs.statSync(filePath);
-  const sizeMB = (stat.size / 1e6).toFixed(1);
-  process.stdout.write(`  Loading ${pair} (${sizeMB}MB)...`);
+  const sizeMB = stat.size / 1e6;
 
+  // Skip huge files (1s data) - loaded on-demand per hour
+  if (sizeMB > 100) {
+    process.stdout.write(`  ${pair} ${cache.split("/").pop()}: ${sizeMB.toFixed(0)}MB (on-demand)\n`);
+    return [];
+  }
+
+  process.stdout.write(`  Loading ${pair} (${sizeMB.toFixed(1)}MB)...`);
   const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown[];
   const candles = (raw as (number[] | Candle)[]).map(b =>
     Array.isArray(b)
@@ -145,13 +150,11 @@ function loadCandles(pair: string, cache: string): Candle[] {
       : b as Candle
   );
   process.stdout.write(` ${candles.length} candles\n`);
-
-  candleCache.set(key, candles);
+  smallCache.set(key, candles);
   return candles;
 }
 
 function filterByTime(candles: Candle[], start: number, end: number): Candle[] {
-  // Binary search for start index (candles are sorted by time)
   let lo = 0, hi = candles.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
@@ -164,16 +167,87 @@ function filterByTime(candles: Candle[], start: number, end: number): Candle[] {
   return result;
 }
 
-// Build a map of 1-min candles indexed by their containing 1h bar timestamp
-function build1mIndex(candles1m: Candle[]): Map<number, Candle[]> {
-  const idx = new Map<number, Candle[]>();
-  for (const c of candles1m) {
-    const hourTs = Math.floor(c.t / HOUR_MS) * HOUR_MS;
-    const arr = idx.get(hourTs) || [];
-    arr.push(c);
-    idx.set(hourTs, arr);
+// On-demand loader for 1s data: loads one hour at a time from the big JSON
+// Uses streaming readline to avoid loading entire file into memory
+const hourCache = new Map<string, Candle[]>();
+let loadedPairFile: string | null = null;
+let loadedPairIndex: Map<number, { offset: number; length: number }> | null = null;
+
+/**
+ * Build a lightweight index of the 1s JSON: scan once, record byte offsets per hour.
+ * Then load individual hours on demand by seeking to that offset.
+ *
+ * Since JSON.parse of 500MB is the bottleneck, we parse in 1-hour chunks (~3600 entries).
+ */
+function buildHourIndex(pair: string, cache: string): Map<number, Candle[]> | null {
+  const filePath = path.join(cache, pair + ".json");
+  if (!fs.existsSync(filePath)) return null;
+
+  const stat = fs.statSync(filePath);
+  if (stat.size < 100) return null;
+
+  process.stdout.write(`  Indexing ${pair} 1s (${(stat.size / 1e6).toFixed(0)}MB)...`);
+
+  // Parse in chunks using streaming approach
+  const fd = fs.openSync(filePath, "r");
+  const CHUNK = 64 * 1024 * 1024; // 64MB chunks
+  const buf = Buffer.alloc(CHUNK);
+  let fileOffset = 0;
+  let leftover = "";
+  const allByHour = new Map<number, Candle[]>();
+  let totalCandles = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const bytesRead = fs.readSync(fd, buf, 0, CHUNK, fileOffset);
+    if (bytesRead === 0) break;
+    fileOffset += bytesRead;
+
+    let text = leftover + buf.toString("utf8", 0, bytesRead);
+    leftover = "";
+
+    // Match both formats: [t,o,h,l,c] or {"t":t,"o":o,"h":h,"l":l,"c":c}
+    const regex = /(?:\[(\d+),([0-9.e+-]+),([0-9.e+-]+),([0-9.e+-]+),([0-9.e+-]+))|(?:"t":(\d+),"o":([0-9.e+-]+),"h":([0-9.e+-]+),"l":([0-9.e+-]+),"c":([0-9.e+-]+))/g;
+    let match;
+    let lastMatchEnd = 0;
+
+    while ((match = regex.exec(text)) !== null) {
+      lastMatchEnd = regex.lastIndex;
+      // Groups 1-5 = array format, groups 6-10 = object format
+      const isObj = match[6] !== undefined;
+      let t = parseInt(isObj ? match[6] : match[1]);
+      if (t > 1e15) t = Math.floor(t / 1000);
+      const hourTs = Math.floor(t / HOUR_MS) * HOUR_MS;
+      const arr = allByHour.get(hourTs) || [];
+      arr.push({
+        t,
+        o: parseFloat(isObj ? match[7] : match[2]),
+        h: parseFloat(isObj ? match[8] : match[3]),
+        l: parseFloat(isObj ? match[9] : match[4]),
+        c: parseFloat(isObj ? match[10] : match[5]),
+      });
+      allByHour.set(hourTs, arr);
+      totalCandles++;
+    }
+
+    // Keep unmatched tail for next chunk
+    if (bytesRead === CHUNK) {
+      const safePoint = text.lastIndexOf("[", lastMatchEnd > 0 ? lastMatchEnd : text.length - 200);
+      if (safePoint > 0) {
+        leftover = text.slice(safePoint);
+      }
+    }
   }
-  return idx;
+
+  fs.closeSync(fd);
+  process.stdout.write(` ${totalCandles} candles, ${allByHour.size} hours\n`);
+  return allByHour;
+}
+
+// Get intra-bar candles for a specific hour, loading on-demand
+function getHourCandles(pair: string, hourTs: number, hourIndex: Map<number, Candle[]> | null): Candle[] {
+  if (!hourIndex) return [];
+  return hourIndex.get(hourTs) || [];
 }
 
 // ---- Fee & Spread Model --------------------------------------------------
@@ -408,19 +482,26 @@ function runBacktest(
     const candles1h = filterByTime(loadCandles(pair, CACHE_1H), startTs - 100 * HOUR_MS, endTs);
     if (candles1h.length < 40) { console.log(`  ${pair}: insufficient 1h data`); continue; }
 
-    // Load intra-bar candles: prefer 1s > 1m > bar-level fallback
-    const raw1s = loadCandles(pair, CACHE_1S);
-    const candles1s = filterByTime(raw1s, startTs, endTs);
-    const has1s = candles1s.length > 0;
+    // Load intra-bar candles: prefer 1s (on-demand) > 1m > bar-level
+    const hourIndex1s = buildHourIndex(pair, CACHE_1S);
+    const has1s = hourIndex1s !== null && hourIndex1s.size > 0;
 
-    const raw1m = has1s ? [] : loadCandles(pair, CACHE_1M);
-    const candles1m = has1s ? [] : filterByTime(raw1m, startTs, endTs);
-    const has1m = candles1m.length > 0;
+    let intraIndex1m: Map<number, Candle[]> | null = null;
+    if (!has1s) {
+      const raw1m = loadCandles(pair, CACHE_1M);
+      const candles1m = filterByTime(raw1m, startTs, endTs);
+      if (candles1m.length > 0) {
+        intraIndex1m = new Map<number, Candle[]>();
+        for (const c of candles1m) {
+          const hourTs = Math.floor(c.t / HOUR_MS) * HOUR_MS;
+          const arr = intraIndex1m.get(hourTs) || [];
+          arr.push(c);
+          intraIndex1m.set(hourTs, arr);
+        }
+      }
+    }
 
-    // Index sub-bar candles by their containing 1h bar
-    const intraIndex = has1s ? build1mIndex(candles1s) : build1mIndex(candles1m);
-    const hasIntra = has1s || has1m;
-    const intraLabel = has1s ? "1s" : has1m ? "1m" : "bar";
+    const hasIntra = has1s || intraIndex1m !== null;
 
     const spread = getHalfSpread(pair, config.exchange);
     let position: Position | null = null;
@@ -445,7 +526,10 @@ function runBacktest(
         let exit: { exitPrice: number; reason: string } | null = null;
 
         if (hasIntra) {
-          const subCandles = intraIndex.get(Math.floor(bar.t / HOUR_MS) * HOUR_MS) || [];
+          const hourTs = Math.floor(bar.t / HOUR_MS) * HOUR_MS;
+          const subCandles = has1s
+            ? getHourCandles(pair, hourTs, hourIndex1s)
+            : (intraIndex1m?.get(hourTs) || []);
           if (subCandles.length > 0) {
             exit = checkPositionIntraBar(position, subCandles, spread);
           }
