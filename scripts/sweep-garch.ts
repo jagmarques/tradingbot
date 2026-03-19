@@ -102,13 +102,24 @@ function main(): void {
   const results: Result[] = [];
   let done = 0;
 
+  const startTime = Date.now();
+
   for (const combo of combos) {
     done++;
     const pct = ((done / combos.length) * 100).toFixed(0);
-    process.stdout.write(`\r[${pct}%] ${done}/${combos.length} z=${combo.zThresh} cm=${combo.chanMult} sl=${combo.slCap} ta=${combo.trailA} td=${combo.trailD} mh=${combo.maxHold}`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+    const avgSec = done > 1 ? (Date.now() - startTime) / (done - 1) / 1000 : 0;
+    const eta = avgSec > 0 ? ((combos.length - done) * avgSec / 60).toFixed(0) : "?";
+
+    console.log(`[${pct}%] ${done}/${combos.length} | ${elapsed}s elapsed | ETA ${eta}min | z=${combo.zThresh} cm=${combo.chanMult} sl=${combo.slCap} ta=${combo.trailA} td=${combo.trailD} mh=${combo.maxHold}`);
 
     const r = runBacktest(combo);
-    if (r) results.push(r);
+    if (r) {
+      results.push(r);
+      console.log(`  -> ${r.trades} trades, Sharpe=${r.sharpe.toFixed(2)}, $${r.perDay.toFixed(2)}/day, WR=${r.winRate.toFixed(1)}%, MaxDD=$${r.maxDd.toFixed(0)}`);
+    } else {
+      console.log(`  -> skipped (no trades or error)`);
+    }
   }
 
   console.log(`\n\n=== TOP 10 BY SHARPE (OOS) ===\n`);
