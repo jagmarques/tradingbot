@@ -7,6 +7,11 @@
  */
 
 import { execSync, spawnSync } from "child_process";
+import fs from "fs";
+import path from "path";
+
+const RESULTS_FILE = path.join(process.cwd(), "sweep-results.jsonl");
+const LOG_FILE = path.join(process.cwd(), "sweep-results.txt");
 
 interface Combo {
   zThresh: number;
@@ -101,43 +106,71 @@ function runBacktest(combo: Combo): Result | null {
   }
 }
 
+function log(msg: string): void {
+  console.log(msg);
+  fs.appendFileSync(LOG_FILE, msg + "\n");
+}
+
 function main(): void {
   const combos = generateCombos();
-  console.log(`GARCH Parameter Sweep: ${combos.length} combinations`);
-  console.log(`Test period: 2026-02-15 to 2026-03-17 (30 days OOS)\n`);
 
+  // Resume from previous results if available
   const results: Result[] = [];
-  let done = 0;
+  let startIdx = 0;
+  if (fs.existsSync(RESULTS_FILE)) {
+    const lines = fs.readFileSync(RESULTS_FILE, "utf-8").trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      try { results.push(JSON.parse(line)); } catch {}
+    }
+    startIdx = lines.length > 0 ? parseInt(fs.readFileSync(RESULTS_FILE + ".progress", "utf-8").trim() || "0") : 0;
+    if (startIdx > 0) {
+      log(`Resuming from combo ${startIdx + 1}/${combos.length} (${results.length} results so far)`);
+    }
+  }
+
+  // Fresh start - clear files
+  if (startIdx === 0) {
+    fs.writeFileSync(RESULTS_FILE, "");
+    fs.writeFileSync(LOG_FILE, "");
+  }
+
+  log(`GARCH Parameter Sweep: ${combos.length} combinations`);
+  log(`Test period: 2026-02-15 to 2026-03-17 (30 days OOS)\n`);
 
   const startTime = Date.now();
 
-  for (const combo of combos) {
-    done++;
+  for (let i = startIdx; i < combos.length; i++) {
+    const combo = combos[i];
+    const done = i + 1;
     const pct = ((done / combos.length) * 100).toFixed(0);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-    const avgSec = done > 1 ? (Date.now() - startTime) / (done - 1) / 1000 : 0;
+    const processed = done - startIdx;
+    const avgSec = processed > 1 ? (Date.now() - startTime) / (processed - 1) / 1000 : 0;
     const eta = avgSec > 0 ? ((combos.length - done) * avgSec / 60).toFixed(0) : "?";
 
-    console.log(`[${pct}%] ${done}/${combos.length} | ${elapsed}s elapsed | ETA ${eta}min | z=${combo.zThresh} cm=${combo.chanMult} sl=${combo.slCap} ta=${combo.trailA} td=${combo.trailD} mh=${combo.maxHold}`);
+    log(`[${pct}%] ${done}/${combos.length} | ${elapsed}s elapsed | ETA ${eta}min | z=${combo.zThresh} cm=${combo.chanMult} sl=${combo.slCap} ta=${combo.trailA} td=${combo.trailD} mh=${combo.maxHold}`);
 
     const r = runBacktest(combo);
     if (r) {
       results.push(r);
-      console.log(`  -> ${r.trades} trades, Sharpe=${r.sharpe.toFixed(2)}, $${r.perDay.toFixed(2)}/day, WR=${r.winRate.toFixed(1)}%, MaxDD=$${r.maxDd.toFixed(0)}`);
+      fs.appendFileSync(RESULTS_FILE, JSON.stringify(r) + "\n");
+      log(`  -> ${r.trades} trades, Sharpe=${r.sharpe.toFixed(2)}, $${r.perDay.toFixed(2)}/day, WR=${r.winRate.toFixed(1)}%, MaxDD=$${r.maxDd.toFixed(0)}`);
     } else {
-      console.log(`  -> skipped (no trades or error)`);
+      log(`  -> skipped (no trades or error)`);
     }
+    // Save progress index
+    fs.writeFileSync(RESULTS_FILE + ".progress", String(done));
   }
 
-  console.log(`\n\n=== TOP 10 BY SHARPE (OOS) ===\n`);
+  log(`\n\n=== TOP 10 BY SHARPE (OOS) ===\n`);
   results.sort((a, b) => b.sharpe - a.sharpe);
 
-  console.log("Rank  Sharpe  $/day   WR%   Trades  MaxDD   AvgHold  z    cm   sl   ta   td   mh");
-  console.log("-".repeat(95));
+  log("Rank  Sharpe  $/day   WR%   Trades  MaxDD   AvgHold  z    cm   sl   ta   td   mh");
+  log("-".repeat(95));
 
   for (let i = 0; i < Math.min(10, results.length); i++) {
     const r = results[i];
-    console.log(
+    log(
       `${String(i + 1).padStart(4)}  ${r.sharpe.toFixed(2).padStart(6)}  ` +
       `${("$" + r.perDay.toFixed(2)).padStart(7)}  ${r.winRate.toFixed(1).padStart(5)}  ` +
       `${String(r.trades).padStart(6)}  ${("$" + r.maxDd.toFixed(0)).padStart(6)}  ` +
@@ -147,15 +180,15 @@ function main(): void {
     );
   }
 
-  console.log(`\n=== TOP 10 BY $/DAY ===\n`);
+  log(`\n=== TOP 10 BY $/DAY ===\n`);
   results.sort((a, b) => b.perDay - a.perDay);
 
-  console.log("Rank  $/day   Sharpe  WR%   Trades  MaxDD   AvgHold  z    cm   sl   ta   td   mh");
-  console.log("-".repeat(95));
+  log("Rank  $/day   Sharpe  WR%   Trades  MaxDD   AvgHold  z    cm   sl   ta   td   mh");
+  log("-".repeat(95));
 
   for (let i = 0; i < Math.min(10, results.length); i++) {
     const r = results[i];
-    console.log(
+    log(
       `${String(i + 1).padStart(4)}  ${("$" + r.perDay.toFixed(2)).padStart(7)}  ` +
       `${r.sharpe.toFixed(2).padStart(6)}  ${r.winRate.toFixed(1).padStart(5)}  ` +
       `${String(r.trades).padStart(6)}  ${("$" + r.maxDd.toFixed(0)).padStart(6)}  ` +
@@ -166,14 +199,14 @@ function main(): void {
   }
 
   // Current live params for comparison
-  console.log(`\n=== CURRENT LIVE PARAMS ===`);
-  console.log(`z=0.7  cm=6  sl=3.5  ta=8  td=5  mh=80`);
+  log(`\n=== CURRENT LIVE PARAMS ===`);
+  log(`z=0.7  cm=6  sl=3.5  ta=8  td=5  mh=80`);
   const current = results.find(r =>
     r.zThresh === 0.7 && r.chanMult === 6 && r.slCap === 3.5 &&
     r.trailA === 8 && r.trailD === 5 && r.maxHold === 80
   );
   if (current) {
-    console.log(`Sharpe=${current.sharpe.toFixed(2)} $/day=$${current.perDay.toFixed(2)} WR=${current.winRate.toFixed(1)}% MaxDD=$${current.maxDd.toFixed(0)}`);
+    log(`Sharpe=${current.sharpe.toFixed(2)} $/day=$${current.perDay.toFixed(2)} WR=${current.winRate.toFixed(1)}% MaxDD=$${current.maxDd.toFixed(0)}`);
   }
 }
 

@@ -1,0 +1,584 @@
+GARCH Parameter Sweep: 1440 combinations
+Test period: 2026-02-15 to 2026-03-17 (30 days OOS)
+
+[0%] 1/1440 | 0s elapsed | ETA ?min | z=0.5 cm=4 sl=2 ta=0 td=5 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[0%] 2/1440 | 35s elapsed | ETA 848min | z=0.5 cm=4 sl=2 ta=0 td=5 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[0%] 3/1440 | 63s elapsed | ETA 759min | z=0.5 cm=4 sl=2 ta=0 td=5 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[0%] 4/1440 | 89s elapsed | ETA 706min | z=0.5 cm=4 sl=2 ta=5 td=3 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[0%] 5/1440 | 114s elapsed | ETA 682min | z=0.5 cm=4 sl=2 ta=5 td=3 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[0%] 6/1440 | 140s elapsed | ETA 671min | z=0.5 cm=4 sl=2 ta=5 td=3 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[0%] 7/1440 | 166s elapsed | ETA 661min | z=0.5 cm=4 sl=2 ta=5 td=5 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[1%] 8/1440 | 192s elapsed | ETA 654min | z=0.5 cm=4 sl=2 ta=5 td=5 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[1%] 9/1440 | 218s elapsed | ETA 651min | z=0.5 cm=4 sl=2 ta=5 td=5 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[1%] 10/1440 | 244s elapsed | ETA 646min | z=0.5 cm=4 sl=2 ta=5 td=8 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[1%] 11/1440 | 270s elapsed | ETA 644min | z=0.5 cm=4 sl=2 ta=5 td=8 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[1%] 12/1440 | 299s elapsed | ETA 646min | z=0.5 cm=4 sl=2 ta=5 td=8 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[1%] 13/1440 | 330s elapsed | ETA 654min | z=0.5 cm=4 sl=2 ta=8 td=3 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[1%] 14/1440 | 360s elapsed | ETA 659min | z=0.5 cm=4 sl=2 ta=8 td=3 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[1%] 15/1440 | 388s elapsed | ETA 659min | z=0.5 cm=4 sl=2 ta=8 td=3 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[1%] 16/1440 | 420s elapsed | ETA 665min | z=0.5 cm=4 sl=2 ta=8 td=5 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[1%] 17/1440 | 452s elapsed | ETA 670min | z=0.5 cm=4 sl=2 ta=8 td=5 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[1%] 18/1440 | 485s elapsed | ETA 676min | z=0.5 cm=4 sl=2 ta=8 td=5 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[1%] 19/1440 | 516s elapsed | ETA 679min | z=0.5 cm=4 sl=2 ta=8 td=8 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[1%] 20/1440 | 542s elapsed | ETA 676min | z=0.5 cm=4 sl=2 ta=8 td=8 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[1%] 21/1440 | 568s elapsed | ETA 672min | z=0.5 cm=4 sl=2 ta=8 td=8 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[2%] 22/1440 | 594s elapsed | ETA 668min | z=0.5 cm=4 sl=2 ta=12 td=3 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[2%] 23/1440 | 620s elapsed | ETA 665min | z=0.5 cm=4 sl=2 ta=12 td=3 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[2%] 24/1440 | 646s elapsed | ETA 663min | z=0.5 cm=4 sl=2 ta=12 td=3 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[2%] 25/1440 | 671s elapsed | ETA 659min | z=0.5 cm=4 sl=2 ta=12 td=5 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[2%] 26/1440 | 697s elapsed | ETA 657min | z=0.5 cm=4 sl=2 ta=12 td=5 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[2%] 27/1440 | 724s elapsed | ETA 656min | z=0.5 cm=4 sl=2 ta=12 td=5 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[2%] 28/1440 | 750s elapsed | ETA 654min | z=0.5 cm=4 sl=2 ta=12 td=8 mh=48
+  -> 631 trades, Sharpe=4.63, $11.44/day, WR=34.4%, MaxDD=$111
+[2%] 29/1440 | 776s elapsed | ETA 652min | z=0.5 cm=4 sl=2 ta=12 td=8 mh=80
+  -> 562 trades, Sharpe=4.95, $11.73/day, WR=34.9%, MaxDD=$116
+[2%] 30/1440 | 802s elapsed | ETA 650min | z=0.5 cm=4 sl=2 ta=12 td=8 mh=120
+  -> 544 trades, Sharpe=4.78, $11.23/day, WR=33.8%, MaxDD=$116
+[2%] 31/1440 | 828s elapsed | ETA 648min | z=0.5 cm=4 sl=3 ta=0 td=5 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[2%] 32/1440 | 853s elapsed | ETA 646min | z=0.5 cm=4 sl=3 ta=0 td=5 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[2%] 33/1440 | 881s elapsed | ETA 646min | z=0.5 cm=4 sl=3 ta=0 td=5 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[2%] 34/1440 | 909s elapsed | ETA 645min | z=0.5 cm=4 sl=3 ta=5 td=3 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[2%] 35/1440 | 935s elapsed | ETA 644min | z=0.5 cm=4 sl=3 ta=5 td=3 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[3%] 36/1440 | 960s elapsed | ETA 642min | z=0.5 cm=4 sl=3 ta=5 td=3 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[3%] 37/1440 | 991s elapsed | ETA 644min | z=0.5 cm=4 sl=3 ta=5 td=5 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[3%] 38/1440 | 1020s elapsed | ETA 644min | z=0.5 cm=4 sl=3 ta=5 td=5 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[3%] 39/1440 | 1050s elapsed | ETA 645min | z=0.5 cm=4 sl=3 ta=5 td=5 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[3%] 40/1440 | 1078s elapsed | ETA 645min | z=0.5 cm=4 sl=3 ta=5 td=8 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[3%] 41/1440 | 1104s elapsed | ETA 643min | z=0.5 cm=4 sl=3 ta=5 td=8 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[3%] 42/1440 | 1131s elapsed | ETA 643min | z=0.5 cm=4 sl=3 ta=5 td=8 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[3%] 43/1440 | 1161s elapsed | ETA 643min | z=0.5 cm=4 sl=3 ta=8 td=3 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[3%] 44/1440 | 1186s elapsed | ETA 641min | z=0.5 cm=4 sl=3 ta=8 td=3 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[3%] 45/1440 | 1214s elapsed | ETA 641min | z=0.5 cm=4 sl=3 ta=8 td=3 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[3%] 46/1440 | 1240s elapsed | ETA 640min | z=0.5 cm=4 sl=3 ta=8 td=5 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[3%] 47/1440 | 1267s elapsed | ETA 640min | z=0.5 cm=4 sl=3 ta=8 td=5 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[3%] 48/1440 | 1295s elapsed | ETA 639min | z=0.5 cm=4 sl=3 ta=8 td=5 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[3%] 49/1440 | 1320s elapsed | ETA 638min | z=0.5 cm=4 sl=3 ta=8 td=8 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[3%] 50/1440 | 1345s elapsed | ETA 636min | z=0.5 cm=4 sl=3 ta=8 td=8 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[4%] 51/1440 | 1370s elapsed | ETA 634min | z=0.5 cm=4 sl=3 ta=8 td=8 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[4%] 52/1440 | 1396s elapsed | ETA 633min | z=0.5 cm=4 sl=3 ta=12 td=3 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[4%] 53/1440 | 1424s elapsed | ETA 633min | z=0.5 cm=4 sl=3 ta=12 td=3 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[4%] 54/1440 | 1451s elapsed | ETA 632min | z=0.5 cm=4 sl=3 ta=12 td=3 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[4%] 55/1440 | 1477s elapsed | ETA 631min | z=0.5 cm=4 sl=3 ta=12 td=5 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[4%] 56/1440 | 1501s elapsed | ETA 630min | z=0.5 cm=4 sl=3 ta=12 td=5 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[4%] 57/1440 | 1528s elapsed | ETA 629min | z=0.5 cm=4 sl=3 ta=12 td=5 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[4%] 58/1440 | 1554s elapsed | ETA 628min | z=0.5 cm=4 sl=3 ta=12 td=8 mh=48
+  -> 519 trades, Sharpe=5.04, $12.19/day, WR=39.5%, MaxDD=$101
+[4%] 59/1440 | 1579s elapsed | ETA 627min | z=0.5 cm=4 sl=3 ta=12 td=8 mh=80
+  -> 483 trades, Sharpe=4.69, $11.04/day, WR=38.9%, MaxDD=$105
+[4%] 60/1440 | 1606s elapsed | ETA 626min | z=0.5 cm=4 sl=3 ta=12 td=8 mh=120
+  -> 460 trades, Sharpe=4.70, $11.47/day, WR=38.7%, MaxDD=$105
+[4%] 61/1440 | 1632s elapsed | ETA 625min | z=0.5 cm=4 sl=3.5 ta=0 td=5 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[4%] 62/1440 | 1658s elapsed | ETA 624min | z=0.5 cm=4 sl=3.5 ta=0 td=5 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[4%] 63/1440 | 1684s elapsed | ETA 623min | z=0.5 cm=4 sl=3.5 ta=0 td=5 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[4%] 64/1440 | 1710s elapsed | ETA 623min | z=0.5 cm=4 sl=3.5 ta=5 td=3 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[5%] 65/1440 | 1739s elapsed | ETA 623min | z=0.5 cm=4 sl=3.5 ta=5 td=3 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[5%] 66/1440 | 1764s elapsed | ETA 621min | z=0.5 cm=4 sl=3.5 ta=5 td=3 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[5%] 67/1440 | 1805s elapsed | ETA 626min | z=0.5 cm=4 sl=3.5 ta=5 td=5 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[5%] 68/1440 | 1870s elapsed | ETA 638min | z=0.5 cm=4 sl=3.5 ta=5 td=5 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[5%] 69/1440 | 1904s elapsed | ETA 640min | z=0.5 cm=4 sl=3.5 ta=5 td=5 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[5%] 70/1440 | 1943s elapsed | ETA 643min | z=0.5 cm=4 sl=3.5 ta=5 td=8 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[5%] 71/1440 | 1991s elapsed | ETA 649min | z=0.5 cm=4 sl=3.5 ta=5 td=8 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[5%] 72/1440 | 2048s elapsed | ETA 658min | z=0.5 cm=4 sl=3.5 ta=5 td=8 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[5%] 73/1440 | 2090s elapsed | ETA 661min | z=0.5 cm=4 sl=3.5 ta=8 td=3 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[5%] 74/1440 | 2127s elapsed | ETA 663min | z=0.5 cm=4 sl=3.5 ta=8 td=3 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[5%] 75/1440 | 2165s elapsed | ETA 666min | z=0.5 cm=4 sl=3.5 ta=8 td=3 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[5%] 76/1440 | 2191s elapsed | ETA 664min | z=0.5 cm=4 sl=3.5 ta=8 td=5 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[5%] 77/1440 | 2217s elapsed | ETA 663min | z=0.5 cm=4 sl=3.5 ta=8 td=5 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[5%] 78/1440 | 2242s elapsed | ETA 661min | z=0.5 cm=4 sl=3.5 ta=8 td=5 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[5%] 79/1440 | 2275s elapsed | ETA 662min | z=0.5 cm=4 sl=3.5 ta=8 td=8 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[6%] 80/1440 | 2301s elapsed | ETA 660min | z=0.5 cm=4 sl=3.5 ta=8 td=8 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[6%] 81/1440 | 2329s elapsed | ETA 659min | z=0.5 cm=4 sl=3.5 ta=8 td=8 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[6%] 82/1440 | 2358s elapsed | ETA 659min | z=0.5 cm=4 sl=3.5 ta=12 td=3 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[6%] 83/1440 | 2386s elapsed | ETA 658min | z=0.5 cm=4 sl=3.5 ta=12 td=3 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[6%] 84/1440 | 2415s elapsed | ETA 658min | z=0.5 cm=4 sl=3.5 ta=12 td=3 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[6%] 85/1440 | 2441s elapsed | ETA 656min | z=0.5 cm=4 sl=3.5 ta=12 td=5 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[6%] 86/1440 | 2468s elapsed | ETA 655min | z=0.5 cm=4 sl=3.5 ta=12 td=5 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[6%] 87/1440 | 2497s elapsed | ETA 655min | z=0.5 cm=4 sl=3.5 ta=12 td=5 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[6%] 88/1440 | 2525s elapsed | ETA 654min | z=0.5 cm=4 sl=3.5 ta=12 td=8 mh=48
+  -> 500 trades, Sharpe=5.45, $12.40/day, WR=40.6%, MaxDD=$81
+[6%] 89/1440 | 2554s elapsed | ETA 653min | z=0.5 cm=4 sl=3.5 ta=12 td=8 mh=80
+  -> 469 trades, Sharpe=5.02, $11.01/day, WR=39.9%, MaxDD=$86
+[6%] 90/1440 | 2583s elapsed | ETA 653min | z=0.5 cm=4 sl=3.5 ta=12 td=8 mh=120
+  -> 445 trades, Sharpe=4.93, $11.78/day, WR=39.8%, MaxDD=$86
+[6%] 91/1440 | 2609s elapsed | ETA 652min | z=0.5 cm=4 sl=5 ta=0 td=5 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[6%] 92/1440 | 2635s elapsed | ETA 651min | z=0.5 cm=4 sl=5 ta=0 td=5 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[6%] 93/1440 | 2662s elapsed | ETA 649min | z=0.5 cm=4 sl=5 ta=0 td=5 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[7%] 94/1440 | 2692s elapsed | ETA 649min | z=0.5 cm=4 sl=5 ta=5 td=3 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[7%] 95/1440 | 2719s elapsed | ETA 649min | z=0.5 cm=4 sl=5 ta=5 td=3 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[7%] 96/1440 | 2745s elapsed | ETA 647min | z=0.5 cm=4 sl=5 ta=5 td=3 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[7%] 97/1440 | 2772s elapsed | ETA 646min | z=0.5 cm=4 sl=5 ta=5 td=5 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[7%] 98/1440 | 2799s elapsed | ETA 645min | z=0.5 cm=4 sl=5 ta=5 td=5 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[7%] 99/1440 | 2825s elapsed | ETA 644min | z=0.5 cm=4 sl=5 ta=5 td=5 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[7%] 100/1440 | 2851s elapsed | ETA 643min | z=0.5 cm=4 sl=5 ta=5 td=8 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[7%] 101/1440 | 2880s elapsed | ETA 643min | z=0.5 cm=4 sl=5 ta=5 td=8 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[7%] 102/1440 | 2910s elapsed | ETA 642min | z=0.5 cm=4 sl=5 ta=5 td=8 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[7%] 103/1440 | 2935s elapsed | ETA 641min | z=0.5 cm=4 sl=5 ta=8 td=3 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[7%] 104/1440 | 2964s elapsed | ETA 641min | z=0.5 cm=4 sl=5 ta=8 td=3 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[7%] 105/1440 | 2990s elapsed | ETA 640min | z=0.5 cm=4 sl=5 ta=8 td=3 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[7%] 106/1440 | 3019s elapsed | ETA 639min | z=0.5 cm=4 sl=5 ta=8 td=5 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[7%] 107/1440 | 3046s elapsed | ETA 638min | z=0.5 cm=4 sl=5 ta=8 td=5 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[8%] 108/1440 | 3072s elapsed | ETA 637min | z=0.5 cm=4 sl=5 ta=8 td=5 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[8%] 109/1440 | 3102s elapsed | ETA 637min | z=0.5 cm=4 sl=5 ta=8 td=8 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[8%] 110/1440 | 3131s elapsed | ETA 637min | z=0.5 cm=4 sl=5 ta=8 td=8 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[8%] 111/1440 | 3157s elapsed | ETA 636min | z=0.5 cm=4 sl=5 ta=8 td=8 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[8%] 112/1440 | 3182s elapsed | ETA 635min | z=0.5 cm=4 sl=5 ta=12 td=3 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[8%] 113/1440 | 3207s elapsed | ETA 633min | z=0.5 cm=4 sl=5 ta=12 td=3 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[8%] 114/1440 | 3234s elapsed | ETA 632min | z=0.5 cm=4 sl=5 ta=12 td=3 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[8%] 115/1440 | 3260s elapsed | ETA 632min | z=0.5 cm=4 sl=5 ta=12 td=5 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[8%] 116/1440 | 3287s elapsed | ETA 631min | z=0.5 cm=4 sl=5 ta=12 td=5 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[8%] 117/1440 | 3312s elapsed | ETA 630min | z=0.5 cm=4 sl=5 ta=12 td=5 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[8%] 118/1440 | 3338s elapsed | ETA 629min | z=0.5 cm=4 sl=5 ta=12 td=8 mh=48
+  -> 485 trades, Sharpe=4.73, $11.09/day, WR=41.6%, MaxDD=$90
+[8%] 119/1440 | 3366s elapsed | ETA 628min | z=0.5 cm=4 sl=5 ta=12 td=8 mh=80
+  -> 452 trades, Sharpe=4.37, $10.11/day, WR=41.2%, MaxDD=$99
+[8%] 120/1440 | 3394s elapsed | ETA 627min | z=0.5 cm=4 sl=5 ta=12 td=8 mh=120
+  -> 434 trades, Sharpe=4.18, $10.13/day, WR=40.6%, MaxDD=$100
+[8%] 121/1440 | 3421s elapsed | ETA 627min | z=0.5 cm=6 sl=2 ta=0 td=5 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[8%] 122/1440 | 3448s elapsed | ETA 626min | z=0.5 cm=6 sl=2 ta=0 td=5 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[9%] 123/1440 | 3476s elapsed | ETA 625min | z=0.5 cm=6 sl=2 ta=0 td=5 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[9%] 124/1440 | 3502s elapsed | ETA 624min | z=0.5 cm=6 sl=2 ta=5 td=3 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[9%] 125/1440 | 3528s elapsed | ETA 624min | z=0.5 cm=6 sl=2 ta=5 td=3 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[9%] 126/1440 | 3555s elapsed | ETA 623min | z=0.5 cm=6 sl=2 ta=5 td=3 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[9%] 127/1440 | 3581s elapsed | ETA 622min | z=0.5 cm=6 sl=2 ta=5 td=5 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[9%] 128/1440 | 3610s elapsed | ETA 622min | z=0.5 cm=6 sl=2 ta=5 td=5 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[9%] 129/1440 | 3635s elapsed | ETA 621min | z=0.5 cm=6 sl=2 ta=5 td=5 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[9%] 130/1440 | 3662s elapsed | ETA 620min | z=0.5 cm=6 sl=2 ta=5 td=8 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[9%] 131/1440 | 3687s elapsed | ETA 619min | z=0.5 cm=6 sl=2 ta=5 td=8 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[9%] 132/1440 | 3714s elapsed | ETA 618min | z=0.5 cm=6 sl=2 ta=5 td=8 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[9%] 133/1440 | 3741s elapsed | ETA 617min | z=0.5 cm=6 sl=2 ta=8 td=3 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[9%] 134/1440 | 3766s elapsed | ETA 616min | z=0.5 cm=6 sl=2 ta=8 td=3 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[9%] 135/1440 | 3792s elapsed | ETA 616min | z=0.5 cm=6 sl=2 ta=8 td=3 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[9%] 136/1440 | 3818s elapsed | ETA 615min | z=0.5 cm=6 sl=2 ta=8 td=5 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[10%] 137/1440 | 3844s elapsed | ETA 614min | z=0.5 cm=6 sl=2 ta=8 td=5 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[10%] 138/1440 | 3870s elapsed | ETA 613min | z=0.5 cm=6 sl=2 ta=8 td=5 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[10%] 139/1440 | 3902s elapsed | ETA 613min | z=0.5 cm=6 sl=2 ta=8 td=8 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[10%] 140/1440 | 3928s elapsed | ETA 612min | z=0.5 cm=6 sl=2 ta=8 td=8 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[10%] 141/1440 | 3953s elapsed | ETA 611min | z=0.5 cm=6 sl=2 ta=8 td=8 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[10%] 142/1440 | 3984s elapsed | ETA 611min | z=0.5 cm=6 sl=2 ta=12 td=3 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[10%] 143/1440 | 4014s elapsed | ETA 611min | z=0.5 cm=6 sl=2 ta=12 td=3 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[10%] 144/1440 | 4041s elapsed | ETA 610min | z=0.5 cm=6 sl=2 ta=12 td=3 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[10%] 145/1440 | 4067s elapsed | ETA 610min | z=0.5 cm=6 sl=2 ta=12 td=5 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[10%] 146/1440 | 4094s elapsed | ETA 609min | z=0.5 cm=6 sl=2 ta=12 td=5 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[10%] 147/1440 | 4121s elapsed | ETA 608min | z=0.5 cm=6 sl=2 ta=12 td=5 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[10%] 148/1440 | 4148s elapsed | ETA 608min | z=0.5 cm=6 sl=2 ta=12 td=8 mh=48
+  -> 534 trades, Sharpe=5.99, $11.43/day, WR=34.1%, MaxDD=$70
+[10%] 149/1440 | 4175s elapsed | ETA 607min | z=0.5 cm=6 sl=2 ta=12 td=8 mh=80
+  -> 409 trades, Sharpe=6.22, $12.04/day, WR=34.5%, MaxDD=$78
+[10%] 150/1440 | 4205s elapsed | ETA 607min | z=0.5 cm=6 sl=2 ta=12 td=8 mh=120
+  -> 386 trades, Sharpe=5.84, $13.33/day, WR=33.2%, MaxDD=$115
+[10%] 151/1440 | 4244s elapsed | ETA 608min | z=0.5 cm=6 sl=3 ta=0 td=5 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[11%] 152/1440 | 4276s elapsed | ETA 608min | z=0.5 cm=6 sl=3 ta=0 td=5 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[11%] 153/1440 | 4302s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=0 td=5 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[11%] 154/1440 | 4329s elapsed | ETA 606min | z=0.5 cm=6 sl=3 ta=5 td=3 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[11%] 155/1440 | 4359s elapsed | ETA 606min | z=0.5 cm=6 sl=3 ta=5 td=3 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[11%] 156/1440 | 4393s elapsed | ETA 606min | z=0.5 cm=6 sl=3 ta=5 td=3 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[11%] 157/1440 | 4429s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=5 td=5 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[11%] 158/1440 | 4459s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=5 td=5 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[11%] 159/1440 | 4493s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=5 td=5 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[11%] 160/1440 | 4522s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=5 td=8 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[11%] 161/1440 | 4552s elapsed | ETA 607min | z=0.5 cm=6 sl=3 ta=5 td=8 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[11%] 162/1440 | 4580s elapsed | ETA 606min | z=0.5 cm=6 sl=3 ta=5 td=8 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[11%] 163/1440 | 4607s elapsed | ETA 605min | z=0.5 cm=6 sl=3 ta=8 td=3 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[11%] 164/1440 | 4640s elapsed | ETA 605min | z=0.5 cm=6 sl=3 ta=8 td=3 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[11%] 165/1440 | 4674s elapsed | ETA 606min | z=0.5 cm=6 sl=3 ta=8 td=3 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[12%] 166/1440 | 4700s elapsed | ETA 605min | z=0.5 cm=6 sl=3 ta=8 td=5 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[12%] 167/1440 | 4726s elapsed | ETA 604min | z=0.5 cm=6 sl=3 ta=8 td=5 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[12%] 168/1440 | 4751s elapsed | ETA 603min | z=0.5 cm=6 sl=3 ta=8 td=5 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[12%] 169/1440 | 4778s elapsed | ETA 602min | z=0.5 cm=6 sl=3 ta=8 td=8 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[12%] 170/1440 | 4808s elapsed | ETA 602min | z=0.5 cm=6 sl=3 ta=8 td=8 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[12%] 171/1440 | 4839s elapsed | ETA 602min | z=0.5 cm=6 sl=3 ta=8 td=8 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[12%] 172/1440 | 4863s elapsed | ETA 601min | z=0.5 cm=6 sl=3 ta=12 td=3 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[12%] 173/1440 | 4889s elapsed | ETA 600min | z=0.5 cm=6 sl=3 ta=12 td=3 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[12%] 174/1440 | 4913s elapsed | ETA 599min | z=0.5 cm=6 sl=3 ta=12 td=3 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[12%] 175/1440 | 4940s elapsed | ETA 599min | z=0.5 cm=6 sl=3 ta=12 td=5 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[12%] 176/1440 | 4965s elapsed | ETA 598min | z=0.5 cm=6 sl=3 ta=12 td=5 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[12%] 177/1440 | 4991s elapsed | ETA 597min | z=0.5 cm=6 sl=3 ta=12 td=5 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[12%] 178/1440 | 5023s elapsed | ETA 597min | z=0.5 cm=6 sl=3 ta=12 td=8 mh=48
+  -> 409 trades, Sharpe=6.19, $10.85/day, WR=41.8%, MaxDD=$59
+[12%] 179/1440 | 5049s elapsed | ETA 596min | z=0.5 cm=6 sl=3 ta=12 td=8 mh=80
+  -> 326 trades, Sharpe=6.07, $11.84/day, WR=42.9%, MaxDD=$56
+[13%] 180/1440 | 5076s elapsed | ETA 596min | z=0.5 cm=6 sl=3 ta=12 td=8 mh=120
+  -> 278 trades, Sharpe=5.47, $14.78/day, WR=45.3%, MaxDD=$55
+[13%] 181/1440 | 5106s elapsed | ETA 595min | z=0.5 cm=6 sl=3.5 ta=0 td=5 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[13%] 182/1440 | 5133s elapsed | ETA 595min | z=0.5 cm=6 sl=3.5 ta=0 td=5 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[13%] 183/1440 | 5162s elapsed | ETA 594min | z=0.5 cm=6 sl=3.5 ta=0 td=5 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[13%] 184/1440 | 5186s elapsed | ETA 593min | z=0.5 cm=6 sl=3.5 ta=5 td=3 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[13%] 185/1440 | 5214s elapsed | ETA 593min | z=0.5 cm=6 sl=3.5 ta=5 td=3 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[13%] 186/1440 | 5239s elapsed | ETA 592min | z=0.5 cm=6 sl=3.5 ta=5 td=3 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[13%] 187/1440 | 5270s elapsed | ETA 592min | z=0.5 cm=6 sl=3.5 ta=5 td=5 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[13%] 188/1440 | 5304s elapsed | ETA 592min | z=0.5 cm=6 sl=3.5 ta=5 td=5 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[13%] 189/1440 | 5332s elapsed | ETA 591min | z=0.5 cm=6 sl=3.5 ta=5 td=5 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[13%] 190/1440 | 5359s elapsed | ETA 591min | z=0.5 cm=6 sl=3.5 ta=5 td=8 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[13%] 191/1440 | 5385s elapsed | ETA 590min | z=0.5 cm=6 sl=3.5 ta=5 td=8 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[13%] 192/1440 | 5412s elapsed | ETA 589min | z=0.5 cm=6 sl=3.5 ta=5 td=8 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[13%] 193/1440 | 5438s elapsed | ETA 589min | z=0.5 cm=6 sl=3.5 ta=8 td=3 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[13%] 194/1440 | 5464s elapsed | ETA 588min | z=0.5 cm=6 sl=3.5 ta=8 td=3 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[14%] 195/1440 | 5493s elapsed | ETA 588min | z=0.5 cm=6 sl=3.5 ta=8 td=3 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[14%] 196/1440 | 5518s elapsed | ETA 587min | z=0.5 cm=6 sl=3.5 ta=8 td=5 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[14%] 197/1440 | 5554s elapsed | ETA 587min | z=0.5 cm=6 sl=3.5 ta=8 td=5 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[14%] 198/1440 | 5586s elapsed | ETA 587min | z=0.5 cm=6 sl=3.5 ta=8 td=5 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[14%] 199/1440 | 5618s elapsed | ETA 587min | z=0.5 cm=6 sl=3.5 ta=8 td=8 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[14%] 200/1440 | 5651s elapsed | ETA 587min | z=0.5 cm=6 sl=3.5 ta=8 td=8 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[14%] 201/1440 | 5678s elapsed | ETA 586min | z=0.5 cm=6 sl=3.5 ta=8 td=8 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[14%] 202/1440 | 5704s elapsed | ETA 586min | z=0.5 cm=6 sl=3.5 ta=12 td=3 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[14%] 203/1440 | 5730s elapsed | ETA 585min | z=0.5 cm=6 sl=3.5 ta=12 td=3 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[14%] 204/1440 | 5758s elapsed | ETA 584min | z=0.5 cm=6 sl=3.5 ta=12 td=3 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[14%] 205/1440 | 5784s elapsed | ETA 584min | z=0.5 cm=6 sl=3.5 ta=12 td=5 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[14%] 206/1440 | 5810s elapsed | ETA 583min | z=0.5 cm=6 sl=3.5 ta=12 td=5 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[14%] 207/1440 | 5836s elapsed | ETA 582min | z=0.5 cm=6 sl=3.5 ta=12 td=5 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[14%] 208/1440 | 5861s elapsed | ETA 581min | z=0.5 cm=6 sl=3.5 ta=12 td=8 mh=48
+  -> 384 trades, Sharpe=6.05, $10.92/day, WR=44.0%, MaxDD=$72
+[15%] 209/1440 | 5887s elapsed | ETA 581min | z=0.5 cm=6 sl=3.5 ta=12 td=8 mh=80
+  -> 314 trades, Sharpe=4.83, $9.39/day, WR=43.0%, MaxDD=$64
+[15%] 210/1440 | 5913s elapsed | ETA 580min | z=0.5 cm=6 sl=3.5 ta=12 td=8 mh=120
+  -> 262 trades, Sharpe=5.32, $14.56/day, WR=46.9%, MaxDD=$55
+[15%] 211/1440 | 5944s elapsed | ETA 580min | z=0.5 cm=6 sl=5 ta=0 td=5 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[15%] 212/1440 | 5973s elapsed | ETA 579min | z=0.5 cm=6 sl=5 ta=0 td=5 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[15%] 213/1440 | 5997s elapsed | ETA 579min | z=0.5 cm=6 sl=5 ta=0 td=5 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[15%] 214/1440 | 6022s elapsed | ETA 578min | z=0.5 cm=6 sl=5 ta=5 td=3 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[15%] 215/1440 | 6046s elapsed | ETA 577min | z=0.5 cm=6 sl=5 ta=5 td=3 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[15%] 216/1440 | 6078s elapsed | ETA 577min | z=0.5 cm=6 sl=5 ta=5 td=3 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[15%] 217/1440 | 6103s elapsed | ETA 576min | z=0.5 cm=6 sl=5 ta=5 td=5 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[15%] 218/1440 | 6131s elapsed | ETA 575min | z=0.5 cm=6 sl=5 ta=5 td=5 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[15%] 219/1440 | 6157s elapsed | ETA 575min | z=0.5 cm=6 sl=5 ta=5 td=5 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[15%] 220/1440 | 6181s elapsed | ETA 574min | z=0.5 cm=6 sl=5 ta=5 td=8 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[15%] 221/1440 | 6207s elapsed | ETA 573min | z=0.5 cm=6 sl=5 ta=5 td=8 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[15%] 222/1440 | 6234s elapsed | ETA 573min | z=0.5 cm=6 sl=5 ta=5 td=8 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[15%] 223/1440 | 6262s elapsed | ETA 572min | z=0.5 cm=6 sl=5 ta=8 td=3 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[16%] 224/1440 | 6288s elapsed | ETA 571min | z=0.5 cm=6 sl=5 ta=8 td=3 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[16%] 225/1440 | 6317s elapsed | ETA 571min | z=0.5 cm=6 sl=5 ta=8 td=3 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[16%] 226/1440 | 6342s elapsed | ETA 570min | z=0.5 cm=6 sl=5 ta=8 td=5 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[16%] 227/1440 | 6369s elapsed | ETA 570min | z=0.5 cm=6 sl=5 ta=8 td=5 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[16%] 228/1440 | 6398s elapsed | ETA 569min | z=0.5 cm=6 sl=5 ta=8 td=5 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[16%] 229/1440 | 6424s elapsed | ETA 569min | z=0.5 cm=6 sl=5 ta=8 td=8 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[16%] 230/1440 | 6455s elapsed | ETA 568min | z=0.5 cm=6 sl=5 ta=8 td=8 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[16%] 231/1440 | 6482s elapsed | ETA 568min | z=0.5 cm=6 sl=5 ta=8 td=8 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[16%] 232/1440 | 6508s elapsed | ETA 567min | z=0.5 cm=6 sl=5 ta=12 td=3 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[16%] 233/1440 | 6534s elapsed | ETA 567min | z=0.5 cm=6 sl=5 ta=12 td=3 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[16%] 234/1440 | 6561s elapsed | ETA 566min | z=0.5 cm=6 sl=5 ta=12 td=3 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[16%] 235/1440 | 6585s elapsed | ETA 565min | z=0.5 cm=6 sl=5 ta=12 td=5 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[16%] 236/1440 | 6610s elapsed | ETA 564min | z=0.5 cm=6 sl=5 ta=12 td=5 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[16%] 237/1440 | 6637s elapsed | ETA 564min | z=0.5 cm=6 sl=5 ta=12 td=5 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[17%] 238/1440 | 6661s elapsed | ETA 563min | z=0.5 cm=6 sl=5 ta=12 td=8 mh=48
+  -> 363 trades, Sharpe=3.37, $5.94/day, WR=44.6%, MaxDD=$110
+[17%] 239/1440 | 6689s elapsed | ETA 563min | z=0.5 cm=6 sl=5 ta=12 td=8 mh=80
+  -> 286 trades, Sharpe=3.90, $7.50/day, WR=44.8%, MaxDD=$100
+[17%] 240/1440 | 6728s elapsed | ETA 563min | z=0.5 cm=6 sl=5 ta=12 td=8 mh=120
+  -> 240 trades, Sharpe=4.89, $13.00/day, WR=48.3%, MaxDD=$78
+[17%] 241/1440 | 6768s elapsed | ETA 564min | z=0.5 cm=8 sl=2 ta=0 td=5 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[17%] 242/1440 | 6804s elapsed | ETA 564min | z=0.5 cm=8 sl=2 ta=0 td=5 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[17%] 243/1440 | 6836s elapsed | ETA 564min | z=0.5 cm=8 sl=2 ta=0 td=5 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[17%] 244/1440 | 6870s elapsed | ETA 564min | z=0.5 cm=8 sl=2 ta=5 td=3 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[17%] 245/1440 | 6896s elapsed | ETA 563min | z=0.5 cm=8 sl=2 ta=5 td=3 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[17%] 246/1440 | 6923s elapsed | ETA 562min | z=0.5 cm=8 sl=2 ta=5 td=3 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[17%] 247/1440 | 6949s elapsed | ETA 562min | z=0.5 cm=8 sl=2 ta=5 td=5 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[17%] 248/1440 | 6976s elapsed | ETA 561min | z=0.5 cm=8 sl=2 ta=5 td=5 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[17%] 249/1440 | 7004s elapsed | ETA 561min | z=0.5 cm=8 sl=2 ta=5 td=5 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[17%] 250/1440 | 7033s elapsed | ETA 560min | z=0.5 cm=8 sl=2 ta=5 td=8 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[17%] 251/1440 | 7067s elapsed | ETA 560min | z=0.5 cm=8 sl=2 ta=5 td=8 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[18%] 252/1440 | 7102s elapsed | ETA 560min | z=0.5 cm=8 sl=2 ta=5 td=8 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[18%] 253/1440 | 7131s elapsed | ETA 560min | z=0.5 cm=8 sl=2 ta=8 td=3 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[18%] 254/1440 | 7157s elapsed | ETA 559min | z=0.5 cm=8 sl=2 ta=8 td=3 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[18%] 255/1440 | 7187s elapsed | ETA 559min | z=0.5 cm=8 sl=2 ta=8 td=3 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[18%] 256/1440 | 7223s elapsed | ETA 559min | z=0.5 cm=8 sl=2 ta=8 td=5 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[18%] 257/1440 | 7256s elapsed | ETA 559min | z=0.5 cm=8 sl=2 ta=8 td=5 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[18%] 258/1440 | 7282s elapsed | ETA 558min | z=0.5 cm=8 sl=2 ta=8 td=5 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[18%] 259/1440 | 7308s elapsed | ETA 558min | z=0.5 cm=8 sl=2 ta=8 td=8 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[18%] 260/1440 | 7338s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=8 td=8 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[18%] 261/1440 | 7366s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=8 td=8 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[18%] 262/1440 | 7406s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=12 td=3 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[18%] 263/1440 | 7436s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=12 td=3 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[18%] 264/1440 | 7473s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=12 td=3 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[18%] 265/1440 | 7505s elapsed | ETA 557min | z=0.5 cm=8 sl=2 ta=12 td=5 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[18%] 266/1440 | 7532s elapsed | ETA 556min | z=0.5 cm=8 sl=2 ta=12 td=5 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[19%] 267/1440 | 7560s elapsed | ETA 556min | z=0.5 cm=8 sl=2 ta=12 td=5 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[19%] 268/1440 | 7587s elapsed | ETA 555min | z=0.5 cm=8 sl=2 ta=12 td=8 mh=48
+  -> 534 trades, Sharpe=6.23, $11.06/day, WR=34.1%, MaxDD=$76
+[19%] 269/1440 | 7614s elapsed | ETA 554min | z=0.5 cm=8 sl=2 ta=12 td=8 mh=80
+  -> 396 trades, Sharpe=4.64, $9.16/day, WR=31.8%, MaxDD=$92
+[19%] 270/1440 | 7645s elapsed | ETA 554min | z=0.5 cm=8 sl=2 ta=12 td=8 mh=120
+  -> 380 trades, Sharpe=4.37, $9.98/day, WR=29.5%, MaxDD=$115
+[19%] 271/1440 | 7675s elapsed | ETA 554min | z=0.5 cm=8 sl=3 ta=0 td=5 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[19%] 272/1440 | 7702s elapsed | ETA 553min | z=0.5 cm=8 sl=3 ta=0 td=5 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[19%] 273/1440 | 7730s elapsed | ETA 553min | z=0.5 cm=8 sl=3 ta=0 td=5 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[19%] 274/1440 | 7757s elapsed | ETA 552min | z=0.5 cm=8 sl=3 ta=5 td=3 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[19%] 275/1440 | 7791s elapsed | ETA 552min | z=0.5 cm=8 sl=3 ta=5 td=3 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[19%] 276/1440 | 7817s elapsed | ETA 551min | z=0.5 cm=8 sl=3 ta=5 td=3 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[19%] 277/1440 | 7841s elapsed | ETA 551min | z=0.5 cm=8 sl=3 ta=5 td=5 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[19%] 278/1440 | 7868s elapsed | ETA 550min | z=0.5 cm=8 sl=3 ta=5 td=5 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[19%] 279/1440 | 7895s elapsed | ETA 550min | z=0.5 cm=8 sl=3 ta=5 td=5 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[19%] 280/1440 | 7920s elapsed | ETA 549min | z=0.5 cm=8 sl=3 ta=5 td=8 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[20%] 281/1440 | 7947s elapsed | ETA 548min | z=0.5 cm=8 sl=3 ta=5 td=8 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[20%] 282/1440 | 7973s elapsed | ETA 548min | z=0.5 cm=8 sl=3 ta=5 td=8 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[20%] 283/1440 | 8004s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=3 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[20%] 284/1440 | 8035s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=3 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[20%] 285/1440 | 8073s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=3 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[20%] 286/1440 | 8103s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=5 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[20%] 287/1440 | 8135s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=5 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[20%] 288/1440 | 8164s elapsed | ETA 546min | z=0.5 cm=8 sl=3 ta=8 td=5 mh=120
+  -> 265 trades, Sharpe=4.09, $11.13/day, WR=40.4%, MaxDD=$88
+[20%] 289/1440 | 8193s elapsed | ETA 546min | z=0.5 cm=8 sl=3 ta=8 td=8 mh=48
+  -> 404 trades, Sharpe=5.79, $10.30/day, WR=42.6%, MaxDD=$76
+[20%] 290/1440 | 8234s elapsed | ETA 546min | z=0.5 cm=8 sl=3 ta=8 td=8 mh=80
+  -> 305 trades, Sharpe=5.69, $10.35/day, WR=43.3%, MaxDD=$68
+[20%] 291/1440 | 8283s elapsed | ETA 547min | z=0.5 cm=8 sl=3 ta=8 td=8 mh=120

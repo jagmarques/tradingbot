@@ -12,11 +12,9 @@ import {
   resetHFMakerData,
   type HFMakerTrade,
 } from "./hf-maker.js";
-import { runCrossArbScan, resetCrossArbData } from "./cross-arb.js";
 import { runBondsScan, resetBondsData } from "./high-prob-bonds.js";
 
 export { getHFMakerStats, getHFMakerStatus, resetHFMakerData } from "./hf-maker.js";
-export { getCrossArbStats } from "./cross-arb.js";
 export { getBondsStats } from "./high-prob-bonds.js";
 
 // ---- Types ---------------------------------------------------------------
@@ -153,7 +151,6 @@ async function runFastScan(): Promise<FastScanResult[]> {
       active: true,
       closed: m.closed,
     }));
-    await runCrossArbScan(sharedPolyMarkets);
     await runBondsScan(sharedPolyMarkets);
 
     // Flag high-edge for R1
@@ -344,7 +341,6 @@ export function resetHFPaperData(): void {
   negRiskTrades.length = 0;
   negRiskBalance = 100;
   resetHFMakerData();
-  resetCrossArbData();
   resetBondsData();
   console.log("[FastScan] Paper data reset");
 }
