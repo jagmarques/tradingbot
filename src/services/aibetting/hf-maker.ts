@@ -1,6 +1,7 @@
 /**
- * HF Maker: Binance WS momentum -> Polymarket maker orders on 15-min crypto markets.
- * Earns ~2% maker rebate instead of paying taker fees.
+ * HF Maker: Late-entry strategy on Polymarket 15-min crypto up/down markets.
+ * Waits until last 60s of window when direction is ~85%+ determined,
+ * places maker order at high confidence price. Zero maker fees + rebates.
  */
 
 import WebSocket from "ws";
@@ -12,17 +13,19 @@ import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js"
 // ---- Constants ---------------------------------------------------------------
 
 const HF_MAKER_POSITION_SIZE = 5;
-const MOMENTUM_THRESHOLD = 0.0015;
-const MOMENTUM_COOLDOWN_MS = 5 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const WINDOW_SCAN_INTERVAL_MS = 60_000;
 const MAX_TRADES = 500;
 const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_1m/ethusdt@kline_1m/solusdt@kline_1m";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
-const PAPER_FILL_MIN_MS = 2000;
-const PAPER_FILL_MAX_MS = 10_000;
 const INITIAL_BALANCE = 100;
+
+// Late-entry strategy params
+const ENTRY_WINDOW_SECS = 60; // only enter in last 60s of window
+const MIN_MOVE_PCT = 0.003; // 0.3% min move from window start
+const STRONG_MOVE_PCT = 0.008; // 0.8%+ = strong confidence
+const ONE_TRADE_PER_WINDOW = true; // max 1 trade per coin per window
 
 // ---- Types -------------------------------------------------------------------
 
@@ -35,6 +38,7 @@ export interface HFMakerTrade {
   size: number;
   entryTime: number;
   windowEnd: number;
+  windowStartPrice: number;
   binancePriceAtEntry: number;
   binancePriceAtClose?: number;
   momentumMagnitude: number;
@@ -43,20 +47,13 @@ export interface HFMakerTrade {
   pnl: number;
 }
 
-interface MomentumSignal {
-  symbol: string;
-  direction: "up" | "down";
-  magnitude: number;
-  binancePrice: number;
-  timestamp: number;
-}
-
 interface ActiveWindow {
   marketId: string;
   yesTokenId: string;
   noTokenId: string;
   endTime: number;
   coin: string;
+  startPrice?: number;
 }
 
 interface GammaMarketResponse {
@@ -80,16 +77,13 @@ let reconnectTimer: NodeJS.Timeout | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let windowScanInterval: NodeJS.Timeout | null = null;
 
-const priceBuffers = new Map<string, number[]>();
-const momentumCooldowns = new Map<string, number>();
+const latestPrices = new Map<string, number>();
 const activeWindows = new Map<string, ActiveWindow>();
+const windowTraded = new Set<string>(); // track which windows we already traded
 const trades: HFMakerTrade[] = [];
 let balance = INITIAL_BALANCE;
 
-// Active order IDs mapped to trade IDs
 const activeOrders = new Map<string, string>();
-
-// Paper fill timers
 const paperFillTimers = new Map<string, NodeJS.Timeout>();
 
 // ---- Binance WebSocket -------------------------------------------------------
@@ -109,11 +103,9 @@ function connectBinance(): void {
 
   ws.on("message", (data: WebSocket.RawData) => {
     try {
-      const msg = JSON.parse(data.toString()) as {
-        e: string;
-        s: string;
-        k: { c: string; v: string; x: boolean };
-      };
+      const raw = JSON.parse(data.toString());
+      // Combined stream wraps in {stream, data}
+      const msg = raw.data && raw.stream ? raw.data : raw;
       if (msg.e === "kline") handleKline(msg.s, msg.k);
     } catch { /* skip malformed */ }
   });
@@ -148,49 +140,19 @@ function handleKline(symbol: string, kline: { c: string; v: string; x: boolean }
   const coin = SYMBOL_MAP[symbol];
   if (!coin) return;
 
-  const close = parseFloat(kline.c);
-  if (isNaN(close)) return;
+  const price = parseFloat(kline.c);
+  if (isNaN(price)) return;
 
-  // Only process on kline close
-  if (!kline.x) return;
+  // Update latest price on every tick (not just kline close)
+  latestPrices.set(coin, price);
 
-  const buffer = priceBuffers.get(coin) ?? [];
-  buffer.push(close);
-  if (buffer.length > 5) buffer.shift();
-  priceBuffers.set(coin, buffer);
-
-  if (buffer.length >= 4) {
-    checkMomentum(coin, buffer, close);
+  // Capture window start price if not set
+  for (const [key, w] of activeWindows) {
+    if (w.coin === coin && !w.startPrice) {
+      w.startPrice = price;
+      console.log(`[HFMaker] Window ${key} start price: $${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`);
+    }
   }
-}
-
-// ---- Momentum Detection ------------------------------------------------------
-
-function checkMomentum(coin: string, buffer: number[], currentPrice: number): void {
-  const ref = buffer[buffer.length - 4]; // 3 candles ago
-  const momentum = (currentPrice - ref) / ref;
-
-  if (Math.abs(momentum) < MOMENTUM_THRESHOLD) return;
-
-  // Cooldown check
-  const lastSignal = momentumCooldowns.get(coin) ?? 0;
-  if (Date.now() - lastSignal < MOMENTUM_COOLDOWN_MS) return;
-
-  const signal: MomentumSignal = {
-    symbol: coin,
-    direction: momentum > 0 ? "up" : "down",
-    magnitude: Math.abs(momentum),
-    binancePrice: currentPrice,
-    timestamp: Date.now(),
-  };
-
-  momentumCooldowns.set(coin, Date.now());
-  const dir = signal.direction.toUpperCase();
-  const pct = (signal.magnitude * 100).toFixed(2);
-  const priceStr = currentPrice.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  console.log(`[HFMaker] Momentum ${coin} ${dir} +${pct}% @ $${priceStr}`);
-
-  void handleMomentumSignal(signal);
 }
 
 // ---- Window Discovery --------------------------------------------------------
@@ -201,14 +163,25 @@ async function scanWindows(): Promise<void> {
     const nowSec = Math.floor(Date.now() / 1000);
     const windowTs = Math.floor(nowSec / 900) * 900;
 
-    activeWindows.clear();
+    // Only clear windows that have expired
+    for (const [key, w] of activeWindows) {
+      if (w.endTime <= Date.now()) {
+        activeWindows.delete(key);
+        windowTraded.delete(key);
+      }
+    }
 
     for (const coin of coins) {
       try {
         const slug = `${coin}-updown-15m-${windowTs}`;
+        const key = `${coin.toUpperCase()}-${windowTs}`;
+
+        // Skip if we already have this window
+        if (activeWindows.has(key)) continue;
+
         const response = await fetchWithTimeout(
           `${GAMMA_API_URL}/events?slug=${slug}`,
-          { timeoutMs: 5000 }
+          { timeoutMs: 5000, retries: 0 }
         );
         if (!response.ok) continue;
 
@@ -228,13 +201,15 @@ async function scanWindows(): Promise<void> {
             if (upIdx === -1 || downIdx === -1) continue;
 
             const endTime = (windowTs + 900) * 1000;
-            const key = `${coin.toUpperCase()}-${windowTs}`;
+            const currentPrice = latestPrices.get(coin.toUpperCase());
+
             activeWindows.set(key, {
               marketId: m.conditionId,
               yesTokenId: tokenIds[upIdx],
               noTokenId: tokenIds[downIdx],
               endTime,
               coin: coin.toUpperCase(),
+              startPrice: currentPrice,
             });
           } catch { /* skip */ }
         }
@@ -249,68 +224,84 @@ async function scanWindows(): Promise<void> {
   }
 }
 
-// ---- Order Placement ---------------------------------------------------------
+// ---- Late-Entry Check (runs every heartbeat) ---------------------------------
 
-async function handleMomentumSignal(signal: MomentumSignal): Promise<void> {
-  // Find matching window for this coin
+function checkLateEntry(): void {
   const now = Date.now();
-  let bestWindow: ActiveWindow | null = null;
 
-  for (const w of activeWindows.values()) {
-    if (w.coin !== signal.symbol) continue;
-    if (w.endTime <= now) continue;
-    // Pick the window closest to expiry (most relevant)
-    if (!bestWindow || w.endTime < bestWindow.endTime) {
-      bestWindow = w;
+  for (const [key, window] of activeWindows) {
+    if (!window.startPrice) continue;
+    if (windowTraded.has(key) && ONE_TRADE_PER_WINDOW) continue;
+
+    const secsLeft = (window.endTime - now) / 1000;
+
+    // Only enter in the last ENTRY_WINDOW_SECS
+    if (secsLeft > ENTRY_WINDOW_SECS || secsLeft <= 5) continue;
+
+    const currentPrice = latestPrices.get(window.coin);
+    if (!currentPrice) continue;
+
+    const movePct = (currentPrice - window.startPrice) / window.startPrice;
+    const absMove = Math.abs(movePct);
+
+    // Skip if move is too small (noise)
+    if (absMove < MIN_MOVE_PCT) continue;
+
+    // Direction is determined by price movement from window start
+    const direction: "up" | "down" = movePct > 0 ? "up" : "down";
+
+    // Entry price scales with confidence:
+    // 0.3% move -> ~80c entry (lower confidence, more profit if right)
+    // 0.8%+ move -> ~88c entry (high confidence, still good profit)
+    let entryPrice: number;
+    if (absMove >= STRONG_MOVE_PCT) {
+      entryPrice = 0.88; // strong move, high confidence
+    } else if (absMove >= 0.005) {
+      entryPrice = 0.85; // moderate move
+    } else {
+      entryPrice = 0.80; // minimum threshold move
     }
+
+    if (balance < HF_MAKER_POSITION_SIZE) continue;
+
+    // Place the trade
+    void placeLateEntryTrade(window, key, direction, entryPrice, currentPrice, absMove);
   }
+}
 
-  if (!bestWindow) return;
+async function placeLateEntryTrade(
+  window: ActiveWindow,
+  windowKey: string,
+  direction: "up" | "down",
+  entryPrice: number,
+  currentBinancePrice: number,
+  moveMagnitude: number,
+): Promise<void> {
+  windowTraded.add(windowKey);
 
-  if (balance < HF_MAKER_POSITION_SIZE) {
-    console.log("[HFMaker] Insufficient balance, skipping order");
-    return;
-  }
-
-  // Determine token: up -> YES, down -> NO
-  const tokenId = signal.direction === "up" ? bestWindow.yesTokenId : bestWindow.noTokenId;
-
-  let entryPrice: number;
-
-  if (isPolymarketPaperMode()) {
-    // Paper: simulate a reasonable maker price
-    entryPrice = signal.direction === "up" ? 0.52 : 0.48;
-  } else {
-    // Live: read orderbook and place one tick above best bid
-    const book = await getOrderbook(tokenId);
-    if (!book || book.bids.length === 0) {
-      console.log("[HFMaker] No orderbook bids, skipping");
-      return;
-    }
-    const bestBid = parseFloat(book.bids[0][0]);
-    entryPrice = Math.min(bestBid + 0.01, 0.99);
-  }
-
+  const tokenId = direction === "up" ? window.yesTokenId : window.noTokenId;
   const shares = HF_MAKER_POSITION_SIZE / entryPrice;
   const tradeId = `hfm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const secsLeft = ((window.endTime - Date.now()) / 1000).toFixed(0);
 
-  const endStr = new Date(bestWindow.endTime).toISOString().slice(11, 16);
   console.log(
-    `[HFMaker] ORDER ${signal.symbol} ${signal.direction === "up" ? "YES" : "NO"} ` +
-    `@${(entryPrice * 100).toFixed(0)}c $${HF_MAKER_POSITION_SIZE} (maker) end=${endStr}`
+    `[HFMaker] LATE-ENTRY ${window.coin} ${direction.toUpperCase()} ` +
+    `@${(entryPrice * 100).toFixed(0)}c $${HF_MAKER_POSITION_SIZE} ` +
+    `move=${(moveMagnitude * 100).toFixed(2)}% ${secsLeft}s left`
   );
 
   const trade: HFMakerTrade = {
     id: tradeId,
-    coin: signal.symbol,
-    side: signal.direction,
+    coin: window.coin,
+    side: direction,
     entryPrice,
     shares,
     size: HF_MAKER_POSITION_SIZE,
     entryTime: Date.now(),
-    windowEnd: bestWindow.endTime,
-    binancePriceAtEntry: signal.binancePrice,
-    momentumMagnitude: signal.magnitude,
+    windowEnd: window.endTime,
+    windowStartPrice: window.startPrice!,
+    binancePriceAtEntry: currentBinancePrice,
+    momentumMagnitude: moveMagnitude,
     status: "pending",
     pnl: 0,
   };
@@ -326,29 +317,28 @@ async function handleMomentumSignal(signal: MomentumSignal): Promise<void> {
   }
 
   if (isPolymarketPaperMode()) {
-    // Simulate fill after random delay
-    const delay = PAPER_FILL_MIN_MS + Math.random() * (PAPER_FILL_MAX_MS - PAPER_FILL_MIN_MS);
-    const timer = setTimeout(() => {
-      paperFillTimers.delete(tradeId);
-      if (trade.status === "pending") {
-        trade.status = "open";
-        console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
-      }
-    }, delay);
-    paperFillTimers.set(tradeId, timer);
+    // Paper: instant fill (we're entering late, high prob of fill)
+    trade.status = "open";
+    console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
     // Live: place order on CLOB
     try {
+      const book = await getOrderbook(tokenId);
+      const livePrice = book && book.bids.length > 0
+        ? Math.min(parseFloat(book.bids[0][0]) + 0.01, 0.95)
+        : entryPrice;
+
       const order = await placeOrder({
         tokenId,
         side: "BUY",
-        price: entryPrice.toFixed(2),
+        price: livePrice.toFixed(2),
         size: shares.toFixed(2),
         feeRateBps: 0,
-        expiration: Math.floor(bestWindow.endTime / 1000),
+        expiration: Math.floor(window.endTime / 1000),
       });
       if (order) {
         trade.orderId = order.id;
+        trade.entryPrice = livePrice;
         activeOrders.set(order.id, tradeId);
         console.log(`[HFMaker] Order placed: ${order.id}`);
       } else {
@@ -369,10 +359,11 @@ async function handleMomentumSignal(signal: MomentumSignal): Promise<void> {
 function runHeartbeat(): void {
   const now = Date.now();
 
-  // Check pending orders in live mode
+  // Check late-entry opportunities
+  checkLateEntry();
+
   for (const trade of trades) {
     if (trade.status === "pending" && !isPolymarketPaperMode() && trade.orderId) {
-      // GTC orders persist until expiry. Check if window expired.
       if (now >= trade.windowEnd) {
         trade.status = "cancelled";
         balance += trade.size;
@@ -407,51 +398,32 @@ function runHeartbeat(): void {
 // ---- Position Resolution -----------------------------------------------------
 
 function resolvePosition(trade: HFMakerTrade): void {
-  const currentBinancePrice = getLatestPrice(trade.coin);
+  const currentBinancePrice = latestPrices.get(trade.coin) ?? 0;
   trade.binancePriceAtClose = currentBinancePrice;
 
-  if (isPolymarketPaperMode()) {
-    // Paper: resolve based on price direction
-    const priceUp = currentBinancePrice > trade.binancePriceAtEntry;
-    const directionMatched =
-      (trade.side === "up" && priceUp) || (trade.side === "down" && !priceUp);
+  // Resolution: compare current price to WINDOW START price (not entry price)
+  const priceUp = currentBinancePrice > trade.windowStartPrice;
+  const directionMatched =
+    (trade.side === "up" && priceUp) || (trade.side === "down" && !priceUp);
 
-    if (directionMatched) {
-      // Win: payout = shares * $1
-      const payout = trade.shares * 1.0;
-      trade.pnl = payout - trade.size;
-      trade.status = "won";
-      balance += payout;
-    } else {
-      // Lose: lose entire size
-      trade.pnl = -trade.size;
-      trade.status = "lost";
-    }
+  if (directionMatched) {
+    const payout = trade.shares * 1.0;
+    trade.pnl = payout - trade.size;
+    trade.status = "won";
+    balance += payout;
   } else {
-    // Live: market auto-resolves on Polymarket; mark as won/lost based on price
-    const priceUp = currentBinancePrice > trade.binancePriceAtEntry;
-    const directionMatched =
-      (trade.side === "up" && priceUp) || (trade.side === "down" && !priceUp);
-
-    if (directionMatched) {
-      const payout = trade.shares * 1.0;
-      trade.pnl = payout - trade.size;
-      trade.status = "won";
-      balance += payout;
-    } else {
-      trade.pnl = -trade.size;
-      trade.status = "lost";
-    }
+    trade.pnl = -trade.size;
+    trade.status = "lost";
   }
 
   const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
-  console.log(`[HFMaker] ${trade.status.toUpperCase()} ${trade.coin} ${trade.side} ${pnlStr}`);
-}
-
-function getLatestPrice(coin: string): number {
-  const buffer = priceBuffers.get(coin);
-  if (!buffer || buffer.length === 0) return 0;
-  return buffer[buffer.length - 1];
+  const movePct = trade.windowStartPrice > 0
+    ? (((currentBinancePrice - trade.windowStartPrice) / trade.windowStartPrice) * 100).toFixed(2)
+    : "?";
+  console.log(
+    `[HFMaker] ${trade.status.toUpperCase()} ${trade.coin} ${trade.side} ${pnlStr} ` +
+    `(start=$${trade.windowStartPrice.toFixed(0)} close=$${currentBinancePrice.toFixed(0)} move=${movePct}%)`
+  );
 }
 
 // ---- Public API --------------------------------------------------------------
@@ -462,11 +434,9 @@ export function startHFMaker(): void {
 
   connectBinance();
 
-  // Scan windows immediately then every 60s
   void scanWindows();
   windowScanInterval = setInterval(() => void scanWindows(), WINDOW_SCAN_INTERVAL_MS);
 
-  // Heartbeat every 5s
   heartbeatInterval = setInterval(runHeartbeat, HEARTBEAT_INTERVAL_MS);
 
   console.log("[HFMaker] Started (paper=" + String(isPolymarketPaperMode()) + ")");
@@ -539,7 +509,7 @@ export function resetHFMakerData(): void {
   trades.length = 0;
   balance = INITIAL_BALANCE;
   activeOrders.clear();
-  momentumCooldowns.clear();
+  windowTraded.clear();
   for (const timer of paperFillTimers.values()) clearTimeout(timer);
   paperFillTimers.clear();
   console.log("[HFMaker] Data reset");
