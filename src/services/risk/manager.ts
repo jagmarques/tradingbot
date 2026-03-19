@@ -170,20 +170,8 @@ export function recordTrade(trade: Omit<Trade, "id" | "timestamp">): void {
   checkDailyLossLimit();
 }
 
-// Check daily loss limit
 function checkDailyLossLimit(): void {
-  const env = loadEnv();
-  const dailyPnl = getDailyPnl();
-
-  if (dailyPnl < 0 && Math.abs(dailyPnl) >= env.DAILY_LOSS_LIMIT_USD) {
-    pauseTrading(`Daily loss limit reached: $${Math.abs(dailyPnl).toFixed(2)}`);
-  }
-
-  // Also check percentage-based limit
-  const pnlPercentage = getDailyPnlPercentage();
-  if (pnlPercentage < 0 && Math.abs(pnlPercentage) >= CAPITAL_LOSS_PAUSE_PERCENTAGE) {
-    pauseTrading(`Capital loss limit reached: ${Math.abs(pnlPercentage).toFixed(1)}%`);
-  }
+  // Daily loss limit disabled - let strategies run
 }
 
 // Pause trading

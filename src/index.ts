@@ -31,7 +31,6 @@ async function main(): Promise<void> {
     // Validate environment
     const env = loadEnv();
     console.log(`[Bot] Mode: ${isPaperMode() ? "PAPER" : "LIVE"}`);
-    console.log(`[Bot] Daily loss limit: $${env.DAILY_LOSS_LIMIT_USD}`);
 
     // Initialize database
     initDb();
