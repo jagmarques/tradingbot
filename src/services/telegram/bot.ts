@@ -1252,8 +1252,10 @@ async function handlePoly(ctx: Context): Promise<void> {
   const makerStats = getHFMakerStats();
   const makerStatus = getHFMakerStatus();
 
-  // Combined totals
-  const totalPolyPnl = aiStats.totalPnl + copyStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl + makerStats.totalPnl;
+  // Combined totals (realized + unrealized)
+  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl + makerStats.totalPnl;
+  const totalPolyUnrealized = aiUnrealized + copyUnrealized;
+  const totalPolyPnl = totalPolyRealized + totalPolyUnrealized;
   const totalPolyOpen = openBets.length + copyStats.openPositions + hfPaper.openTrades + nrPaper.openTrades + makerStats.openOrders + makerStats.openPositions;
 
   let text = `<b>Polymarket</b> | Paper\n`;
