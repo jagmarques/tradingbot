@@ -6,7 +6,7 @@
  * npx tsx scripts/sweep-garch.ts
  */
 
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 
 interface Combo {
   zThresh: number;
@@ -68,10 +68,16 @@ function runBacktest(combo: Combo): Result | null {
       BT_MAX_HOLD: String(combo.maxHold),
     };
 
-    const output = execSync(
-      `npx tsx scripts/backtest.ts --train-start 2025-12-19 --train-end 2026-02-15 --test-start 2026-02-15 --test-end 2026-03-17`,
-      { env, timeout: 300000, maxBuffer: 10 * 1024 * 1024 }
-    ).toString();
+    // Show a ticking dot every 5s so user knows it's working
+    const dots = setInterval(() => process.stdout.write("."), 5000);
+    const result = spawnSync("npx", [
+      "tsx", "scripts/backtest.ts",
+      "--train-start", "2025-12-19", "--train-end", "2026-02-15",
+      "--test-start", "2026-02-15", "--test-end", "2026-03-17",
+    ], { env, timeout: 300000, maxBuffer: 10 * 1024 * 1024 });
+    clearInterval(dots);
+    if (result.error || result.status !== 0) return null;
+    const output = result.stdout.toString();
 
     // Parse TEST results
     const testMatch = output.match(/=== TEST.*?\n([\s\S]*?)(?:=== COMBINED|$)/);
