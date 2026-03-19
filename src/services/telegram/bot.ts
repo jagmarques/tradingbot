@@ -1657,46 +1657,28 @@ async function handleHF(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   const status = getHFScannerStatus();
-  const btc = getPriceState("btcusdt");
-  const eth = getPriceState("ethusdt");
-  const sol = getPriceState("solusdt");
-
-  const formatPrice = (s: ReturnType<typeof getPriceState>) => {
-    if (!s) return "disconnected";
-    const dir = s.momentum > 0 ? "+" : "";
-    return `$${s.price.toFixed(2)} (${dir}${(s.momentum * 100).toFixed(3)}%)`;
-  };
-
-  const paper = getHFPaperStats();
-  const pnlStr = paper.totalPnl >= 0 ? `+$${paper.totalPnl.toFixed(2)}` : `-$${Math.abs(paper.totalPnl).toFixed(2)}`;
+  const nr = getNegRiskPaperStats();
+  const nrPnl = nr.totalPnl >= 0 ? `+$${nr.totalPnl.toFixed(2)}` : `-$${Math.abs(nr.totalPnl).toFixed(2)}`;
 
   const lines = [
-    "HF Scanner Status",
+    "Fast Scanner Status",
     "",
     `Running: ${status.running ? "YES" : "NO"}`,
-    `Binance WS: ${status.binanceConnected ? "CONNECTED" : "DISCONNECTED"}`,
-    `Tracked pairs: ${status.trackedPairs}`,
-    `Active 15-min markets: ${status.activeUpDownMarkets}`,
-    `Pending R1 flags: ${status.pendingR1Flags}`,
+    `R1 flags: ${status.pendingR1Flags}`,
     "",
-    "Live Prices:",
-    `  BTC: ${formatPrice(btc)}`,
-    `  ETH: ${formatPrice(eth)}`,
-    `  SOL: ${formatPrice(sol)}`,
-    "",
-    "Paper Trading (15-min):",
-    `  Balance: $${paper.balance.toFixed(2)}`,
-    `  Trades: ${paper.totalTrades} (${paper.openTrades} open)`,
-    `  W/L: ${paper.wins}/${paper.losses} (${paper.winRate.toFixed(0)}%)`,
-    `  P&L: ${pnlStr}`,
+    "NegRisk Arb:",
+    `  Balance: $${nr.balance.toFixed(2)}`,
+    `  Trades: ${nr.totalTrades} (${nr.openTrades} open)`,
+    `  W/L: ${nr.wins}/${nr.losses} (${nr.winRate.toFixed(0)}%)`,
+    `  P&L: ${nrPnl}`,
   ];
 
-  if (paper.recentTrades.length > 0) {
-    lines.push("", "Recent 15-min:");
-    for (const t of paper.recentTrades.slice(0, 3)) {
+  if (nr.recentTrades.length > 0) {
+    lines.push("");
+    for (const t of nr.recentTrades.slice(0, 5)) {
       const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
       const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
-      lines.push(`  ${tag} ${t.coin.toUpperCase()} ${t.side} @ ${(t.entryPrice * 100).toFixed(0)}c ${tPnl}`);
+      lines.push(`  ${tag} ${t.side} ${t.title.substring(0, 25)} ${tPnl}`);
     }
   }
 
