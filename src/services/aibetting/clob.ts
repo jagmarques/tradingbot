@@ -67,40 +67,30 @@ async function fetchOrderBook(tokenId: string): Promise<OrderBookResponse | null
  */
 function computeSlippage(
   levels: OrderBookLevel[],
-  tradeSize: number,
   midpoint: number
 ): number {
-  if (levels.length === 0 || midpoint === 0) return 0.01;
+  if (levels.length === 0 || midpoint === 0) return 0.005;
 
-  let remainingDollars = tradeSize;
-  let totalShares = 0;
-  let totalSpent = 0;
+  // Only check top 3 levels for realistic slippage
+  let totalWeight = 0;
+  let weightedPrice = 0;
+  const maxLevels = Math.min(levels.length, 3);
 
-  for (const level of levels) {
-    if (remainingDollars <= 0) break;
-
-    const price = parseFloat(level.price);
-    const shares = parseFloat(level.size);
+  for (let i = 0; i < maxLevels; i++) {
+    const price = parseFloat(levels[i].price);
+    const shares = parseFloat(levels[i].size);
     if (isNaN(price) || isNaN(shares) || price <= 0) continue;
 
-    const levelDollars = price * shares;
-    const fillDollars = Math.min(remainingDollars, levelDollars);
-    const fillShares = fillDollars / price;
-
-    totalShares += fillShares;
-    totalSpent += fillDollars;
-    remainingDollars -= fillDollars;
+    const dollars = price * shares;
+    weightedPrice += price * dollars;
+    totalWeight += dollars;
   }
 
-  if (remainingDollars > 0) {
-    return 0.02; // 2 cents penalty if book can't fill
-  }
+  if (totalWeight === 0) return 0.005;
 
-  if (totalShares === 0) return 0.005;
-
-  // Absolute price impact (prediction markets are 0-1, not % based)
-  const avgPrice = totalSpent / totalShares;
-  return Math.abs(avgPrice - midpoint);
+  const avgPrice = weightedPrice / totalWeight;
+  // Cap slippage at 3 cents max
+  return Math.min(0.03, Math.abs(avgPrice - midpoint));
 }
 
 /**
@@ -171,7 +161,7 @@ export async function getCLOBMetrics(
   const bidDepth = computeDepth(book.bids);
   const askDepth = computeDepth(book.asks);
 
-  const slippageCost = computeSlippage(book.asks, tradeSize, midpoint);
+  const slippageCost = computeSlippage(book.asks, midpoint);
 
   const liquidityScore = computeLiquidityScore(spreadPct, bidDepth, askDepth);
 
