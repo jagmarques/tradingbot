@@ -15,7 +15,7 @@ import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getHFScannerStatus, getHFPaperStats, getNegRiskPaperStats, getHFMakerStats, getHFMakerStatus } from "../aibetting/hf-scanner.js";
+import { getHFScannerStatus, getHFPaperStats, getNegRiskPaperStats, getHFMakerStats, getHFMakerStatus, getCrossArbStats, getBondsStats } from "../aibetting/hf-scanner.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
@@ -1252,11 +1252,15 @@ async function handlePoly(ctx: Context): Promise<void> {
   const makerStats = getHFMakerStats();
   const makerStatus = getHFMakerStatus();
 
+  // Cross-arb and bonds stats
+  const crossArb = getCrossArbStats();
+  const bonds = getBondsStats();
+
   // Combined totals (realized + unrealized)
-  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl + makerStats.totalPnl;
+  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + hfPaper.totalPnl + nrPaper.totalPnl + makerStats.totalPnl + crossArb.totalPnl + bonds.totalPnl;
   const totalPolyUnrealized = aiUnrealized + copyUnrealized;
   const totalPolyPnl = totalPolyRealized + totalPolyUnrealized;
-  const totalPolyOpen = openBets.length + copyStats.openPositions + hfPaper.openTrades + nrPaper.openTrades + makerStats.openOrders + makerStats.openPositions;
+  const totalPolyOpen = openBets.length + copyStats.openPositions + hfPaper.openTrades + nrPaper.openTrades + makerStats.openOrders + makerStats.openPositions + crossArb.openTrades + bonds.openTrades;
 
   let text = `<b>Polymarket</b> | Paper\n`;
   text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
@@ -1339,6 +1343,34 @@ async function handlePoly(ctx: Context): Promise<void> {
     const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
     const tag = t.status === "pending" ? "PEND" : t.status === "open" ? "OPEN" : t.status.toUpperCase();
     text += `  ${tag} ${t.coin} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
+  }
+
+  // 6. Cross-Arb
+  text += `-------------------\n`;
+  text += `<b>Cross-Arb</b> (Poly vs Kalshi)\n`;
+  text += `${crossArb.totalTrades} trades (${crossArb.openTrades} open) | ${crossArb.winRate.toFixed(0)}% WR\n`;
+  text += `P&L: ${pnl(crossArb.totalPnl)}\n`;
+
+  if (crossArb.recentTrades.length > 0) {
+    for (const t of crossArb.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      text += `  ${tag} ${trunc(t.title, 22)} spread=${(t.spreadAtEntry * 100).toFixed(1)}% ${tPnl}\n`;
+    }
+  }
+
+  // 7. Bonds
+  text += `-------------------\n`;
+  text += `<b>Bonds</b> (>95c, <7d)\n`;
+  text += `${bonds.totalTrades} trades (${bonds.openTrades} open) | ${bonds.winRate.toFixed(0)}% WR\n`;
+  text += `P&L: ${pnl(bonds.totalPnl)}\n`;
+
+  if (bonds.recentTrades.length > 0) {
+    for (const t of bonds.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      text += `  ${tag} ${t.side} ${trunc(t.title, 20)} yield=${t.annualizedYield.toFixed(0)}% ${tPnl}\n`;
+    }
   }
 
   const buttons = [

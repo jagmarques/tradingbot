@@ -12,8 +12,12 @@ import {
   resetHFMakerData,
   type HFMakerTrade,
 } from "./hf-maker.js";
+import { runCrossArbScan, resetCrossArbData } from "./cross-arb.js";
+import { runBondsScan, resetBondsData } from "./high-prob-bonds.js";
 
 export { getHFMakerStats, getHFMakerStatus, resetHFMakerData } from "./hf-maker.js";
+export { getCrossArbStats } from "./cross-arb.js";
+export { getBondsStats } from "./high-prob-bonds.js";
 
 // ---- Types ---------------------------------------------------------------
 
@@ -137,6 +141,10 @@ async function runFastScan(): Promise<FastScanResult[]> {
     }
 
     await checkNegRiskResolutions();
+
+    // Cross-platform arb and bonds scanners
+    await runCrossArbScan();
+    await runBondsScan();
 
     // Flag high-edge for R1
     for (const r of results) {
@@ -326,6 +334,8 @@ export function resetHFPaperData(): void {
   negRiskTrades.length = 0;
   negRiskBalance = 100;
   resetHFMakerData();
+  resetCrossArbData();
+  resetBondsData();
   console.log("[FastScan] Paper data reset");
 }
 
