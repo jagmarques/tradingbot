@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     // High-frequency scanner (Binance WS + Polymarket 15-min markets)
     if (env.AIBETTING_ENABLED === "true") {
       await startHFScanner();
-      console.log("[Bot] NegRisk scanner started");
+      console.log("[Bot] Bonds scanner started");
       startHFMaker();
       console.log("[Bot] HF Maker started (Binance WS + Polymarket maker orders)");
     }

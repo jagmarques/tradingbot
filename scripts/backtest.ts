@@ -309,19 +309,31 @@ function checkPositionIntraBar(
     }
 
     // 2. Take-profit check
+    // BT_TP_TO_TRAIL=X: when TP P&L% is hit, tighten trail distance to X% instead of selling
+    const tpToTrailDist = parseFloat(process.env.BT_TP_TO_TRAIL || "0");
     if (pos.takeProfit > 0) {
-      const tpHit = pos.direction === "long"
-        ? c1m.h >= pos.takeProfit
-        : c1m.l <= pos.takeProfit;
+      const tpPnlPct = pos.direction === "long"
+        ? ((pos.takeProfit - pos.entryPrice) / pos.entryPrice) * pos.leverage * 100
+        : ((pos.entryPrice - pos.takeProfit) / pos.entryPrice) * pos.leverage * 100;
 
-      if (tpHit) {
-        const tpFill = applySpreadExit(pos.takeProfit, pos.direction, spread);
-        return { exitPrice: tpFill, reason: "take-profit" };
+      if (tpToTrailDist > 0 && pnlPct >= tpPnlPct) {
+        // Tighten trailing distance instead of selling
+        pos.trailActive = true;
+        pos.trailDistance = tpToTrailDist;
+        pos.takeProfit = 0; // disable hard TP, let trail handle exit
+      } else if (tpToTrailDist <= 0) {
+        const tpHit = pos.direction === "long"
+          ? c1m.h >= pos.takeProfit
+          : c1m.l <= pos.takeProfit;
+        if (tpHit) {
+          const tpFill = applySpreadExit(pos.takeProfit, pos.direction, spread);
+          return { exitPrice: tpFill, reason: "take-profit" };
+        }
       }
     }
 
-    // 3. Trailing stop
-    if (pos.trailActivation > 0 && pos.peakPnlPct >= pos.trailActivation) {
+    // 3. Trailing stop (normal 8/5 OR tightened after TP)
+    if (pos.trailActive || (pos.trailActivation > 0 && pos.peakPnlPct >= pos.trailActivation)) {
       pos.trailActive = true;
       const trailTrigger = pos.peakPnlPct - pos.trailDistance;
       if (pnlPct <= trailTrigger) {
