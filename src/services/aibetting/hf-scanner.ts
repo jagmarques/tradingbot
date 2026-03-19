@@ -419,8 +419,8 @@ function handleMomentumSignal(signal: MomentumSignal): void {
 
     const currentPrice = signal.direction === "up" ? market.priceUp : market.priceDown;
 
-    if (currentPrice < 0.35 || currentPrice > 0.65) {
-      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} price=${(currentPrice*100).toFixed(0)}c (need 35-65c)`); }
+    if (currentPrice < 0.20 || currentPrice > 0.80) {
+      if (Date.now() - lastHandleLog > 60000) { lastHandleLog = Date.now(); console.log(`[HFGate] ${market.coin} price=${(currentPrice*100).toFixed(0)}c (need 20-80c)`); }
       continue;
     }
 
