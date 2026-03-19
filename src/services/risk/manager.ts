@@ -1,7 +1,6 @@
 import { loadEnv, isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { getMaticBalance } from "../polygon/wallet.js";
 import {
-  CAPITAL_LOSS_PAUSE_PERCENTAGE,
   STARTING_CAPITAL_USD,
 } from "../../config/constants.js";
 import {
