@@ -60,6 +60,7 @@ function runBacktest(combo: Combo): Result | null {
     // The backtest.ts uses hardcoded GARCH constants. We pass overrides via env vars.
     const env = {
       ...process.env,
+      BT_SKIP_1S: "1", // Use 1m data for sweep (1s OOMs)
       BT_GARCH_THRESHOLD: String(combo.zThresh),
       BT_CHAN_MULT: String(combo.chanMult),
       BT_SL_CAP: String(combo.slCap),

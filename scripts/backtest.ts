@@ -483,7 +483,9 @@ function runBacktest(
     if (candles1h.length < 40) { console.log(`  ${pair}: insufficient 1h data`); continue; }
 
     // Load intra-bar candles: prefer 1s (on-demand) > 1m > bar-level
-    const hourIndex1s = buildHourIndex(pair, CACHE_1S);
+    // BT_SKIP_1S=1 to skip 1s data (used by sweep to avoid OOM)
+    const skip1s = process.env.BT_SKIP_1S === "1";
+    const hourIndex1s = skip1s ? null : buildHourIndex(pair, CACHE_1S);
     const has1s = hourIndex1s !== null && hourIndex1s.size > 0;
 
     let intraIndex1m: Map<number, Candle[]> | null = null;
