@@ -155,17 +155,18 @@ export async function getCLOBMetrics(
 
   const midpoint = (bestBid + bestAsk) / 2;
   const spread = bestAsk - bestBid;
+
+  // If spread > 10 cents, book is useless (illiquid or near-certain market)
+  if (spread > 0.10) return null;
+
   const spreadPct = midpoint > 0 ? spread / midpoint : 1;
 
   const bidDepth = computeDepth(book.bids);
   const askDepth = computeDepth(book.asks);
 
-  const slippageCost = computeSlippage(book.asks, midpoint);
-
   const liquidityScore = computeLiquidityScore(spreadPct, bidDepth, askDepth);
 
-  // Friction = half the spread + taker fee. That's it.
-  // For $10 bets, slippage is negligible on liquid Polymarket markets.
+  // Friction = half the spread + taker fee
   const frictionCost = spread / 2 + POLYMARKET_TAKER_FEE_PCT;
 
   return {
