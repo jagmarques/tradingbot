@@ -430,14 +430,19 @@ function garchChanSignal(candles1h: Candle[], pair: string, barIndex: number): S
     const hh = Math.max(...cs.slice(Math.max(0, last - GARCH_ATR_PERIOD), last + 1).map(c => c.h));
     const sl = hh - GARCH_CHAN_MULT * atr;
     if (sl >= entryPrice) return null;
-    return { pair, direction: "long", entryPrice, stopLoss: sl, takeProfit: 0 };
+    // TP as price-level: entryPrice * (1 + tpPct) for longs
+    const tpPct = parseFloat(process.env.BT_TP_PCT || "0");
+    const tp = tpPct > 0 ? entryPrice * (1 + tpPct / 100) : 0;
+    return { pair, direction: "long", entryPrice, stopLoss: sl, takeProfit: tp };
   }
 
   if (z < -GARCH_THRESHOLD) {
     const ll = Math.min(...cs.slice(Math.max(0, last - GARCH_ATR_PERIOD), last + 1).map(c => c.l));
     const sl = ll + GARCH_CHAN_MULT * atr;
     if (sl <= entryPrice) return null;
-    return { pair, direction: "short", entryPrice, stopLoss: sl, takeProfit: 0 };
+    const tpPct = parseFloat(process.env.BT_TP_PCT || "0");
+    const tp = tpPct > 0 ? entryPrice * (1 - tpPct / 100) : 0;
+    return { pair, direction: "short", entryPrice, stopLoss: sl, takeProfit: tp };
   }
 
   return null;

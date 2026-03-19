@@ -138,9 +138,14 @@ export async function runGarchChanCycle(): Promise<number> {
     try {
       const signal = await analyzeSignal(pair);
       if (!signal) continue;
+      // TP at 2.5% price move (= 25% P&L at 10x leverage)
+      const tpPct = 0.025;
+      const tp = signal.direction === "long"
+        ? signal.entryPrice * (1 + tpPct)
+        : signal.entryPrice * (1 - tpPct);
       const position = await openPosition(
         pair, signal.direction, QUANT_FIXED_POSITION_SIZE_USD, LEVERAGE,
-        signal.stopLoss, 0, "trending", TRADE_TYPE, undefined, signal.entryPrice,
+        signal.stopLoss, tp, "trending", TRADE_TYPE, undefined, signal.entryPrice,
       );
       if (position) {
         executed++;
