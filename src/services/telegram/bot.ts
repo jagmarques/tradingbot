@@ -1255,6 +1255,9 @@ async function handlePoly(ctx: Context): Promise<void> {
   let text = `<b>Polymarket</b> | Paper\n`;
   text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
 
+  const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + "." : s;
+  const c = (n: number): string => `${(n * 100).toFixed(0)}c`;
+
   // 1. AI Betting
   text += `-------------------\n`;
   const aiRunning = aiStatus.running ? "ON" : "OFF";
@@ -1262,11 +1265,30 @@ async function handlePoly(ctx: Context): Promise<void> {
   text += `${openBets.length} open | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% WR\n`;
   text += `Real: ${pnl(aiStats.totalPnl)} | Unreal: ${pnl(aiUnrealized)}\n`;
 
+  for (const bet of openBets.slice(0, 5)) {
+    const price = await getAIBetCurrentPrice(bet.tokenId);
+    let betPnl = "";
+    if (price !== null) {
+      const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
+      const p = (bet.size / bet.entryPrice) * diff;
+      betPnl = ` ${pnl(p)}`;
+    }
+    text += `  ${bet.side === "YES" ? "Y" : "N"} ${trunc(bet.marketTitle, 25)} @${c(bet.entryPrice)}${betPnl}\n`;
+  }
+
   // 2. Copy Betting
   text += `-------------------\n`;
   text += `<b>Copy Betting</b>\n`;
   text += `${copyStats.openPositions} open | ${copyStats.closedPositions} closed | ${copyStats.winRate.toFixed(0)}% WR\n`;
   text += `Real: ${pnl(copyStats.totalPnl)} | Unreal: ${pnl(copyUnrealized)}\n`;
+
+  for (const pos of copyPositions.slice(0, 5)) {
+    let cpPnl = "";
+    if (pos.currentValue !== null) {
+      cpPnl = ` ${pnl((pos.currentValue ?? 0) - pos.size)}`;
+    }
+    text += `  ${trunc(pos.marketTitle, 25)} $${pos.size.toFixed(0)}${cpPnl}\n`;
+  }
 
   // 3. HF Momentum (15-min)
   text += `-------------------\n`;
