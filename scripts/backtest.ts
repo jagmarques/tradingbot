@@ -82,6 +82,7 @@ type EngineSignalFn = (
 
 const CACHE_1H = "/tmp/bt-pair-cache";
 const CACHE_1M = "/tmp/bt-pair-cache-1m";
+const CACHE_1S = "/tmp/bt-pair-cache-1s";
 
 const DEFAULT_PAIRS = [
   "OPUSDT","WIFUSDT","ARBUSDT","LDOUSDT","AVAXUSDT","TRUMPUSDT","DASHUSDT",
@@ -407,11 +408,19 @@ function runBacktest(
     const candles1h = filterByTime(loadCandles(pair, CACHE_1H), startTs - 100 * HOUR_MS, endTs);
     if (candles1h.length < 40) { console.log(`  ${pair}: insufficient 1h data`); continue; }
 
-    // Load 1-min candles for intra-bar simulation
-    const raw1m = loadCandles(pair, CACHE_1M);
-    const candles1m = filterByTime(raw1m, startTs, endTs);
-    const index1m = build1mIndex(candles1m);
+    // Load intra-bar candles: prefer 1s > 1m > bar-level fallback
+    const raw1s = loadCandles(pair, CACHE_1S);
+    const candles1s = filterByTime(raw1s, startTs, endTs);
+    const has1s = candles1s.length > 0;
+
+    const raw1m = has1s ? [] : loadCandles(pair, CACHE_1M);
+    const candles1m = has1s ? [] : filterByTime(raw1m, startTs, endTs);
     const has1m = candles1m.length > 0;
+
+    // Index sub-bar candles by their containing 1h bar
+    const intraIndex = has1s ? build1mIndex(candles1s) : build1mIndex(candles1m);
+    const hasIntra = has1s || has1m;
+    const intraLabel = has1s ? "1s" : has1m ? "1m" : "bar";
 
     const spread = getHalfSpread(pair, config.exchange);
     let position: Position | null = null;
@@ -435,15 +444,15 @@ function runBacktest(
 
         let exit: { exitPrice: number; reason: string } | null = null;
 
-        if (has1m) {
-          const minuteCandles = index1m.get(Math.floor(bar.t / HOUR_MS) * HOUR_MS) || [];
-          if (minuteCandles.length > 0) {
-            exit = checkPositionIntraBar(position, minuteCandles, spread);
+        if (hasIntra) {
+          const subCandles = intraIndex.get(Math.floor(bar.t / HOUR_MS) * HOUR_MS) || [];
+          if (subCandles.length > 0) {
+            exit = checkPositionIntraBar(position, subCandles, spread);
           }
         }
 
-        // Fallback: bar-level check if no 1-min data for this hour
-        if (!exit && !has1m) {
+        // Fallback: bar-level check if no intra-bar data
+        if (!exit && !hasIntra) {
           // SL check at bar level
           const slHit = position.direction === "long"
             ? bar.l <= position.stopLoss
@@ -518,8 +527,8 @@ function runBacktest(
             leverage: config.leverage,
             stopLoss: cappedSl,
             takeProfit: signal.takeProfit,
-            trailActivation: engine.trailA,
-            trailDistance: engine.trailD,
+            trailActivation: config.trailActivation,
+            trailDistance: config.trailDistance,
             maxHoldMs: engine.maxHold,
             peakPnlPct: 0,
             trailActive: false,
@@ -676,8 +685,10 @@ function main(): void {
 
   // Check data availability
   const has1h = fs.existsSync(CACHE_1H) && fs.readdirSync(CACHE_1H).length > 0;
-  const has1m = fs.existsSync(CACHE_1M) && fs.readdirSync(CACHE_1M).length > 0;
-  console.log(`Data: 1h=${has1h ? "YES" : "NO"} 1m=${has1m ? "YES (intra-bar sim)" : "NO (bar-level fallback)"}`);
+  const has1s = fs.existsSync(CACHE_1S) && fs.readdirSync(CACHE_1S).length > 0;
+  const has1mGlobal = fs.existsSync(CACHE_1M) && fs.readdirSync(CACHE_1M).length > 0;
+  const intra = has1s ? "1s (best)" : has1mGlobal ? "1m" : "bar-level fallback";
+  console.log(`Data: 1h=${has1h ? "YES" : "NO"} intra=${intra}`);
 
   if (!has1h) { console.error("No 1h candle data. Populate /tmp/bt-pair-cache/"); process.exit(1); }
 
