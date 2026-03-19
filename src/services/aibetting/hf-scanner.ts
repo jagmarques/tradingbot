@@ -107,6 +107,7 @@ async function runFastScan(): Promise<FastScanResult[]> {
       outcomePrices: string;
       volume24hr: number;
       closed: boolean;
+      endDate: string;
     }>;
 
     for (const market of markets) {
@@ -140,11 +141,20 @@ async function runFastScan(): Promise<FastScanResult[]> {
       if (r.edge >= 0.01) handleNegRiskSignal(r);
     }
 
-    await checkNegRiskResolutions();
+    await checkNegRiskResolutions(markets);
 
-    // Cross-platform arb and bonds scanners
-    await runCrossArbScan();
-    await runBondsScan();
+    // Share fetched markets with cross-arb and bonds (avoid triple Gamma API calls)
+    const sharedPolyMarkets = markets.map(m => ({
+      conditionId: m.conditionId,
+      question: m.question,
+      outcomePrices: m.outcomePrices,
+      endDate: m.endDate ?? "",
+      volume24hr: m.volume24hr,
+      active: true,
+      closed: m.closed,
+    }));
+    await runCrossArbScan(sharedPolyMarkets);
+    await runBondsScan(sharedPolyMarkets);
 
     // Flag high-edge for R1
     for (const r of results) {
@@ -215,22 +225,22 @@ function handleNegRiskSignal(result: FastScanResult): void {
   );
 }
 
-async function checkNegRiskResolutions(): Promise<void> {
+async function checkNegRiskResolutions(sharedMarkets?: Array<{ conditionId: string; outcomePrices: string; closed: boolean }>): Promise<void> {
   const openTrades = negRiskTrades.filter(t => t.status === "open");
   if (openTrades.length === 0) return;
 
   try {
-    const response = await fetchWithTimeout(
-      `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
-      { timeoutMs: 10000 }
-    );
-    if (!response.ok) return;
-
-    const markets = await response.json() as Array<{
-      conditionId: string;
-      outcomePrices: string;
-      closed: boolean;
-    }>;
+    let markets: Array<{ conditionId: string; outcomePrices: string; closed: boolean }>;
+    if (sharedMarkets && sharedMarkets.length > 0) {
+      markets = sharedMarkets;
+    } else {
+      const response = await fetchWithTimeout(
+        `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
+        { timeoutMs: 10000 }
+      );
+      if (!response.ok) return;
+      markets = await response.json() as Array<{ conditionId: string; outcomePrices: string; closed: boolean }>;
+    }
 
     const priceMap = new Map<string, { yes: number; no: number; sum: number }>();
     for (const m of markets) {

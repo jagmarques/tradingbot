@@ -69,15 +69,19 @@ function parsePrices(market: PolyMarket): { yes: number; no: number } | null {
 
 // ---- Scanner -------------------------------------------------------------
 
-export async function runBondsScan(): Promise<void> {
+export async function runBondsScan(sharedMarkets?: PolyMarket[]): Promise<void> {
   try {
-    const response = await fetchWithTimeout(
-      `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
-      { timeoutMs: 10000 }
-    );
-    if (!response.ok) return;
-
-    const markets = await response.json() as PolyMarket[];
+    let markets: PolyMarket[];
+    if (sharedMarkets && sharedMarkets.length > 0) {
+      markets = sharedMarkets;
+    } else {
+      const response = await fetchWithTimeout(
+        `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
+        { timeoutMs: 10000 }
+      );
+      if (!response.ok) return;
+      markets = await response.json() as PolyMarket[];
+    }
 
     const now = Date.now();
 
@@ -183,11 +187,16 @@ async function checkBondResolutions(currentMarkets: PolyMarket[]): Promise<void>
       const market = marketMap.get(trade.marketId);
       const ageDays = (Date.now() - trade.entryTime) / (24 * 60 * 60 * 1000);
 
-      // Market resolved (disappeared from active list)
+      // Market disappeared from active list - might be resolved or just not in this page
+      // Only count as resolved if it's been > 1 hour since entry (avoid false positives from pagination)
       if (!market) {
-        const payout = trade.shares * 1.0;
-        const pnl = payout - trade.size;
-        closeBondTrade(trade, pnl, "resolved");
+        const ageMs = Date.now() - trade.entryTime;
+        if (ageMs > 60 * 60 * 1000) {
+          // We bought > 95c, so assume resolved in our favor (high prob)
+          const payout = trade.shares * 1.0;
+          const pnl = payout - trade.size;
+          closeBondTrade(trade, pnl, "resolved");
+        }
         continue;
       }
 

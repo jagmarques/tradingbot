@@ -105,24 +105,24 @@ async function fetchKalshiMarkets(): Promise<KalshiMarket[]> {
     const data = await response.json() as { markets: Array<{
       ticker: string;
       title: string;
-      yes_bid: number;
-      yes_ask: number;
-      no_bid: number;
-      no_ask: number;
+      yes_bid_dollars: string;
+      yes_ask_dollars: string;
+      no_bid_dollars: string;
+      no_ask_dollars: string;
       close_time: string;
-      volume_24h: number;
+      volume_24h_fp: string;
       event_ticker: string;
     }> };
 
     return (data.markets || []).map(m => ({
       ticker: m.ticker,
       title: m.title,
-      yes_bid: (m.yes_bid ?? 0) / 100,
-      yes_ask: (m.yes_ask ?? 0) / 100,
-      no_bid: (m.no_bid ?? 0) / 100,
-      no_ask: (m.no_ask ?? 0) / 100,
+      yes_bid: parseFloat(m.yes_bid_dollars || "0"),
+      yes_ask: parseFloat(m.yes_ask_dollars || "0"),
+      no_bid: parseFloat(m.no_bid_dollars || "0"),
+      no_ask: parseFloat(m.no_ask_dollars || "0"),
       close_time: m.close_time,
-      volume_24h: m.volume_24h ?? 0,
+      volume_24h: parseFloat(m.volume_24h_fp || "0"),
       event_ticker: m.event_ticker,
     }));
   } catch (err) {
@@ -131,7 +131,8 @@ async function fetchKalshiMarkets(): Promise<KalshiMarket[]> {
   }
 }
 
-async function fetchPolyMarkets(): Promise<PolyMarket[]> {
+async function fetchPolyMarkets(sharedMarkets?: PolyMarket[]): Promise<PolyMarket[]> {
+  if (sharedMarkets && sharedMarkets.length > 0) return sharedMarkets;
   try {
     const response = await fetchWithTimeout(
       `${GAMMA_API_URL}/markets?active=true&closed=false&limit=200`,
@@ -156,11 +157,11 @@ function getPolyYesPrice(market: PolyMarket): number | null {
   }
 }
 
-export async function runCrossArbScan(): Promise<void> {
+export async function runCrossArbScan(sharedPolyMarkets?: PolyMarket[]): Promise<void> {
   try {
     const [kalshiMarkets, polyMarkets] = await Promise.all([
       fetchKalshiMarkets(),
-      fetchPolyMarkets(),
+      fetchPolyMarkets(sharedPolyMarkets),
     ]);
 
     if (kalshiMarkets.length === 0 || polyMarkets.length === 0) return;
