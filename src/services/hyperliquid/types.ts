@@ -35,10 +35,11 @@ export interface QuantTrade {
   exchange?: "hyperliquid" | "lighter";
   status: "open" | "closed" | "failed";
   exitReason?: string;
-  indicatorsAtEntry?: string; // JSON-stringified TechnicalIndicators snapshot at entry time
-  createdAt: string; // ISO date
-  updatedAt: string; // ISO date
+  indicatorsAtEntry?: string;
+  createdAt: string;
+  updatedAt: string;
   tradeType?: TradeType;
+  maxUnrealizedPnlPct?: number;
 }
 
 export interface QuantAccountState {

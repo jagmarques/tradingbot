@@ -12,8 +12,8 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      indicators_at_entry, trade_type, ai_agreed, exchange, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      indicators_at_entry, trade_type, ai_agreed, exchange, created_at, updated_at, max_unrealized_pnl_pct
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
   `).run(
     trade.id,
     trade.pair,
@@ -26,14 +26,15 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.fees,
     trade.mode,
     trade.status,
-    null, // ai_confidence (column kept for DB compat)
-    null, // ai_reasoning (column kept for DB compat)
+    null,
+    null,
     trade.exitReason ?? null,
     trade.indicatorsAtEntry ?? null,
     trade.tradeType ?? "directional",
-    null, // ai_agreed (column kept for DB compat)
+    null,
     trade.exchange ?? "hyperliquid",
     trade.createdAt,
+    trade.maxUnrealizedPnlPct ?? null,
   );
 }
 

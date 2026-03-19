@@ -272,6 +272,7 @@ export async function paperClosePosition(
     updatedAt: now,
     tradeType: position.tradeType ?? "directional",
     exchange: position.exchange,
+    maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
   });
   positionContext.delete(positionId);
   lastFundingAccrual.delete(positionId);

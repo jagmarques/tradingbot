@@ -275,6 +275,7 @@ async function reconcileWithExchange(): Promise<void> {
         exitReason: reason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
         createdAt: pos.openedAt, updatedAt: now,
         tradeType: pos.tradeType ?? "directional",
+        maxUnrealizedPnlPct: pos.maxUnrealizedPnlPct,
       });
       positionContext.delete(pos.id);
       await cancelExchangeStop(pos.id, pos.pair);
@@ -691,6 +692,7 @@ export async function liveClosePosition(
       createdAt: position.openedAt,
       updatedAt: now,
       tradeType: position.tradeType ?? "directional",
+      maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
     });
     positionContext.delete(positionId);
 
@@ -748,6 +750,7 @@ export async function liveClosePosition(
               exitReason, indicatorsAtEntry: ctx?.indicatorsAtEntry,
               createdAt: position.openedAt, updatedAt: now,
               tradeType: position.tradeType ?? "directional",
+              maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
             });
             positionContext.delete(positionId);
             if (reason === "stop-loss") {

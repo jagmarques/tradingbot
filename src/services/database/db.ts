@@ -386,6 +386,10 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec(`ALTER TABLE quant_trades ADD COLUMN exchange TEXT DEFAULT 'hyperliquid'`);
     console.log("[Database] Migrated quant_trades: added exchange column");
   }
+  if (!qtColsFresh.includes("max_unrealized_pnl_pct")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN max_unrealized_pnl_pct REAL`);
+    console.log("[Database] Migrated quant_trades: added max_unrealized_pnl_pct column");
+  }
 
   console.log("[Database] Initialized at", finalPath);
   return db;
