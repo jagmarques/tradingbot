@@ -198,9 +198,29 @@ export function parseAnalysisResponse(
       jsonStr = jsonMatch[0];
     }
 
-    const parsed = JSON.parse(jsonStr) as AnalysisResponse;
+    let parsed: AnalysisResponse;
+    try {
+      parsed = JSON.parse(jsonStr) as AnalysisResponse;
+    } catch {
+      // Fallback: extract probability and confidence via regex when JSON is malformed
+      const probMatch = jsonStr.match(/"probability"\s*:\s*([\d.]+)/);
+      const confMatch = jsonStr.match(/"confidence"\s*:\s*([\d.]+)/);
+      if (probMatch && confMatch) {
+        console.log(`[Analyzer] JSON parse failed, using regex fallback`);
+        parsed = {
+          probability: parseFloat(probMatch[1]),
+          confidence: parseFloat(confMatch[1]),
+          reasoning: "parse-fallback",
+          keyFactors: [],
+          evidenceCited: [],
+          consistencyNote: "",
+          timeline: null,
+        };
+      } else {
+        throw new Error("Cannot extract probability/confidence");
+      }
+    }
 
-    // Validate fields
     if (
       typeof parsed.probability !== "number" ||
       typeof parsed.confidence !== "number"
