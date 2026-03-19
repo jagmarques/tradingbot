@@ -134,8 +134,8 @@ export async function getCLOBMetrics(
 
   const liquidityScore = computeLiquidityScore(spreadPct, bidDepth, askDepth);
 
-  // Friction = half the spread + taker fee
   const frictionCost = spread / 2 + POLYMARKET_TAKER_FEE_PCT;
+  console.log(`[CLOB] ${tokenId.slice(0,8)} bid=${bestBid} ask=${bestAsk} spread=${spread.toFixed(4)} friction=${frictionCost.toFixed(4)}`);
 
   return {
     tokenId,
