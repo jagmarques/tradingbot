@@ -1,6 +1,6 @@
 /**
  * HF Maker: Late-entry strategy on Polymarket 15-min crypto up/down markets.
- * Waits until last 60s of window when direction is ~85%+ determined,
+ * Waits until last 45s of window when direction is ~85%+ determined,
  * places maker order at high confidence price. Zero maker fees + rebates.
  */
 
