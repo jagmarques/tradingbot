@@ -424,7 +424,7 @@ OUTPUT JSON ONLY:
     for (const tokenId of marketTokenIds) {
       if (cycleAborted) break;
       try {
-        const metrics = await getCLOBMetrics(tokenId, config.maxBetSize);
+        const metrics = await getCLOBMetrics(tokenId);
         if (metrics) {
           clobMetricsMap.set(tokenId, metrics);
         }

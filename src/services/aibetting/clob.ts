@@ -142,7 +142,6 @@ function computeLiquidityScore(
  */
 export async function getCLOBMetrics(
   tokenId: string,
-  tradeSize: number = 10
 ): Promise<CLOBMetrics | null> {
   const book = await fetchOrderBook(tokenId);
   if (!book) return null;
@@ -190,13 +189,12 @@ export async function getCLOBMetrics(
  */
 export async function batchGetCLOBMetrics(
   tokenIds: string[],
-  tradeSize: number = 10,
   delayMs: number = 200
 ): Promise<Map<string, CLOBMetrics>> {
   const results = new Map<string, CLOBMetrics>();
 
   for (const tokenId of tokenIds) {
-    const metrics = await getCLOBMetrics(tokenId, tradeSize);
+    const metrics = await getCLOBMetrics(tokenId);
     if (metrics) {
       results.set(tokenId, metrics);
     }
