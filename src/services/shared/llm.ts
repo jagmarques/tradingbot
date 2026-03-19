@@ -29,7 +29,10 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Keep function name for backward compat with all callers
+// Rate limiter: Groq free tier = 10K TPM, ~2.5K per call = max 4 calls/min
+let lastCallTime = 0;
+const MIN_CALL_GAP_MS = 15000; // 15s between calls = 4/min = ~10K TPM
+
 export async function callDeepSeek(
   prompt: string,
   _model?: string,
@@ -38,6 +41,14 @@ export async function callDeepSeek(
   caller: string = "unknown"
 ): Promise<string> {
   const env = loadEnv();
+
+  // Respect Groq rate limits
+  const now = Date.now();
+  const gap = MIN_CALL_GAP_MS - (now - lastCallTime);
+  if (gap > 0) {
+    await sleep(gap);
+  }
+  lastCallTime = Date.now();
 
   if (!env.GROQ_API_KEY) {
     throw new Error("GROQ_API_KEY not configured");
@@ -82,8 +93,9 @@ export async function callDeepSeek(
         const errorText = await response.text();
         if (response.status >= 500 || response.status === 429) {
           lastError = new Error(`Groq ${response.status}: ${errorText}`);
-          console.warn(`[Groq] Attempt ${attempt}/${MAX_RETRIES} failed (${response.status})`);
-          await sleep(RETRY_DELAY_MS * attempt);
+          const delay = response.status === 429 ? 20000 : RETRY_DELAY_MS * attempt;
+          console.warn(`[Groq] Attempt ${attempt}/${MAX_RETRIES} failed (${response.status}), wait ${(delay/1000).toFixed(0)}s`);
+          await sleep(delay);
           continue;
         }
         throw new Error(`Groq API error ${response.status}: ${errorText}`);
