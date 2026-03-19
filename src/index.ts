@@ -21,6 +21,7 @@ import { validateApiConnection } from "./services/polygon/polymarket.js";
 import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
 import { startHFScanner, stopHFScanner } from "./services/aibetting/hf-scanner.js";
+import { startHFMaker, stopHFMaker } from "./services/aibetting/hf-maker.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -96,6 +97,8 @@ async function main(): Promise<void> {
     if (env.AIBETTING_ENABLED === "true") {
       await startHFScanner();
       console.log("[Bot] NegRisk scanner started");
+      startHFMaker();
+      console.log("[Bot] HF Maker started (Binance WS + Polymarket maker orders)");
     }
 
     // Quant trading on Hyperliquid (opt-in)
@@ -151,6 +154,7 @@ async function shutdown(signal: string): Promise<void> {
   try {
     stopPnlCron();
     stopHFScanner();
+    stopHFMaker();
     stopAIBetting();
     stopPolyTraderTracking();
     stopInsiderScanner();

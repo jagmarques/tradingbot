@@ -6,6 +6,14 @@
 
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
+import {
+  getHFMakerStats,
+  getHFMakerStatus,
+  resetHFMakerData,
+  type HFMakerTrade,
+} from "./hf-maker.js";
+
+export { getHFMakerStats, getHFMakerStatus, resetHFMakerData } from "./hf-maker.js";
 
 // ---- Types ---------------------------------------------------------------
 
@@ -288,7 +296,7 @@ export function getPriceState(_symbol: string): undefined {
 }
 
 export function isBinanceConnected(): boolean {
-  return false;
+  return getHFMakerStatus().binanceConnected;
 }
 
 export async function startHFScanner(): Promise<void> {
@@ -317,6 +325,7 @@ export function stopHFScanner(): void {
 export function resetHFPaperData(): void {
   negRiskTrades.length = 0;
   negRiskBalance = 100;
+  resetHFMakerData();
   console.log("[FastScan] Paper data reset");
 }
 
@@ -330,15 +339,35 @@ export function getHFPaperStats(): {
   totalPnl: number;
   recentTrades: HFPaperTrade[];
 } {
+  const ms = getHFMakerStats();
+  const recentTrades: HFPaperTrade[] = ms.recentTrades.map((t: HFMakerTrade) => ({
+    id: t.id,
+    coin: t.coin,
+    side: t.side,
+    entryPrice: t.entryPrice,
+    shares: t.shares,
+    size: t.size,
+    entryTime: t.entryTime,
+    windowStart: t.entryTime,
+    windowEnd: t.windowEnd,
+    windowStartPrice: t.binancePriceAtEntry,
+    binancePriceAtEntry: t.binancePriceAtEntry,
+    momentumAtEntry: t.momentumMagnitude,
+    edgeAtEntry: 0,
+    status: t.status === "won" ? "won" : t.status === "lost" ? "lost" : "open",
+    pnl: t.pnl,
+    type: "momentum",
+  }));
+
   return {
-    balance: 0,
-    totalTrades: 0,
-    openTrades: 0,
-    wins: 0,
-    losses: 0,
-    winRate: 0,
-    totalPnl: 0,
-    recentTrades: [],
+    balance: ms.balance,
+    totalTrades: ms.totalTrades,
+    openTrades: ms.openOrders + ms.openPositions,
+    wins: ms.wins,
+    losses: ms.losses,
+    winRate: ms.winRate,
+    totalPnl: ms.totalPnl,
+    recentTrades,
   };
 }
 
@@ -376,12 +405,17 @@ export function getHFScannerStatus(): {
   trackedPairs: number;
   activeUpDownMarkets: number;
   pendingR1Flags: number;
+  makerRunning: boolean;
+  makerBinanceConnected: boolean;
 } {
+  const maker = getHFMakerStatus();
   return {
     running,
-    binanceConnected: false,
-    trackedPairs: 0,
-    activeUpDownMarkets: 0,
+    binanceConnected: maker.binanceConnected,
+    trackedPairs: maker.trackedPairs.length,
+    activeUpDownMarkets: maker.activeWindows,
     pendingR1Flags: flaggedForR1.length,
+    makerRunning: maker.running,
+    makerBinanceConnected: maker.binanceConnected,
   };
 }
