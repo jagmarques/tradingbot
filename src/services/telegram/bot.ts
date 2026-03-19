@@ -1265,7 +1265,7 @@ async function handlePoly(ctx: Context): Promise<void> {
   text += `${openBets.length} open | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% WR\n`;
   text += `Real: ${pnl(aiStats.totalPnl)} | Unreal: ${pnl(aiUnrealized)}\n`;
 
-  for (const bet of openBets.slice(0, 5)) {
+  for (const bet of openBets) {
     const price = await getAIBetCurrentPrice(bet.tokenId);
     let betPnl = "";
     if (price !== null) {
@@ -1282,7 +1282,7 @@ async function handlePoly(ctx: Context): Promise<void> {
   text += `${copyStats.openPositions} open | ${copyStats.closedPositions} closed | ${copyStats.winRate.toFixed(0)}% WR\n`;
   text += `Real: ${pnl(copyStats.totalPnl)} | Unreal: ${pnl(copyUnrealized)}\n`;
 
-  for (const pos of copyPositions.slice(0, 5)) {
+  for (const pos of copyPositions) {
     let cpPnl = "";
     if (pos.currentValue !== null) {
       cpPnl = ` ${pnl((pos.currentValue ?? 0) - pos.size)}`;
