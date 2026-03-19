@@ -2,7 +2,7 @@ import { loadEnv } from "../../config/env.js";
 import { trackUsage } from "./cost-monitor.js";
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const CEREBRAS_MODEL = "llama3.1-8b";
+const CEREBRAS_MODEL = "qwen-3-235b-a22b-instruct-2507";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
