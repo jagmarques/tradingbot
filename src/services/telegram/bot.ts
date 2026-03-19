@@ -15,7 +15,7 @@ import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getHFScannerStatus, getPriceState, getHFPaperStats, getNegRiskPaperStats } from "../aibetting/hf-scanner.js";
+import { getHFScannerStatus, getHFPaperStats, getNegRiskPaperStats } from "../aibetting/hf-scanner.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
@@ -1657,8 +1657,8 @@ async function handleHF(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   const status = getHFScannerStatus();
-  const nr = getNegRiskPaperStats();
-  const nrPnl = nr.totalPnl >= 0 ? `+$${nr.totalPnl.toFixed(2)}` : `-$${Math.abs(nr.totalPnl).toFixed(2)}`;
+  const nrStats = getNegRiskPaperStats();
+  const nrPnlStr = nrStats.totalPnl >= 0 ? `+$${nrStats.totalPnl.toFixed(2)}` : `-$${Math.abs(nrStats.totalPnl).toFixed(2)}`;
 
   const lines = [
     "Fast Scanner Status",
@@ -1667,15 +1667,15 @@ async function handleHF(ctx: Context): Promise<void> {
     `R1 flags: ${status.pendingR1Flags}`,
     "",
     "NegRisk Arb:",
-    `  Balance: $${nr.balance.toFixed(2)}`,
-    `  Trades: ${nr.totalTrades} (${nr.openTrades} open)`,
-    `  W/L: ${nr.wins}/${nr.losses} (${nr.winRate.toFixed(0)}%)`,
-    `  P&L: ${nrPnl}`,
+    `  Balance: $${nrStats.balance.toFixed(2)}`,
+    `  Trades: ${nrStats.totalTrades} (${nrStats.openTrades} open)`,
+    `  W/L: ${nrStats.wins}/${nrStats.losses} (${nrStats.winRate.toFixed(0)}%)`,
+    `  P&L: ${nrPnlStr}`,
   ];
 
-  if (nr.recentTrades.length > 0) {
+  if (nrStats.recentTrades.length > 0) {
     lines.push("");
-    for (const t of nr.recentTrades.slice(0, 5)) {
+    for (const t of nrStats.recentTrades.slice(0, 5)) {
       const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
       const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
       lines.push(`  ${tag} ${t.side} ${t.title.substring(0, 25)} ${tPnl}`);
