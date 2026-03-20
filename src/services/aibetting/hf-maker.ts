@@ -10,7 +10,20 @@ import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
-import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
+import { ethers } from "ethers";
+import { loadEnv } from "../../config/env.js";
+
+// USDC.e on Polygon (what Polymarket CLOB uses)
+const USDC_E_CONTRACT = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+
+async function fetchOnChainUsdcE(): Promise<number> {
+  const env = loadEnv();
+  const provider = new ethers.JsonRpcProvider(env.RPC_URL_POLYGON);
+  const wallet = new ethers.Wallet(env.POLYGON_PRIVATE_KEY, provider);
+  const usdc = new ethers.Contract(USDC_E_CONTRACT, ["function balanceOf(address) view returns (uint256)"], provider);
+  const bal = await usdc.balanceOf(wallet.address);
+  return Number(bal) / 1e6;
+}
 
 function isHFMakerPaper(): boolean {
   if (process.env.HF_MAKER_LIVE === "true") return false;
@@ -99,7 +112,11 @@ function getOpenTradeCount(): number {
 }
 
 function getAvailableBalance(): number {
-  // Balance tracks resolved cash. Open/pending trades are reserved but not debited.
+  if (!isHFMakerPaper()) {
+    // Live: balance = on-chain USDC.e (already reflects open positions, money left wallet)
+    return balance;
+  }
+  // Paper: balance tracks resolved cash, open trades are reserved
   const reservedSize = trades
     .filter(t => t.status === "pending" || t.status === "open")
     .reduce((s, t) => s + t.size, 0);
@@ -252,7 +269,7 @@ async function scanWindows(): Promise<void> {
 
 // ---- Late-Entry Check (runs every heartbeat) ---------------------------------
 
-function checkLateEntry(): void {
+async function checkLateEntry(): Promise<void> {
   const now = Date.now();
 
   for (const [key, window] of activeWindows) {
@@ -288,6 +305,11 @@ function checkLateEntry(): void {
     }
 
     if (getOpenTradeCount() >= MAX_CONCURRENT_TRADES) continue;
+
+    // Refresh on-chain balance before sizing (live mode)
+    if (!isHFMakerPaper()) {
+      try { balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
+    }
     const posSize = calcPositionSize();
     if (posSize <= 0) continue;
 
@@ -391,12 +413,12 @@ function runHeartbeat(): void {
   const now = Date.now();
 
   // Check late-entry opportunities
-  checkLateEntry();
+  void checkLateEntry();
 
   for (const trade of trades) {
     // Resolve open positions at window end
     if (trade.status === "open" && now >= trade.windowEnd) {
-      resolvePosition(trade);
+      void resolvePosition(trade);
       continue;
     }
 
@@ -421,7 +443,7 @@ function runHeartbeat(): void {
 
 // ---- Position Resolution -----------------------------------------------------
 
-function resolvePosition(trade: HFMakerTrade): void {
+async function resolvePosition(trade: HFMakerTrade): Promise<void> {
   const currentBinancePrice = latestPrices.get(trade.coin) ?? 0;
   trade.binancePriceAtClose = currentBinancePrice;
 
@@ -442,17 +464,24 @@ function resolvePosition(trade: HFMakerTrade): void {
   const directionMatched =
     (trade.side === "up" && priceUp) || (trade.side === "down" && (priceDown || priceDiff === 0));
 
-  // Balance model: balance = total cash, open trades are reserved via getAvailableBalance()
-  // On resolution, trade exits reserved state. Adjust balance for actual outcome.
   if (directionMatched) {
     const payout = trade.shares * 1.0;
     trade.pnl = payout - trade.size;
     trade.status = "won";
-    balance += trade.pnl; // add profit (payout - cost)
   } else {
     trade.pnl = -trade.size;
     trade.status = "lost";
-    balance -= trade.size; // deduct loss
+  }
+
+  // Paper: adjust internal balance. Live: refresh from chain.
+  if (isHFMakerPaper()) {
+    if (directionMatched) {
+      balance += trade.pnl;
+    } else {
+      balance -= trade.size;
+    }
+  } else {
+    try { balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
   }
 
   saveHFMakerTrade(trade);
@@ -474,13 +503,12 @@ export async function startHFMaker(): Promise<void> {
   if (running) return;
   running = true;
 
-  // Fetch on-chain USDC.e balance (source of truth for live mode)
+  // Fetch balance: live = on-chain USDC.e, paper = DB
   if (!isHFMakerPaper()) {
     try {
-      const usdcStr = await getUsdcBalanceFormatted();
-      balance = parseFloat(usdcStr);
+      balance = await fetchOnChainUsdcE();
       console.log(`[HFMaker] On-chain USDC.e balance: $${balance.toFixed(2)}`);
-    } catch {
+    } catch (err) {
       const savedBalance = loadHFMakerBalance();
       balance = savedBalance ?? 0;
       console.log(`[HFMaker] DB balance (chain fetch failed): $${balance.toFixed(2)}`);
