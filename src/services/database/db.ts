@@ -273,6 +273,35 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS hf_maker_trades (
+      id TEXT PRIMARY KEY,
+      coin TEXT NOT NULL,
+      side TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      shares REAL NOT NULL,
+      size REAL NOT NULL,
+      entry_time INTEGER NOT NULL,
+      window_end INTEGER NOT NULL,
+      window_start_price REAL NOT NULL,
+      binance_price_at_entry REAL NOT NULL,
+      binance_price_at_close REAL,
+      momentum_magnitude REAL NOT NULL,
+      order_id TEXT,
+      status TEXT NOT NULL,
+      pnl REAL NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_status ON hf_maker_trades(status);
+    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_coin ON hf_maker_trades(coin);
+
+    CREATE TABLE IF NOT EXISTS hf_maker_balance (
+      id TEXT PRIMARY KEY DEFAULT 'current',
+      balance REAL NOT NULL,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)

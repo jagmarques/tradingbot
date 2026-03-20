@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
+const PERSISTENT_DIR = path.join(process.cwd(), "data", "bt-pair-cache-1s");
 const CACHE_DIR = "/tmp/bt-pair-cache-1s";
 const TMP_DIR = "/tmp/bt-1s-download";
 const BASE_URL = "https://data.binance.vision/data/spot/daily/klines";
@@ -130,20 +131,15 @@ async function downloadDay(pair: string, date: string): Promise<Candle[]> {
 }
 
 async function downloadPair(pair: string, dates: string[]): Promise<number> {
-  const existingPath = path.join(CACHE_DIR, `${pair}.json`);
-  let existing: Candle[] = [];
+  // Save per-day files to avoid memory limits, then stream-merge at the end
+  const perDayDir = path.join(PERSISTENT_DIR, pair);
+  fs.mkdirSync(perDayDir, { recursive: true });
 
-  if (fs.existsSync(existingPath)) {
-    existing = JSON.parse(fs.readFileSync(existingPath, "utf8")) as Candle[];
-  }
-
-  const lastTs = existing.length > 0 ? existing[existing.length - 1].t : 0;
   let newCandles = 0;
 
   for (const date of dates) {
-    const dateTs = new Date(date).getTime();
-    // Skip dates we already have
-    if (dateTs + 86400000 < lastTs) continue;
+    const dayFile = path.join(perDayDir, `${date}.json`);
+    if (fs.existsSync(dayFile)) continue; // already downloaded
 
     process.stdout.write(`  ${pair} ${date}...`);
     const dayCandles = await downloadDay(pair, date);
@@ -153,28 +149,41 @@ async function downloadPair(pair: string, dates: string[]): Promise<number> {
       continue;
     }
 
-    // Merge: only add candles newer than what we have
-    const fresh = dayCandles.filter(c => c.t > lastTs);
-    existing.push(...fresh);
-    newCandles += fresh.length;
-    process.stdout.write(` ${fresh.length} candles\n`);
+    dayCandles.sort((a, b) => a.t - b.t);
+    fs.writeFileSync(dayFile, JSON.stringify(dayCandles));
+    newCandles += dayCandles.length;
+    process.stdout.write(` ${dayCandles.length} candles\n`);
   }
 
-  if (newCandles > 0) {
-    // Sort and deduplicate
-    existing.sort((a, b) => a.t - b.t);
-    const deduped: Candle[] = [];
-    let prevT = 0;
-    for (const c of existing) {
-      if (c.t !== prevT) {
-        deduped.push(c);
-        prevT = c.t;
+  // Stream-merge all day files into single pair JSON for backtest compatibility
+  const existingPath = path.join(PERSISTENT_DIR, `${pair}.json`);
+  const dayFiles = fs.readdirSync(perDayDir).filter(f => f.endsWith(".json")).sort();
+  if (dayFiles.length > 0 && (newCandles > 0 || !fs.existsSync(existingPath))) {
+    process.stdout.write(`  ${pair}: merging ${dayFiles.length} days...`);
+    const wStream = fs.createWriteStream(existingPath);
+    wStream.write("[");
+    let first = true;
+    let total = 0;
+    for (const df of dayFiles) {
+      // Read one day at a time, write immediately, let GC reclaim
+      const raw = fs.readFileSync(path.join(perDayDir, df), "utf8");
+      const dayCandles = JSON.parse(raw) as Candle[];
+      for (const c of dayCandles) {
+        if (!first) wStream.write(",");
+        wStream.write(`{"t":${c.t},"o":${c.o},"h":${c.h},"l":${c.l},"c":${c.c}}`);
+        first = false;
+        total++;
+      }
+      // Drain if buffer is full to prevent memory buildup
+      if (wStream.writableLength > 16 * 1024 * 1024) {
+        await new Promise<void>(resolve => wStream.once("drain", resolve));
       }
     }
-
-    fs.writeFileSync(existingPath, JSON.stringify(deduped));
+    wStream.write("]");
+    wStream.end();
+    await new Promise<void>((resolve, reject) => { wStream.on("finish", resolve); wStream.on("error", reject); });
     const sizeMB = (fs.statSync(existingPath).size / 1e6).toFixed(1);
-    console.log(`  ${pair}: ${deduped.length} total candles (${sizeMB}MB)`);
+    console.log(` ${total} candles (${sizeMB}MB)`);
   }
 
   return newCandles;
@@ -188,7 +197,11 @@ async function main(): Promise<void> {
   console.log(`Range: ${formatDate(fromDate)} -> ${formatDate(toDate)}`);
   console.log(`Cache: ${CACHE_DIR}\n`);
 
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  // Save to persistent dir, symlink to /tmp for backtest compatibility
+  fs.mkdirSync(PERSISTENT_DIR, { recursive: true });
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.symlinkSync(PERSISTENT_DIR, CACHE_DIR);
+  }
   fs.mkdirSync(TMP_DIR, { recursive: true });
 
   let totalNew = 0;

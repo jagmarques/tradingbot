@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     if (env.AIBETTING_ENABLED === "true") {
       await startHFScanner();
       console.log("[Bot] Bonds scanner started");
-      startHFMaker();
+      await startHFMaker();
       console.log("[Bot] HF Maker started (Binance WS + Polymarket maker orders)");
     }
 

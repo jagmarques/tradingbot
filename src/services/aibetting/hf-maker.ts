@@ -9,17 +9,19 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
+import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 
 // ---- Constants ---------------------------------------------------------------
 
-const HF_MAKER_POSITION_SIZE = 5;
+const POSITION_PCT = 0.30; // 30% of balance per trade
+const MAX_CONCURRENT_TRADES = 3;
+const MIN_TRADE_SIZE = 1; // don't trade below $1
 const HEARTBEAT_INTERVAL_MS = 5000;
 const WINDOW_SCAN_INTERVAL_MS = 60_000;
 const MAX_TRADES = 500;
 const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_1m/ethusdt@kline_1m/solusdt@kline_1m";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
-const INITIAL_BALANCE = 100;
 
 // Late-entry strategy params
 const ENTRY_WINDOW_SECS = 60; // enter in last 60s of window
@@ -81,10 +83,28 @@ const latestPrices = new Map<string, number>();
 const activeWindows = new Map<string, ActiveWindow>();
 const windowTraded = new Set<string>(); // track which windows we already traded
 const trades: HFMakerTrade[] = [];
-let balance = INITIAL_BALANCE;
+let balance = 0;
 
 const activeOrders = new Map<string, string>();
 const paperFillTimers = new Map<string, NodeJS.Timeout>();
+
+function getOpenTradeCount(): number {
+  return trades.filter(t => t.status === "pending" || t.status === "open").length;
+}
+
+function getAvailableBalance(): number {
+  // Balance tracks resolved cash. Open/pending trades are reserved but not debited.
+  const reservedSize = trades
+    .filter(t => t.status === "pending" || t.status === "open")
+    .reduce((s, t) => s + t.size, 0);
+  return balance - reservedSize;
+}
+
+function calcPositionSize(): number {
+  const available = getAvailableBalance();
+  const size = Math.floor(available * POSITION_PCT * 100) / 100; // round down to 2dp
+  return size >= MIN_TRADE_SIZE ? size : 0;
+}
 
 // ---- Binance WebSocket -------------------------------------------------------
 
@@ -261,10 +281,12 @@ function checkLateEntry(): void {
       entryPrice = 0.70; // 0.3% move (minimum), ~78% win rate, needs 70%
     }
 
-    if (balance < HF_MAKER_POSITION_SIZE) continue;
+    if (getOpenTradeCount() >= MAX_CONCURRENT_TRADES) continue;
+    const posSize = calcPositionSize();
+    if (posSize <= 0) continue;
 
     // Place the trade
-    void placeLateEntryTrade(window, key, direction, entryPrice, currentPrice, absMove);
+    void placeLateEntryTrade(window, key, direction, entryPrice, currentPrice, absMove, posSize);
   }
 }
 
@@ -275,17 +297,19 @@ async function placeLateEntryTrade(
   entryPrice: number,
   currentBinancePrice: number,
   moveMagnitude: number,
+  positionSize: number,
 ): Promise<void> {
   windowTraded.add(windowKey);
 
   const tokenId = direction === "up" ? window.yesTokenId : window.noTokenId;
-  const shares = HF_MAKER_POSITION_SIZE / entryPrice;
+  const shares = positionSize / entryPrice;
   const tradeId = `hfm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const secsLeft = ((window.endTime - Date.now()) / 1000).toFixed(0);
 
   console.log(
     `[HFMaker] LATE-ENTRY ${window.coin} ${direction.toUpperCase()} ` +
-    `@${(entryPrice * 100).toFixed(0)}c $${HF_MAKER_POSITION_SIZE} ` +
+    `@${(entryPrice * 100).toFixed(0)}c $${positionSize.toFixed(2)} ` +
+    `(${(POSITION_PCT * 100).toFixed(0)}% of $${balance.toFixed(2)}) ` +
     `move=${(moveMagnitude * 100).toFixed(2)}% ${secsLeft}s left`
   );
 
@@ -295,7 +319,7 @@ async function placeLateEntryTrade(
     side: direction,
     entryPrice,
     shares,
-    size: HF_MAKER_POSITION_SIZE,
+    size: positionSize,
     entryTime: Date.now(),
     windowEnd: window.endTime,
     windowStartPrice: window.startPrice!,
@@ -306,7 +330,7 @@ async function placeLateEntryTrade(
   };
 
   trades.push(trade);
-  balance -= HF_MAKER_POSITION_SIZE;
+  saveHFMakerBalance(balance);
 
   // Trim old trades
   while (trades.length > MAX_TRADES) {
@@ -318,6 +342,7 @@ async function placeLateEntryTrade(
   if (isPolymarketPaperMode()) {
     // Paper: instant fill (we're entering late, high prob of fill)
     trade.status = "open";
+    saveHFMakerTrade(trade);
     console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
     // Live: place order on CLOB
@@ -339,15 +364,16 @@ async function placeLateEntryTrade(
         trade.orderId = order.id;
         trade.entryPrice = livePrice;
         activeOrders.set(order.id, tradeId);
+        saveHFMakerTrade(trade);
         console.log(`[HFMaker] Order placed: ${order.id}`);
       } else {
         trade.status = "cancelled";
-        balance += HF_MAKER_POSITION_SIZE;
+        saveHFMakerTrade(trade);
         console.log("[HFMaker] Order placement failed");
       }
     } catch (err) {
       trade.status = "cancelled";
-      balance += HF_MAKER_POSITION_SIZE;
+      saveHFMakerTrade(trade);
       console.error("[HFMaker] Order error:", err);
     }
   }
@@ -362,28 +388,21 @@ function runHeartbeat(): void {
   checkLateEntry();
 
   for (const trade of trades) {
-    if (trade.status === "pending" && !isPolymarketPaperMode() && trade.orderId) {
-      if (now >= trade.windowEnd) {
-        trade.status = "cancelled";
-        balance += trade.size;
-        activeOrders.delete(trade.orderId);
-        console.log(`[HFMaker] Order expired: ${trade.coin} ${trade.side}`);
-      }
-    }
-
     // Resolve open positions at window end
     if (trade.status === "open" && now >= trade.windowEnd) {
       resolvePosition(trade);
+      continue;
     }
 
-    // Auto-cancel pending if window passed
+    // Auto-cancel pending if window passed (no balance adjustment - available calc handles it)
     if (trade.status === "pending" && now >= trade.windowEnd) {
       trade.status = "cancelled";
-      balance += trade.size;
+      saveHFMakerTrade(trade);
       if (trade.orderId) {
         activeOrders.delete(trade.orderId);
         if (!isPolymarketPaperMode()) void cancelOrder(trade.orderId);
       }
+      console.log(`[HFMaker] Order expired: ${trade.coin} ${trade.side}`);
     }
   }
 
@@ -403,7 +422,7 @@ function resolvePosition(trade: HFMakerTrade): void {
   // Skip resolution if we don't have a valid price
   if (currentBinancePrice <= 0 || trade.windowStartPrice <= 0) {
     trade.status = "cancelled";
-    balance += trade.size;
+    saveHFMakerTrade(trade);
     console.log(`[HFMaker] CANCEL ${trade.coin} ${trade.side} (missing price data)`);
     return;
   }
@@ -417,15 +436,21 @@ function resolvePosition(trade: HFMakerTrade): void {
   const directionMatched =
     (trade.side === "up" && priceUp) || (trade.side === "down" && (priceDown || priceDiff === 0));
 
+  // Balance model: balance = total cash, open trades are reserved via getAvailableBalance()
+  // On resolution, trade exits reserved state. Adjust balance for actual outcome.
   if (directionMatched) {
     const payout = trade.shares * 1.0;
     trade.pnl = payout - trade.size;
     trade.status = "won";
-    balance += payout;
+    balance += trade.pnl; // add profit (payout - cost)
   } else {
     trade.pnl = -trade.size;
     trade.status = "lost";
+    balance -= trade.size; // deduct loss
   }
+
+  saveHFMakerTrade(trade);
+  saveHFMakerBalance(balance);
 
   const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
   const movePct = trade.windowStartPrice > 0
@@ -439,9 +464,31 @@ function resolvePosition(trade: HFMakerTrade): void {
 
 // ---- Public API --------------------------------------------------------------
 
-export function startHFMaker(): void {
+export async function startHFMaker(): Promise<void> {
   if (running) return;
   running = true;
+
+  // Restore balance from DB, or seed from HF_MAKER_INITIAL_BALANCE env var
+  const savedBalance = loadHFMakerBalance();
+  if (savedBalance !== null && savedBalance > 0) {
+    balance = savedBalance;
+    console.log(`[HFMaker] Restored balance: $${balance.toFixed(2)}`);
+  } else {
+    const envBalance = parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
+    balance = envBalance > 0 ? envBalance : 0;
+    if (balance > 0) {
+      saveHFMakerBalance(balance);
+      console.log(`[HFMaker] Seeded balance from env: $${balance.toFixed(2)}`);
+    } else {
+      console.warn("[HFMaker] No balance - set HF_MAKER_INITIAL_BALANCE env var");
+    }
+  }
+
+  const openTrades = loadOpenHFMakerTrades();
+  if (openTrades.length > 0) {
+    trades.push(...openTrades);
+    console.log(`[HFMaker] Restored ${openTrades.length} open trades from DB`);
+  }
 
   connectBinance();
 
@@ -450,7 +497,7 @@ export function startHFMaker(): void {
 
   heartbeatInterval = setInterval(runHeartbeat, HEARTBEAT_INTERVAL_MS);
 
-  console.log("[HFMaker] Started (paper=" + String(isPolymarketPaperMode()) + ")");
+  console.log(`[HFMaker] Started (paper=${isPolymarketPaperMode()}, balance=$${balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
 }
 
 export function stopHFMaker(): void {
@@ -518,7 +565,7 @@ export function getHFMakerStatus(): {
 
 export function resetHFMakerData(): void {
   trades.length = 0;
-  balance = INITIAL_BALANCE;
+  balance = 0;
   activeOrders.clear();
   windowTraded.clear();
   for (const timer of paperFillTimers.values()) clearTimeout(timer);

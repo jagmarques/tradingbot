@@ -14,7 +14,7 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-chan": 80 * 60 * 60 * 1000,
+  "garch-chan": 48 * 60 * 60 * 1000,
 };
 
 // Per-engine trailing stop config (validated on 1m candles)

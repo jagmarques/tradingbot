@@ -10,7 +10,7 @@ const TRADE_TYPE = "garch-chan" as const;
 const LEVERAGE = 10;
 const ATR_PERIOD = 14;
 const CHAN_MULT = 6;
-const MAX_HOLD_MS = 80 * 60 * 60 * 1000;
+const MAX_HOLD_MS = 48 * 60 * 60 * 1000;
 const GARCH_LOOKBACK = 3; // momentum lookback
 const GARCH_VOL_WINDOW = 20; // rolling stddev window
 const GARCH_THRESHOLD = 0.7; // z-score threshold
@@ -138,8 +138,8 @@ export async function runGarchChanCycle(): Promise<number> {
     try {
       const signal = await analyzeSignal(pair);
       if (!signal) continue;
-      // TP at 1.5% price move (= 15% P&L at 10x leverage)
-      const tpPct = 0.015;
+      // TP at 1.8% price move (= 18% P&L at 10x leverage)
+      const tpPct = 0.018;
       const tp = signal.direction === "long"
         ? signal.entryPrice * (1 + tpPct)
         : signal.entryPrice * (1 - tpPct);
