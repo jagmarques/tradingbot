@@ -288,6 +288,9 @@ async function checkLateEntry(): Promise<void> {
     const movePct = (currentPrice - window.startPrice) / window.startPrice;
     const absMove = Math.abs(movePct);
 
+    // Log move when in entry window (for debugging)
+    console.log(`[HFMaker] ${window.coin} move=${(movePct * 100).toFixed(3)}% (need ${(MIN_MOVE_PCT * 100).toFixed(1)}%) ${secsLeft.toFixed(0)}s left`);
+
     // Skip if move is too small (noise)
     if (absMove < MIN_MOVE_PCT) continue;
 
