@@ -32,9 +32,11 @@ function generateSignature(
 ): string {
   const env = loadEnv();
   const message = `${timestamp}${method}${path}${body}`;
-  const hmac = crypto.createHmac("sha256", env.POLYMARKET_SECRET);
+  // Decode base64 secret, sign with HMAC-SHA256, output as base64url
+  const secretBuffer = Buffer.from(env.POLYMARKET_SECRET, "base64");
+  const hmac = crypto.createHmac("sha256", secretBuffer);
   hmac.update(message);
-  return hmac.digest("hex");
+  return hmac.digest("base64").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 function getHeaders(method: string, path: string, body: string = ""): Record<string, string> {

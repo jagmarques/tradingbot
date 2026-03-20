@@ -9,12 +9,12 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
+import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 
 function isHFMakerPaper(): boolean {
   if (process.env.HF_MAKER_LIVE === "true") return false;
   return isPolymarketPaperMode();
 }
-import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 
 // ---- Constants ---------------------------------------------------------------
 
