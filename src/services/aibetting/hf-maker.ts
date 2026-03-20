@@ -10,6 +10,7 @@ import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
+import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 
 function isHFMakerPaper(): boolean {
   if (process.env.HF_MAKER_LIVE === "true") return false;
@@ -20,7 +21,7 @@ function isHFMakerPaper(): boolean {
 
 const POSITION_PCT = 0.30; // 30% of balance per trade
 const MAX_CONCURRENT_TRADES = 3;
-const MIN_TRADE_SIZE = 1; // don't trade below $1
+const MIN_TRADE_SIZE = 5; // Polymarket CLOB minimum is 5 shares
 const HEARTBEAT_INTERVAL_MS = 5000;
 const WINDOW_SCAN_INTERVAL_MS = 60_000;
 const MAX_TRADES = 500;
@@ -473,21 +474,23 @@ export async function startHFMaker(): Promise<void> {
   if (running) return;
   running = true;
 
-  // Restore balance from DB, or seed from HF_MAKER_INITIAL_BALANCE env var
-  const savedBalance = loadHFMakerBalance();
-  if (savedBalance !== null && savedBalance > 0) {
-    balance = savedBalance;
-    console.log(`[HFMaker] Restored balance: $${balance.toFixed(2)}`);
-  } else {
-    const envBalance = parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
-    balance = envBalance > 0 ? envBalance : 0;
-    if (balance > 0) {
-      saveHFMakerBalance(balance);
-      console.log(`[HFMaker] Seeded balance from env: $${balance.toFixed(2)}`);
-    } else {
-      console.warn("[HFMaker] No balance - set HF_MAKER_INITIAL_BALANCE env var");
+  // Fetch on-chain USDC.e balance (source of truth for live mode)
+  if (!isHFMakerPaper()) {
+    try {
+      const usdcStr = await getUsdcBalanceFormatted();
+      balance = parseFloat(usdcStr);
+      console.log(`[HFMaker] On-chain USDC.e balance: $${balance.toFixed(2)}`);
+    } catch {
+      const savedBalance = loadHFMakerBalance();
+      balance = savedBalance ?? 0;
+      console.log(`[HFMaker] DB balance (chain fetch failed): $${balance.toFixed(2)}`);
     }
+  } else {
+    const savedBalance = loadHFMakerBalance();
+    balance = savedBalance ?? parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
+    console.log(`[HFMaker] Paper balance: $${balance.toFixed(2)}`);
   }
+  saveHFMakerBalance(balance);
 
   const openTrades = loadOpenHFMakerTrades();
   if (openTrades.length > 0) {
