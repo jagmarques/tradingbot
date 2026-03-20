@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { ethers } from "ethers";
+import { ClobClient, Side } from "@polymarket/clob-client";
 import { loadEnv } from "../../config/env.js";
 import { getAddress } from "./wallet.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
@@ -24,6 +26,8 @@ interface Order {
   sizeMatched: string;
 }
 
+// ---- HMAC Auth (for read operations) -----------------------------------------
+
 function generateSignature(
   method: string,
   path: string,
@@ -32,7 +36,6 @@ function generateSignature(
 ): string {
   const env = loadEnv();
   const message = `${timestamp}${method}${path}${body}`;
-  // Decode base64 secret, sign with HMAC-SHA256, output as base64url
   const secretBuffer = Buffer.from(env.POLYMARKET_SECRET, "base64");
   const hmac = crypto.createHmac("sha256", secretBuffer);
   hmac.update(message);
@@ -82,6 +85,31 @@ async function request<T>(
   }
 }
 
+// ---- SDK Client (for signed order operations) --------------------------------
+
+let sdkClient: ClobClient | null = null;
+
+function getSdkClient(): ClobClient {
+  if (sdkClient) return sdkClient;
+
+  const env = loadEnv();
+  const wallet = new ethers.Wallet(env.POLYGON_PRIVATE_KEY);
+  // ethers v6 compat: ClobClient expects _signTypedData (v5 method name)
+  if (!(wallet as any)._signTypedData && wallet.signTypedData) {
+    (wallet as any)._signTypedData = wallet.signTypedData.bind(wallet);
+  }
+
+  sdkClient = new ClobClient(CLOB_API_URL, 137, wallet as any, {
+    key: env.POLYMARKET_API_KEY,
+    secret: env.POLYMARKET_SECRET,
+    passphrase: env.POLYMARKET_PASSPHRASE,
+  });
+
+  return sdkClient;
+}
+
+// ---- Public API --------------------------------------------------------------
+
 export async function getOrderbook(
   tokenId: string
 ): Promise<{ bids: Array<[string, string]>; asks: Array<[string, string]> } | null> {
@@ -100,18 +128,37 @@ export async function getMidpointPrice(tokenId: string): Promise<number | null> 
 }
 
 export async function placeOrder(payload: OrderPayload): Promise<Order | null> {
-  const nonce = payload.nonce ?? Date.now();
-  const expiration = payload.expiration ?? Math.floor(Date.now() / 1000) + 60;
+  try {
+    const client = getSdkClient();
+    console.log(`[Polymarket] Placing ${payload.side} order: ${payload.size} @ ${payload.price}`);
 
-  const orderPayload = {
-    ...payload,
-    nonce,
-    expiration,
-    feeRateBps: payload.feeRateBps ?? 0,
-  };
+    const resp = await client.createAndPostOrder({
+      tokenID: payload.tokenId,
+      side: payload.side === "BUY" ? Side.BUY : Side.SELL,
+      price: parseFloat(payload.price),
+      size: parseFloat(payload.size),
+      feeRateBps: payload.feeRateBps ?? 0,
+    });
 
-  console.log(`[Polymarket] Placing ${payload.side} order: ${payload.size} @ ${payload.price}`);
-  return request<Order>("POST", "/order", orderPayload);
+    if (!resp || !resp.orderID) {
+      console.error("[Polymarket] Order response missing orderID:", resp);
+      return null;
+    }
+
+    console.log(`[Polymarket] Order placed: ${resp.orderID} status=${resp.status}`);
+    return {
+      id: resp.orderID,
+      status: resp.status ?? "LIVE",
+      tokenId: payload.tokenId,
+      side: payload.side,
+      price: payload.price,
+      size: payload.size,
+      sizeMatched: "0",
+    };
+  } catch (error) {
+    console.error("[Polymarket] Order failed:", error);
+    return null;
+  }
 }
 
 export async function placeFokOrder(
@@ -120,33 +167,48 @@ export async function placeFokOrder(
   price: string,
   size: string
 ): Promise<Order | null> {
-  // FOK (Fill or Kill) - order must be filled immediately or cancelled
-  const order = await placeOrder({
-    tokenId,
-    side,
-    price,
-    size,
-  });
+  try {
+    const client = getSdkClient();
 
-  if (!order) {
-    console.error("[Polymarket] FOK order failed to place");
+    console.log(`[Polymarket] Placing FOK ${side} order: ${size} @ ${price}`);
+
+    const resp = await client.createAndPostMarketOrder({
+      tokenID: tokenId,
+      side: side === "BUY" ? Side.BUY : Side.SELL,
+      price: parseFloat(price),
+      amount: parseFloat(size),
+    });
+
+    if (!resp || !resp.orderID) {
+      console.error("[Polymarket] FOK order failed");
+      return null;
+    }
+
+    console.log(`[Polymarket] FOK order: ${resp.orderID} status=${resp.status}`);
+    return {
+      id: resp.orderID,
+      status: resp.status ?? "MATCHED",
+      tokenId,
+      side,
+      price,
+      size,
+      sizeMatched: size,
+    };
+  } catch (error) {
+    console.error("[Polymarket] FOK order failed:", error);
     return null;
   }
-
-  // Check if fully filled
-  if (order.sizeMatched !== order.size) {
-    console.log(`[Polymarket] FOK order partially filled, cancelling remainder`);
-    await cancelOrder(order.id);
-    return null;
-  }
-
-  console.log(`[Polymarket] FOK order filled: ${order.id}`);
-  return order;
 }
 
 export async function cancelOrder(orderId: string): Promise<boolean> {
-  const result = await request<{ success: boolean }>("DELETE", `/order/${orderId}`);
-  return result?.success ?? false;
+  try {
+    const client = getSdkClient();
+    await client.cancelOrder({ orderID: orderId } as any);
+    return true;
+  } catch (error) {
+    console.error("[Polymarket] Cancel failed:", error);
+    return false;
+  }
 }
 
 export async function validateApiConnection(): Promise<boolean> {
