@@ -206,7 +206,7 @@ export function parseAnalysisResponse(
       const probMatch = jsonStr.match(/"probability"\s*:\s*([\d.]+)/);
       const confMatch = jsonStr.match(/"confidence"\s*:\s*([\d.]+)/);
       if (probMatch && confMatch) {
-        console.log(`[Analyzer] JSON parse failed, using regex fallback`);
+        // AI model returned malformed JSON, regex extracted values successfully
         parsed = {
           probability: parseFloat(probMatch[1]),
           confidence: parseFloat(confMatch[1]),

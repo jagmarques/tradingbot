@@ -59,9 +59,10 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  let magnitude = Math.floor(Math.log10(Math.abs(price)));
-  if (magnitude === -1 && Math.abs(price) >= 0.5) magnitude = 0;
-  const factor = 10 ** (4 - magnitude);
+  // Hyperliquid requires max 5 significant figures
+  const sigFigs = 5;
+  const magnitude = Math.floor(Math.log10(Math.abs(price)));
+  const factor = 10 ** (sigFigs - 1 - magnitude);
   return Math.round(price * factor) / factor;
 }
 
