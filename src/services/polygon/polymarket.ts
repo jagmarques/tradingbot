@@ -99,7 +99,8 @@ function getSdkClient(): ClobClient {
     (wallet as any)._signTypedData = wallet.signTypedData.bind(wallet);
   }
 
-  sdkClient = new ClobClient(CLOB_API_URL, 137, wallet as any, {
+  const clobUrl = process.env.CLOB_PROXY_URL || CLOB_API_URL;
+  sdkClient = new ClobClient(clobUrl, 137, wallet as any, {
     key: env.POLYMARKET_API_KEY,
     secret: env.POLYMARKET_SECRET,
     passphrase: env.POLYMARKET_PASSPHRASE,
