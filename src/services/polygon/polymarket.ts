@@ -137,7 +137,6 @@ export async function placeOrder(payload: OrderPayload): Promise<Order | null> {
       side: payload.side === "BUY" ? Side.BUY : Side.SELL,
       price: parseFloat(payload.price),
       size: parseFloat(payload.size),
-      feeRateBps: payload.feeRateBps ?? 0,
     });
 
     if (!resp || !resp.orderID) {

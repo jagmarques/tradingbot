@@ -8,7 +8,7 @@ import WebSocket from "ws";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
-import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
+import { placeOrder, cancelOrder } from "../polygon/polymarket.js";
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 import { ethers } from "ethers";
 import { loadEnv } from "../../config/env.js";
@@ -376,18 +376,14 @@ async function placeLateEntryTrade(
   } else {
     // Live: place order on CLOB
     try {
-      const book = await getOrderbook(tokenId);
-      const livePrice = book && book.bids.length > 0
-        ? Math.min(parseFloat(book.bids[0][0]) + 0.01, 0.95)
-        : entryPrice;
+      // Use calculated entry price directly (orderbook may not exist for 15-min markets)
+      const livePrice = entryPrice;
 
       const order = await placeOrder({
         tokenId,
         side: "BUY",
         price: livePrice.toFixed(2),
         size: shares.toFixed(2),
-        feeRateBps: 0,
-        expiration: Math.floor(window.endTime / 1000),
       });
       if (order) {
         trade.orderId = order.id;
