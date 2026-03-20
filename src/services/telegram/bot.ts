@@ -567,6 +567,8 @@ export async function sendMessage(text: string): Promise<void> {
   }
 }
 
+let firstMenuSent = false;
+
 export async function sendMainMenu(): Promise<void> {
   if (!bot || !chatId) {
     console.warn("[Telegram] Bot not initialized, cannot send menu");
@@ -574,6 +576,16 @@ export async function sendMainMenu(): Promise<void> {
   }
 
   try {
+    // On first call after deploy, clean up old messages
+    if (!firstMenuSent && lastMenuMessageId) {
+      // Delete old menu and recent messages around it
+      for (let i = lastMenuMessageId - 5; i <= lastMenuMessageId + 50; i++) {
+        if (i > 0) await bot.api.deleteMessage(chatId, i).catch(() => {});
+      }
+      lastMenuMessageId = null;
+      firstMenuSent = true;
+    }
+
     const toDelete: number[] = [];
     toDelete.push(...dataMessageIds);
     if (lastPromptMessageId) toDelete.push(lastPromptMessageId);
@@ -598,12 +610,13 @@ export async function sendMainMenu(): Promise<void> {
           parse_mode: "HTML",
           reply_markup: { inline_keyboard: MAIN_MENU_BUTTONS },
         });
+        firstMenuSent = true;
         return;
       } catch (editErr) {
         if (editErr instanceof Error && editErr.message.includes("message is not modified")) {
-          return; // Already showing correct content
+          firstMenuSent = true;
+          return;
         }
-        // Edit failed for other reason - delete old to avoid duplicate
         await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
         lastMenuMessageId = null;
         persistMenuMsgId(null);
@@ -616,6 +629,7 @@ export async function sendMainMenu(): Promise<void> {
     });
     lastMenuMessageId = msg.message_id;
     persistMenuMsgId(lastMenuMessageId);
+    firstMenuSent = true;
   } catch (err) {
     console.error("[Telegram] Failed to send menu:", err);
   }
