@@ -226,14 +226,33 @@ async function reconcileWithExchange(): Promise<void> {
 
     for (const coin of exchangeCoins) { // orphan check
       if (!trackedPairs.has(coin) && !openingPairs.has(coin)) {
-        console.error(`[Quant Live] ORPHAN: ${coin} on exchange but not in DB, auto-closing`);
-        try {
-          await sdk.custom.marketClose(coin, undefined, undefined, MAX_SLIPPAGE);
-          console.log(`[Quant Live] Orphan ${coin} closed`);
-        } catch (closeErr) {
-          const closeMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
-          console.error(`[Quant Live] ORPHAN CLOSE FAILED: ${coin}: ${closeMsg}`);
-          void notifyCriticalError(`ORPHAN CLOSE FAILED: ${coin} still open on exchange`, "Reconciliation");
+        // Restore orphan to DB instead of closing (survives redeploys)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ap = exchangePositions.find((p: any) => p.position.coin === coin);
+        if (ap) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pos = ap.position as any;
+          const szi = parseFloat(pos.szi);
+          const entryPx = parseFloat(pos.entryPx);
+          const direction = szi > 0 ? "long" as const : "short" as const;
+          const size = Math.abs(szi) * entryPx / 10; // approximate $size at 10x
+          const restored: QuantPosition = {
+            id: generateQuantId(),
+            pair: coin,
+            direction,
+            entryPrice: entryPx,
+            size: Math.round(size * 100) / 100,
+            leverage: 10,
+            stopLoss: 0,
+            takeProfit: 0,
+            mode: "live",
+            status: "open",
+            openedAt: new Date().toISOString(),
+            tradeType: "garch-chan",
+          };
+          livePositions.set(restored.id, restored);
+          saveQuantPosition(restored);
+          console.log(`[Quant Live] RESTORED orphan ${coin} ${direction} @ ${entryPx}`);
         }
       }
     }
