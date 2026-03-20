@@ -576,12 +576,9 @@ export async function sendMainMenu(): Promise<void> {
   }
 
   try {
-    // On first call after deploy, clean up old messages
+    // On first call after deploy, delete only the old menu message
     if (!firstMenuSent && lastMenuMessageId) {
-      // Delete old menu and recent messages around it
-      for (let i = lastMenuMessageId - 5; i <= lastMenuMessageId + 50; i++) {
-        if (i > 0) await bot.api.deleteMessage(chatId, i).catch(() => {});
-      }
+      await bot.api.deleteMessage(chatId, lastMenuMessageId).catch(() => {});
       lastMenuMessageId = null;
       firstMenuSent = true;
     }
