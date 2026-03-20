@@ -9,6 +9,11 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js";
+
+function isHFMakerPaper(): boolean {
+  if (process.env.HF_MAKER_LIVE === "true") return false;
+  return isPolymarketPaperMode();
+}
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 
 // ---- Constants ---------------------------------------------------------------
@@ -339,7 +344,7 @@ async function placeLateEntryTrade(
     else break;
   }
 
-  if (isPolymarketPaperMode()) {
+  if (isHFMakerPaper()) {
     // Paper: instant fill (we're entering late, high prob of fill)
     trade.status = "open";
     saveHFMakerTrade(trade);
@@ -400,7 +405,7 @@ function runHeartbeat(): void {
       saveHFMakerTrade(trade);
       if (trade.orderId) {
         activeOrders.delete(trade.orderId);
-        if (!isPolymarketPaperMode()) void cancelOrder(trade.orderId);
+        if (!isHFMakerPaper()) void cancelOrder(trade.orderId);
       }
       console.log(`[HFMaker] Order expired: ${trade.coin} ${trade.side}`);
     }
@@ -497,7 +502,7 @@ export async function startHFMaker(): Promise<void> {
 
   heartbeatInterval = setInterval(runHeartbeat, HEARTBEAT_INTERVAL_MS);
 
-  console.log(`[HFMaker] Started (paper=${isPolymarketPaperMode()}, balance=$${balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
+  console.log(`[HFMaker] Started (paper=${isHFMakerPaper()}, balance=$${balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
 }
 
 export function stopHFMaker(): void {
