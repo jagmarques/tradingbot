@@ -12,6 +12,7 @@ import { placeOrder, cancelOrder, getOrderbook } from "../polygon/polymarket.js"
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 import { ethers } from "ethers";
 import { loadEnv } from "../../config/env.js";
+import { notifyHFMakerEntry, notifyHFMakerResult } from "../telegram/notifications.js";
 
 // USDC.e on Polygon (what Polymarket CLOB uses)
 const USDC_E_CONTRACT = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
@@ -394,6 +395,11 @@ async function placeLateEntryTrade(
         activeOrders.set(order.id, tradeId);
         saveHFMakerTrade(trade);
         console.log(`[HFMaker] Order placed: ${order.id}`);
+        void notifyHFMakerEntry({
+          coin: trade.coin, side: trade.side, size: trade.size,
+          entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
+          balance, orderId: order.id,
+        });
       } else {
         trade.status = "cancelled";
         saveHFMakerTrade(trade);
@@ -495,6 +501,14 @@ async function resolvePosition(trade: HFMakerTrade): Promise<void> {
     `[HFMaker] ${trade.status.toUpperCase()} ${trade.coin} ${trade.side} ${pnlStr} ` +
     `(start=$${trade.windowStartPrice.toFixed(0)} close=$${currentBinancePrice.toFixed(0)} move=${movePct}%)`
   );
+
+  if (!isHFMakerPaper()) {
+    void notifyHFMakerResult({
+      coin: trade.coin, side: trade.side, status: trade.status as "won" | "lost" | "cancelled",
+      size: trade.size, pnl: trade.pnl, balance,
+      startPrice: trade.windowStartPrice, closePrice: currentBinancePrice,
+    });
+  }
 }
 
 // ---- Public API --------------------------------------------------------------
