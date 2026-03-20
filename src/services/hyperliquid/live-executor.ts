@@ -249,6 +249,11 @@ async function reconcileWithExchange(): Promise<void> {
             status: "open",
             openedAt: new Date().toISOString(),
             tradeType: "garch-chan",
+            unrealizedPnl: 0,
+            closedAt: null as any,
+            exitPrice: 0,
+            realizedPnl: 0,
+            exitReason: "",
           };
           livePositions.set(restored.id, restored);
           saveQuantPosition(restored);
