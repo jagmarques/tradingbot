@@ -1,10 +1,21 @@
 import crypto from "crypto";
 import { ethers } from "ethers";
 import { ClobClient, Side } from "@polymarket/clob-client";
+import { SocksProxyAgent } from "socks-proxy-agent";
+import axios from "axios";
 import { loadEnv } from "../../config/env.js";
 import { getAddress } from "./wallet.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { CLOB_API_URL } from "../../config/constants.js";
+
+// Route Polymarket requests through SOCKS proxy (Windscribe Montreal VPN)
+const SOCKS_URL = process.env.POLY_SOCKS_PROXY;
+if (SOCKS_URL) {
+  const agent = new SocksProxyAgent(SOCKS_URL);
+  axios.defaults.httpAgent = agent;
+  axios.defaults.httpsAgent = agent;
+  console.log(`[Polymarket] SOCKS proxy: ${SOCKS_URL}`);
+}
 
 interface OrderPayload {
   tokenId: string;
@@ -99,8 +110,7 @@ function getSdkClient(): ClobClient {
     (wallet as any)._signTypedData = wallet.signTypedData.bind(wallet);
   }
 
-  const clobUrl = process.env.CLOB_PROXY_URL || CLOB_API_URL;
-  sdkClient = new ClobClient(clobUrl, 137, wallet as any, {
+  sdkClient = new ClobClient(CLOB_API_URL, 137, wallet as any, {
     key: env.POLYMARKET_API_KEY,
     secret: env.POLYMARKET_SECRET,
     passphrase: env.POLYMARKET_PASSPHRASE,
