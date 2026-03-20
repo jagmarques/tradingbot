@@ -1843,8 +1843,8 @@ async function handleReset(ctx: Context): Promise<void> {
   const cryptoCopy = getCryptoCopyPositions();
   const polyStats = getCopyStats();
   const db = (await import("../database/db.js")).getDb();
-  const insiderWalletCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt;
-  const insiderCopyCount = (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt;
+  const insiderWalletCount = (() => { try { return (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt; } catch { return 0; } })();
+  const insiderCopyCount = (() => { try { return (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt; } catch { return 0; } })();
   const quantTradeCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_trades WHERE mode != 'live'").get() as { cnt: number }).cnt;
   const quantPosCount = (db.prepare("SELECT COUNT(*) as cnt FROM quant_positions WHERE mode != 'live'").get() as { cnt: number }).cnt;
 
@@ -1891,7 +1891,7 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
     clearCryptoCopyMemory();
 
     // 4. Insider copy trades - delete all (scoring rebuilds from new trades)
-    const insiderCopyResult = db.prepare("DELETE FROM insider_copy_trades").run();
+    const insiderCopyResult = (() => { try { return db.prepare("DELETE FROM insider_copy_trades").run(); } catch { return { changes: 0 }; } })();
 
     // 5. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
