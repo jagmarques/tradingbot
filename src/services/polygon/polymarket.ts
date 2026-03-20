@@ -8,12 +8,17 @@ import { getAddress } from "./wallet.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { CLOB_API_URL } from "../../config/constants.js";
 
-// Route Polymarket requests through SOCKS proxy (Windscribe Montreal VPN)
+// SOCKS proxy for Polymarket only via axios interceptor
 const SOCKS_URL = process.env.POLY_SOCKS_PROXY;
 if (SOCKS_URL) {
   const agent = new SocksProxyAgent(SOCKS_URL);
-  axios.defaults.httpAgent = agent;
-  axios.defaults.httpsAgent = agent;
+  axios.interceptors.request.use((config) => {
+    if (config.url && (config.url.includes("polymarket.com") || config.url.includes("clob."))) {
+      config.httpAgent = agent;
+      config.httpsAgent = agent;
+    }
+    return config;
+  });
   console.log(`[Polymarket] SOCKS proxy: ${SOCKS_URL}`);
 }
 
