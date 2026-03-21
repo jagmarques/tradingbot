@@ -1,9 +1,8 @@
 import type { AIBettingConfig, AnalysisCycleResult, AIAnalysis, PolymarketEvent } from "./types.js";
 import { discoverMarkets } from "./scanner.js";
 import { fetchNewsForMarket, isGdeltCircuitOpen } from "./news.js";
-import { analyzeMarket, parseAnalysisResponse } from "./analyzer.js";
+import { analyzeMarket } from "./analyzer.js";
 import { evaluateAllOpportunities, shouldExitPosition } from "./evaluator.js";
-import { callDeepSeek } from "../shared/llm.js";
 import {
   enterPosition,
   exitPosition,
@@ -241,84 +240,16 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
         console.log(`[AIBetting] Sibling context for ${market.title}: ${siblingTitles.length} related markets`);
       }
 
-      // Ensemble: 2 R1 calls, take mean probability
-      const ENSEMBLE_SIZE = 1;
-      const ensembleResults: AIAnalysis[] = [];
+      const analysis = await analyzeMarket(market, news, undefined, siblingTitles);
 
-      for (let i = 0; i < ENSEMBLE_SIZE; i++) {
-        const singleAnalysis = await analyzeMarket(market, news, undefined, siblingTitles);
-        if (singleAnalysis) {
-          ensembleResults.push(singleAnalysis);
-          console.log(`[AIBetting] Ensemble ${i + 1}/${ENSEMBLE_SIZE}: R1=${(singleAnalysis.probability * 100).toFixed(1)}%`);
-        }
-        if (i < ENSEMBLE_SIZE - 1) {
-          await new Promise((r) => setTimeout(r, 1000)); // Rate limit between calls
-        }
-      }
-
-      if (ensembleResults.length === 0) {
-        console.warn(`[AIBetting] All ensemble calls failed for: ${market.title}`);
+      if (!analysis) {
+        console.warn(`[AIBetting] Analysis failed for: ${market.title}`);
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
 
-      // Take mean of RAW R1 probabilities (no weighting applied yet)
-      const sortedProbs = ensembleResults.map(a => a.probability).sort((a, b) => a - b);
-      const meanRawProb = sortedProbs.reduce((a, b) => a + b, 0) / sortedProbs.length;
-
-      // Check spread for supervisor trigger
-      const spread = sortedProbs[sortedProbs.length - 1] - sortedProbs[0];
-
-      // Use the analysis closest to mean as base
-      const closestToMean = ensembleResults.reduce((best, curr) =>
-        Math.abs(curr.probability - meanRawProb) < Math.abs(best.probability - meanRawProb) ? curr : best
-      );
-      let r1FinalRaw = meanRawProb;
-      const analysis = { ...closestToMean, probability: meanRawProb };
-
-      // Supervisor agent: if spread > 15pp, make extra R1 call with all RAW reasoning
-      if (spread > 0.15) {
-        console.log(`[AIBetting] Supervisor triggered (spread ${(spread * 100).toFixed(0)}pp): ${market.title}`);
-        const allReasoning = ensembleResults.map((a, i) =>
-          `Analyst ${i + 1}: P=${(a.probability * 100).toFixed(1)}% - ${a.reasoning}`
-        ).join("\n\n");
-
-        const supervisorPrompt = `You are a senior prediction market analyst reviewing junior analysts' estimates.
-
-MARKET: ${market.title}
-
-ANALYST ESTIMATES (spread: ${(spread * 100).toFixed(0)} percentage points):
-${allReasoning}
-
-The analysts disagree significantly. Review their reasoning, identify which analyst(s) have the strongest evidence, and provide your own probability estimate.
-
-OUTPUT JSON ONLY:
-{
-  "probability": 0.XX,
-  "confidence": 0.XX,
-  "reasoning": "your synthesis",
-  "keyFactors": ["factor1", "factor2"],
-  "evidenceCited": [],
-  "consistencyNote": "supervisor synthesis",
-  "changeReason": null,
-  "timeline": null
-}`;
-
-        try {
-          const supervisorResponse = await callDeepSeek(supervisorPrompt, undefined, undefined, undefined, "supervisor");
-          const supervisorAnalysis = parseAnalysisResponse(supervisorResponse, market.conditionId);
-          if (supervisorAnalysis) {
-            r1FinalRaw = supervisorAnalysis.probability;
-            analysis.reasoning = `[Supervisor] ${supervisorAnalysis.reasoning}`;
-            analysis.confidence = supervisorAnalysis.confidence;
-            console.log(`[AIBetting] Supervisor: ${(r1FinalRaw * 100).toFixed(1)}% (was mean ${(meanRawProb * 100).toFixed(1)}%)`);
-          }
-        } catch (error) {
-          console.warn(`[AIBetting] Supervisor call failed, using mean:`, error);
-        }
-      }
-
       // Bayesian Engine: Beta-Bernoulli conjugate model with log-odds signal fusion
+      const r1FinalRaw = analysis.probability;
       analysis.r1RawProbability = r1FinalRaw;
 
       // 1. Create prior from market price (strength controls market trust)

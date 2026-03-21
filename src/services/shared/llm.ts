@@ -130,3 +130,20 @@ export async function callDeepSeek(
 
   throw lastError || new Error("LLM call failed");
 }
+
+export async function callDeepSeekEnsemble(
+  prompt: string,
+  systemMessage?: string,
+  caller: string = "unknown",
+  ensembleSize: number = 3
+): Promise<string[]> {
+  const temps = [0.0, 0.3, 0.7];
+  const results: string[] = [];
+  for (let i = 0; i < ensembleSize; i++) {
+    const temp = temps[i] ?? 0.3;
+    const response = await callDeepSeek(prompt, undefined, systemMessage, temp, `${caller}-e${i}`);
+    results.push(response);
+    if (i < ensembleSize - 1) await sleep(1000);
+  }
+  return results;
+}

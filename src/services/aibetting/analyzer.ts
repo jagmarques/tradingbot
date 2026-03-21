@@ -1,6 +1,13 @@
 import type { PolymarketEvent, NewsItem, AIAnalysis } from "./types.js";
-import { callDeepSeek } from "../shared/llm.js";
+import { callDeepSeekEnsemble } from "../shared/llm.js";
 import { getMarketAnalysisHistory, getBettingStats, saveAnalysis, savePrediction } from "../database/aibetting.js";
+
+function plattScale(p: number, alpha: number = 1.732): number {
+  // Clamp to avoid log(0) or log(infinity)
+  const clamped = Math.max(0.001, Math.min(0.999, p));
+  const logit = Math.log(clamped / (1 - clamped));
+  return 1 / (1 + Math.exp(-alpha * logit));
+}
 
 interface AnalysisResponse {
   probability: number;
@@ -280,8 +287,34 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
-    const response = await callDeepSeek(prompt, undefined, undefined, undefined, "aibetting");
-    const analysis = parseAnalysisResponse(response, market.conditionId);
+    const responses = await callDeepSeekEnsemble(prompt, undefined, "aibetting", 3);
+    const parsedAll = responses
+      .map(r => parseAnalysisResponse(r, market.conditionId))
+      .filter((a): a is AIAnalysis => a !== null);
+
+    if (parsedAll.length === 0) {
+      console.warn(`[Analyzer] All ensemble calls failed for ${market.title}`);
+      return null;
+    }
+
+    // Take median probability
+    const sortedProbs = parsedAll.map(a => a.probability).sort((a, b) => a - b);
+    const medianProb = sortedProbs[Math.floor(sortedProbs.length / 2)];
+
+    // Use analysis closest to median as base
+    const analysis = parsedAll.reduce((best, curr) =>
+      Math.abs(curr.probability - medianProb) < Math.abs(best.probability - medianProb) ? curr : best
+    );
+    analysis.probability = medianProb;
+
+    // Apply Platt scaling to sharpen calibration
+    analysis.probability = plattScale(analysis.probability);
+
+    console.log(
+      `[Analyzer] Ensemble: ${parsedAll.length}/${responses.length} parsed, ` +
+      `probs=[${sortedProbs.map(p => (p * 100).toFixed(0)).join(',')}] ` +
+      `median=${(medianProb * 100).toFixed(1)}% platt=${(analysis.probability * 100).toFixed(1)}%`
+    );
 
     if (analysis) {
       // Store raw R1 probability (Bayesian weighting applied once in scheduler after ensemble)
