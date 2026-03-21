@@ -9,7 +9,7 @@ import WebSocket from "ws";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
-import { placeFokOrder, cancelOrder } from "../polygon/polymarket.js";
+import { placeGtcMakerOrder, cancelOrder, getOrderStatus } from "../polygon/polymarket.js";
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance, getHFMakerDbStats, loadAllHFMakerTrades } from "../database/hf-maker.js";
 import { ethers } from "ethers";
 import { loadEnv } from "../../config/env.js";
@@ -400,28 +400,38 @@ async function placeLateEntryTrade(
     saveHFMakerTrade(trade, inst.id);
     console.log(`[HFMaker:${inst.id}] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
+    // Live: GTC maker order (zero fees, fills via MINT matching)
+    // These markets have no CLOB depth - FOK fails. GTC rests on book
+    // and gets filled when someone buys the opposite side (MINT match).
     try {
-      // Use market price (up to 95c) to ensure fill - profit comes from resolution, not entry
-      const worstPrice = Math.min(entryPrice + 0.15, 0.95);
-      const order = await placeFokOrder(tokenId, "BUY", worstPrice.toFixed(2), positionSize.toFixed(2));
+      const shares = (positionSize / entryPrice).toFixed(2);
+      const order = await placeGtcMakerOrder(tokenId, "BUY", entryPrice.toFixed(2), shares);
       if (order) {
         trade.orderId = order.id;
-        trade.status = "open";
-        if (order.fillPrice) trade.entryPrice = order.fillPrice;
-        if (order.actualShares) trade.shares = order.actualShares;
-        if (order.actualCost) trade.size = order.actualCost;
+        if (order.status === "MATCHED") {
+          // Filled immediately (crossed existing liquidity)
+          trade.status = "open";
+          if (order.fillPrice) trade.entryPrice = order.fillPrice;
+          if (order.actualShares) trade.shares = order.actualShares;
+          if (order.actualCost) trade.size = order.actualCost;
+        } else {
+          // Resting on book as maker, waiting for MINT match
+          trade.status = "pending";
+        }
         inst.activeOrders.set(order.id, tradeId);
         saveHFMakerTrade(trade, inst.id);
-        console.log(`[HFMaker:${inst.id}] FOK filled: ${order.id} ${trade.shares.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
-        void notifyHFMakerEntry({
-          coin: trade.coin, side: trade.side, size: trade.size,
-          entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
-          balance: inst.balance, orderId: order.id,
-        });
+        console.log(`[HFMaker:${inst.id}] GTC ${order.status}: ${order.id} ${shares} shares @ ${(entryPrice * 100).toFixed(0)}c`);
+        if (trade.status === "open") {
+          void notifyHFMakerEntry({
+            coin: trade.coin, side: trade.side, size: trade.size,
+            entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
+            balance: inst.balance, orderId: order.id,
+          });
+        }
       } else {
         trade.status = "cancelled";
         saveHFMakerTrade(trade, inst.id);
-        console.log(`[HFMaker:${inst.id}] FOK not filled (no liquidity at ` + (worstPrice * 100).toFixed(0) + "c)");
+        console.log(`[HFMaker:${inst.id}] GTC order rejected`);
       }
     } catch (err) {
       trade.status = "cancelled";
@@ -429,6 +439,29 @@ async function placeLateEntryTrade(
       console.error(`[HFMaker:${inst.id}] Order error:`, err);
     }
   }
+}
+
+// ---- Pending Order Fill Check ------------------------------------------------
+
+async function checkPendingFill(inst: HFMakerInstance, trade: HFMakerTrade): Promise<void> {
+  if (!trade.orderId) return;
+  try {
+    const status = await getOrderStatus(trade.orderId);
+    if (!status) return;
+    const matched = parseFloat(status.sizeMatched);
+    if (matched > 0) {
+      trade.status = "open";
+      trade.shares = matched;
+      trade.size = matched * trade.entryPrice;
+      saveHFMakerTrade(trade, inst.id);
+      console.log(`[HFMaker:${inst.id}] GTC FILLED: ${trade.coin} ${trade.side} ${matched.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
+      void notifyHFMakerEntry({
+        coin: trade.coin, side: trade.side, size: trade.size,
+        entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
+        balance: inst.balance, orderId: trade.orderId!,
+      });
+    }
+  } catch { /* non-critical, retry next heartbeat */ }
 }
 
 // ---- Heartbeat ---------------------------------------------------------------
@@ -445,13 +478,26 @@ function runHeartbeat(): void {
         continue;
       }
 
+      // Check if pending GTC order got filled (MINT match)
+      if (trade.status === "pending" && trade.orderId && !inst.paper) {
+        if (now >= trade.windowEnd) {
+          // Window ended, cancel unfilled order
+          trade.status = "cancelled";
+          saveHFMakerTrade(trade, inst.id);
+          inst.activeOrders.delete(trade.orderId);
+          void cancelOrder(trade.orderId);
+          console.log(`[HFMaker:${inst.id}] Order expired: ${trade.coin} ${trade.side}`);
+        } else {
+          // Check fill status every heartbeat
+          void checkPendingFill(inst, trade);
+        }
+        continue;
+      }
+
+      // Paper pending -> cancel at window end
       if (trade.status === "pending" && now >= trade.windowEnd) {
         trade.status = "cancelled";
         saveHFMakerTrade(trade, inst.id);
-        if (trade.orderId) {
-          inst.activeOrders.delete(trade.orderId);
-          if (!inst.paper) void cancelOrder(trade.orderId);
-        }
         console.log(`[HFMaker:${inst.id}] Order expired: ${trade.coin} ${trade.side}`);
       }
     }

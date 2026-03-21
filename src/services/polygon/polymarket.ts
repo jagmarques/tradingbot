@@ -225,6 +225,54 @@ export async function placeFokOrder(
   }
 }
 
+export async function placeGtcMakerOrder(
+  tokenId: string,
+  side: "BUY" | "SELL",
+  price: string,
+  shares: string
+): Promise<Order | null> {
+  try {
+    const client = getSdkClient();
+    console.log(`[Polymarket] Placing GTC maker ${side}: ${shares} shares @ ${price}`);
+
+    const resp = await client.createAndPostOrder(
+      {
+        tokenID: tokenId,
+        side: side === "BUY" ? Side.BUY : Side.SELL,
+        price: parseFloat(price),
+        size: parseFloat(shares),
+        feeRateBps: 0, // maker = zero fees
+      },
+      undefined, // CreateOrderOptions (auto-resolved by SDK)
+      undefined, // OrderType defaults to GTC
+      undefined, // deferExec
+      undefined, // postOnly - not forcing, let it cross if possible
+    );
+
+    if (!resp || !resp.orderID) {
+      console.error("[Polymarket] GTC order failed:", resp);
+      return null;
+    }
+
+    console.log(`[Polymarket] GTC placed: ${resp.orderID} status=${resp.status}`);
+    return {
+      id: resp.orderID,
+      status: resp.status ?? "LIVE",
+      tokenId,
+      side,
+      price,
+      size: (parseFloat(shares) * parseFloat(price)).toFixed(2),
+      sizeMatched: resp.status === "MATCHED" ? shares : "0",
+      actualShares: resp.status === "MATCHED" ? parseFloat(shares) : undefined,
+      actualCost: resp.status === "MATCHED" ? parseFloat(shares) * parseFloat(price) : undefined,
+      fillPrice: resp.status === "MATCHED" ? parseFloat(price) : undefined,
+    };
+  } catch (error) {
+    console.error("[Polymarket] GTC order failed:", error);
+    return null;
+  }
+}
+
 export async function cancelOrder(orderId: string): Promise<boolean> {
   try {
     const client = getSdkClient();
@@ -233,6 +281,16 @@ export async function cancelOrder(orderId: string): Promise<boolean> {
   } catch (error) {
     console.error("[Polymarket] Cancel failed:", error);
     return false;
+  }
+}
+
+export async function getOrderStatus(orderId: string): Promise<{ status: string; sizeMatched: string } | null> {
+  try {
+    const client = getSdkClient();
+    const order = await client.getOrder(orderId);
+    return { status: order.status, sizeMatched: order.size_matched ?? "0" };
+  } catch {
+    return null;
   }
 }
 
