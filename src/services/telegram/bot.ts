@@ -1746,8 +1746,8 @@ async function handleScalp(ctx: Context): Promise<void> {
     }
   }
 
-  const backBtn = [{ text: "Back", callback_data: "main_menu" }];
-  await ctx.reply(text, { parse_mode: "HTML", reply_markup: { inline_keyboard: [backBtn] } });
+  const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
+  await sendDataMessage(text, backButton);
 }
 
 async function handleAI(ctx: Context): Promise<void> {

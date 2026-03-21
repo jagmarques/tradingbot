@@ -2,9 +2,9 @@
  * HF Scalp: Uses 15-min momentum signal from Binance to trade BTC/ETH/SOL
  * perps on Hyperliquid. Paper only for now.
  *
- * Signal: same as HF Maker (0.1%+ move in last 60s of 15-min window)
- * Execution: open HL perp in momentum direction, hold ~15 min
- * Exit: TP 0.3%, SL 0.15%, max hold 20 min
+ * Signal: 0.1%+ move in last 60s of 15-min window
+ * Execution: open HL perp in momentum direction
+ * Exit: close at window end (~60s hold), safety SL 0.5%
  */
 
 import WebSocket from "ws";
@@ -171,13 +171,19 @@ async function checkLateEntry(): Promise<void> {
   }
 }
 
-// Close at window end
+// Close at window end (or immediately if stale from redeploy)
 async function checkWindowClose(): Promise<void> {
   const now = Date.now();
   const positions = getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE);
   for (const pos of positions) {
     const windowEnd = positionWindowEnd.get(pos.id);
-    if (windowEnd && now >= windowEnd) {
+    if (!windowEnd) {
+      // Stale from redeploy - close immediately
+      console.log(`[HFScalp] Stale close: ${pos.pair} ${pos.direction}`);
+      await closePosition(pos.id, "window-close");
+      continue;
+    }
+    if (now >= windowEnd) {
       console.log(`[HFScalp] Window close: ${pos.pair} ${pos.direction}`);
       await closePosition(pos.id, "window-close");
       positionWindowEnd.delete(pos.id);
