@@ -11,14 +11,55 @@ import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 import { isLiquidEnough, type CLOBMetrics } from "./clob.js";
 
+// ---- Drawdown Manager ----
+// Tracks cumulative daily P&L. Halves Kelly at 10% DD, quarters at 15%, stops at 20%.
+interface DrawdownState {
+  date: string;           // YYYY-MM-DD
+  cumulativePnl: number;  // Running P&L for the day
+  startingBankroll: number;
+}
+
+let drawdownState: DrawdownState | null = null;
+
+// Called by scheduler after exits
+export function updateDrawdown(pnl: number, bankroll: number): void {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!drawdownState || drawdownState.date !== today) {
+    drawdownState = { date: today, cumulativePnl: 0, startingBankroll: bankroll };
+  }
+  drawdownState.cumulativePnl += pnl;
+}
+
+export function getDrawdownMultiplier(): number {
+  if (!drawdownState) return 1.0;
+  const ddPct = -drawdownState.cumulativePnl / drawdownState.startingBankroll;
+  if (ddPct >= 0.20) return 0;    // Stop trading
+  if (ddPct >= 0.15) return 0.25; // Quarter Kelly
+  if (ddPct >= 0.10) return 0.50; // Half Kelly
+  return 1.0;
+}
+
+export function getDrawdownState(): { date: string; pnl: number; pct: number; multiplier: number } | null {
+  if (!drawdownState) return null;
+  const pct = -drawdownState.cumulativePnl / drawdownState.startingBankroll;
+  return {
+    date: drawdownState.date,
+    pnl: drawdownState.cumulativePnl,
+    pct,
+    multiplier: getDrawdownMultiplier(),
+  };
+}
+
 const CATEGORY_EDGE_BONUS: Record<string, number> = {
-  entertainment: 0.03,
+  politics: 0.02,
+  geopolitics: 0.03,
+  weather: 0.03,
+  science: 0.02,
   other: 0.02,
-  politics: 0.01,
-  sports: 0,
-  business: 0,
-  crypto: -0.03,
-  science: 0,
+  entertainment: 0.01,
+  sports: 0.01,
+  crypto: -0.05,
+  business: 0.01,
 };
 
 const NO_SIDE_EDGE_BONUS = 0.015;
@@ -58,7 +99,7 @@ function calculateBetSize(
   side: "YES" | "NO",
   bankroll: number,
   maxBet: number,
-  kellyMultiplier: number = 0.50 // 1/2 Kelly
+  kellyMultiplier: number = 0.25 // 1/4 Kelly (conservative)
 ): number {
   const price = side === "YES" ? marketPrice : 1 - marketPrice;
   const odds = (1 - price) / price;
@@ -223,13 +264,34 @@ export function evaluateBetOpportunity(
   const remainingExposure = Math.max(0, config.maxTotalExposure - currentExposure);
   const maxAllowedBet = Math.min(config.maxBetSize, remainingExposure);
 
-  const recommendedSize = calculateBetSize(
+  // Check drawdown - stop trading if daily loss exceeds 20%
+  const ddMultiplier = getDrawdownMultiplier();
+  if (ddMultiplier === 0) {
+    return {
+      shouldBet: false,
+      marketId: market.conditionId,
+      tokenId: side === "YES" ? tokenId : market.outcomes.find((o) => o.name === "No")?.tokenId || "",
+      side,
+      marketPrice,
+      aiProbability,
+      confidence: analysis.confidence,
+      edge,
+      expectedValue,
+      recommendedSize: 0,
+      reason: "Drawdown limit: daily loss exceeded 20%, trading paused",
+      frictionCost,
+      liquidityScore: clobMetrics?.liquidityScore,
+    };
+  }
+
+  const rawSize = calculateBetSize(
     aiProbability,
     marketPrice,
     side,
     availableBankroll,
     maxAllowedBet
   );
+  const recommendedSize = Math.floor(rawSize * ddMultiplier * 100) / 100;
 
   const roundedConfidence = Math.round(analysis.confidence * 100) / 100;
   const meetsConfidence = roundedConfidence >= config.minConfidence;
@@ -242,7 +304,8 @@ export function evaluateBetOpportunity(
 
   let reason: string;
   if (shouldBet) {
-    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% -${(frictionCost * 100).toFixed(2)}%friction ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}%cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}%${side}), C=${(analysis.confidence * 100).toFixed(0)}%`;
+    const ddNote = ddMultiplier < 1 ? ` DD=${(ddMultiplier * 100).toFixed(0)}%` : "";
+    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% -${(frictionCost * 100).toFixed(2)}%friction ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}%cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}%${side}), C=${(analysis.confidence * 100).toFixed(0)}%${ddNote}`;
   } else if (!liquidityOk) {
     reason = `Illiquid: score ${clobMetrics?.liquidityScore ?? 0}/100 < 15`;
   } else if (!meetsConfidence) {
@@ -267,7 +330,7 @@ export function evaluateBetOpportunity(
     confidence: analysis.confidence,
     edge,
     expectedValue,
-    recommendedSize: Math.floor(recommendedSize * 100) / 100,
+    recommendedSize,
     reason,
     frictionCost,
     liquidityScore: clobMetrics?.liquidityScore,
