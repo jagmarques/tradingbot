@@ -6,7 +6,7 @@
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { resetHFMakerData } from "./hf-maker.js";
-import { runBondsScan, resetBondsData } from "./high-prob-bonds.js";
+import { runBondsScan, resetBondsData, initBondsFromDb } from "./high-prob-bonds.js";
 
 export { getHFMakerStats, getHFMakerStatus, resetHFMakerData, getAllHFMakerStats } from "./hf-maker.js";
 export { getBondsStats } from "./high-prob-bonds.js";
@@ -55,6 +55,8 @@ async function runScan(): Promise<void> {
 export async function startHFScanner(): Promise<void> {
   if (running) return;
   running = true;
+
+  initBondsFromDb();
 
   scanInterval = setInterval(() => {
     void runScan();

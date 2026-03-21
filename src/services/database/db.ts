@@ -359,6 +359,27 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS bonds_trades (
+      id TEXT PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      side TEXT NOT NULL,
+      entry_price REAL NOT NULL,
+      size REAL NOT NULL,
+      shares REAL NOT NULL,
+      entry_time INTEGER NOT NULL,
+      days_to_resolution REAL NOT NULL,
+      annualized_yield REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      pnl REAL NOT NULL DEFAULT 0,
+      resolved_at INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bonds_trades_status ON bonds_trades(status);
+    CREATE INDEX IF NOT EXISTS idx_bonds_trades_market ON bonds_trades(market_id);
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)

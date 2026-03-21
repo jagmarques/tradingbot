@@ -6,6 +6,7 @@
 
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
+import { getDb, isDbInitialized } from "../database/db.js";
 
 // ---- Types ---------------------------------------------------------------
 
@@ -51,6 +52,62 @@ const MAX_AGE_DAYS = 120;
 
 const trades: BondTrade[] = [];
 let balance = STARTING_BALANCE;
+
+// ---- DB helpers ----------------------------------------------------------
+
+function saveBondTrade(trade: BondTrade): void {
+  if (!isDbInitialized()) return;
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO bonds_trades
+    (id, market_id, title, side, entry_price, size, shares, entry_time,
+     days_to_resolution, annualized_yield, status, pnl, resolved_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(
+    trade.id, trade.marketId, trade.title, trade.side,
+    trade.entryPrice, trade.size, trade.shares, trade.entryTime,
+    trade.daysToResolution, trade.annualizedYield,
+    trade.status, trade.pnl, trade.resolvedAt ?? null
+  );
+}
+
+function loadOpenBondTrades(): BondTrade[] {
+  if (!isDbInitialized()) return [];
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM bonds_trades WHERE status = 'open'`
+  ).all() as Array<{
+    id: string; market_id: string; title: string; side: string;
+    entry_price: number; size: number; shares: number; entry_time: number;
+    days_to_resolution: number; annualized_yield: number; status: string;
+    pnl: number; resolved_at: number | null;
+  }>;
+
+  return rows.map(r => ({
+    id: r.id,
+    marketId: r.market_id,
+    title: r.title,
+    side: r.side as "YES" | "NO",
+    entryPrice: r.entry_price,
+    size: r.size,
+    shares: r.shares,
+    entryTime: r.entry_time,
+    daysToResolution: r.days_to_resolution,
+    annualizedYield: r.annualized_yield,
+    status: r.status as "open" | "won" | "lost",
+    pnl: r.pnl,
+    resolvedAt: r.resolved_at ?? undefined,
+  }));
+}
+
+function loadClosedBondsPnl(): number {
+  if (!isDbInitialized()) return 0;
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COALESCE(SUM(pnl), 0) as total FROM bonds_trades WHERE status != 'open'`
+  ).get() as { total: number } | undefined;
+  return row?.total ?? 0;
+}
 
 // ---- Helpers -------------------------------------------------------------
 
@@ -164,6 +221,7 @@ function enterBond(
 
   balance -= POSITION_SIZE;
   trades.push(trade);
+  saveBondTrade(trade);
 
   // Trim old closed trades
   if (trades.length > 500) {
@@ -232,6 +290,7 @@ function closeBondTrade(trade: BondTrade, pnl: number, reason: string): void {
   trade.status = pnl >= 0 ? "won" : "lost";
   trade.resolvedAt = Date.now();
   balance += trade.size + pnl;
+  saveBondTrade(trade);
 
   const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
   console.log(`[Bonds] ${trade.status.toUpperCase()}: "${trade.title.substring(0, 40)}" ${pnlStr} (${reason})`);
@@ -267,8 +326,28 @@ export function getBondsStats(): {
   };
 }
 
+export function initBondsFromDb(): number {
+  const savedTrades = loadOpenBondTrades();
+  for (const trade of savedTrades) {
+    if (!trades.some(t => t.id === trade.id)) {
+      trades.push(trade);
+    }
+  }
+  const closedPnl = loadClosedBondsPnl();
+  const openExposure = savedTrades.reduce((s, t) => s + t.size, 0);
+  balance = STARTING_BALANCE + closedPnl - openExposure;
+
+  if (savedTrades.length > 0) {
+    console.log(`[Bonds] Restored ${savedTrades.length} open trades from DB (balance: $${balance.toFixed(2)})`);
+  }
+  return savedTrades.length;
+}
+
 export function resetBondsData(): void {
   trades.length = 0;
   balance = STARTING_BALANCE;
+  if (isDbInitialized()) {
+    getDb().prepare(`DELETE FROM bonds_trades`).run();
+  }
   console.log("[Bonds] Paper data reset");
 }
