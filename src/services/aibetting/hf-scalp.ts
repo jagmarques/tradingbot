@@ -13,9 +13,7 @@ import { openPosition, closePosition, getOpenQuantPositions } from "../hyperliqu
 const TRADE_TYPE = "hf-scalp" as const;
 const LEVERAGE = 10;
 const SIZE_USD = 20;
-const TP_PCT = 0.003;   // 0.3% price move = 3% P&L
-const SL_PCT = 0.0015;  // 0.15% price move = 1.5% P&L
-const MAX_HOLD_MS = 20 * 60 * 1000; // 20 min
+const SL_PCT = 0.005;   // 0.5% safety SL only (should close at window end first)
 const MIN_MOVE_PCT = 0.001; // 0.1% threshold
 const ENTRY_WINDOW_SECS = 60;
 const HEARTBEAT_MS = 5000;
@@ -51,6 +49,7 @@ const activeWindows = new Map<string, ActiveWindow>();
 const windowTraded = new Set<string>();
 let totalSignals = 0;
 let totalOpened = 0;
+const positionWindowEnd = new Map<string, number>(); // positionId -> window end timestamp
 
 // Binance WS
 function connectBinance(): void {
@@ -150,9 +149,6 @@ async function checkLateEntry(): Promise<void> {
     const sl = direction === "long"
       ? currentPrice * (1 - SL_PCT)
       : currentPrice * (1 + SL_PCT);
-    const tp = direction === "long"
-      ? currentPrice * (1 + TP_PCT)
-      : currentPrice * (1 - TP_PCT);
 
     console.log(
       `[HFScalp] SIGNAL ${window.coin} ${direction.toUpperCase()} ` +
@@ -161,34 +157,37 @@ async function checkLateEntry(): Promise<void> {
 
     const pos = await openPosition(
       window.coin, direction, SIZE_USD, LEVERAGE,
-      sl, tp, "trending", TRADE_TYPE, undefined, currentPrice, true, // forcePaper=true
+      sl, 0, "trending", TRADE_TYPE, undefined, currentPrice, true,
     );
 
     if (pos) {
       totalOpened++;
+      positionWindowEnd.set(pos.id, window.endTime);
       console.log(
         `[HFScalp] OPEN ${window.coin} ${direction} $${SIZE_USD} @${currentPrice.toFixed(2)} ` +
-        `SL=${sl.toFixed(2)} TP=${tp.toFixed(2)}`
+        `closes in ${secsLeft.toFixed(0)}s`
       );
     }
   }
 }
 
-// Max hold exit
-async function checkMaxHold(): Promise<void> {
+// Close at window end
+async function checkWindowClose(): Promise<void> {
+  const now = Date.now();
   const positions = getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE);
   for (const pos of positions) {
-    const holdMs = Date.now() - new Date(pos.openedAt).getTime();
-    if (holdMs >= MAX_HOLD_MS) {
-      console.log(`[HFScalp] Max hold exit: ${pos.pair} ${pos.direction}`);
-      await closePosition(pos.id, "max-hold");
+    const windowEnd = positionWindowEnd.get(pos.id);
+    if (windowEnd && now >= windowEnd) {
+      console.log(`[HFScalp] Window close: ${pos.pair} ${pos.direction}`);
+      await closePosition(pos.id, "window-close");
+      positionWindowEnd.delete(pos.id);
     }
   }
 }
 
 function runHeartbeat(): void {
   void checkLateEntry();
-  void checkMaxHold();
+  void checkWindowClose();
 }
 
 // Public API
@@ -203,7 +202,7 @@ export async function startHFScalp(): Promise<void> {
 
   console.log(
     `[HFScalp] Started (paper, $${SIZE_USD}/trade, ${LEVERAGE}x, ` +
-    `TP=${(TP_PCT * 100).toFixed(1)}% SL=${(SL_PCT * 100).toFixed(2)}% threshold=${(MIN_MOVE_PCT * 100).toFixed(1)}%)`
+    `SL=${(SL_PCT * 100).toFixed(2)}% threshold=${(MIN_MOVE_PCT * 100).toFixed(1)}% close=window-end)`
   );
 }
 
