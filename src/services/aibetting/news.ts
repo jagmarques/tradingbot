@@ -285,11 +285,44 @@ interface TavilyResult {
   score: number;
 }
 
+// Tavily key rotation: 3 keys, ~330 searches/day each = 3000/month total
+const TAVILY_DAILY_LIMIT = 330;
+const tavilyKeyUsage = new Map<string, { count: number; resetDay: number }>();
+
+function getTavilyKey(): string | null {
+  const keys = [
+    process.env.TAVILY_API_KEY_1,
+    process.env.TAVILY_API_KEY_2,
+    process.env.TAVILY_API_KEY_3,
+  ].filter(Boolean) as string[];
+  if (keys.length === 0) return null;
+
+  const today = Math.floor(Date.now() / 86400000);
+  for (const key of keys) {
+    const usage = tavilyKeyUsage.get(key);
+    if (!usage || usage.resetDay !== today) {
+      tavilyKeyUsage.set(key, { count: 0, resetDay: today });
+      return key;
+    }
+    if (usage.count < TAVILY_DAILY_LIMIT) return key;
+  }
+  return null; // all keys exhausted
+}
+
+function recordTavilyUsage(key: string): void {
+  const today = Math.floor(Date.now() / 86400000);
+  const usage = tavilyKeyUsage.get(key) ?? { count: 0, resetDay: today };
+  if (usage.resetDay !== today) { usage.count = 0; usage.resetDay = today; }
+  usage.count++;
+  tavilyKeyUsage.set(key, usage);
+}
+
 async function tavilySearch(query: string, maxResults: number = 5): Promise<TavilyResult[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
+  const apiKey = getTavilyKey();
   if (!apiKey) return [];
 
   try {
+    recordTavilyUsage(apiKey);
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -317,8 +350,7 @@ async function tavilySearch(query: string, maxResults: number = 5): Promise<Tavi
 }
 
 export async function agenticSearch(marketTitle: string): Promise<NewsItem[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return []; // Falls back to GDELT in caller
+  if (!getTavilyKey()) return []; // No keys available, fall back to GDELT
 
   // Step 1: Generate 2-3 search queries from market title
   const queries: string[] = [];
