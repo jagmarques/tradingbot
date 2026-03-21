@@ -40,6 +40,9 @@ interface Order {
   price: string;
   size: string;
   sizeMatched: string;
+  actualShares?: number; // FOK: actual shares received
+  actualCost?: number;   // FOK: actual dollars spent
+  fillPrice?: number;    // FOK: actual price per share
 }
 
 // ---- HMAC Auth (for read operations) -----------------------------------------
@@ -199,7 +202,10 @@ export async function placeFokOrder(
       return null;
     }
 
-    console.log(`[Polymarket] FOK order: ${resp.orderID} status=${resp.status}`);
+    const actualShares = parseFloat(resp.takingAmount || "0");
+    const actualCost = parseFloat(resp.makingAmount || size);
+    const fillPrice = actualShares > 0 ? actualCost / actualShares : parseFloat(price);
+    console.log(`[Polymarket] FOK filled: ${resp.orderID} ${actualShares.toFixed(2)} shares @ ${(fillPrice * 100).toFixed(0)}c ($${actualCost.toFixed(2)} spent)`);
     return {
       id: resp.orderID,
       status: resp.status ?? "MATCHED",
@@ -208,6 +214,9 @@ export async function placeFokOrder(
       price,
       size,
       sizeMatched: size,
+      actualShares,
+      actualCost,
+      fillPrice,
     };
   } catch (error) {
     console.error("[Polymarket] FOK order failed:", error);

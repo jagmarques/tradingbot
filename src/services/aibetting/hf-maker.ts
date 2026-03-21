@@ -386,11 +386,13 @@ async function placeLateEntryTrade(
       if (order) {
         trade.orderId = order.id;
         trade.status = "open";
-        // Use worst price as entry (actual fill may be better but SDK doesn't return fill price)
-        trade.entryPrice = worstPrice;
+        // Use actual fill data from FOK response
+        if (order.fillPrice) trade.entryPrice = order.fillPrice;
+        if (order.actualShares) trade.shares = order.actualShares;
+        if (order.actualCost) trade.size = order.actualCost;
         activeOrders.set(order.id, tradeId);
         saveHFMakerTrade(trade);
-        console.log(`[HFMaker] FOK filled: ${order.id} @ max ${(worstPrice * 100).toFixed(0)}c`);
+        console.log(`[HFMaker] FOK filled: ${order.id} ${trade.shares.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
         void notifyHFMakerEntry({
           coin: trade.coin, side: trade.side, size: trade.size,
           entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
