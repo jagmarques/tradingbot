@@ -76,6 +76,8 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🔄 Trades", callback_data: "trades" },
     { text: "🎯 Poly", callback_data: "poly" },
+  ],
+  [
     { text: "⚡ Scalp", callback_data: "scalp" },
     { text: "⚛️ Quant", callback_data: "quant" },
   ],
@@ -1688,15 +1690,59 @@ async function handleScalp(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
   const s = getHFScalpStats();
   const positions = getOpenQuantPositions().filter(p => p.tradeType === "hf-scalp");
+  const stats = getQuantStats("hf-scalp", "paper");
+  const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
+
   let text = `<b>HF Scalp</b> ${s.running ? "ON" : "OFF"} | Binance: ${s.binanceConnected ? "WS" : "OFF"}\n`;
   text += `${s.openPositions} open | ${s.totalSignals} signals | ${s.totalOpened} trades\n`;
   text += `Windows: ${s.activeWindows}\n`;
 
+  if (stats.totalTrades > 0) {
+    text += `W/L: ${stats.wins}/${stats.losses} (${stats.winRate.toFixed(0)}%) | Real: ${pnl(stats.totalPnl)}\n`;
+  }
+
+  let mids: Record<string, string> = {};
   if (positions.length > 0) {
+    try {
+      const sdk = getClient();
+      mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+    } catch {
+      // mid prices unavailable, skip unrealized
+    }
+  }
+
+  let totalUnrealized = 0;
+  const posUnrealizeds: number[] = [];
+  for (const p of positions) {
+    const rawMid = mids[p.pair];
+    if (rawMid) {
+      const currentPrice = parseFloat(rawMid);
+      if (!isNaN(currentPrice)) {
+        const u =
+          p.direction === "long"
+            ? ((currentPrice - p.entryPrice) / p.entryPrice) * p.size * p.leverage
+            : ((p.entryPrice - currentPrice) / p.entryPrice) * p.size * p.leverage;
+        posUnrealizeds.push(u);
+        totalUnrealized += u;
+      } else {
+        posUnrealizeds.push(NaN);
+      }
+    } else {
+      posUnrealizeds.push(NaN);
+    }
+  }
+
+  if (positions.length > 0) {
+    if (!isNaN(totalUnrealized)) {
+      text += `Unreal: ${pnl(totalUnrealized)}\n`;
+    }
     text += `\n<b>Open Positions</b>\n`;
-    for (const p of positions) {
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
       const holdMin = ((Date.now() - new Date(p.openedAt).getTime()) / 60000).toFixed(0);
-      text += `  ${p.pair} ${p.direction} @${p.entryPrice.toFixed(2)} ${holdMin}m\n`;
+      const u = posUnrealizeds[i];
+      const upnlStr = !isNaN(u) ? ` ${pnl(u)}` : "";
+      text += `  ${p.pair} ${p.direction} @${p.entryPrice.toFixed(2)}${upnlStr} (${holdMin}m)\n`;
     }
   }
 
