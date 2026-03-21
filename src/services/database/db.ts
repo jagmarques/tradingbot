@@ -323,6 +323,8 @@ export function initDb(dbPath?: string): Database.Database {
       pnl_pct REAL DEFAULT 0,
       insider_count INTEGER DEFAULT 1,
       status TEXT DEFAULT 'open',
+      exit_reason TEXT,
+      close_timestamp INTEGER DEFAULT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );

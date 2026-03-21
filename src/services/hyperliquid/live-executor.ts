@@ -59,11 +59,10 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  // Hyperliquid requires max 5 significant figures
+  // Hyperliquid: max 5 significant figures, convert to string to ensure proper formatting
   const sigFigs = 5;
-  const magnitude = Math.floor(Math.log10(Math.abs(price)));
-  const factor = 10 ** (sigFigs - 1 - magnitude);
-  return Math.round(price * factor) / factor;
+  const formatted = parseFloat(price.toPrecision(sigFigs));
+  return formatted;
 }
 
 async function placeExchangeStop(position: QuantPosition): Promise<void> {
