@@ -377,17 +377,20 @@ async function placeLateEntryTrade(
     saveHFMakerTrade(trade);
     console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
-    // Live: FOK market order (fills instantly via complementary matching)
+    // Live: FOK market order with move-based worst price
     try {
-      const worstPrice = 0.95; // accept up to 95c
+      // Same price logic as paper - worst price = max we'll pay per share
+      const worstPrice = entryPrice; // 0.70/0.75/0.80 based on move magnitude
+      // FOK BUY: amount = dollars to spend, price = worst price per share
       const order = await placeFokOrder(tokenId, "BUY", worstPrice.toFixed(2), positionSize.toFixed(2));
       if (order) {
         trade.orderId = order.id;
         trade.status = "open";
+        // Use worst price as entry (actual fill may be better but SDK doesn't return fill price)
         trade.entryPrice = worstPrice;
         activeOrders.set(order.id, tradeId);
         saveHFMakerTrade(trade);
-        console.log(`[HFMaker] FOK filled: ${order.id}`);
+        console.log(`[HFMaker] FOK filled: ${order.id} @ max ${(worstPrice * 100).toFixed(0)}c`);
         void notifyHFMakerEntry({
           coin: trade.coin, side: trade.side, size: trade.size,
           entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
@@ -396,7 +399,7 @@ async function placeLateEntryTrade(
       } else {
         trade.status = "cancelled";
         saveHFMakerTrade(trade);
-        console.log("[HFMaker] FOK order not filled");
+        console.log("[HFMaker] FOK not filled (no liquidity at " + (worstPrice * 100).toFixed(0) + "c)");
       }
     } catch (err) {
       trade.status = "cancelled";
