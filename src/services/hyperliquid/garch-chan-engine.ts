@@ -139,7 +139,9 @@ export async function runGarchChanCycle(): Promise<number> {
     await ensureConnected();
     const sdk = getClient();
     const env = loadEnv();
-    const state = await sdk.info.perpetuals.getClearinghouseState(env.HYPERLIQUID_WALLET_ADDRESS, true);
+    const walletAddr = env.HYPERLIQUID_WALLET_ADDRESS ?? "";
+    if (!walletAddr) throw new Error("No wallet address");
+    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddr, true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const ap of state.assetPositions as any[]) {
       if (parseFloat(ap.position.szi) !== 0) {
