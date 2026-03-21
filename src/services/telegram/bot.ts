@@ -15,7 +15,7 @@ import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getHFMakerStatus, getBondsStats, getAllHFMakerStats } from "../aibetting/hf-scanner.js";
+import { getBondsStats } from "../aibetting/hf-scanner.js";
 import { getHFScalpStats } from "../aibetting/hf-scalp.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
@@ -76,6 +76,7 @@ const MAIN_MENU_BUTTONS = [
   [
     { text: "🔄 Trades", callback_data: "trades" },
     { text: "🎯 Poly", callback_data: "poly" },
+    { text: "⚡ Scalp", callback_data: "scalp" },
     { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
@@ -246,6 +247,18 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     } catch (err) {
       console.error("[Telegram] Callback error (poly):", err);
       await ctx.reply("Failed to load poly. Try again.").catch(() => {});
+      await ctx.answerCallbackQuery().catch(() => {});
+    } finally {
+      callbackProcessing = false;
+    }
+  });
+  bot.callbackQuery("scalp", async (ctx) => {
+    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
+    callbackProcessing = true;
+    try {
+      await handleScalp(ctx);
+      await ctx.answerCallbackQuery();
+    } catch (err) {
       await ctx.answerCallbackQuery().catch(() => {});
     } finally {
       callbackProcessing = false;
@@ -943,19 +956,8 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     // Unrealized (open positions) - grouped by platform
     const schedulerStatus = getAIBettingStatus();
-    const allMakerSt = getAllHFMakerStats();
-    const totalMakerWins = allMakerSt.reduce((s, m) => s + m.stats.wins, 0);
-    const totalMakerLosses = allMakerSt.reduce((s, m) => s + m.stats.losses, 0);
-    const totalMakerClosed = totalMakerWins + totalMakerLosses;
-    const makerSt = {
-      totalPnl: allMakerSt.reduce((s, m) => s + m.stats.totalPnl, 0),
-      openPositions: allMakerSt.reduce((s, m) => s + m.stats.openPositions, 0),
-      openOrders: allMakerSt.reduce((s, m) => s + m.stats.openOrders, 0),
-      totalTrades: allMakerSt.reduce((s, m) => s + m.stats.totalTrades, 0),
-      winRate: totalMakerClosed > 0 ? (totalMakerWins / totalMakerClosed) * 100 : 0,
-    };
     const bondsSt = getBondsStats();
-    const totalUnrAll = totalUnrealized + makerSt.totalPnl + bondsSt.totalPnl;
+    const totalUnrAll = totalUnrealized + bondsSt.totalPnl;
 
     message += `\n-------------------\n`;
     message += `<b>Unrealized</b> ${pnl(totalUnrAll)}\n`;
@@ -963,14 +965,13 @@ async function handlePnl(ctx: Context): Promise<void> {
     // Polymarket
     const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
     const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const polyOpen = openBets.length + copyPositions.length + makerSt.openPositions + bondsSt.openTrades;
-    const polyUnr = aiBetUnrealized + copyUnrealized + makerSt.totalPnl + bondsSt.totalPnl;
+    const polyOpen = openBets.length + copyPositions.length + bondsSt.openTrades;
+    const polyUnr = aiBetUnrealized + copyUnrealized + bondsSt.totalPnl;
     const logOnly = schedulerStatus.logOnly ? " Log" : "";
 
     message += `<b>Polymarket</b> ${pnl(polyUnr)} | ${polyOpen} open\n`;
     message += `  AI: ${openBets.length}${aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : ""}${openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : ""}${logOnly}\n`;
     message += `  Copy: ${copyPositions.length}${copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : ""}${copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : ""}\n`;
-    message += `  HF Maker: ${makerSt.openPositions} open ${makerSt.totalTrades > 0 ? `${pnl(makerSt.totalPnl)} ${makerSt.winRate.toFixed(0)}%WR` : ""}\n`;
     const scalpSt = getHFScalpStats();
     message += `  HF Scalp: ${scalpSt.openPositions} open | ${scalpSt.totalSignals} sigs\n`;
     message += `  Bonds: ${bondsSt.openTrades} open ${bondsSt.totalTrades > 0 ? `${pnl(bondsSt.totalPnl)} ${bondsSt.winRate.toFixed(0)}%WR` : ""}\n`;
@@ -1276,20 +1277,14 @@ async function handlePoly(ctx: Context): Promise<void> {
 
   if (activeOpId !== myOpId) return;
 
-  // Maker stats
-  const allMakerStats = getAllHFMakerStats();
-  const makerStatus = getHFMakerStatus();
-
   // Bonds stats
   const bonds = getBondsStats();
 
   // Combined totals (realized + unrealized)
-  const makerTotalPnl = allMakerStats.reduce((s, m) => s + m.stats.totalPnl, 0);
-  const makerOpenCount = allMakerStats.reduce((s, m) => s + m.stats.openOrders + m.stats.openPositions, 0);
-  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + makerTotalPnl + bonds.totalPnl;
+  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + bonds.totalPnl;
   const totalPolyUnrealized = aiUnrealized + copyUnrealized;
   const totalPolyPnl = totalPolyRealized + totalPolyUnrealized;
-  const totalPolyOpen = openBets.length + copyStats.openPositions + makerOpenCount + bonds.openTrades;
+  const totalPolyOpen = openBets.length + copyStats.openPositions + bonds.openTrades;
 
   let text = `<b>Polymarket</b> | Paper\n`;
   text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
@@ -1329,28 +1324,6 @@ async function handlePoly(ctx: Context): Promise<void> {
     text += `  ${trunc(pos.marketTitle, 25)} $${pos.size.toFixed(0)}${cpPnl}\n`;
   }
 
-  // 3. HF Maker (per-instance)
-  const makerBin = makerStatus.binanceConnected ? "WS" : "OFF";
-  for (const maker of allMakerStats) {
-    const ms = maker.stats;
-    text += `-------------------\n`;
-    const makerRunning = makerStatus.running ? "ON" : "OFF";
-    if (maker === allMakerStats[0]) {
-      text += `<b>HF Maker (${maker.label})</b> ${makerRunning} | Binance: ${makerBin}\n`;
-      text += `Windows: ${makerStatus.activeWindows} | Pairs: ${makerStatus.trackedPairs.join(",") || "none"}\n`;
-    } else {
-      text += `<b>HF Maker (${maker.label})</b>\n`;
-    }
-    text += `${ms.openOrders} orders | ${ms.openPositions} pos | ${ms.totalTrades} total\n`;
-    text += `W/L: ${ms.wins}/${ms.losses} (${ms.winRate.toFixed(0)}%) | P&L: ${pnl(ms.totalPnl)}\n`;
-    text += `Bal: $${ms.balance.toFixed(2)}\n`;
-
-    for (const t of ms.recentTrades.slice(0, 3)) {
-      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
-      const tag = t.status === "pending" ? "PEND" : t.status === "open" ? "OPEN" : t.status.toUpperCase();
-      text += `  ${tag} ${t.coin} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
-    }
-  }
 
   // 4. HF Scalp (paper perps)
   const scalpStats = getHFScalpStats();
@@ -1708,8 +1681,27 @@ async function showThinking(ctx: Context): Promise<() => Promise<void>> {
 }
 
 async function handleHF(ctx: Context): Promise<void> {
-  // Redirect to /poly which now shows per-instance HF Maker stats
   await handlePoly(ctx);
+}
+
+async function handleScalp(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+  const s = getHFScalpStats();
+  const positions = getOpenQuantPositions().filter(p => p.tradeType === "hf-scalp");
+  let text = `<b>HF Scalp</b> ${s.running ? "ON" : "OFF"} | Binance: ${s.binanceConnected ? "WS" : "OFF"}\n`;
+  text += `${s.openPositions} open | ${s.totalSignals} signals | ${s.totalOpened} trades\n`;
+  text += `Windows: ${s.activeWindows}\n`;
+
+  if (positions.length > 0) {
+    text += `\n<b>Open Positions</b>\n`;
+    for (const p of positions) {
+      const holdMin = ((Date.now() - new Date(p.openedAt).getTime()) / 60000).toFixed(0);
+      text += `  ${p.pair} ${p.direction} @${p.entryPrice.toFixed(2)} ${holdMin}m\n`;
+    }
+  }
+
+  const backBtn = [{ text: "Back", callback_data: "main_menu" }];
+  await ctx.reply(text, { parse_mode: "HTML", reply_markup: { inline_keyboard: [backBtn] } });
 }
 
 async function handleAI(ctx: Context): Promise<void> {

@@ -21,7 +21,7 @@ import { validateApiConnection } from "./services/polygon/polymarket.js";
 import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
 import { startHFScanner, stopHFScanner } from "./services/aibetting/hf-scanner.js";
-import { startHFMaker, stopHFMaker } from "./services/aibetting/hf-maker.js";
+import { stopHFMaker } from "./services/aibetting/hf-maker.js";
 import { startHFScalp, stopHFScalp } from "./services/aibetting/hf-scalp.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
@@ -98,8 +98,6 @@ async function main(): Promise<void> {
     if (env.AIBETTING_ENABLED === "true") {
       await startHFScanner();
       console.log("[Bot] Bonds scanner started");
-      await startHFMaker();
-      console.log("[Bot] HF Maker started (Binance WS + Polymarket maker orders)");
       await startHFScalp();
       console.log("[Bot] HF Scalp started (paper perps on Hyperliquid)");
     }
