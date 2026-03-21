@@ -15,6 +15,7 @@ import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "garch-chan",
+  "hf-scalp",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

@@ -288,8 +288,8 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Skip near-SL for Chandelier engines
-      const skipNearSl = position.tradeType === "garch-chan";
+      // Skip near-SL for engines with tight stops
+      const skipNearSl = position.tradeType === "garch-chan" || position.tradeType === "hf-scalp";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
@@ -474,7 +474,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for Chandelier engines
-      const skipNearSlFast = position.tradeType === "garch-chan";
+      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "hf-scalp";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)
