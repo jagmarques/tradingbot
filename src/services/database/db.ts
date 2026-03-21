@@ -302,6 +302,56 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS insider_wallets (
+      address TEXT PRIMARY KEY,
+      chain TEXT NOT NULL DEFAULT 'ethereum',
+      label TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS insider_copy_trades (
+      id TEXT PRIMARY KEY,
+      wallet_address TEXT,
+      token_address TEXT,
+      chain TEXT DEFAULT 'ethereum',
+      side TEXT,
+      amount REAL,
+      price REAL,
+      pnl REAL DEFAULT 0,
+      status TEXT DEFAULT 'open',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS insider_gem_hits (
+      id TEXT PRIMARY KEY,
+      token_address TEXT,
+      chain TEXT DEFAULT 'ethereum',
+      score REAL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS insider_gem_analyses (
+      id TEXT PRIMARY KEY,
+      token_address TEXT,
+      chain TEXT DEFAULT 'ethereum',
+      analysis TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS insider_gem_paper_trades (
+      id TEXT PRIMARY KEY,
+      token_address TEXT,
+      chain TEXT DEFAULT 'ethereum',
+      side TEXT,
+      amount REAL,
+      price REAL,
+      pnl REAL DEFAULT 0,
+      status TEXT DEFAULT 'open',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
