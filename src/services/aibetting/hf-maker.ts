@@ -10,7 +10,7 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
 import { placeFokOrder, cancelOrder } from "../polygon/polymarket.js";
-import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
+import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance, getHFMakerDbStats, loadAllHFMakerTrades } from "../database/hf-maker.js";
 import { ethers } from "ethers";
 import { loadEnv } from "../../config/env.js";
 import { notifyHFMakerEntry, notifyHFMakerResult } from "../telegram/notifications.js";
@@ -605,25 +605,35 @@ export function getHFMakerStats(instanceId?: string): {
   totalPnl: number;
   recentTrades: HFMakerTrade[];
 } {
-  const inst = instanceId ? instances.get(instanceId) : instances.get('live-0.3');
+  const instId = instanceId ?? 'live-0.3';
+  const inst = instances.get(instId);
   if (!inst) {
     return { balance: 0, totalTrades: 0, openOrders: 0, openPositions: 0, wins: 0, losses: 0, winRate: 0, totalPnl: 0, recentTrades: [] };
   }
-  const closed = inst.trades.filter(t => t.status === "won" || t.status === "lost");
-  const wins = closed.filter(t => t.status === "won").length;
-  const losses = closed.filter(t => t.status === "lost").length;
-  const totalPnl = closed.reduce((s, t) => s + t.pnl, 0);
+
+  // Use DB for historical stats (survives redeploys)
+  const dbStats = getHFMakerDbStats(instId);
+
+  // Use in-memory for live open state
+  const openOrders = inst.trades.filter(t => t.status === "pending").length;
+  const openPositions = inst.trades.filter(t => t.status === "open").length;
+
+  // Recent trades: merge in-memory open + DB closed (last 10)
+  const dbRecent = loadAllHFMakerTrades(instId).slice(0, 10);
+  const openTrades = inst.trades.filter(t => t.status === "pending" || t.status === "open");
+  const seen = new Set(openTrades.map(t => t.id));
+  const merged = [...openTrades, ...dbRecent.filter(t => !seen.has(t.id))].slice(0, 10);
 
   return {
     balance: inst.balance,
-    totalTrades: inst.trades.length,
-    openOrders: inst.trades.filter(t => t.status === "pending").length,
-    openPositions: inst.trades.filter(t => t.status === "open").length,
-    wins,
-    losses,
-    winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
-    totalPnl,
-    recentTrades: inst.trades.slice(-10).reverse(),
+    totalTrades: dbStats.totalTrades + openOrders + openPositions,
+    openOrders,
+    openPositions,
+    wins: dbStats.wins,
+    losses: dbStats.losses,
+    winRate: dbStats.winRate,
+    totalPnl: dbStats.totalPnl,
+    recentTrades: merged,
   };
 }
 
