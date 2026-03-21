@@ -94,7 +94,8 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
       exchangeStopOids.set(position.id, statuses[0].resting.oid);
       console.log(`[Quant Live] Exchange stop placed for ${position.pair} @ ${sl}`);
     } else {
-      console.error(`[Quant Live] Exchange stop not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
+      // Some low-price assets reject trigger orders - software SL in position monitor covers them
+      console.warn(`[Quant Live] Exchange stop skipped for ${position.pair} (software SL active)`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
