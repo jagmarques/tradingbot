@@ -235,19 +235,12 @@ export async function placeGtcMakerOrder(
     const client = getSdkClient();
     console.log(`[Polymarket] Placing GTC maker ${side}: ${shares} shares @ ${price}`);
 
-    const resp = await client.createAndPostOrder(
-      {
-        tokenID: tokenId,
-        side: side === "BUY" ? Side.BUY : Side.SELL,
-        price: parseFloat(price),
-        size: parseFloat(shares),
-        feeRateBps: 0, // maker = zero fees
-      },
-      undefined, // CreateOrderOptions (auto-resolved by SDK)
-      undefined, // OrderType defaults to GTC
-      undefined, // deferExec
-      undefined, // postOnly - not forcing, let it cross if possible
-    );
+    const resp = await client.createAndPostOrder({
+      tokenID: tokenId,
+      side: side === "BUY" ? Side.BUY : Side.SELL,
+      price: parseFloat(price),
+      size: parseFloat(shares),
+    });
 
     if (!resp || !resp.orderID) {
       console.error("[Polymarket] GTC order failed:", resp);

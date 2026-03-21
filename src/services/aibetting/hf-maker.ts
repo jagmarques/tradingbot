@@ -454,6 +454,8 @@ async function checkPendingFill(inst: HFMakerInstance, trade: HFMakerTrade): Pro
       trade.shares = matched;
       trade.size = matched * trade.entryPrice;
       saveHFMakerTrade(trade, inst.id);
+      // Cancel remainder if partially filled
+      void cancelOrder(trade.orderId);
       console.log(`[HFMaker:${inst.id}] GTC FILLED: ${trade.coin} ${trade.side} ${matched.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
       void notifyHFMakerEntry({
         coin: trade.coin, side: trade.side, size: trade.size,
