@@ -7,7 +7,7 @@ import { saveQuantPosition } from "../database/quant.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
-const LEVERAGE = parseInt(process.env.GARCH_LEVERAGE || "10");
+const LEVERAGE = parseInt(process.env.LEVERAGE || "10");
 const ATR_PERIOD = 14;
 const CHAN_MULT = 6;
 const MAX_HOLD_MS = 48 * 60 * 60 * 1000;
