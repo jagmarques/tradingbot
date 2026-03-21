@@ -276,8 +276,20 @@ async function reconcileWithExchange(): Promise<void> {
       if (recheckCoins.has(pos.pair)) continue;
 
       console.log(`[Quant Live] ${pos.pair} in DB but not on exchange, marking closed`);
-      const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
-      const exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
+      // Get actual fill price from recent fills instead of mid-price
+      let exitPrice = 0;
+      try {
+        const fills = await sdk.info.getUserFills(wallet, true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const recentFill = (fills as any[])
+          .filter((f: any) => f.coin === pos.pair && f.dir === (pos.direction === "long" ? "Close Long" : "Close Short"))
+          .sort((a: any, b: any) => b.time - a.time)[0];
+        if (recentFill) exitPrice = parseFloat(recentFill.px);
+      } catch { /* fallback to mid-price */ }
+      if (!exitPrice || !isFinite(exitPrice)) {
+        const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
+        exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
+      }
       const fees = pos.size * pos.leverage * 0.00045 * 2;
       const pnl = calcPnl(pos.direction, pos.entryPrice, exitPrice, pos.size, pos.leverage, fees);
       const now = new Date().toISOString();
@@ -758,8 +770,20 @@ export async function liveClosePosition(
           );
           if (!stillOpen) {
             console.log(`[Quant Live] ${position.pair} already closed on exchange, reconciling`);
-            const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
-            const reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
+            // Get actual fill price from recent fills instead of mid-price
+            let reconPrice = 0;
+            try {
+              const fills = await sdk2.info.getUserFills(wallet2, true);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const recentFill = (fills as any[])
+                .filter((f: any) => f.coin === position.pair && f.dir === (position.direction === "long" ? "Close Long" : "Close Short"))
+                .sort((a: any, b: any) => b.time - a.time)[0];
+              if (recentFill) reconPrice = parseFloat(recentFill.px);
+            } catch { /* fallback to mid-price */ }
+            if (!reconPrice || !isFinite(reconPrice)) {
+              const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
+              reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
+            }
             const fees = position.size * position.leverage * 0.00045 * 2;
             const estPnl = calcPnl(position.direction, position.entryPrice, reconPrice, position.size, position.leverage, fees);
             const now = new Date().toISOString();
