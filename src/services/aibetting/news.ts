@@ -278,6 +278,96 @@ async function fetchArticleContent(url: string): Promise<string | null> {
   }
 }
 
+interface TavilyResult {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+}
+
+async function tavilySearch(query: string, maxResults: number = 5): Promise<TavilyResult[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        max_results: maxResults,
+        search_depth: "basic",
+        include_answer: false,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[News] Tavily ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { results?: TavilyResult[] };
+    return data.results ?? [];
+  } catch (err) {
+    console.warn(`[News] Tavily error: ${err instanceof Error ? err.message : err}`);
+    return [];
+  }
+}
+
+export async function agenticSearch(marketTitle: string): Promise<NewsItem[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return []; // Falls back to GDELT in caller
+
+  // Step 1: Generate 2-3 search queries from market title
+  const queries: string[] = [];
+
+  // Query 1: clean market title as search
+  const cleanTitle = marketTitle
+    .replace(/^(Will|Is|Does|Has|Can|Are)\s+/i, "")
+    .replace(/\?$/, "")
+    .trim();
+  queries.push(cleanTitle);
+
+  // Query 2: extract proper nouns + key terms
+  const properNouns = marketTitle.match(/\b[A-Z][a-z]{2,}\b/g) || [];
+  if (properNouns.length >= 2) {
+    queries.push(properNouns.slice(0, 4).join(" ") + " latest news");
+  }
+
+  // Step 2: Search with Tavily
+  const allResults: TavilyResult[] = [];
+  for (const query of queries.slice(0, 2)) {
+    const results = await tavilySearch(query, 3);
+    allResults.push(...results);
+  }
+
+  // Deduplicate by URL
+  const seen = new Set<string>();
+  const unique = allResults.filter(r => {
+    if (seen.has(r.url)) return false;
+    seen.add(r.url);
+    return true;
+  });
+
+  // Filter out prediction market content
+  const filtered = unique.filter(r =>
+    !isPredictionMarketContent(r.title) &&
+    !isPredictionMarketContent(r.content.slice(0, 500))
+  );
+
+  // Convert to NewsItem format
+  return filtered.slice(0, 5).map(r => ({
+    source: new URL(r.url).hostname.replace("www.", ""),
+    title: r.title,
+    summary: r.content.slice(0, 300),
+    url: r.url,
+    publishedAt: new Date().toISOString(),
+    content: r.content.slice(0, 2000),
+  }));
+}
+
 export async function fetchNewsForMarket(
   market: PolymarketEvent
 ): Promise<NewsItem[]> {
@@ -295,7 +385,13 @@ export async function fetchNewsForMarket(
     const articles = await fetchGdeltArticles(query);
     if (articles.length === 0) {
       console.log(`[News] No GDELT results for "${query}"`);
-      return [];
+      // Still try Tavily before returning empty
+      const tavilyFallback = await agenticSearch(market.title);
+      if (tavilyFallback.length > 0) {
+        console.log(`[News] Tavily fallback: ${tavilyFallback.length} articles for "${market.title.slice(0, 50)}"`);
+        cacheNews(market.conditionId, tavilyFallback);
+      }
+      return tavilyFallback;
     }
 
     const items: NewsItem[] = articles
@@ -351,6 +447,16 @@ export async function fetchNewsForMarket(
         }
         console.log(`[News] After retry: ${contentFetched} articles with content`);
       }
+    }
+
+    // Supplement with Tavily agentic search (if API key available)
+    const tavilyNews = await agenticSearch(market.title);
+    if (tavilyNews.length > 0) {
+      // Add Tavily articles that aren't duplicates of GDELT results
+      const existingUrls = new Set(items.map(i => i.url));
+      const newTavily = tavilyNews.filter(t => !existingUrls.has(t.url));
+      items.push(...newTavily);
+      console.log(`[News] Tavily: +${newTavily.length} articles for "${market.title.slice(0, 50)}"`);
     }
 
     console.log(`[News] ${items.length} articles for "${query}", ${contentFetched}/3 fetched`);
