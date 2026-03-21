@@ -280,9 +280,10 @@ async function reconcileWithExchange(): Promise<void> {
       let exitPrice = 0;
       try {
         const fills = await sdk.info.getUserFills(wallet, true);
+        const openedMs = new Date(pos.openedAt).getTime();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const recentFill = (fills as any[])
-          .filter((f: any) => f.coin === pos.pair && f.dir === (pos.direction === "long" ? "Close Long" : "Close Short"))
+          .filter((f: any) => f.coin === pos.pair && f.dir === (pos.direction === "long" ? "Close Long" : "Close Short") && f.time > openedMs)
           .sort((a: any, b: any) => b.time - a.time)[0];
         if (recentFill) exitPrice = parseFloat(recentFill.px);
       } catch { /* fallback to mid-price */ }
@@ -774,9 +775,10 @@ export async function liveClosePosition(
             let reconPrice = 0;
             try {
               const fills = await sdk2.info.getUserFills(wallet2, true);
+              const openedMs = new Date(position.openedAt).getTime();
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const recentFill = (fills as any[])
-                .filter((f: any) => f.coin === position.pair && f.dir === (position.direction === "long" ? "Close Long" : "Close Short"))
+                .filter((f: any) => f.coin === position.pair && f.dir === (position.direction === "long" ? "Close Long" : "Close Short") && f.time > openedMs)
                 .sort((a: any, b: any) => b.time - a.time)[0];
               if (recentFill) reconPrice = parseFloat(recentFill.px);
             } catch { /* fallback to mid-price */ }
