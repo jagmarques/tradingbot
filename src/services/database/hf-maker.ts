@@ -1,7 +1,7 @@
 import { getDb } from "./db.js";
 import type { HFMakerTrade } from "../aibetting/hf-maker.js";
 
-export function saveHFMakerTrade(trade: HFMakerTrade, instance = 'live-0.3'): void {
+export function saveHFMakerTrade(trade: HFMakerTrade, instance = 'live-0.1'): void {
   const db = getDb();
   db.prepare(`
     INSERT OR REPLACE INTO hf_maker_trades (
@@ -18,7 +18,7 @@ export function saveHFMakerTrade(trade: HFMakerTrade, instance = 'live-0.3'): vo
   );
 }
 
-export function loadOpenHFMakerTrades(instance = 'live-0.3'): HFMakerTrade[] {
+export function loadOpenHFMakerTrades(instance = 'live-0.1'): HFMakerTrade[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT * FROM hf_maker_trades WHERE status IN ('pending', 'open') AND instance = ?
@@ -73,7 +73,7 @@ export function loadAllHFMakerTrades(instance?: string): HFMakerTrade[] {
   }));
 }
 
-export function saveHFMakerBalance(balance: number, instance = 'live-0.3'): void {
+export function saveHFMakerBalance(balance: number, instance = 'live-0.1'): void {
   const db = getDb();
   db.prepare(`
     INSERT OR REPLACE INTO hf_maker_balance (id, balance, updated_at)
@@ -81,7 +81,7 @@ export function saveHFMakerBalance(balance: number, instance = 'live-0.3'): void
   `).run(instance, balance);
 }
 
-export function loadHFMakerBalance(instance = 'live-0.3'): number | null {
+export function loadHFMakerBalance(instance = 'live-0.1'): number | null {
   const db = getDb();
   const row = db.prepare(`
     SELECT balance FROM hf_maker_balance WHERE id = ?
@@ -118,10 +118,10 @@ export function getHFMakerDbStats(instance?: string): {
       `).get() as { total: number; wins: number; losses: number; total_pnl: number };
 
   return {
-    totalTrades: row.total,
-    wins: row.wins,
-    losses: row.losses,
-    totalPnl: row.total_pnl,
-    winRate: row.total > 0 ? (row.wins / row.total) * 100 : 0,
+    totalTrades: row.total ?? 0,
+    wins: row.wins ?? 0,
+    losses: row.losses ?? 0,
+    totalPnl: row.total_pnl ?? 0,
+    winRate: (row.total ?? 0) > 0 ? ((row.wins ?? 0) / row.total) * 100 : 0,
   };
 }

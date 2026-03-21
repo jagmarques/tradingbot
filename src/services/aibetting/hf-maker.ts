@@ -90,7 +90,7 @@ interface GammaMarketResponse {
 }
 
 interface HFMakerInstance {
-  id: string;          // 'live-0.3', 'paper-0.2', 'paper-0.1'
+  id: string;          // 'live-0.1', 'paper-0.2', 'paper-0.3'
   label: string;       // 'LIVE 0.3%', 'Paper 0.2%', 'Paper 0.1%'
   paper: boolean;
   minMovePct: number;  // 0.003, 0.002, 0.001
@@ -119,9 +119,9 @@ const activeWindows = new Map<string, ActiveWindow>();
 const instances = new Map<string, HFMakerInstance>();
 
 function createInstances(): void {
-  instances.set('live-0.3', {
-    id: 'live-0.3', label: 'LIVE 0.3%', paper: isHFMakerPaper(),
-    minMovePct: 0.003, trades: [], balance: 0,
+  instances.set('live-0.1', {
+    id: 'live-0.1', label: 'LIVE 0.1%', paper: isHFMakerPaper(),
+    minMovePct: 0.001, trades: [], balance: 0,
     windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
   });
   instances.set('paper-0.2', {
@@ -129,9 +129,9 @@ function createInstances(): void {
     minMovePct: 0.002, trades: [], balance: 0,
     windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
   });
-  instances.set('paper-0.1', {
-    id: 'paper-0.1', label: 'Paper 0.1%', paper: true,
-    minMovePct: 0.001, trades: [], balance: 0,
+  instances.set('paper-0.3', {
+    id: 'paper-0.3', label: 'Paper 0.3%', paper: true,
+    minMovePct: 0.003, trades: [], balance: 0,
     windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
   });
 }
@@ -401,7 +401,8 @@ async function placeLateEntryTrade(
     console.log(`[HFMaker:${inst.id}] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
     try {
-      const worstPrice = entryPrice;
+      // Use market price (up to 95c) to ensure fill - profit comes from resolution, not entry
+      const worstPrice = Math.min(entryPrice + 0.15, 0.95);
       const order = await placeFokOrder(tokenId, "BUY", worstPrice.toFixed(2), positionSize.toFixed(2));
       if (order) {
         trade.orderId = order.id;
@@ -567,7 +568,7 @@ export async function startHFMaker(): Promise<void> {
   // One shared heartbeat (iterates all instances internally)
   heartbeatInterval = setInterval(runHeartbeat, HEARTBEAT_INTERVAL_MS);
 
-  const liveInst = instances.get('live-0.3')!;
+  const liveInst = instances.get('live-0.1')!;
   console.log(`[HFMaker] Started (${instances.size} instances, paper=${liveInst.paper}, balance=$${liveInst.balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
 }
 
@@ -605,7 +606,7 @@ export function getHFMakerStats(instanceId?: string): {
   totalPnl: number;
   recentTrades: HFMakerTrade[];
 } {
-  const instId = instanceId ?? 'live-0.3';
+  const instId = instanceId ?? 'live-0.1';
   const inst = instances.get(instId);
   if (!inst) {
     return { balance: 0, totalTrades: 0, openOrders: 0, openPositions: 0, wins: 0, losses: 0, winRate: 0, totalPnl: 0, recentTrades: [] };
