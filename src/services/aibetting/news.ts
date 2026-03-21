@@ -285,7 +285,7 @@ interface TavilyResult {
   score: number;
 }
 
-// Tavily key rotation: 3 keys, ~330 searches/day each = 3000/month total
+// Rotate 3 Tavily keys, 330/day each
 const TAVILY_DAILY_LIMIT = 330;
 const tavilyKeyUsage = new Map<string, { count: number; resetDay: number }>();
 
@@ -350,7 +350,7 @@ async function tavilySearch(query: string, maxResults: number = 5): Promise<Tavi
 }
 
 export async function agenticSearch(marketTitle: string): Promise<NewsItem[]> {
-  if (!getTavilyKey()) return []; // No keys available, fall back to GDELT
+  if (!getTavilyKey()) return [];
 
   // Step 1: Generate 2-3 search queries from market title
   const queries: string[] = [];
