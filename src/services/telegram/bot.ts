@@ -15,7 +15,7 @@ import { getSettings } from "../settings/settings.js";
 import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getHFMakerStats, getHFMakerStatus, getBondsStats } from "../aibetting/hf-scanner.js";
+import { getHFMakerStatus, getBondsStats, getAllHFMakerStats } from "../aibetting/hf-scanner.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
@@ -942,7 +942,14 @@ async function handlePnl(ctx: Context): Promise<void> {
 
     // Unrealized (open positions) - grouped by platform
     const schedulerStatus = getAIBettingStatus();
-    const makerSt = getHFMakerStats();
+    const allMakerSt = getAllHFMakerStats();
+    const makerSt = {
+      totalPnl: allMakerSt.reduce((s, m) => s + m.stats.totalPnl, 0),
+      openPositions: allMakerSt.reduce((s, m) => s + m.stats.openPositions, 0),
+      openOrders: allMakerSt.reduce((s, m) => s + m.stats.openOrders, 0),
+      totalTrades: allMakerSt.reduce((s, m) => s + m.stats.totalTrades, 0),
+      winRate: allMakerSt.length > 0 ? allMakerSt[0].stats.winRate : 0,
+    };
     const bondsSt = getBondsStats();
     const totalUnrAll = totalUnrealized + makerSt.totalPnl + bondsSt.totalPnl;
 
@@ -1264,17 +1271,19 @@ async function handlePoly(ctx: Context): Promise<void> {
   if (activeOpId !== myOpId) return;
 
   // Maker stats
-  const makerStats = getHFMakerStats();
+  const allMakerStats = getAllHFMakerStats();
   const makerStatus = getHFMakerStatus();
 
   // Bonds stats
   const bonds = getBondsStats();
 
   // Combined totals (realized + unrealized)
-  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + makerStats.totalPnl + bonds.totalPnl;
+  const makerTotalPnl = allMakerStats.reduce((s, m) => s + m.stats.totalPnl, 0);
+  const makerOpenCount = allMakerStats.reduce((s, m) => s + m.stats.openOrders + m.stats.openPositions, 0);
+  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + makerTotalPnl + bonds.totalPnl;
   const totalPolyUnrealized = aiUnrealized + copyUnrealized;
   const totalPolyPnl = totalPolyRealized + totalPolyUnrealized;
-  const totalPolyOpen = openBets.length + copyStats.openPositions + makerStats.openOrders + makerStats.openPositions + bonds.openTrades;
+  const totalPolyOpen = openBets.length + copyStats.openPositions + makerOpenCount + bonds.openTrades;
 
   let text = `<b>Polymarket</b> | Paper\n`;
   text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
@@ -1314,19 +1323,27 @@ async function handlePoly(ctx: Context): Promise<void> {
     text += `  ${trunc(pos.marketTitle, 25)} $${pos.size.toFixed(0)}${cpPnl}\n`;
   }
 
-  // 3. HF Maker
-  text += `-------------------\n`;
-  const makerRunning = makerStatus.running ? "ON" : "OFF";
+  // 3. HF Maker (per-instance)
   const makerBin = makerStatus.binanceConnected ? "WS" : "OFF";
-  text += `<b>HF Maker</b> ${makerRunning} | Binance: ${makerBin}\n`;
-  text += `${makerStats.openOrders} orders | ${makerStats.openPositions} pos | ${makerStats.totalTrades} total\n`;
-  text += `W/L: ${makerStats.wins}/${makerStats.losses} (${makerStats.winRate.toFixed(0)}%) | P&L: ${pnl(makerStats.totalPnl)}\n`;
-  text += `Windows: ${makerStatus.activeWindows} | Pairs: ${makerStatus.trackedPairs.join(",") || "none"}\n`;
+  for (const maker of allMakerStats) {
+    const ms = maker.stats;
+    text += `-------------------\n`;
+    const makerRunning = makerStatus.running ? "ON" : "OFF";
+    if (maker === allMakerStats[0]) {
+      text += `<b>HF Maker (${maker.label})</b> ${makerRunning} | Binance: ${makerBin}\n`;
+      text += `Windows: ${makerStatus.activeWindows} | Pairs: ${makerStatus.trackedPairs.join(",") || "none"}\n`;
+    } else {
+      text += `<b>HF Maker (${maker.label})</b>\n`;
+    }
+    text += `${ms.openOrders} orders | ${ms.openPositions} pos | ${ms.totalTrades} total\n`;
+    text += `W/L: ${ms.wins}/${ms.losses} (${ms.winRate.toFixed(0)}%) | P&L: ${pnl(ms.totalPnl)}\n`;
+    text += `Bal: $${ms.balance.toFixed(2)}\n`;
 
-  for (const t of makerStats.recentTrades.slice(0, 3)) {
-    const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
-    const tag = t.status === "pending" ? "PEND" : t.status === "open" ? "OPEN" : t.status.toUpperCase();
-    text += `  ${tag} ${t.coin} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
+    for (const t of ms.recentTrades.slice(0, 3)) {
+      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+      const tag = t.status === "pending" ? "PEND" : t.status === "open" ? "OPEN" : t.status.toUpperCase();
+      text += `  ${tag} ${t.coin} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
+    }
   }
 
   // 6. Bonds
@@ -1679,17 +1696,22 @@ async function showThinking(ctx: Context): Promise<() => Promise<void>> {
 async function handleHF(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
-  const makerStats = getHFMakerStats();
-  const makerStatus = getHFMakerStatus();
+  const allStats = getAllHFMakerStats();
+  const status = getHFMakerStatus();
   const lines = [
-    "HF Maker Orders:",
-    `  Running: ${makerStatus.running ? "YES" : "NO"} | Binance: ${makerStatus.binanceConnected ? "ON" : "OFF"}`,
-    `  Windows: ${makerStatus.activeWindows} | Pairs: ${makerStatus.trackedPairs.join(", ") || "none"}`,
-    `  Orders: ${makerStats.openOrders} pending | ${makerStats.openPositions} filled`,
-    `  Trades: ${makerStats.totalTrades} | W/L: ${makerStats.wins}/${makerStats.losses}`,
-    `  P&L: $${makerStats.totalPnl.toFixed(2)} | Bal: $${makerStats.balance.toFixed(2)}`
+    `HF Maker | ${status.running ? "ON" : "OFF"} | Binance: ${status.binanceConnected ? "ON" : "OFF"}`,
+    `Windows: ${status.activeWindows} | Pairs: ${status.trackedPairs.join(", ") || "none"}`,
+    "",
   ];
-
+  for (const maker of allStats) {
+    const ms = maker.stats;
+    lines.push(
+      `[${maker.label}]`,
+      `  Orders: ${ms.openOrders} pending | ${ms.openPositions} filled`,
+      `  Trades: ${ms.totalTrades} | W/L: ${ms.wins}/${ms.losses}`,
+      `  P&L: $${ms.totalPnl.toFixed(2)} | Bal: $${ms.balance.toFixed(2)}`,
+    );
+  }
   await ctx.reply(lines.join("\n"));
 }
 
