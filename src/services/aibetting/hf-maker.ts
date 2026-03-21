@@ -2,6 +2,7 @@
  * HF Maker: Late-entry strategy on Polymarket 15-min crypto up/down markets.
  * Waits until last 45s of window when direction is ~85%+ determined,
  * places maker order at high confidence price. Zero maker fees + rebates.
+ * Runs 3 simultaneous instances: live 0.3%, paper 0.2%, paper 0.1%.
  */
 
 import WebSocket from "ws";
@@ -45,7 +46,6 @@ const RECONNECT_MAX_MS = 30_000;
 
 // Late-entry strategy params
 const ENTRY_WINDOW_SECS = 60; // enter in last 60s of window
-const MIN_MOVE_PCT = 0.003; // 0.3% min move from window start
 const STRONG_MOVE_PCT = 0.008; // 0.8%+ = strong confidence
 const ONE_TRADE_PER_WINDOW = true; // max 1 trade per coin per window
 
@@ -89,7 +89,19 @@ interface GammaMarketResponse {
   closed: boolean;
 }
 
-// ---- State -------------------------------------------------------------------
+interface HFMakerInstance {
+  id: string;          // 'live-0.3', 'paper-0.2', 'paper-0.1'
+  label: string;       // 'LIVE 0.3%', 'Paper 0.2%', 'Paper 0.1%'
+  paper: boolean;
+  minMovePct: number;  // 0.003, 0.002, 0.001
+  trades: HFMakerTrade[];
+  balance: number;
+  windowTraded: Set<string>;
+  paperFillTimers: Map<string, NodeJS.Timeout>;
+  activeOrders: Map<string, string>;
+}
+
+// ---- Shared State (one Binance WS, one window scan) -------------------------
 
 let running = false;
 let binanceConnected = false;
@@ -101,32 +113,50 @@ let windowScanInterval: NodeJS.Timeout | null = null;
 
 const latestPrices = new Map<string, number>();
 const activeWindows = new Map<string, ActiveWindow>();
-const windowTraded = new Set<string>(); // track which windows we already traded
-const trades: HFMakerTrade[] = [];
-let balance = 0;
 
-const activeOrders = new Map<string, string>();
-const paperFillTimers = new Map<string, NodeJS.Timeout>();
+// ---- Per-Instance State ------------------------------------------------------
 
-function getOpenTradeCount(): number {
-  return trades.filter(t => t.status === "pending" || t.status === "open").length;
+const instances = new Map<string, HFMakerInstance>();
+
+function createInstances(): void {
+  instances.set('live-0.3', {
+    id: 'live-0.3', label: 'LIVE 0.3%', paper: isHFMakerPaper(),
+    minMovePct: 0.003, trades: [], balance: 0,
+    windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
+  });
+  instances.set('paper-0.2', {
+    id: 'paper-0.2', label: 'Paper 0.2%', paper: true,
+    minMovePct: 0.002, trades: [], balance: 0,
+    windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
+  });
+  instances.set('paper-0.1', {
+    id: 'paper-0.1', label: 'Paper 0.1%', paper: true,
+    minMovePct: 0.001, trades: [], balance: 0,
+    windowTraded: new Set(), paperFillTimers: new Map(), activeOrders: new Map(),
+  });
 }
 
-function getAvailableBalance(): number {
-  if (!isHFMakerPaper()) {
-    // Live: balance = on-chain USDC.e (already reflects open positions, money left wallet)
-    return balance;
+// ---- Per-Instance Helpers ----------------------------------------------------
+
+function getOpenTradeCount(inst: HFMakerInstance): number {
+  return inst.trades.filter(t => t.status === "pending" || t.status === "open").length;
+}
+
+function getAvailableBalance(inst: HFMakerInstance): number {
+  if (!inst.paper) {
+    // Live: balance = on-chain USDC.e (already reflects open positions)
+    return inst.balance;
   }
   // Paper: balance tracks resolved cash, open trades are reserved
-  const reservedSize = trades
+  const reservedSize = inst.trades
     .filter(t => t.status === "pending" || t.status === "open")
     .reduce((s, t) => s + t.size, 0);
-  return balance - reservedSize;
+  return inst.balance - reservedSize;
 }
 
-function calcPositionSize(): number {
-  const available = getAvailableBalance();
-  const size = Math.floor(available * POSITION_PCT * 100) / 100; // round down to 2dp
+function calcPositionSize(inst: HFMakerInstance): number {
+  const available = getAvailableBalance(inst);
+  const size = Math.floor(available * POSITION_PCT * 100) / 100;
   return size >= MIN_TRADE_SIZE ? size : 0;
 }
 
@@ -148,7 +178,6 @@ function connectBinance(): void {
   ws.on("message", (data: WebSocket.RawData) => {
     try {
       const raw = JSON.parse(data.toString());
-      // Combined stream wraps in {stream, data}
       const msg = raw.data && raw.stream ? raw.data : raw;
       if (msg.e === "kline") handleKline(msg.s, msg.k);
     } catch { /* skip malformed */ }
@@ -187,10 +216,8 @@ function handleKline(symbol: string, kline: { c: string; v: string; x: boolean }
   const price = parseFloat(kline.c);
   if (isNaN(price)) return;
 
-  // Update latest price on every tick (not just kline close)
   latestPrices.set(coin, price);
 
-  // Capture window start price if not set
   for (const [key, w] of activeWindows) {
     if (w.coin === coin && !w.startPrice) {
       w.startPrice = price;
@@ -207,11 +234,13 @@ async function scanWindows(): Promise<void> {
     const nowSec = Math.floor(Date.now() / 1000);
     const windowTs = Math.floor(nowSec / 900) * 900;
 
-    // Only clear windows that have expired
+    // Clear expired windows from shared map and per-instance windowTraded
     for (const [key, w] of activeWindows) {
       if (w.endTime <= Date.now()) {
         activeWindows.delete(key);
-        windowTraded.delete(key);
+        for (const inst of instances.values()) {
+          inst.windowTraded.delete(key);
+        }
       }
     }
 
@@ -220,7 +249,6 @@ async function scanWindows(): Promise<void> {
         const slug = `${coin}-updown-15m-${windowTs}`;
         const key = `${coin.toUpperCase()}-${windowTs}`;
 
-        // Skip if we already have this window
         if (activeWindows.has(key)) continue;
 
         const response = await fetchWithTimeout(
@@ -268,18 +296,17 @@ async function scanWindows(): Promise<void> {
   }
 }
 
-// ---- Late-Entry Check (runs every heartbeat) ---------------------------------
+// ---- Late-Entry Check (per instance, runs every heartbeat) -------------------
 
-async function checkLateEntry(): Promise<void> {
+async function checkLateEntry(inst: HFMakerInstance): Promise<void> {
   const now = Date.now();
 
   for (const [key, window] of activeWindows) {
     if (!window.startPrice) continue;
-    if (windowTraded.has(key) && ONE_TRADE_PER_WINDOW) continue;
+    if (inst.windowTraded.has(key) && ONE_TRADE_PER_WINDOW) continue;
 
     const secsLeft = (window.endTime - now) / 1000;
 
-    // Only enter in the last ENTRY_WINDOW_SECS
     if (secsLeft > ENTRY_WINDOW_SECS || secsLeft <= 5) continue;
 
     const currentPrice = latestPrices.get(window.coin);
@@ -288,41 +315,36 @@ async function checkLateEntry(): Promise<void> {
     const movePct = (currentPrice - window.startPrice) / window.startPrice;
     const absMove = Math.abs(movePct);
 
-    // Log move when in entry window (for debugging)
-    console.log(`[HFMaker] ${window.coin} move=${(movePct * 100).toFixed(3)}% (need ${(MIN_MOVE_PCT * 100).toFixed(1)}%) ${secsLeft.toFixed(0)}s left`);
+    console.log(`[HFMaker:${inst.id}] ${window.coin} move=${(movePct * 100).toFixed(3)}% (need ${(inst.minMovePct * 100).toFixed(1)}%) ${secsLeft.toFixed(0)}s left`);
 
-    // Skip if move is too small (noise)
-    if (absMove < MIN_MOVE_PCT) continue;
+    if (absMove < inst.minMovePct) continue;
 
-    // Direction is determined by price movement from window start
     const direction: "up" | "down" = movePct > 0 ? "up" : "down";
 
-    // Entry price scales with move magnitude
-    // Break-even: 70c=70%, 75c=75%, 80c=80%
     let entryPrice: number;
     if (absMove >= STRONG_MOVE_PCT) {
-      entryPrice = 0.80; // 0.8%+ move, ~88% win rate, needs 80%
+      entryPrice = 0.80;
     } else if (absMove >= 0.005) {
-      entryPrice = 0.75; // 0.5% move, ~83% win rate, needs 75%
+      entryPrice = 0.75;
     } else {
-      entryPrice = 0.70; // 0.3% move (minimum), ~78% win rate, needs 70%
+      entryPrice = 0.70;
     }
 
-    if (getOpenTradeCount() >= MAX_CONCURRENT_TRADES) continue;
+    if (getOpenTradeCount(inst) >= MAX_CONCURRENT_TRADES) continue;
 
-    // Refresh on-chain balance before sizing (live mode)
-    if (!isHFMakerPaper()) {
-      try { balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
+    // Refresh on-chain balance before sizing (live mode only)
+    if (!inst.paper) {
+      try { inst.balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
     }
-    const posSize = calcPositionSize();
+    const posSize = calcPositionSize(inst);
     if (posSize <= 0) continue;
 
-    // Place the trade
-    void placeLateEntryTrade(window, key, direction, entryPrice, currentPrice, absMove, posSize);
+    void placeLateEntryTrade(inst, window, key, direction, entryPrice, currentPrice, absMove, posSize);
   }
 }
 
 async function placeLateEntryTrade(
+  inst: HFMakerInstance,
   window: ActiveWindow,
   windowKey: string,
   direction: "up" | "down",
@@ -331,17 +353,17 @@ async function placeLateEntryTrade(
   moveMagnitude: number,
   positionSize: number,
 ): Promise<void> {
-  windowTraded.add(windowKey);
+  inst.windowTraded.add(windowKey);
 
   const tokenId = direction === "up" ? window.yesTokenId : window.noTokenId;
   const shares = positionSize / entryPrice;
-  const tradeId = `hfm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const tradeId = `hfm_${inst.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const secsLeft = ((window.endTime - Date.now()) / 1000).toFixed(0);
 
   console.log(
-    `[HFMaker] LATE-ENTRY ${window.coin} ${direction.toUpperCase()} ` +
+    `[HFMaker:${inst.id}] LATE-ENTRY ${window.coin} ${direction.toUpperCase()} ` +
     `@${(entryPrice * 100).toFixed(0)}c $${positionSize.toFixed(2)} ` +
-    `(${(POSITION_PCT * 100).toFixed(0)}% of $${balance.toFixed(2)}) ` +
+    `(${(POSITION_PCT * 100).toFixed(0)}% of $${inst.balance.toFixed(2)}) ` +
     `move=${(moveMagnitude * 100).toFixed(2)}% ${secsLeft}s left`
   );
 
@@ -361,52 +383,46 @@ async function placeLateEntryTrade(
     pnl: 0,
   };
 
-  trades.push(trade);
-  saveHFMakerBalance(balance);
+  inst.trades.push(trade);
+  saveHFMakerBalance(inst.balance, inst.id);
 
-  // Trim old trades
-  while (trades.length > MAX_TRADES) {
-    const idx = trades.findIndex(t => t.status !== "pending" && t.status !== "open");
-    if (idx >= 0) trades.splice(idx, 1);
+  while (inst.trades.length > MAX_TRADES) {
+    const idx = inst.trades.findIndex(t => t.status !== "pending" && t.status !== "open");
+    if (idx >= 0) inst.trades.splice(idx, 1);
     else break;
   }
 
-  if (isHFMakerPaper()) {
-    // Paper: instant fill (we're entering late, high prob of fill)
+  if (inst.paper) {
     trade.status = "open";
-    saveHFMakerTrade(trade);
-    console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
+    saveHFMakerTrade(trade, inst.id);
+    console.log(`[HFMaker:${inst.id}] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
-    // Live: FOK market order with move-based worst price
     try {
-      // Same price logic as paper - worst price = max we'll pay per share
-      const worstPrice = entryPrice; // 0.70/0.75/0.80 based on move magnitude
-      // FOK BUY: amount = dollars to spend, price = worst price per share
+      const worstPrice = entryPrice;
       const order = await placeFokOrder(tokenId, "BUY", worstPrice.toFixed(2), positionSize.toFixed(2));
       if (order) {
         trade.orderId = order.id;
         trade.status = "open";
-        // Use actual fill data from FOK response
         if (order.fillPrice) trade.entryPrice = order.fillPrice;
         if (order.actualShares) trade.shares = order.actualShares;
         if (order.actualCost) trade.size = order.actualCost;
-        activeOrders.set(order.id, tradeId);
-        saveHFMakerTrade(trade);
-        console.log(`[HFMaker] FOK filled: ${order.id} ${trade.shares.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
+        inst.activeOrders.set(order.id, tradeId);
+        saveHFMakerTrade(trade, inst.id);
+        console.log(`[HFMaker:${inst.id}] FOK filled: ${order.id} ${trade.shares.toFixed(1)} shares @ ${(trade.entryPrice * 100).toFixed(0)}c`);
         void notifyHFMakerEntry({
           coin: trade.coin, side: trade.side, size: trade.size,
           entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
-          balance, orderId: order.id,
+          balance: inst.balance, orderId: order.id,
         });
       } else {
         trade.status = "cancelled";
-        saveHFMakerTrade(trade);
-        console.log("[HFMaker] FOK not filled (no liquidity at " + (worstPrice * 100).toFixed(0) + "c)");
+        saveHFMakerTrade(trade, inst.id);
+        console.log(`[HFMaker:${inst.id}] FOK not filled (no liquidity at ` + (worstPrice * 100).toFixed(0) + "c)");
       }
     } catch (err) {
       trade.status = "cancelled";
-      saveHFMakerTrade(trade);
-      console.error("[HFMaker] Order error:", err);
+      saveHFMakerTrade(trade, inst.id);
+      console.error(`[HFMaker:${inst.id}] Order error:`, err);
     }
   }
 }
@@ -416,52 +432,47 @@ async function placeLateEntryTrade(
 function runHeartbeat(): void {
   const now = Date.now();
 
-  // Check late-entry opportunities
-  void checkLateEntry();
+  for (const inst of instances.values()) {
+    void checkLateEntry(inst);
 
-  for (const trade of trades) {
-    // Resolve open positions at window end
-    if (trade.status === "open" && now >= trade.windowEnd) {
-      void resolvePosition(trade);
-      continue;
-    }
-
-    // Auto-cancel pending if window passed (no balance adjustment - available calc handles it)
-    if (trade.status === "pending" && now >= trade.windowEnd) {
-      trade.status = "cancelled";
-      saveHFMakerTrade(trade);
-      if (trade.orderId) {
-        activeOrders.delete(trade.orderId);
-        if (!isHFMakerPaper()) void cancelOrder(trade.orderId);
+    for (const trade of inst.trades) {
+      if (trade.status === "open" && now >= trade.windowEnd) {
+        void resolvePosition(inst, trade);
+        continue;
       }
-      console.log(`[HFMaker] Order expired: ${trade.coin} ${trade.side}`);
-    }
-  }
 
-  const openOrders = trades.filter(t => t.status === "pending").length;
-  const openPositions = trades.filter(t => t.status === "open").length;
-  if (openOrders > 0 || openPositions > 0) {
-    console.log(`[HFMaker] Heartbeat: ${openOrders} orders, ${openPositions} positions`);
+      if (trade.status === "pending" && now >= trade.windowEnd) {
+        trade.status = "cancelled";
+        saveHFMakerTrade(trade, inst.id);
+        if (trade.orderId) {
+          inst.activeOrders.delete(trade.orderId);
+          if (!inst.paper) void cancelOrder(trade.orderId);
+        }
+        console.log(`[HFMaker:${inst.id}] Order expired: ${trade.coin} ${trade.side}`);
+      }
+    }
+
+    const openOrders = inst.trades.filter(t => t.status === "pending").length;
+    const openPositions = inst.trades.filter(t => t.status === "open").length;
+    if (openOrders > 0 || openPositions > 0) {
+      console.log(`[HFMaker:${inst.id}] Heartbeat: ${openOrders} orders, ${openPositions} positions`);
+    }
   }
 }
 
 // ---- Position Resolution -----------------------------------------------------
 
-async function resolvePosition(trade: HFMakerTrade): Promise<void> {
+async function resolvePosition(inst: HFMakerInstance, trade: HFMakerTrade): Promise<void> {
   const currentBinancePrice = latestPrices.get(trade.coin) ?? 0;
   trade.binancePriceAtClose = currentBinancePrice;
 
-  // Skip resolution if we don't have a valid price
   if (currentBinancePrice <= 0 || trade.windowStartPrice <= 0) {
     trade.status = "cancelled";
-    saveHFMakerTrade(trade);
-    console.log(`[HFMaker] CANCEL ${trade.coin} ${trade.side} (missing price data)`);
+    saveHFMakerTrade(trade, inst.id);
+    console.log(`[HFMaker:${inst.id}] CANCEL ${trade.coin} ${trade.side} (missing price data)`);
     return;
   }
 
-  // Resolution: compare current price to WINDOW START price
-  // Polymarket: "Up" wins if close > start, "Down" wins if close < start
-  // If flat (close == start), "Down" wins on Polymarket (price didn't go up)
   const priceDiff = currentBinancePrice - trade.windowStartPrice;
   const priceUp = priceDiff > 0;
   const priceDown = priceDiff < 0;
@@ -477,33 +488,33 @@ async function resolvePosition(trade: HFMakerTrade): Promise<void> {
     trade.status = "lost";
   }
 
-  // Paper: adjust internal balance. Live: refresh from chain.
-  if (isHFMakerPaper()) {
+  if (inst.paper) {
     if (directionMatched) {
-      balance += trade.pnl;
+      inst.balance += trade.pnl;
     } else {
-      balance -= trade.size;
+      inst.balance -= trade.size;
     }
   } else {
-    try { balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
+    try { inst.balance = await fetchOnChainUsdcE(); } catch { /* use cached */ }
   }
 
-  saveHFMakerTrade(trade);
-  saveHFMakerBalance(balance);
+  saveHFMakerTrade(trade, inst.id);
+  saveHFMakerBalance(inst.balance, inst.id);
 
   const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
   const movePct = trade.windowStartPrice > 0
     ? (((currentBinancePrice - trade.windowStartPrice) / trade.windowStartPrice) * 100).toFixed(2)
     : "?";
   console.log(
-    `[HFMaker] ${trade.status.toUpperCase()} ${trade.coin} ${trade.side} ${pnlStr} ` +
+    `[HFMaker:${inst.id}] ${trade.status.toUpperCase()} ${trade.coin} ${trade.side} ${pnlStr} ` +
     `(start=$${trade.windowStartPrice.toFixed(0)} close=$${currentBinancePrice.toFixed(0)} move=${movePct}%)`
   );
 
-  if (!isHFMakerPaper()) {
+  // Only send Telegram notifications for live instance
+  if (!inst.paper) {
     void notifyHFMakerResult({
       coin: trade.coin, side: trade.side, status: trade.status as "won" | "lost" | "cancelled",
-      size: trade.size, pnl: trade.pnl, balance,
+      size: trade.size, pnl: trade.pnl, balance: inst.balance,
       startPrice: trade.windowStartPrice, closePrice: currentBinancePrice,
     });
   }
@@ -515,37 +526,46 @@ export async function startHFMaker(): Promise<void> {
   if (running) return;
   running = true;
 
-  // Fetch balance: live = on-chain USDC.e, paper = DB
-  if (!isHFMakerPaper()) {
-    try {
-      balance = await fetchOnChainUsdcE();
-      console.log(`[HFMaker] On-chain USDC.e balance: $${balance.toFixed(2)}`);
-    } catch (err) {
-      const savedBalance = loadHFMakerBalance();
-      balance = savedBalance ?? 0;
-      console.log(`[HFMaker] DB balance (chain fetch failed): $${balance.toFixed(2)}`);
+  createInstances();
+
+  for (const inst of instances.values()) {
+    if (!inst.paper) {
+      // Live: fetch on-chain balance
+      try {
+        inst.balance = await fetchOnChainUsdcE();
+        console.log(`[HFMaker:${inst.id}] On-chain USDC.e balance: $${inst.balance.toFixed(2)}`);
+      } catch (err) {
+        const savedBalance = loadHFMakerBalance(inst.id);
+        inst.balance = savedBalance ?? 0;
+        console.log(`[HFMaker:${inst.id}] DB balance (chain fetch failed): $${inst.balance.toFixed(2)}`);
+      }
+    } else {
+      // Paper: load from DB or env
+      const savedBalance = loadHFMakerBalance(inst.id);
+      inst.balance = savedBalance ?? parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
+      console.log(`[HFMaker:${inst.id}] Paper balance: $${inst.balance.toFixed(2)}`);
     }
-  } else {
-    const savedBalance = loadHFMakerBalance();
-    balance = savedBalance ?? parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
-    console.log(`[HFMaker] Paper balance: $${balance.toFixed(2)}`);
-  }
-  saveHFMakerBalance(balance);
+    saveHFMakerBalance(inst.balance, inst.id);
 
-  const openTrades = loadOpenHFMakerTrades();
-  if (openTrades.length > 0) {
-    trades.push(...openTrades);
-    console.log(`[HFMaker] Restored ${openTrades.length} open trades from DB`);
+    const openTrades = loadOpenHFMakerTrades(inst.id);
+    if (openTrades.length > 0) {
+      inst.trades.push(...openTrades);
+      console.log(`[HFMaker:${inst.id}] Restored ${openTrades.length} open trades from DB`);
+    }
   }
 
+  // One shared Binance WS
   connectBinance();
 
+  // One shared window scan
   void scanWindows();
   windowScanInterval = setInterval(() => void scanWindows(), WINDOW_SCAN_INTERVAL_MS);
 
+  // One shared heartbeat (iterates all instances internally)
   heartbeatInterval = setInterval(runHeartbeat, HEARTBEAT_INTERVAL_MS);
 
-  console.log(`[HFMaker] Started (paper=${isHFMakerPaper()}, balance=$${balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
+  const liveInst = instances.get('live-0.3')!;
+  console.log(`[HFMaker] Started (${instances.size} instances, paper=${liveInst.paper}, balance=$${liveInst.balance.toFixed(2)}, ${POSITION_PCT * 100}%/trade, max ${MAX_CONCURRENT_TRADES} concurrent)`);
 }
 
 export function stopHFMaker(): void {
@@ -562,13 +582,16 @@ export function stopHFMaker(): void {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   if (windowScanInterval) { clearInterval(windowScanInterval); windowScanInterval = null; }
 
-  for (const timer of paperFillTimers.values()) clearTimeout(timer);
-  paperFillTimers.clear();
+  for (const inst of instances.values()) {
+    for (const timer of inst.paperFillTimers.values()) clearTimeout(timer);
+    inst.paperFillTimers.clear();
+  }
+  instances.clear();
 
   console.log("[HFMaker] Stopped");
 }
 
-export function getHFMakerStats(): {
+export function getHFMakerStats(instanceId?: string): {
   balance: number;
   totalTrades: number;
   openOrders: number;
@@ -579,22 +602,40 @@ export function getHFMakerStats(): {
   totalPnl: number;
   recentTrades: HFMakerTrade[];
 } {
-  const closed = trades.filter(t => t.status === "won" || t.status === "lost");
+  const inst = instanceId ? instances.get(instanceId) : instances.get('live-0.3');
+  if (!inst) {
+    return { balance: 0, totalTrades: 0, openOrders: 0, openPositions: 0, wins: 0, losses: 0, winRate: 0, totalPnl: 0, recentTrades: [] };
+  }
+  const closed = inst.trades.filter(t => t.status === "won" || t.status === "lost");
   const wins = closed.filter(t => t.status === "won").length;
   const losses = closed.filter(t => t.status === "lost").length;
   const totalPnl = closed.reduce((s, t) => s + t.pnl, 0);
 
   return {
-    balance,
-    totalTrades: trades.length,
-    openOrders: trades.filter(t => t.status === "pending").length,
-    openPositions: trades.filter(t => t.status === "open").length,
+    balance: inst.balance,
+    totalTrades: inst.trades.length,
+    openOrders: inst.trades.filter(t => t.status === "pending").length,
+    openPositions: inst.trades.filter(t => t.status === "open").length,
     wins,
     losses,
     winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
     totalPnl,
-    recentTrades: trades.slice(-10).reverse(),
+    recentTrades: inst.trades.slice(-10).reverse(),
   };
+}
+
+export function getAllHFMakerStats(): Array<{
+  instanceId: string;
+  label: string;
+  paper: boolean;
+  stats: ReturnType<typeof getHFMakerStats>;
+}> {
+  return [...instances.values()].map(inst => ({
+    instanceId: inst.id,
+    label: inst.label,
+    paper: inst.paper,
+    stats: getHFMakerStats(inst.id),
+  }));
 }
 
 export function getHFMakerStatus(): {
@@ -602,21 +643,25 @@ export function getHFMakerStatus(): {
   binanceConnected: boolean;
   activeWindows: number;
   trackedPairs: string[];
+  instances: number;
 } {
   return {
     running,
     binanceConnected,
     activeWindows: activeWindows.size,
     trackedPairs: [...new Set([...activeWindows.values()].map(w => w.coin))],
+    instances: instances.size,
   };
 }
 
 export function resetHFMakerData(): void {
-  trades.length = 0;
-  balance = 0;
-  activeOrders.clear();
-  windowTraded.clear();
-  for (const timer of paperFillTimers.values()) clearTimeout(timer);
-  paperFillTimers.clear();
+  for (const inst of instances.values()) {
+    inst.trades.length = 0;
+    inst.balance = 0;
+    inst.activeOrders.clear();
+    inst.windowTraded.clear();
+    for (const timer of inst.paperFillTimers.values()) clearTimeout(timer);
+    inst.paperFillTimers.clear();
+  }
   console.log("[HFMaker] Data reset");
 }

@@ -8,7 +8,7 @@ import { GAMMA_API_URL } from "../../config/constants.js";
 import { resetHFMakerData } from "./hf-maker.js";
 import { runBondsScan, resetBondsData } from "./high-prob-bonds.js";
 
-export { getHFMakerStats, getHFMakerStatus, resetHFMakerData } from "./hf-maker.js";
+export { getHFMakerStats, getHFMakerStatus, resetHFMakerData, getAllHFMakerStats } from "./hf-maker.js";
 export { getBondsStats } from "./high-prob-bonds.js";
 
 // ---- State ---------------------------------------------------------------
