@@ -16,6 +16,7 @@ import { callDeepSeek } from "../shared/llm.js";
 import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
 import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
 import { getHFMakerStatus, getBondsStats, getAllHFMakerStats } from "../aibetting/hf-scanner.js";
+import { getHFScalpStats } from "../aibetting/hf-scalp.js";
 import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
 import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
@@ -970,6 +971,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     message += `  AI: ${openBets.length}${aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : ""}${openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : ""}${logOnly}\n`;
     message += `  Copy: ${copyPositions.length}${copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : ""}${copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : ""}\n`;
     message += `  HF Maker: ${makerSt.openPositions} open ${makerSt.totalTrades > 0 ? `${pnl(makerSt.totalPnl)} ${makerSt.winRate.toFixed(0)}%WR` : ""}\n`;
+    const scalpSt = getHFScalpStats();
+    message += `  HF Scalp: ${scalpSt.openPositions} open | ${scalpSt.totalSignals} sigs\n`;
     message += `  Bonds: ${bondsSt.openTrades} open ${bondsSt.totalTrades > 0 ? `${pnl(bondsSt.totalPnl)} ${bondsSt.winRate.toFixed(0)}%WR` : ""}\n`;
 
     const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
@@ -1348,6 +1351,14 @@ async function handlePoly(ctx: Context): Promise<void> {
       text += `  ${tag} ${t.coin} ${t.side} @${(t.entryPrice * 100).toFixed(0)}c ${tPnl}\n`;
     }
   }
+
+  // 4. HF Scalp (paper perps)
+  const scalpStats = getHFScalpStats();
+  text += `-------------------\n`;
+  const scalpRunning = scalpStats.running ? "ON" : "OFF";
+  const scalpBin = scalpStats.binanceConnected ? "WS" : "OFF";
+  text += `<b>HF Scalp</b> ${scalpRunning} | Binance: ${scalpBin}\n`;
+  text += `${scalpStats.openPositions} open | ${scalpStats.totalSignals} signals | ${scalpStats.totalOpened} trades\n`;
 
   // 6. Bonds
   text += `-------------------\n`;
