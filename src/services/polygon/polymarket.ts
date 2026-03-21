@@ -13,7 +13,8 @@ const SOCKS_URL = process.env.POLY_SOCKS_PROXY;
 if (SOCKS_URL) {
   const agent = new SocksProxyAgent(SOCKS_URL);
   axios.interceptors.request.use((config) => {
-    if (config.url && (config.url.includes("polymarket.com") || config.url.includes("clob."))) {
+    // Only route CLOB API through proxy (orders/auth), not Gamma API (read-only, not geo-blocked)
+    if (config.url && config.url.includes("clob.polymarket.com")) {
       config.httpAgent = agent;
       config.httpsAgent = agent;
     }
