@@ -15,11 +15,13 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-chan": 48 * 60 * 60 * 1000,
+  "hf-scalp": 20 * 60 * 1000,
 };
 
 // Per-engine trailing stop config (validated on 1m candles)
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "garch-chan": { activation: 8, distance: 2 },
+  "hf-scalp": { activation: Infinity, distance: 0 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
