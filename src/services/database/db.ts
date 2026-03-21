@@ -296,7 +296,6 @@ export function initDb(dbPath?: string): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_status ON hf_maker_trades(status);
     CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_coin ON hf_maker_trades(coin);
-    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_instance ON hf_maker_trades(instance);
 
     CREATE TABLE IF NOT EXISTS hf_maker_balance (
       id TEXT PRIMARY KEY DEFAULT 'current',
@@ -484,6 +483,9 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec(`ALTER TABLE hf_maker_trades ADD COLUMN instance TEXT NOT NULL DEFAULT 'live-0.3'`);
     console.log("[Database] Migrated hf_maker_trades: added instance column");
   }
+
+  // Index on instance (must be after migration ensures column exists)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_instance ON hf_maker_trades(instance)`);
 
   console.log("[Database] Initialized at", finalPath);
   return db;
