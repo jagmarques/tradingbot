@@ -8,7 +8,7 @@ import WebSocket from "ws";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { GAMMA_API_URL } from "../../config/constants.js";
 import { isPolymarketPaperMode } from "../../config/env.js";
-import { placeOrder, cancelOrder } from "../polygon/polymarket.js";
+import { placeFokOrder, cancelOrder } from "../polygon/polymarket.js";
 import { saveHFMakerTrade, loadOpenHFMakerTrades, saveHFMakerBalance, loadHFMakerBalance } from "../database/hf-maker.js";
 import { ethers } from "ethers";
 import { loadEnv } from "../../config/env.js";
@@ -377,23 +377,17 @@ async function placeLateEntryTrade(
     saveHFMakerTrade(trade);
     console.log(`[HFMaker] FILL (paper) ${trade.coin} ${trade.side} @${(trade.entryPrice * 100).toFixed(0)}c`);
   } else {
-    // Live: place order on CLOB
+    // Live: FOK market order (fills instantly via complementary matching)
     try {
-      // Use calculated entry price directly (orderbook may not exist for 15-min markets)
-      const livePrice = entryPrice;
-
-      const order = await placeOrder({
-        tokenId,
-        side: "BUY",
-        price: livePrice.toFixed(2),
-        size: shares.toFixed(2),
-      });
+      const worstPrice = 0.95; // accept up to 95c
+      const order = await placeFokOrder(tokenId, "BUY", worstPrice.toFixed(2), positionSize.toFixed(2));
       if (order) {
         trade.orderId = order.id;
-        trade.entryPrice = livePrice;
+        trade.status = "open";
+        trade.entryPrice = worstPrice;
         activeOrders.set(order.id, tradeId);
         saveHFMakerTrade(trade);
-        console.log(`[HFMaker] Order placed: ${order.id}`);
+        console.log(`[HFMaker] FOK filled: ${order.id}`);
         void notifyHFMakerEntry({
           coin: trade.coin, side: trade.side, size: trade.size,
           entryPrice: trade.entryPrice, movePct: trade.momentumMagnitude,
@@ -402,7 +396,7 @@ async function placeLateEntryTrade(
       } else {
         trade.status = "cancelled";
         saveHFMakerTrade(trade);
-        console.log("[HFMaker] Order placement failed");
+        console.log("[HFMaker] FOK order not filled");
       }
     } catch (err) {
       trade.status = "cancelled";
