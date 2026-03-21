@@ -2,8 +2,10 @@
 import { ATR } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
+import { getClient, ensureConnected } from "./client.js";
 import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_TRADING_PAIRS } from "../../config/constants.js";
 import { saveQuantPosition } from "../database/quant.js";
+import { loadEnv } from "../../config/env.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
@@ -131,6 +133,21 @@ export async function runGarchChanCycle(): Promise<number> {
 
   const currentPositions = getOpenQuantPositions();
   const openPairs = new Set(currentPositions.filter(p => p.tradeType === TRADE_TYPE).map(p => p.pair));
+
+  // Also check exchange positions to prevent duplicates after redeploy
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const env = loadEnv();
+    const state = await sdk.info.perpetuals.getClearinghouseState(env.HYPERLIQUID_WALLET_ADDRESS, true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const ap of state.assetPositions as any[]) {
+      if (parseFloat(ap.position.szi) !== 0) {
+        openPairs.add(ap.position.coin.replace("-PERP", ""));
+      }
+    }
+  } catch { /* fallback to DB-only check */ }
+
   let executed = 0;
 
   for (const pair of QUANT_TRADING_PAIRS) {
