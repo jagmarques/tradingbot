@@ -315,7 +315,10 @@ async function checkLateEntry(inst: HFMakerInstance): Promise<void> {
     const movePct = (currentPrice - window.startPrice) / window.startPrice;
     const absMove = Math.abs(movePct);
 
-    console.log(`[HFMaker:${inst.id}] ${window.coin} move=${(movePct * 100).toFixed(3)}% (need ${(inst.minMovePct * 100).toFixed(1)}%) ${secsLeft.toFixed(0)}s left`);
+    // Only log moves from live instance to avoid 3x log spam
+    if (!inst.paper) {
+      console.log(`[HFMaker] ${window.coin} move=${(movePct * 100).toFixed(3)}% (need ${(inst.minMovePct * 100).toFixed(1)}%) ${secsLeft.toFixed(0)}s left`);
+    }
 
     if (absMove < inst.minMovePct) continue;
 
@@ -540,9 +543,9 @@ export async function startHFMaker(): Promise<void> {
         console.log(`[HFMaker:${inst.id}] DB balance (chain fetch failed): $${inst.balance.toFixed(2)}`);
       }
     } else {
-      // Paper: load from DB or env
+      // Paper: load from DB, fallback to $100 virtual bankroll
       const savedBalance = loadHFMakerBalance(inst.id);
-      inst.balance = savedBalance ?? parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "0");
+      inst.balance = savedBalance ?? parseFloat(process.env.HF_MAKER_INITIAL_BALANCE || "100");
       console.log(`[HFMaker:${inst.id}] Paper balance: $${inst.balance.toFixed(2)}`);
     }
     saveHFMakerBalance(inst.balance, inst.id);

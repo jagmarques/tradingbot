@@ -943,12 +943,15 @@ async function handlePnl(ctx: Context): Promise<void> {
     // Unrealized (open positions) - grouped by platform
     const schedulerStatus = getAIBettingStatus();
     const allMakerSt = getAllHFMakerStats();
+    const totalMakerWins = allMakerSt.reduce((s, m) => s + m.stats.wins, 0);
+    const totalMakerLosses = allMakerSt.reduce((s, m) => s + m.stats.losses, 0);
+    const totalMakerClosed = totalMakerWins + totalMakerLosses;
     const makerSt = {
       totalPnl: allMakerSt.reduce((s, m) => s + m.stats.totalPnl, 0),
       openPositions: allMakerSt.reduce((s, m) => s + m.stats.openPositions, 0),
       openOrders: allMakerSt.reduce((s, m) => s + m.stats.openOrders, 0),
       totalTrades: allMakerSt.reduce((s, m) => s + m.stats.totalTrades, 0),
-      winRate: allMakerSt.length > 0 ? allMakerSt[0].stats.winRate : 0,
+      winRate: totalMakerClosed > 0 ? (totalMakerWins / totalMakerClosed) * 100 : 0,
     };
     const bondsSt = getBondsStats();
     const totalUnrAll = totalUnrealized + makerSt.totalPnl + bondsSt.totalPnl;
@@ -1694,25 +1697,8 @@ async function showThinking(ctx: Context): Promise<() => Promise<void>> {
 }
 
 async function handleHF(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  const allStats = getAllHFMakerStats();
-  const status = getHFMakerStatus();
-  const lines = [
-    `HF Maker | ${status.running ? "ON" : "OFF"} | Binance: ${status.binanceConnected ? "ON" : "OFF"}`,
-    `Windows: ${status.activeWindows} | Pairs: ${status.trackedPairs.join(", ") || "none"}`,
-    "",
-  ];
-  for (const maker of allStats) {
-    const ms = maker.stats;
-    lines.push(
-      `[${maker.label}]`,
-      `  Orders: ${ms.openOrders} pending | ${ms.openPositions} filled`,
-      `  Trades: ${ms.totalTrades} | W/L: ${ms.wins}/${ms.losses}`,
-      `  P&L: $${ms.totalPnl.toFixed(2)} | Bal: $${ms.balance.toFixed(2)}`,
-    );
-  }
-  await ctx.reply(lines.join("\n"));
+  // Redirect to /poly which now shows per-instance HF Maker stats
+  await handlePoly(ctx);
 }
 
 async function handleAI(ctx: Context): Promise<void> {
