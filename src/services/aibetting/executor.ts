@@ -3,7 +3,7 @@ import type {
   BetDecision,
   AIBettingPosition,
 } from "./types.js";
-import { placeFokOrder, getOrderbook } from "../polygon/polymarket.js";
+import { placeGtcMakerOrder, cancelOrder, getOrderStatus, getOrderbook } from "../polygon/polymarket.js";
 import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
 import { savePosition, loadOpenPositions, recordOutcome } from "../database/aibetting.js";
 import { notifyAIBetPlaced, notifyAIBetClosed } from "../telegram/notifications.js";
@@ -12,6 +12,16 @@ import { fetchWithTimeout } from "../../utils/fetch.js";
 
 // In-memory position storage
 const positions = new Map<string, AIBettingPosition>();
+
+// Track pending GTC orders for AI betting
+interface PendingOrder {
+  orderId: string;
+  positionId: string;
+  tokenId: string;
+  placedAt: number;
+}
+const pendingOrders = new Map<string, PendingOrder>(); // orderId -> PendingOrder
+const ORDER_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
 // Load positions from DB on module init
 export function initPositions(): number {
@@ -106,32 +116,18 @@ export async function enterPosition(
     const shares = decision.recommendedSize / price;
     console.log(`[Executor] PAPER: ${decision.side} ${shares.toFixed(2)} shares @ ${price.toFixed(3)}`);
   } else {
-    // Live mode: get real orderbook price and place order
-    const book = await getOrderbook(decision.tokenId);
-    if (!book) {
-      console.error("[Executor] Failed to get orderbook");
-      return null;
-    }
+    // Live mode: GTC limit order at AI's fair price (maker = 0% fees)
+    const fairPrice = decision.aiProbability;
+    // For YES, limit buy at our fair value. For NO, the token price is 1-aiProb.
+    const limitPrice = decision.side === "YES" ? fairPrice : 1 - fairPrice;
 
-    const priceStr =
-      decision.side === "YES"
-        ? book.asks[0]?.[0]
-        : book.bids[0]?.[0];
-
-    if (!priceStr) {
-      console.error("[Executor] No liquidity in orderbook");
-      return null;
-    }
-
-    price = parseFloat(priceStr);
-    if (!isFinite(price) || price <= 0) {
-      console.error(`[Executor] Invalid orderbook price: ${priceStr}`);
-      return null;
-    }
-    const shares = decision.recommendedSize / price;
+    // Clamp to valid Polymarket price range (0.01-0.99, 2 decimal precision)
+    const clampedPrice = Math.max(0.01, Math.min(0.99, Math.round(limitPrice * 100) / 100));
+    const shares = decision.recommendedSize / clampedPrice;
     const sharesStr = shares.toFixed(2);
+    const priceStr = clampedPrice.toFixed(2);
 
-    const order = await placeFokOrder(
+    const order = await placeGtcMakerOrder(
       decision.tokenId,
       "BUY",
       priceStr,
@@ -139,12 +135,62 @@ export async function enterPosition(
     );
 
     if (!order) {
-      console.error("[Executor] Order failed");
+      console.error("[Executor] GTC order failed");
       return null;
     }
 
     orderId = order.id;
-    console.log(`[Executor] Order filled: ${orderId}`);
+
+    if (order.status === "MATCHED") {
+      // Filled immediately
+      price = order.fillPrice ?? clampedPrice;
+      console.log(`[Executor] GTC FILLED immediately: ${orderId}`);
+    } else {
+      // Resting on book as maker - track for periodic fill check
+      price = clampedPrice;
+      const positionId = generatePositionId();
+      pendingOrders.set(orderId, {
+        orderId,
+        positionId,
+        tokenId: decision.tokenId,
+        placedAt: Date.now(),
+      });
+      console.log(`[Executor] GTC RESTING: ${orderId} @ ${priceStr} (expires in 1h)`);
+
+      // Create position in "open" state - will be updated when filled
+      const pendingPosition: AIBettingPosition = {
+        id: positionId,
+        marketId: market.conditionId,
+        marketTitle: market.title,
+        marketEndDate: market.endDate,
+        tokenId: decision.tokenId,
+        side: decision.side,
+        entryPrice: clampedPrice,
+        size: decision.recommendedSize,
+        aiProbability: decision.aiProbability,
+        confidence: decision.confidence,
+        expectedValue: decision.expectedValue,
+        status: "open",
+        entryTimestamp: Date.now(),
+      };
+
+      savePosition(pendingPosition);
+      positions.set(pendingPosition.id, pendingPosition);
+
+      const marketPrice = decision.side === "YES" ? clampedPrice : 1 - clampedPrice;
+      const edge = decision.aiProbability - marketPrice;
+      await notifyAIBetPlaced({
+        marketTitle: market.title,
+        side: decision.side,
+        size: decision.recommendedSize,
+        entryPrice: clampedPrice,
+        aiProbability: decision.aiProbability,
+        edge,
+        reasoning: `GTC limit @ ${priceStr} (${decision.reason})`,
+      }).catch(err => console.error("[Executor] Failed to notify:", err));
+
+      return pendingPosition;
+    }
   }
 
   // Create position record
@@ -237,7 +283,7 @@ export async function exitPosition(
     }
 
     const sharesStr = shares.toFixed(2);
-    const order = await placeFokOrder(
+    const order = await placeGtcMakerOrder(
       position.tokenId,
       "SELL",
       exitPriceStr,
@@ -249,7 +295,7 @@ export async function exitPosition(
       return { success: false, pnl: 0 };
     }
 
-    console.log(`[Executor] Exit order filled: ${order.id}`);
+    console.log(`[Executor] Exit order placed: ${order.id}`);
   }
 
   // Update position
@@ -271,6 +317,51 @@ export async function exitPosition(
   }).catch(err => console.error("[Executor] Failed to notify bet closed:", err));
 
   return { success: true, pnl };
+}
+
+export async function checkPendingOrders(): Promise<void> {
+  const now = Date.now();
+
+  for (const [orderId, pending] of pendingOrders.entries()) {
+    try {
+      // Cancel expired orders (> 1 hour)
+      if (now - pending.placedAt > ORDER_EXPIRY_MS) {
+        await cancelOrder(orderId);
+        pendingOrders.delete(orderId);
+
+        // Remove the position if it was never filled
+        const pos = positions.get(pending.positionId);
+        if (pos && pos.status === "open") {
+          pos.status = "closed";
+          pos.exitReason = "GTC order expired (1h)";
+          pos.exitTimestamp = now;
+          pos.pnl = 0;
+          savePosition(pos);
+          console.log(`[Executor] GTC expired: ${orderId} for ${pos.marketTitle}`);
+        }
+        continue;
+      }
+
+      // Check fill status
+      const status = await getOrderStatus(orderId);
+      if (!status) continue;
+
+      const matched = parseFloat(status.sizeMatched);
+      if (matched > 0) {
+        pendingOrders.delete(orderId);
+        const pos = positions.get(pending.positionId);
+        if (pos) {
+          pos.size = matched * pos.entryPrice;
+          savePosition(pos);
+          console.log(`[Executor] GTC FILLED: ${orderId} ${matched.toFixed(1)} shares`);
+        }
+        // Cancel any remainder
+        await cancelOrder(orderId);
+      }
+    } catch {
+      // Non-critical, retry next check
+    }
+  }
 }
 
 // Re-export for backward compat
