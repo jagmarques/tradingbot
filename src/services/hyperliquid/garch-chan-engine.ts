@@ -156,7 +156,7 @@ export async function runGarchChanCycle(): Promise<number> {
       const signal = await analyzeSignal(pair);
       if (!signal) continue;
       // TP at 1.8% price move (= 18% P&L at 10x leverage)
-      const tpPct = 0.018;
+      const tpPct = 0.015; // 1.5% price = 15% P&L at 10x
       const tp = signal.direction === "long"
         ? signal.entryPrice * (1 + tpPct)
         : signal.entryPrice * (1 - tpPct);

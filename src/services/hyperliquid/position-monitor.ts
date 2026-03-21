@@ -19,7 +19,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 
 // Per-engine trailing stop config (validated on 1m candles)
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "garch-chan": { activation: 8, distance: 5 },
+  "garch-chan": { activation: 8, distance: 2 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
