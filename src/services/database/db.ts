@@ -289,12 +289,14 @@ export function initDb(dbPath?: string): Database.Database {
       order_id TEXT,
       status TEXT NOT NULL,
       pnl REAL NOT NULL DEFAULT 0,
+      instance TEXT NOT NULL DEFAULT 'live-0.3',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_status ON hf_maker_trades(status);
     CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_coin ON hf_maker_trades(coin);
+    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_instance ON hf_maker_trades(instance);
 
     CREATE TABLE IF NOT EXISTS hf_maker_balance (
       id TEXT PRIMARY KEY DEFAULT 'current',
@@ -474,6 +476,13 @@ export function initDb(dbPath?: string): Database.Database {
   if (!qtColsFresh.includes("max_unrealized_pnl_pct")) {
     db.exec(`ALTER TABLE quant_trades ADD COLUMN max_unrealized_pnl_pct REAL`);
     console.log("[Database] Migrated quant_trades: added max_unrealized_pnl_pct column");
+  }
+
+  // Migration: Add instance column to hf_maker_trades
+  const hfTradesCols = (db.pragma("table_info(hf_maker_trades)") as Array<{ name: string }>).map(c => c.name);
+  if (!hfTradesCols.includes("instance")) {
+    db.exec(`ALTER TABLE hf_maker_trades ADD COLUMN instance TEXT NOT NULL DEFAULT 'live-0.3'`);
+    console.log("[Database] Migrated hf_maker_trades: added instance column");
   }
 
   console.log("[Database] Initialized at", finalPath);
