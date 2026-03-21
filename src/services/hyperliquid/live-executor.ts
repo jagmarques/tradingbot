@@ -59,10 +59,15 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  // Hyperliquid: max 5 significant figures, convert to string to ensure proper formatting
-  const sigFigs = 5;
-  const formatted = parseFloat(price.toPrecision(sigFigs));
-  return formatted;
+  // Hyperliquid tick sizes by price range
+  let decimals: number;
+  if (price < 0.001) decimals = 8;
+  else if (price < 1) decimals = 5;
+  else if (price < 10) decimals = 4;
+  else if (price < 100) decimals = 3;
+  else decimals = 2;
+  const factor = 10 ** decimals;
+  return Math.round(price * factor) / factor;
 }
 
 async function placeExchangeStop(position: QuantPosition): Promise<void> {
@@ -94,8 +99,7 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
       exchangeStopOids.set(position.id, statuses[0].resting.oid);
       console.log(`[Quant Live] Exchange stop placed for ${position.pair} @ ${sl}`);
     } else {
-      // Some low-price assets reject trigger orders - software SL in position monitor covers them
-      console.warn(`[Quant Live] Exchange stop skipped for ${position.pair} (software SL active)`);
+      console.error(`[Quant Live] Exchange stop not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
