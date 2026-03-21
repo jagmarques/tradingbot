@@ -74,9 +74,9 @@ const MAIN_MENU_BUTTONS = [
   ],
   [
     { text: "🔄 Trades", callback_data: "trades" },
-    { text: "🎯 Poly", callback_data: "poly" },
   ],
   [
+    { text: "🎯 Poly", callback_data: "poly" },
     { text: "⚛️ Quant", callback_data: "quant" },
   ],
   [
