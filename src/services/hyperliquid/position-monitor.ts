@@ -14,12 +14,11 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-chan": 48 * 60 * 60 * 1000,
+  "garch-chan": 8 * 60 * 60 * 1000, // 8h - cut losers that drag
 };
 
-// Per-engine trailing stop config (validated on 1m candles)
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "garch-chan": { activation: 8, distance: 2 },
+  "garch-chan": { activation: 5, distance: 2 }, // 5% activation (was 8%)
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
