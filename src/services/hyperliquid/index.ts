@@ -8,6 +8,7 @@ import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
+import { startHlPriceWs, stopHlPriceWs } from "./ws-prices.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -48,6 +49,7 @@ export function initQuant(): number {
   }
 
   seedDailyLossFromDb();
+  startHlPriceWs();
   startPositionMonitor();
   startQuantScheduler();
   const openPositions = loadOpenQuantPositions();
@@ -85,6 +87,7 @@ async function verifyLighterConnection(): Promise<void> {
 export function stopQuant(): void {
   stopQuantScheduler();
   stopPositionMonitor();
+  stopHlPriceWs();
   console.log("[Quant] Stopped");
 }
 
