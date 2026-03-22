@@ -10,6 +10,7 @@ import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 import { isLiquidEnough, type CLOBMetrics } from "./clob.js";
+import { isLiveMode } from "../../config/env.js";
 
 // ---- Drawdown Manager ----
 // Tracks cumulative daily P&L. Halves Kelly at 10% DD, quarters at 15%, stops at 20%.
@@ -245,7 +246,8 @@ export function evaluateBetOpportunity(
   const effectiveEdge = realEdge;
 
   // Liquidity gate
-  const liquidityOk = isLiquidEnough(clobMetrics ?? null, 25);
+  // Paper mode skips liquidity check (simulates fills)
+  const liquidityOk = !isLiveMode() || isLiquidEnough(clobMetrics ?? null, 25);
 
   const clobTag = clobMetrics
     ? `friction=${(frictionCost * 100).toFixed(2)}% liq=${clobMetrics.liquidityScore}/100`
