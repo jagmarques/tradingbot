@@ -151,12 +151,17 @@ export async function runGarchChanCycle(): Promise<number> {
   } catch { /* fallback to DB-only check */ }
 
   let executed = 0;
+  const MAX_PER_DIRECTION = 10;
 
   for (const pair of QUANT_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
     try {
       const signal = await analyzeSignal(pair);
       if (!signal) continue;
+
+      // Cap positions per direction to limit correlated losses
+      const dirCount = currentPositions.filter(p => p.tradeType === TRADE_TYPE && p.direction === signal.direction).length;
+      if (dirCount >= MAX_PER_DIRECTION) continue;
       // TP at 1.8% price move (= 18% P&L at 10x leverage)
       const tpPct = 0.015; // 1.5% price = 15% P&L at 10x
       const tp = signal.direction === "long"
