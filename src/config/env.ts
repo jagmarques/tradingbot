@@ -43,8 +43,8 @@ const envSchema = z.object({
 
   // AI Betting Config
   AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
-  AIBETTING_MAX_BET: numericString("20"),
-  AIBETTING_MAX_EXPOSURE: numericString("100"),
+  AIBETTING_MAX_BET: numericString("999999"),
+  AIBETTING_MAX_EXPOSURE: numericString("999999"),
   AIBETTING_MAX_POSITIONS: numericString("999"),
   AIBETTING_MIN_EDGE: numericStringMax1("0.03"),
   AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.60"),

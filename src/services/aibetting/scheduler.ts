@@ -28,7 +28,7 @@ import {
 import { getCLOBMetrics, type CLOBMetrics } from "./clob.js";
 import cron from "node-cron";
 
-const AI_BETTING_STARTING_BALANCE = 100; // $100 realistic paper bankroll
+const AI_BETTING_STARTING_BALANCE = 10000; // unlimited paper bankroll
 let aiBettingVirtualBalance = AI_BETTING_STARTING_BALANCE;
 
 export function resetAIBettingBalance(): void {
