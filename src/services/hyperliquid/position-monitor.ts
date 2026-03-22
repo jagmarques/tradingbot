@@ -5,6 +5,7 @@ import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQU
 import { capStopLoss } from "./quant-utils.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
+import { getWsMids, isWsConnected } from "./ws-prices.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
@@ -96,15 +97,19 @@ async function checkPositionStops(): Promise<void> {
     let mids: Record<string, string> = {};
     const hlPositions = positions.filter(p => p.exchange !== "lighter");
     if (hlPositions.length > 0) {
-      try {
-        const sdk = getClient();
-        mids = await withTimeout(
-          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-          API_PRICE_TIMEOUT_MS, "HL getAllMids",
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
+      if (isWsConnected()) {
+        mids = getWsMids();
+      } else {
+        try {
+          const sdk = getClient();
+          mids = await withTimeout(
+            sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+            API_PRICE_TIMEOUT_MS, "HL getAllMids",
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
+        }
       }
     }
 
@@ -393,15 +398,19 @@ async function checkTrailActivePositions(): Promise<void> {
     let mids: Record<string, string> = {};
     const hlCandidates = trailCandidates.filter(p => p.exchange !== "lighter");
     if (hlCandidates.length > 0) {
-      try {
-        const sdk = getClient();
-        mids = await withTimeout(
-          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-          API_PRICE_TIMEOUT_MS, "HL getAllMids (fast-poll)",
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[PositionMonitor] Fast-poll HL price fetch failed: ${msg}`);
+      if (isWsConnected()) {
+        mids = getWsMids();
+      } else {
+        try {
+          const sdk = getClient();
+          mids = await withTimeout(
+            sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+            API_PRICE_TIMEOUT_MS, "HL getAllMids (fast-poll)",
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[PositionMonitor] Fast-poll HL price fetch failed: ${msg}`);
+        }
       }
     }
 
