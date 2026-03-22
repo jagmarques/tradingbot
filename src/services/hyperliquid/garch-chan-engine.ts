@@ -2,13 +2,16 @@
 import { ATR, ADX, EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { getClient, ensureConnected } from "./client.js";
+import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
 const LEVERAGE = 10;
-const POSITION_SIZE_USD = 20;
+const RISK_PCT = 4; // compound 4% of equity per trade
+const MIN_POSITION_USD = 10;
 const MAX_PER_DIRECTION = 4;
 const DAILY_LOSS_LIMIT = 15;
 const SL_PCT = 0.03;
@@ -103,7 +106,8 @@ async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<G
   const atr5Ago = atrVals[atrVals.length - 1 - VOL_FILTER_LOOKBACK];
   if (atrNow < VOL_FILTER_RATIO * atr5Ago) return null;
 
-  const entryPrice = cs[last].open;
+  // Use last close as best proxy for current market price (SL/TP must be relative to actual entry)
+  const entryPrice = cs[last].close;
   const direction = goLong ? "long" : "short";
   const stopLoss = direction === "long"
     ? entryPrice * (1 - SL_PCT)
@@ -120,7 +124,7 @@ async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<G
 
 export async function runGarchChanCycle(): Promise<number> {
   // Daily loss limit check
-  const dailyLoss = getDailyLossTotal("garch-chan", "paper");
+  const dailyLoss = getDailyLossTotal("garch-chan", "live");
   if (dailyLoss >= DAILY_LOSS_LIMIT) {
     console.log(`[GARCH-v2] Daily loss limit hit ($${dailyLoss.toFixed(2)} >= $${DAILY_LOSS_LIMIT}), skipping cycle`);
     return 0;
@@ -136,6 +140,19 @@ export async function runGarchChanCycle(): Promise<number> {
   const openPositions = getOpenQuantPositions();
   const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
   const openPairs = new Set(myPositions.map(p => p.pair));
+
+  // Fetch live equity ONCE for compound sizing
+  let equity = 200; // fallback
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const env = loadEnv();
+    const addr = env.HYPERLIQUID_WALLET_ADDRESS ?? "";
+    const spotState = await sdk.info.spot.getSpotClearinghouseState(addr);
+    const usdcBal = spotState.balances.find((b: { coin: string; total: string }) => b.coin === "USDC" || b.coin === "USDC-SPOT");
+    if (usdcBal) equity = parseFloat(usdcBal.total);
+  } catch { /* use fallback */ }
+  const compoundSize = Math.max(MIN_POSITION_USD, Math.floor(equity * RISK_PCT / 30));
 
   let executed = 0;
 
@@ -154,9 +171,11 @@ export async function runGarchChanCycle(): Promise<number> {
       // Skip if SL cooldown for this specific direction
       if (isInStopLossCooldown(pair, signal.direction, TRADE_TYPE)) continue;
 
+      console.log(`[GARCH-v2] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${RISK_PCT}%)`);
+
       const position = await openPosition(
-        pair, signal.direction, POSITION_SIZE_USD, LEVERAGE,
-        signal.stopLoss, signal.takeProfit, "trending", TRADE_TYPE, undefined, signal.entryPrice, true,
+        pair, signal.direction, compoundSize, LEVERAGE,
+        signal.stopLoss, signal.takeProfit, "trending", TRADE_TYPE, undefined, signal.entryPrice,
       );
       if (position) {
         executed++;
