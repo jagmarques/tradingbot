@@ -12,7 +12,7 @@ const TRADE_TYPE = "garch-chan" as const;
 const LEVERAGE = 10;
 const RISK_PCT = 4; // compound 4% of equity per trade
 const MIN_POSITION_USD = 10;
-const MAX_PER_DIRECTION = 4;
+const MAX_PER_DIRECTION = 6;
 const DAILY_LOSS_LIMIT = 15;
 const SL_PCT = 0.03;
 const TP_PCT = 0.10;
@@ -28,7 +28,7 @@ const ATR_PERIOD = 14;
 const VOL_FILTER_LOOKBACK = 5;
 const VOL_FILTER_RATIO = 0.9;
 
-const GARCH_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI"];
+const GARCH_TRADING_PAIRS = ["OP", "ARB", "LDO", "TRUMP", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "SOL", "BNB", "kSHIB", "TIA", "NEAR", "kBONK", "ONDO", "HYPE"];
 
 interface GarchSignal {
   pair: string;
