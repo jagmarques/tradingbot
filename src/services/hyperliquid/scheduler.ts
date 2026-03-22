@@ -1,6 +1,5 @@
 import { isQuantKilled } from "./risk-manager.js";
-import { runGarchChanCycle } from "./garch-chan-engine.js";
-import { runBtcHedgeCycle } from "./btc-hedge.js";
+// import { runGarchChanCycle } from "./garch-chan-engine.js"; // PAUSED: 19-pair and 4-pair backtests both negative
 import { runBtcMrCycle } from "./btc-mr-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -28,17 +27,14 @@ export async function runDirectionalCycle(): Promise<void> {
   try {
     if (isQuantKilled()) return;
 
-    let gr = 0;
-    try { gr = await runGarchChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] GARCH error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    try { await runBtcHedgeCycle(); }
-    catch (err) { console.error(`[QuantScheduler] BTC-Hedge error: ${err instanceof Error ? err.message : String(err)}`); }
+    // PAUSED: 19-pair and 4-pair backtests both negative - GARCH-chan not running
+    // try { gr = await runGarchChanCycle(); }
+    // catch (err) { console.error(`[QuantScheduler] GARCH error: ${err instanceof Error ? err.message : String(err)}`); }
 
     try { await runBtcMrCycle(); }
     catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: GARCH ${gr}`);
+    console.log(`[QuantScheduler] Cycle: GARCH paused, BTC-MR running`);
   } finally { cycleRunning = false; }
 }
 
