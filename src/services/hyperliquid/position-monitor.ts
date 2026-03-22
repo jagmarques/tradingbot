@@ -15,13 +15,12 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-chan": 8 * 60 * 60 * 1000,   // 8h - cut losers that drag
+  "garch-chan": 48 * 60 * 60 * 1000,  // 48h max hold
   "btc-hedge": 24 * 60 * 60 * 1000,  // 24h safety net
   "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "garch-chan": { activation: 5, distance: 2 }, // 5% activation (was 8%)
   "btc-mr": { activation: 8, distance: 3 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
@@ -293,7 +292,7 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Skip near-SL for engines with tight stops
+      // Skip near-SL for engines with tight fixed stops
       const skipNearSl = position.tradeType === "garch-chan";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
@@ -482,7 +481,7 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Skip near-SL for Chandelier engines
+      // Skip near-SL for engines with tight fixed stops
       const skipNearSlFast = position.tradeType === "garch-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)

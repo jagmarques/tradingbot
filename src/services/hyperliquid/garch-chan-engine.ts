@@ -1,54 +1,48 @@
-// GARCH-inspired volatility-adjusted momentum entry + Chandelier m6 exit
-import { ATR } from "technicalindicators";
+// GARCH-inspired volatility-adjusted momentum entry - v2 optimized parameters
+import { ATR, ADX, EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
-import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { getClient, ensureConnected } from "./client.js";
-import { QUANT_FIXED_POSITION_SIZE_USD, QUANT_TRADING_PAIRS } from "../../config/constants.js";
-import { saveQuantPosition } from "../database/quant.js";
-import { loadEnv } from "../../config/env.js";
+import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { getDailyLossTotal } from "./risk-manager.js";
+import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
-const LEVERAGE = parseInt(process.env.LEVERAGE!);
+const LEVERAGE = 10;
+const POSITION_SIZE_USD = 20;
+const MAX_PER_DIRECTION = 4;
+const DAILY_LOSS_LIMIT = 15;
+const SL_PCT = 0.03;
+const TP_PCT = 0.10;
+const GARCH_LOOKBACK = 3;
+const GARCH_VOL_WINDOW = 20;
+const Z_LONG_THRESHOLD = 4.5;
+const Z_SHORT_THRESHOLD = -3.0;
+const ADX_LONG_MIN = 30;
+const ADX_SHORT_MIN = 25;
+const EMA_FAST = 9;
+const EMA_SLOW = 21;
 const ATR_PERIOD = 14;
-const CHAN_MULT = 6;
-const MAX_HOLD_MS = 48 * 60 * 60 * 1000;
-const GARCH_LOOKBACK = 3; // momentum lookback
-const GARCH_VOL_WINDOW = 20; // rolling stddev window
-const GARCH_THRESHOLD = 0.7; // z-score threshold
+const VOL_FILTER_LOOKBACK = 5;
+const VOL_FILTER_RATIO = 0.9;
 
-function computeAtr(candles: OhlcvCandle[]): number[] {
-  return ATR.calculate({
-    period: ATR_PERIOD,
-    high: candles.map(c => c.high),
-    low: candles.map(c => c.low),
-    close: candles.map(c => c.close),
-  });
-}
+const GARCH_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI"];
 
 interface GarchSignal {
   pair: string;
   direction: "long" | "short";
   entryPrice: number;
   stopLoss: number;
+  takeProfit: number;
 }
 
-async function analyzeSignal(pair: string): Promise<GarchSignal | null> {
+async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<GarchSignal | null> {
   const cs = await fetchCandles(pair, "1h", 80);
   if (cs.length < 30) return null;
 
-  const atrVals = computeAtr(cs);
-  if (atrVals.length < 2) return null;
-
   const last = cs.length - 1;
-  const atrOff = cs.length - atrVals.length;
-  const atr = atrVals[last - 1 - atrOff];
-  if (atr === undefined) return null;
 
-  // Momentum: return over GARCH_LOOKBACK bars
+  // Z-score: momentum / rolling volatility
   const mom = cs[last - 1].close / cs[last - 1 - GARCH_LOOKBACK].close - 1;
-
-  // Rolling volatility: stddev of 1-bar returns over GARCH_VOL_WINDOW
   const returns: number[] = [];
   for (let i = last - GARCH_VOL_WINDOW; i < last; i++) {
     if (i < 1) continue;
@@ -57,127 +51,120 @@ async function analyzeSignal(pair: string): Promise<GarchSignal | null> {
   if (returns.length < 10) return null;
   const vol = Math.sqrt(returns.reduce((s, r) => s + r * r, 0) / returns.length);
   if (vol === 0) return null;
-
-  // Z-score: momentum / volatility
   const z = mom / vol;
 
-  const goLong = z > GARCH_THRESHOLD;
-  const goShort = z < -GARCH_THRESHOLD;
-
+  const goLong = z > Z_LONG_THRESHOLD;
+  const goShort = z < Z_SHORT_THRESHOLD;
   if (!goLong && !goShort) return null;
 
+  // ADX filter
+  const adxInput = {
+    period: 14,
+    high: cs.map(c => c.high),
+    low: cs.map(c => c.low),
+    close: cs.map(c => c.close),
+  };
+  const adxVals = ADX.calculate(adxInput);
+  if (adxVals.length === 0) return null;
+  const adxNow = adxVals[adxVals.length - 1].adx;
+  if (goLong && adxNow < ADX_LONG_MIN) return null;
+  if (goShort && adxNow < ADX_SHORT_MIN) return null;
+
+  // EMA 9/21 pair trend
+  const closes = cs.map(c => c.close);
+  const emaFastVals = EMA.calculate({ period: EMA_FAST, values: closes });
+  const emaSlowVals = EMA.calculate({ period: EMA_SLOW, values: closes });
+  if (emaFastVals.length === 0 || emaSlowVals.length === 0) return null;
+  const emaFastNow = emaFastVals[emaFastVals.length - 1];
+  const emaSlowNow = emaSlowVals[emaSlowVals.length - 1];
+  if (goLong && emaFastNow <= emaSlowNow) return null;
+  if (goShort && emaFastNow >= emaSlowNow) return null;
+
+  // BTC EMA 9/21 trend confirmation
+  const btcCloses = btcCandles.map(c => c.close);
+  const btcEmaFast = EMA.calculate({ period: EMA_FAST, values: btcCloses });
+  const btcEmaSlow = EMA.calculate({ period: EMA_SLOW, values: btcCloses });
+  if (btcEmaFast.length === 0 || btcEmaSlow.length === 0) return null;
+  const btcEmaFastNow = btcEmaFast[btcEmaFast.length - 1];
+  const btcEmaSlowNow = btcEmaSlow[btcEmaSlow.length - 1];
+  const btcTrend = btcEmaFastNow > btcEmaSlowNow ? "long" : "short";
+  if (goLong && btcTrend !== "long") return null;
+  if (goShort && btcTrend !== "short") return null;
+
+  // Vol filter: skip when current ATR < 90% of ATR 5 bars ago
+  const atrVals = ATR.calculate({
+    period: ATR_PERIOD,
+    high: cs.map(c => c.high),
+    low: cs.map(c => c.low),
+    close: cs.map(c => c.close),
+  });
+  if (atrVals.length < VOL_FILTER_LOOKBACK + 1) return null;
+  const atrNow = atrVals[atrVals.length - 1];
+  const atr5Ago = atrVals[atrVals.length - 1 - VOL_FILTER_LOOKBACK];
+  if (atrNow < VOL_FILTER_RATIO * atr5Ago) return null;
+
   const entryPrice = cs[last].open;
+  const direction = goLong ? "long" : "short";
+  const stopLoss = direction === "long"
+    ? entryPrice * (1 - SL_PCT)
+    : entryPrice * (1 + SL_PCT);
+  const takeProfit = direction === "long"
+    ? entryPrice * (1 + TP_PCT)
+    : entryPrice * (1 - TP_PCT);
 
-  const MIN_SL_DIST_PCT = 0.01; // skip if stop < 1% from entry
+  const emaDir = emaFastNow > emaSlowNow ? "up" : "down";
+  console.log(`[GARCH-v2] ${pair} ${direction} z=${z.toFixed(2)} adx=${adxNow.toFixed(0)} ema=${emaDir} btc=${btcTrend}`);
 
-  if (goLong) {
-    const hh = Math.max(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.high));
-    const sl = hh - CHAN_MULT * atr;
-    if (sl >= entryPrice) return null;
-    if ((entryPrice - sl) / entryPrice < MIN_SL_DIST_PCT) return null;
-    return { pair, direction: "long", entryPrice, stopLoss: sl };
-  }
-
-  if (goShort) {
-    const ll = Math.min(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.low));
-    const sl = ll + CHAN_MULT * atr;
-    if (sl <= entryPrice) return null;
-    if ((sl - entryPrice) / entryPrice < MIN_SL_DIST_PCT) return null;
-    return { pair, direction: "short", entryPrice, stopLoss: sl };
-  }
-
-  return null;
-}
-
-async function updateChanStops(): Promise<void> {
-  const positions = getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE);
-  for (const pos of positions) {
-    try {
-      const cs = await fetchCandles(pos.pair, "1h", 80);
-      if (cs.length < 30) continue;
-      const atrVals = computeAtr(cs);
-      if (atrVals.length < 1) continue;
-      const last = cs.length - 1;
-      const atrOff = cs.length - atrVals.length;
-      const atr = atrVals[last - 1 - atrOff];
-      if (atr === undefined) continue;
-
-      if (pos.direction === "long") {
-        const hh = Math.max(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.high));
-        const newStop = hh - CHAN_MULT * atr;
-        if (pos.stopLoss && newStop > pos.stopLoss) { pos.stopLoss = newStop; saveQuantPosition(pos); }
-      } else {
-        const ll = Math.min(...cs.slice(Math.max(0, last - ATR_PERIOD), last).map(c => c.low));
-        const newStop = ll + CHAN_MULT * atr;
-        if (pos.stopLoss && newStop < pos.stopLoss) { pos.stopLoss = newStop; saveQuantPosition(pos); }
-      }
-    } catch (err) {
-      console.error(`[GARCH] Stop update error ${pos.pair}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  return { pair, direction, entryPrice, stopLoss, takeProfit };
 }
 
 export async function runGarchChanCycle(): Promise<number> {
-  const openPositions = getOpenQuantPositions();
-  const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
-
-  for (const pos of myPositions) {
-    const holdMs = Date.now() - new Date(pos.openedAt).getTime();
-    if (holdMs >= MAX_HOLD_MS) {
-      console.log(`[GARCH] Max hold exit: ${pos.pair} ${pos.direction}`);
-      await closePosition(pos.id, "max-hold");
-    }
+  // Daily loss limit check
+  const dailyLoss = getDailyLossTotal("garch-chan", "paper");
+  if (dailyLoss >= DAILY_LOSS_LIMIT) {
+    console.log(`[GARCH-v2] Daily loss limit hit ($${dailyLoss.toFixed(2)} >= $${DAILY_LOSS_LIMIT}), skipping cycle`);
+    return 0;
   }
 
-  await updateChanStops();
+  // Fetch BTC candles once for trend confirmation
+  const btcCandles = await fetchCandles("BTC", "1h", 80);
+  if (btcCandles.length < 30) {
+    console.log("[GARCH-v2] Insufficient BTC candles, skipping cycle");
+    return 0;
+  }
 
-  const currentPositions = getOpenQuantPositions();
-  const openPairs = new Set(currentPositions.filter(p => p.tradeType === TRADE_TYPE).map(p => p.pair));
-
-  // Also check exchange positions to prevent duplicates after redeploy
-  try {
-    await ensureConnected();
-    const sdk = getClient();
-    const env = loadEnv();
-    const walletAddr = env.HYPERLIQUID_WALLET_ADDRESS ?? "";
-    if (!walletAddr) throw new Error("No wallet address");
-    const state = await sdk.info.perpetuals.getClearinghouseState(walletAddr, true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const ap of state.assetPositions as any[]) {
-      if (parseFloat(ap.position.szi) !== 0) {
-        openPairs.add(ap.position.coin.replace("-PERP", ""));
-      }
-    }
-  } catch { /* fallback to DB-only check */ }
+  const openPositions = getOpenQuantPositions();
+  const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
+  const openPairs = new Set(myPositions.map(p => p.pair));
 
   let executed = 0;
-  const MAX_PER_DIRECTION = 10;
 
-  for (const pair of QUANT_TRADING_PAIRS) {
+  for (const pair of GARCH_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
+    if (isInStopLossCooldown(pair, "long", TRADE_TYPE) && isInStopLossCooldown(pair, "short", TRADE_TYPE)) continue;
+
     try {
-      const signal = await analyzeSignal(pair);
+      const signal = await analyzeSignal(pair, btcCandles);
       if (!signal) continue;
 
-      // Cap positions per direction to limit correlated losses
-      const dirCount = currentPositions.filter(p => p.tradeType === TRADE_TYPE && p.direction === signal.direction).length;
+      // Cap positions per direction
+      const dirCount = myPositions.filter(p => p.direction === signal.direction).length;
       if (dirCount >= MAX_PER_DIRECTION) continue;
-      // TP at 1.8% price move (= 18% P&L at 10x leverage)
-      const tpPct = 0.015; // 1.5% price = 15% P&L at 10x
-      const tp = signal.direction === "long"
-        ? signal.entryPrice * (1 + tpPct)
-        : signal.entryPrice * (1 - tpPct);
+
+      // Skip if SL cooldown for this specific direction
+      if (isInStopLossCooldown(pair, signal.direction, TRADE_TYPE)) continue;
+
       const position = await openPosition(
-        pair, signal.direction, QUANT_FIXED_POSITION_SIZE_USD, LEVERAGE,
-        signal.stopLoss, tp, "trending", TRADE_TYPE, undefined, signal.entryPrice,
+        pair, signal.direction, POSITION_SIZE_USD, LEVERAGE,
+        signal.stopLoss, signal.takeProfit, "trending", TRADE_TYPE, undefined, signal.entryPrice, true,
       );
       if (position) {
         executed++;
         openPairs.add(pair);
-        console.log(`[GARCH] Opened ${pair} ${signal.direction} $${QUANT_FIXED_POSITION_SIZE_USD} @${signal.entryPrice.toFixed(2)} SL=${signal.stopLoss.toFixed(4)}`);
+        myPositions.push(position);
       }
     } catch (err) {
-      console.error(`[GARCH] Error ${pair}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[GARCH-v2] Error ${pair}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   return executed;

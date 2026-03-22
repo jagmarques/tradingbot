@@ -2076,7 +2076,7 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${openPositions.length} open | Live ${$(liveLoss)} Paper ${$(paperLoss)} / $${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
-  text += `GARCH-chan: PAUSED (backtest negative)\n`;
+  text += `GARCH v1: PAUSED | v2: PAPER (z4.5/3.0, 15 pairs, $20)\n`;
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
@@ -2140,7 +2140,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
     const typeTag =
-      pos.tradeType === "garch-chan" ? "[GR]" :
+      pos.tradeType === "garch-chan" ? "[G2]" :
+      pos.tradeType === "btc-mr" ? "[MR]" :
       "[??]";
     const exchTag = pos.exchange === "hyperliquid" ? "/HL" : pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2242,7 +2243,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
-    ["GR", "garch-chan"],
+    ["G2", "garch-chan"],
+    ["MR", "btc-mr"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");
