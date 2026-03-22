@@ -15,11 +15,14 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-chan": 8 * 60 * 60 * 1000, // 8h - cut losers that drag
+  "garch-chan": 8 * 60 * 60 * 1000,   // 8h - cut losers that drag
+  "btc-hedge": 24 * 60 * 60 * 1000,  // 24h safety net
+  "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "garch-chan": { activation: 5, distance: 2 }, // 5% activation (was 8%)
+  "btc-mr": { activation: 8, distance: 3 },
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
