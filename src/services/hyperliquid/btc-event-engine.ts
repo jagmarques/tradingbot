@@ -1,7 +1,8 @@
 // BTC event-driven momentum engine: detects 0.7% BTC 1h moves, opens alts
-// Audit task 339 honest numbers (292 days, 0.1% slippage, proper fees):
-//   Top5 TP7/SL7: WR 50%, $7.97/day, PF 1.86, Sharpe 5.47, MaxDD $115
-//   Risk: 4% per EVENT (not per position) - critical fix from audit
+// Task 340 SL sweep (292 days, 0.1% slippage, proper fees):
+//   SL3%/TP7% top10 cap8 +trend: WR 51%, $10.31/day, PF 1.74, Sharpe 4.75, MaxDD $231
+//   SL 3% at 10x = 30% margin loss per trade (safe vs old 7% = 70%)
+//   Risk: 4% per EVENT (not per position)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
@@ -18,17 +19,28 @@ const MAX_POSITION_USD = 500; // liquidity cap per position
 const EVENT_THRESHOLD = 0.007; // 0.7% BTC move
 const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1h
 const DAILY_CAP_PER_DIR = 10;
-const SL_PCT = 0.07; // 7%
+const SL_PCT = 0.03; // 3% (30% margin loss at 10x - safe)
 const TP_PCT = 0.07; // 7%
-const DAILY_LOSS_LIMIT = 15; // $15
-const MAX_PER_DIRECTION = 5; // top5 best risk-adjusted from audit
+const DAILY_LOSS_LIMIT = 25; // $25 (more positions now)
+const MAX_PER_DIRECTION = 8; // cap 8/dir from sweep winner
 
-// Top 5 reactive pairs (best risk-adjusted from task 339 audit)
-const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT"];
+// Top 10 reactive pairs (task 340 sweep winner)
+const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT", "NEAR", "ARB", "ENA", "WLD", "ADA"];
 
 // In-memory state
 const lastEventTs = new Map<string, number>(); // "long"|"short" -> timestamp
 const dailyEventCount = new Map<string, number>(); // "YYYY-MM-DD:long" -> count
+
+// EMA helper for trend filter
+function computeEmaFromCandles(closes: number[], period: number): number {
+  if (closes.length === 0) return 0;
+  const mult = 2 / (period + 1);
+  let ema = closes[0];
+  for (let i = 1; i < closes.length; i++) {
+    ema = (closes[i] - ema) * mult + ema;
+  }
+  return ema;
+}
 
 function getDayKey(): string {
   return new Date().toISOString().slice(0, 10);
@@ -63,6 +75,22 @@ export async function runBtcEventCycle(): Promise<number> {
   if (move < EVENT_THRESHOLD) return 0; // no event
 
   const direction: "long" | "short" = lastClosed.close > lastClosed.open ? "long" : "short";
+
+  // BTC EMA9/21 trend filter (task 340: +trend boosts PF from 1.48 to 1.61)
+  const btcTrendCandles = await fetchCandles("BTC", "1h", 30);
+  if (btcTrendCandles.length >= 21) {
+    const closes = btcTrendCandles.map(c => c.close);
+    const ema9 = computeEmaFromCandles(closes, 9);
+    const ema21 = computeEmaFromCandles(closes, 21);
+    if (direction === "long" && ema9 < ema21) {
+      console.log(`[BTC-Event] Trend filter: EMA9 < EMA21, skipping long`);
+      return 0;
+    }
+    if (direction === "short" && ema9 > ema21) {
+      console.log(`[BTC-Event] Trend filter: EMA9 > EMA21, skipping short`);
+      return 0;
+    }
+  }
 
   // Dedup check: skip if same direction event within dedup window
   const lastTs = lastEventTs.get(direction);
