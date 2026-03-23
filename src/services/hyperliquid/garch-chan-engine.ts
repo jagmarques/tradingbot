@@ -6,6 +6,7 @@ import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
+import { isTrumpCooldownActive } from "../trump-guard/index.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
@@ -123,6 +124,12 @@ async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<G
 }
 
 export async function runGarchChanCycle(): Promise<number> {
+  // Trump cooldown check
+  if (isTrumpCooldownActive()) {
+    console.log("[GARCH-v2] Trump cooldown active, skipping cycle");
+    return 0;
+  }
+
   // Daily loss limit check
   const dailyLoss = getDailyLossTotal("garch-chan", "live");
   if (dailyLoss >= DAILY_LOSS_LIMIT) {
