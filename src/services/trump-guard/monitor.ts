@@ -62,27 +62,46 @@ async function classifyAndAct(content: string): Promise<void> {
   }
 }
 
+// Keywords that indicate crypto-relevant news (filter out noise from CoinDesk/CoinTelegraph)
+const CRYPTO_KEYWORDS = /bitcoin|btc|crypto|ethereum|eth|regulation|sec |cftc|federal reserve|fomc|interest rate|tariff|executive order|ban|approve|etf|stablecoin|digital asset|trump|elon|musk|doge/i;
+
 function extractItems(xml: string): Array<{ guid: string; content: string }> {
   const items: Array<{ guid: string; content: string }> = [];
-  const guidRe = /<guid[^>]*>(.*?)<\/guid>/g;
-  const descRe = /<description><!\[CDATA\[(.*?)\]\]><\/description>/gs;
-
-  const guids: string[] = [];
-  let gm: RegExpExecArray | null;
-  while ((gm = guidRe.exec(xml)) !== null) {
-    guids.push(gm[1].trim());
-  }
-
-  const descs: string[] = [];
-  let dm: RegExpExecArray | null;
-  while ((dm = descRe.exec(xml)) !== null) {
-    descs.push(dm[1].trim());
-  }
-
-  for (let i = 0; i < guids.length; i++) {
-    items.push({ guid: guids[i], content: descs[i] ?? guids[i] });
+  // Match <item>...</item> blocks
+  const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
+  let im: RegExpExecArray | null;
+  while ((im = itemRe.exec(xml)) !== null) {
+    const block = im[1];
+    // Extract guid or link as unique ID
+    const guidMatch = block.match(/<guid[^>]*>(.*?)<\/guid>/);
+    const linkMatch = block.match(/<link[^>]*>(.*?)<\/link>/);
+    const guid = guidMatch?.[1]?.trim() || linkMatch?.[1]?.trim() || "";
+    if (!guid) continue;
+    // Extract content: try CDATA first, then plain description, then title
+    const cdataMatch = block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/);
+    const plainDescMatch = block.match(/<description>([\s\S]*?)<\/description>/);
+    const titleMatch = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+    const titleCdata = block.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/);
+    let content = cdataMatch?.[1] || plainDescMatch?.[1] || titleCdata?.[1] || titleMatch?.[1] || guid;
+    // Strip HTML tags
+    content = content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    items.push({ guid, content });
   }
   return items;
+}
+
+// Cap seenGuids at 5000 to prevent memory leak
+function trimSeen(): void {
+  if (seenGuids.size > 5000) {
+    const arr = [...seenGuids];
+    seenGuids.clear();
+    for (const g of arr.slice(-3000)) seenGuids.add(g);
+  }
+  if (seenUrls.size > 2000) {
+    const arr = [...seenUrls];
+    seenUrls.clear();
+    for (const u of arr.slice(-1000)) seenUrls.add(u);
+  }
 }
 
 async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Promise<void> {
@@ -101,9 +120,14 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
     for (const item of items) {
       if (seenGuids.has(item.guid)) continue;
       seenGuids.add(item.guid);
+      // Skip noise: only classify if content has crypto-relevant keywords
+      // Exception: Trump Truth Social and Fed/WhiteHouse always go through
+      const isCriticalFeed = feedName.includes("Trump") || feedName.includes("Fed") || feedName.includes("White House");
+      if (!isCriticalFeed && !CRYPTO_KEYWORDS.test(item.content)) continue;
       console.log(`[NewsGuard] ${feedName}: new post detected`);
       await classifyAndAct(item.content);
     }
+    trimSeen();
   } catch {
     // silent - feeds may occasionally timeout
   }

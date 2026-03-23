@@ -21,7 +21,7 @@ export async function classifyPost(content: string): Promise<"BULLISH" | "BEARIS
         messages: [
           {
             role: "user",
-            content: `Is this post by Donald Trump bullish or bearish for cryptocurrency prices? Answer ONLY one word: BULLISH, BEARISH, or NEUTRAL. Post: ${content}`,
+            content: `Is this news/statement bullish or bearish for cryptocurrency prices (Bitcoin, altcoins)? Consider: rate cuts and pro-crypto regulation are BULLISH, rate hikes and bans/crackdowns are BEARISH. Answer ONLY one word: BULLISH, BEARISH, or NEUTRAL. Content: ${content.slice(0, 500)}`,
           },
         ],
       }),
