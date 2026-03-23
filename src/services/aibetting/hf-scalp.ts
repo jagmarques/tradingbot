@@ -10,7 +10,8 @@
 import WebSocket from "ws";
 import { openPosition, closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
 
-const TRADE_TYPE = "hf-scalp" as const;
+// Dead code - engine is unused but file kept for reference
+const TRADE_TYPE = "hf-scalp" as unknown as import("../hyperliquid/types.js").TradeType;
 const LEVERAGE = 10;
 const SIZE_USD = 20;
 const SL_PCT = 0.005;   // 0.5% safety SL only (should close at window end first)

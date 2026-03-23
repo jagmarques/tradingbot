@@ -66,14 +66,13 @@ export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "garch-chan": "hyperliquid",
-  "btc-hedge": "hyperliquid",
   "btc-mr": "hyperliquid",
   "btc-event": "hyperliquid",
   "news-trade": "hyperliquid",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-chan"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-chan", "news-trade"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

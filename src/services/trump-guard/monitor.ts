@@ -46,17 +46,27 @@ async function classifyAndAct(content: string): Promise<void> {
   if (now - lastGroqCall < 3_000) return; // skip if called too recently
   lastGroqCall = now;
 
-  // Skip if cooldown already active (no need to classify more)
-  if (isTrumpCooldownActive()) return;
-
+  // Cooldown only blocks GARCH defense, not news classification
+  // We always classify so the news-trading engine gets events
   const preview = content.slice(0, 80);
   const verdict = await classifyPost(content);
 
   if (verdict === "NEUTRAL") return; // silent on neutral
 
-  // Emit news event for offensive news-trading engine
+  // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = verdict === "BULLISH" ? "long" : "short";
   lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview };
+
+  // Trigger news-trading immediately (dynamic import avoids circular dependency)
+  import("../hyperliquid/news-trading-engine.js").then(m => m.runNewsTradingCycle()).catch(err => {
+    console.error(`[TrumpGuard] News-trade error: ${err instanceof Error ? err.message : String(err)}`);
+  });
+
+  // Defense: only runs if not in cooldown (avoid closing the same direction twice)
+  if (isTrumpCooldownActive()) {
+    console.log(`[TrumpGuard] ${verdict} event emitted for news-trade, defense skipped (cooldown)`);
+    return;
+  }
 
   const closeDirection = verdict === "BULLISH" ? "short" : "long";
   console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> closing ${closeDirection}s`);
@@ -64,9 +74,9 @@ async function classifyAndAct(content: string): Promise<void> {
   cooldownUntil = Date.now() + COOLDOWN_MS;
   cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
 
-  // Close ALL live positions in the hurt direction (all engines, not just garch-chan)
+  // Close GARCH positions in hurt direction (not news-trade, it manages its own)
   const positions = getOpenQuantPositions();
-  const targets = positions.filter(p => p.direction === closeDirection && p.mode === "live");
+  const targets = positions.filter(p => p.direction === closeDirection && p.mode === "live" && p.tradeType === "garch-chan");
 
   for (const pos of targets) {
     try {
@@ -147,13 +157,14 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
 
     for (const item of items) {
       if (seenGuids.has(item.guid)) continue;
-      seenGuids.add(item.guid);
-      // Skip noise: only classify if content has crypto-relevant keywords
-      // Exception: Trump Truth Social and Fed/WhiteHouse always go through
       const isCriticalFeed = feedName.includes("Trump") || feedName.includes("Fed") || feedName.includes("White House");
-      if (!isCriticalFeed && !CRYPTO_KEYWORDS.test(item.content)) continue;
+      if (!isCriticalFeed && !CRYPTO_KEYWORDS.test(item.content)) {
+        seenGuids.add(item.guid); // safe to mark non-crypto as seen
+        continue;
+      }
       console.log(`[NewsGuard] ${feedName}: new post detected`);
       await classifyAndAct(item.content);
+      seenGuids.add(item.guid); // only mark as seen AFTER classification
     }
     trimSeen();
   } catch {
@@ -206,9 +217,9 @@ async function pollTavily(): Promise<void> {
     for (const r of results) {
       const url = r.url ?? "";
       if (!url || seenUrls.has(url)) continue;
-      seenUrls.add(url);
       const content = r.content ?? r.title ?? url;
       await classifyAndAct(content);
+      seenUrls.add(url); // only mark as seen AFTER classification
     }
   } catch (err) {
     console.log(`[TrumpGuard] Tavily error: ${err instanceof Error ? err.message : String(err)}`);

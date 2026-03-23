@@ -68,7 +68,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "dtf-mr" | "psar" | "ha-psar" | "ift-rsi" | "zl-macd" | "ha-chan" | "ema3-chan" | "accel-chan" | "zlema-chan" | "elder-chan" | "garch-chan" | "hf-scalp" | "btc-hedge" | "btc-mr" | "btc-event" | "news-trade";
+export type TradeType = "directional" | "funding" | "garch-chan" | "btc-mr" | "btc-event" | "news-trade";
 
 export type MarketRegime = "trending" | "ranging" | "volatile";
 

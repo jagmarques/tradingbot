@@ -16,7 +16,6 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-chan": 48 * 60 * 60 * 1000,  // 48h max hold
-  "btc-hedge": 24 * 60 * 60 * 1000,  // 24h safety net
   "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
   "btc-event": 24 * 60 * 60 * 1000, // 24h max hold
   "news-trade": 24 * 60 * 60 * 1000, // 24h max hold
@@ -161,7 +160,9 @@ async function checkPositionStops(): Promise<void> {
 
     let orphanClosed = false;
     for (const position of positions) {
-      if (position.mode === "live" && !activePairs.has(position.pair)) {
+      // Skip orphan check for engines with their own pair lists
+      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event";
+      if (!hasOwnPairList && position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
         await tryClose(position, "orphan-pair-removed", true);
@@ -267,13 +268,12 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Stale exit for news-trade: close if hasn't moved 0.3% after 1 hour
+      // Stale exit for news-trade: close if move in our direction is less than 0.3% after 1 hour
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
         if (staleHoldMs >= 60 * 60 * 1000) {
-          const movePct = Math.abs(pricePct);
-          if (movePct < 0.003) {
-            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, only ${(movePct * 100).toFixed(2)}% move`);
+          if (pricePct < 0.003) {
+            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, only ${(pricePct * 100).toFixed(2)}% move`);
             await tryClose(position, "stale-exit");
             continue;
           }
@@ -499,13 +499,12 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Stale exit for news-trade (fast poll): close if hasn't moved 0.3% after 1 hour
+      // Stale exit for news-trade (fast poll): close if move in our direction is less than 0.3% after 1 hour
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
         if (staleHoldMs >= 60 * 60 * 1000) {
-          const movePct = Math.abs(pricePct);
-          if (movePct < 0.003) {
-            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} held 1h, only ${(movePct * 100).toFixed(2)}% move`);
+          if (pricePct < 0.003) {
+            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} held 1h, only ${(pricePct * 100).toFixed(2)}% move`);
             await tryClose(position, "stale-exit");
             continue;
           }

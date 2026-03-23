@@ -5,7 +5,7 @@ import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
-import { getDailyLossTotal } from "./risk-manager.js";
+import { getDailyLossTotal, isQuantKilled } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { getLastNewsEvent } from "../trump-guard/monitor.js";
 
@@ -26,6 +26,8 @@ const NEWS_TRADING_PAIRS = [
 let lastProcessedEventTs = 0;
 
 export async function runNewsTradingCycle(): Promise<number> {
+  if (isQuantKilled()) return 0;
+
   // Daily loss limit check
   const dailyLoss = getDailyLossTotal("news-trade", "live");
   if (dailyLoss >= DAILY_LOSS_LIMIT) {
@@ -102,7 +104,9 @@ export async function runNewsTradingCycle(): Promise<number> {
     if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
     try {
-      // Fetch latest price
+      // Small delay between orders to avoid API rate limits
+      if (executed > 0) await new Promise(r => setTimeout(r, 200));
+
       const altCandles = await fetchCandles(pair, "1h", 1);
       if (altCandles.length === 0) continue;
       const entryPrice = altCandles[altCandles.length - 1].close;

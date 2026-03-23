@@ -1,6 +1,7 @@
 import { getOpenQuantPositions, openPosition, closePosition } from "./executor.js";
 
-const TRADE_TYPE = "btc-hedge" as const;
+// Dead code - engine is unused but file kept for reference
+const TRADE_TYPE = "btc-hedge" as unknown as import("./types.js").TradeType;
 const HEDGE_RATIO = 0.7;
 const IMBALANCE_THRESHOLD_USD = 50;
 const LEVERAGE = 10;
