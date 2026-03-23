@@ -17,7 +17,6 @@ const RSS_FEEDS = [
 
 const TAVILY_INTERVAL_MS = 90_000;
 const COOLDOWN_MS = 30 * 60 * 1000;
-const TRADE_TYPE = "garch-chan";
 
 let cooldownUntil = 0;
 let cooldownBlockedDir: "long" | "short" | null = null;
@@ -55,8 +54,9 @@ async function classifyAndAct(content: string): Promise<void> {
   cooldownUntil = Date.now() + COOLDOWN_MS;
   cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
 
+  // Close ALL live positions in the hurt direction (all engines, not just garch-chan)
   const positions = getOpenQuantPositions();
-  const targets = positions.filter(p => p.tradeType === TRADE_TYPE && p.direction === closeDirection);
+  const targets = positions.filter(p => p.direction === closeDirection && p.mode === "live");
 
   for (const pos of targets) {
     try {
