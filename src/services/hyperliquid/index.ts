@@ -8,7 +8,8 @@ import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
-import { startHlPriceWs, stopHlPriceWs } from "./ws-prices.js";
+import { startHlPriceWs, stopHlPriceWs, onBtcSpike } from "./ws-prices.js";
+import { closePosition, getOpenQuantPositions } from "./executor.js";
 
 export function initQuant(): number {
   const env = loadEnv();
@@ -50,6 +51,18 @@ export function initQuant(): number {
 
   seedDailyLossFromDb();
   startHlPriceWs();
+
+  // Emergency close all garch-chan shorts on BTC spike (>1.5% in 5min)
+  onBtcSpike(() => {
+    const positions = getOpenQuantPositions();
+    const shorts = positions.filter(p => p.tradeType === "garch-chan" && p.direction === "short" && p.mode === "live");
+    if (shorts.length === 0) return;
+    console.log(`[SPIKE] Emergency closing ${shorts.length} garch-chan shorts`);
+    for (const pos of shorts) {
+      void closePosition(pos.id, "btc-spike-protection");
+    }
+  });
+
   startPositionMonitor();
   startQuantScheduler();
   const openPositions = loadOpenQuantPositions();
