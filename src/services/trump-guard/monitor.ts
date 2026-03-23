@@ -2,14 +2,25 @@ import { loadEnv } from "../../config/env.js";
 import { classifyPost } from "./classifier.js";
 import { closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
 
-const RSS_URL = "https://trumpstruth.org/feed";
-const RSS_INTERVAL_MS = 3_000;
+// All RSS feeds to monitor (polled every few seconds)
+const RSS_FEEDS = [
+  { name: "Trump Truth Social", url: "https://trumpstruth.org/feed", intervalMs: 3_000 },
+  { name: "Fed FOMC", url: "https://www.federalreserve.gov/feeds/press_monetary.xml", intervalMs: 5_000 },
+  { name: "Fed All Press", url: "https://www.federalreserve.gov/feeds/press_all.xml", intervalMs: 10_000 },
+  { name: "Powell Speeches", url: "https://www.federalreserve.gov/feeds/s_t_powell.xml", intervalMs: 10_000 },
+  { name: "White House", url: "https://www.whitehouse.gov/news/feed/", intervalMs: 10_000 },
+  { name: "CFTC Enforcement", url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml", intervalMs: 30_000 },
+  { name: "CFTC General", url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", intervalMs: 30_000 },
+  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", intervalMs: 15_000 },
+  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", intervalMs: 15_000 },
+];
+
 const TAVILY_INTERVAL_MS = 90_000;
 const COOLDOWN_MS = 30 * 60 * 1000;
 const TRADE_TYPE = "garch-chan";
 
 let cooldownUntil = 0;
-let rssInterval: ReturnType<typeof setInterval> | null = null;
+const feedIntervals: ReturnType<typeof setInterval>[] = [];
 let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 
 const seenGuids = new Set<string>();
@@ -74,32 +85,27 @@ function extractItems(xml: string): Array<{ guid: string; content: string }> {
   return items;
 }
 
-async function pollRss(isInit: boolean): Promise<void> {
+async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Promise<void> {
   try {
-    const res = await fetch(RSS_URL, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) {
-      console.log(`[TrumpGuard] RSS fetch error ${res.status}`);
-      return;
-    }
+    const res = await fetch(feedUrl, { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return; // silent on errors to avoid log spam from many feeds
     const xml = await res.text();
     const items = extractItems(xml);
 
     if (isInit) {
-      // Seed seen guids without triggering actions
-      for (const item of items) {
-        seenGuids.add(item.guid);
-      }
-      console.log(`[TrumpGuard] RSS initialized, seeded ${items.length} existing posts`);
+      for (const item of items) seenGuids.add(item.guid);
+      console.log(`[NewsGuard] ${feedName}: seeded ${items.length} posts`);
       return;
     }
 
     for (const item of items) {
       if (seenGuids.has(item.guid)) continue;
       seenGuids.add(item.guid);
+      console.log(`[NewsGuard] ${feedName}: new post detected`);
       await classifyAndAct(item.content);
     }
-  } catch (err) {
-    console.log(`[TrumpGuard] RSS error: ${err instanceof Error ? err.message : String(err)}`);
+  } catch {
+    // silent - feeds may occasionally timeout
   }
 }
 
@@ -158,16 +164,19 @@ async function pollTavily(): Promise<void> {
 }
 
 export function startTrumpGuard(): void {
-  console.log("[TrumpGuard] Starting RSS + Tavily monitoring");
+  console.log(`[NewsGuard] Starting ${RSS_FEEDS.length} RSS feeds + Tavily monitoring`);
 
-  // Seed initial state, then begin polling
-  void pollRss(true).then(() => {
-    rssInterval = setInterval(() => {
-      void pollRss(false);
-    }, RSS_INTERVAL_MS);
-  });
+  // Init all feeds: seed existing posts, then start polling
+  for (const feed of RSS_FEEDS) {
+    void pollRss(feed.name, feed.url, true).then(() => {
+      const interval = setInterval(() => {
+        void pollRss(feed.name, feed.url, false);
+      }, feed.intervalMs);
+      feedIntervals.push(interval);
+    });
+  }
 
-  // Tavily: first run immediately (no init seed needed, dedup by URL), then every 90s
+  // Tavily: rotating queries every 90s
   void pollTavily();
   tavilyInterval = setInterval(() => {
     void pollTavily();
@@ -175,13 +184,11 @@ export function startTrumpGuard(): void {
 }
 
 export function stopTrumpGuard(): void {
-  if (rssInterval) {
-    clearInterval(rssInterval);
-    rssInterval = null;
-  }
+  for (const interval of feedIntervals) clearInterval(interval);
+  feedIntervals.length = 0;
   if (tavilyInterval) {
     clearInterval(tavilyInterval);
     tavilyInterval = null;
   }
-  console.log("[TrumpGuard] Stopped");
+  console.log("[NewsGuard] Stopped");
 }
