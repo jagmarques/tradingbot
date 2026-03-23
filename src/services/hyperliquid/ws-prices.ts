@@ -56,7 +56,6 @@ function connect(): void {
             const price = parseFloat(priceStr);
             if (isFinite(price) && price > 0) {
               midsCache.set(coin, price);
-              if (coin === "BTC") checkBtcSpike(price);
             }
           }
         }
@@ -100,35 +99,6 @@ export function stopHlPriceWs(): void {
   }
   midsCache.clear();
   console.log("[HlPriceWs] Stopped");
-}
-
-// BTC spike detection - auto-close shorts on sudden pump
-const BTC_PRICE_HISTORY: { t: number; p: number }[] = [];
-const SPIKE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-const SPIKE_THRESHOLD_PCT = 1.5; // 1.5% move in 5 min = spike
-let spikeCallbacks: (() => void)[] = [];
-let lastSpikeAlert = 0;
-
-function checkBtcSpike(price: number): void {
-  const now = Date.now();
-  BTC_PRICE_HISTORY.push({ t: now, p: price });
-  // Trim old entries
-  while (BTC_PRICE_HISTORY.length > 0 && now - BTC_PRICE_HISTORY[0].t > SPIKE_WINDOW_MS) {
-    BTC_PRICE_HISTORY.shift();
-  }
-  if (BTC_PRICE_HISTORY.length < 2) return;
-  const oldest = BTC_PRICE_HISTORY[0].p;
-  const changePct = (price - oldest) / oldest * 100;
-  // Pump detection (positive spike hurts shorts)
-  if (changePct > SPIKE_THRESHOLD_PCT && now - lastSpikeAlert > 60_000) {
-    lastSpikeAlert = now;
-    console.log(`[SPIKE] BTC pumped ${changePct.toFixed(2)}% in ${((now - BTC_PRICE_HISTORY[0].t) / 1000).toFixed(0)}s! Triggering emergency close.`);
-    for (const cb of spikeCallbacks) { try { cb(); } catch {} }
-  }
-}
-
-export function onBtcSpike(callback: () => void): void {
-  spikeCallbacks.push(callback);
 }
 
 export function getWsMids(): Record<string, string> {
