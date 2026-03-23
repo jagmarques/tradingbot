@@ -72,8 +72,9 @@ async function classifyAndAct(content: string): Promise<void> {
     : `Closed ${targets.length} ${closeDirection}(s)`;
   console.log(`[TrumpGuard] ${action}, cooldown 30min`);
 
+  const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   void sendMessage(
-    `<b>NEWS ALERT</b>\n` +
+    `<b>NEWS ALERT</b> ${nlTime}\n` +
     `${verdict}: ${preview}\n` +
     `Action: ${action}\n` +
     `Cooldown: 30min (${closeDirection}s blocked)`
