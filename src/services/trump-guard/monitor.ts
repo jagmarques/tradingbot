@@ -103,10 +103,24 @@ async function pollRss(isInit: boolean): Promise<void> {
   }
 }
 
+// Rotate through multiple queries covering key people who move crypto
+const TAVILY_QUERIES = [
+  "Trump crypto Bitcoin latest statement",
+  "Elon Musk Bitcoin Dogecoin crypto tweet",
+  "SEC crypto regulation breaking news",
+  "Federal Reserve interest rate crypto",
+  "FOMC decision Bitcoin impact",
+  "US government crypto executive order",
+];
+let tavilyQueryIndex = 0;
+
 async function pollTavily(): Promise<void> {
   const env = loadEnv();
   const apiKey = env.TAVILY_API_KEY_1;
   if (!apiKey) return;
+
+  const query = TAVILY_QUERIES[tavilyQueryIndex % TAVILY_QUERIES.length];
+  tavilyQueryIndex++;
 
   try {
     const res = await fetch("https://api.tavily.com/search", {
@@ -115,7 +129,7 @@ async function pollTavily(): Promise<void> {
       signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({
         api_key: apiKey,
-        query: "Trump crypto Bitcoin latest",
+        query,
         search_depth: "basic",
         topic: "news",
         time_range: "d",
