@@ -124,12 +124,6 @@ async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<G
 }
 
 export async function runGarchChanCycle(): Promise<number> {
-  // Trump cooldown check
-  if (isTrumpCooldownActive()) {
-    console.log("[GARCH-v2] Trump cooldown active, skipping cycle");
-    return 0;
-  }
-
   // Daily loss limit check
   const dailyLoss = getDailyLossTotal("garch-chan", "live");
   if (dailyLoss >= DAILY_LOSS_LIMIT) {
@@ -171,11 +165,12 @@ export async function runGarchChanCycle(): Promise<number> {
       const signal = await analyzeSignal(pair, btcCandles);
       if (!signal) continue;
 
-      // Cap positions per direction
+      // News cooldown blocks only the hurt direction
+      if (isTrumpCooldownActive(signal.direction)) continue;
+
       const dirCount = myPositions.filter(p => p.direction === signal.direction).length;
       if (dirCount >= MAX_PER_DIRECTION) continue;
 
-      // Skip if SL cooldown for this specific direction
       if (isInStopLossCooldown(pair, signal.direction, TRADE_TYPE)) continue;
 
       console.log(`[GARCH-v2] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${RISK_PCT}%)`);

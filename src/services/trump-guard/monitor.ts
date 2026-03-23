@@ -20,14 +20,17 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 const TRADE_TYPE = "garch-chan";
 
 let cooldownUntil = 0;
+let cooldownBlockedDir: "long" | "short" | null = null;
 const feedIntervals: ReturnType<typeof setInterval>[] = [];
 let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 
 const seenGuids = new Set<string>();
 const seenUrls = new Set<string>();
 
-export function isTrumpCooldownActive(): boolean {
-  return Date.now() < cooldownUntil;
+export function isTrumpCooldownActive(direction?: "long" | "short"): boolean {
+  if (Date.now() >= cooldownUntil) return false;
+  if (!direction || !cooldownBlockedDir) return true;
+  return direction === cooldownBlockedDir;
 }
 
 // Rate limit Groq calls (max 1 per 3 seconds)
@@ -50,6 +53,7 @@ async function classifyAndAct(content: string): Promise<void> {
   console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> closing ${closeDirection}s`);
 
   cooldownUntil = Date.now() + COOLDOWN_MS;
+  cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
 
   const positions = getOpenQuantPositions();
   const targets = positions.filter(p => p.tradeType === TRADE_TYPE && p.direction === closeDirection);
