@@ -1,4 +1,6 @@
 // BTC event-driven momentum engine: detects 0.7% BTC 1h moves, opens alts
+// Optimized params from task 338 deep backtest (292 days, 3720 trades):
+//   TP7/SL7: WR 53%, $14.96/day, PF 2.00, Sharpe 7.11, MaxDD $163
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
@@ -14,10 +16,10 @@ const MIN_POSITION_USD = 10;
 const EVENT_THRESHOLD = 0.007; // 0.7% BTC move
 const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1h
 const DAILY_CAP_PER_DIR = 10;
-const SL_PCT = 0.05; // 5%
-const TP_PCT = 0.05; // 5%
+const SL_PCT = 0.07; // 7% (was 5%, optimized task 338)
+const TP_PCT = 0.07; // 7% (was 5%, optimized task 338)
 const DAILY_LOSS_LIMIT = 15; // $15
-const MAX_PER_DIRECTION = 10;
+const MAX_PER_DIRECTION = 6; // (was 10, optimized task 338 for risk-adjusted)
 
 // Proven top10 reactive pairs from research
 const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT", "NEAR", "ARB", "ENA", "WLD", "ADA"];
@@ -98,7 +100,8 @@ export async function runBtcEventCycle(): Promise<number> {
     const usdcBal = spotState.balances.find((b: { coin: string; total: string }) => b.coin === "USDC" || b.coin === "USDC-SPOT");
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
-  const compoundSize = Math.max(MIN_POSITION_USD, Math.floor(equity * RISK_PCT / 30));
+  // Risk 4% equity per trade: size = equity * riskPct / (SL * leverage)
+  const compoundSize = Math.max(MIN_POSITION_USD, Math.floor(equity * (RISK_PCT / 100) / (SL_PCT * LEVERAGE)));
 
   let executed = 0;
 
