@@ -11,6 +11,7 @@ import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
 import { isLiquidEnough, type CLOBMetrics } from "./clob.js";
 import { isLiveMode } from "../../config/env.js";
+import { getDb, isDbInitialized } from "../database/db.js";
 
 // ---- Drawdown Manager ----
 // Tracks cumulative daily P&L. Halves Kelly at 10% DD, quarters at 15%, stops at 20%.
@@ -212,6 +213,43 @@ function limitCorrelatedBets(
   return result;
 }
 
+function saveNoguardPosition(
+  market: PolymarketEvent,
+  decision: Pick<BetDecision, "side" | "marketPrice" | "aiProbability" | "confidence" | "expectedValue" | "recommendedSize" | "tokenId">
+): void {
+  if (!isDbInitialized()) return;
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const id = `noguard_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    db.prepare(`
+      INSERT OR IGNORE INTO aibetting_noguard_positions (
+        id, market_id, market_title, market_end_date, token_id, side,
+        entry_price, size, ai_probability, confidence, expected_value,
+        status, entry_timestamp, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+    `).run(
+      id,
+      market.conditionId,
+      market.title,
+      market.endDate ?? null,
+      decision.tokenId,
+      decision.side,
+      decision.marketPrice,
+      decision.recommendedSize,
+      decision.aiProbability,
+      decision.confidence,
+      decision.expectedValue,
+      now,
+      now,
+      now
+    );
+    console.log(`[Evaluator] Noguard shadow position saved: ${market.title} ${decision.side} $${decision.recommendedSize.toFixed(2)}`);
+  } catch (err) {
+    console.error("[Evaluator] Failed to save noguard position:", err);
+  }
+}
+
 export function evaluateBetOpportunity(
   market: PolymarketEvent,
   analysis: AIAnalysis,
@@ -314,6 +352,19 @@ export function evaluateBetOpportunity(
     reason = `Confidence too low: ${(analysis.confidence * 100).toFixed(0)}% < ${(config.minConfidence * 100).toFixed(0)}%`;
   } else if (!withinDisagreement) {
     reason = `Market disagreement too high: ${(absEdge * 100).toFixed(0)}pp > ${(MAX_MARKET_DISAGREEMENT * 100).toFixed(0)}pp (market is likely right)`;
+    // All other filters passed - save shadow position to noguard table
+    if (meetsConfidence && meetsEdge && hasBudget && hasTokenId && liquidityOk) {
+      const noGuardTokenId = side === "YES" ? tokenId : market.outcomes.find((o) => o.name === "No")?.tokenId || "";
+      saveNoguardPosition(market, {
+        side,
+        marketPrice,
+        aiProbability,
+        confidence: analysis.confidence,
+        expectedValue,
+        recommendedSize,
+        tokenId: noGuardTokenId,
+      });
+    }
   } else if (!meetsEdge) {
     reason = `Edge too small: ${(effectiveEdge * 100).toFixed(1)}% < ${(adjustedMinEdge * 100).toFixed(1)}% (${priceZoneMultiplier}x zone, friction ${(frictionCost * 100).toFixed(2)}%)`;
   } else if (!hasBudget) {

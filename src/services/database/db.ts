@@ -380,6 +380,31 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_bonds_trades_status ON bonds_trades(status);
     CREATE INDEX IF NOT EXISTS idx_bonds_trades_market ON bonds_trades(market_id);
 
+    CREATE TABLE IF NOT EXISTS aibetting_noguard_positions (
+      id TEXT PRIMARY KEY,
+      market_id TEXT,
+      market_title TEXT,
+      market_end_date TEXT,
+      token_id TEXT,
+      side TEXT,
+      entry_price REAL,
+      size REAL,
+      ai_probability REAL,
+      confidence REAL,
+      expected_value REAL,
+      status TEXT DEFAULT 'open',
+      entry_timestamp TEXT,
+      exit_timestamp TEXT,
+      exit_price REAL,
+      pnl REAL,
+      exit_reason TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_aibetting_noguard_status ON aibetting_noguard_positions(status);
+    CREATE INDEX IF NOT EXISTS idx_aibetting_noguard_market ON aibetting_noguard_positions(market_id);
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)

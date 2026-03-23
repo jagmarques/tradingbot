@@ -1102,10 +1102,22 @@ async function handleBettors(ctx: Context): Promise<void> {
     const copyStats = getCopyStats();
     const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
+    // Noguard shadow tracker stats
+    let noguardOpen = 0;
+    let noguardClosedPnl = 0;
+    try {
+      const db = (await import("../database/db.js")).getDb();
+      const ngOpen = db.prepare(`SELECT COUNT(*) as cnt FROM aibetting_noguard_positions WHERE status = 'open'`).get() as { cnt: number };
+      const ngClosed = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM aibetting_noguard_positions WHERE status != 'open'`).get() as { total: number };
+      noguardOpen = ngOpen.cnt;
+      noguardClosedPnl = ngClosed.total;
+    } catch { /* non-fatal */ }
+
     // Only show bettors we copy (10%+ ROI)
     const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
 
     let message = `<b>Bettors</b> | ${copyStats.openPositions} open ${copyStats.closedPositions} closed | WR ${copyStats.winRate.toFixed(0)}% | ${pnl(copyStats.totalPnl)}\n`;
+    message += `Noguard shadow: ${noguardOpen} open | closed P&L ${pnl(noguardClosedPnl)}\n`;
 
     if (copiedBettors.length === 0) {
       message += "No bettors with 10%+ ROI found.";
