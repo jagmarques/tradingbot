@@ -2088,7 +2088,7 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${openPositions.length} open | Live ${$(liveLoss)} Paper ${$(paperLoss)} / $${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
-  text += `GARCH v1: PAUSED | v2: PAPER (z4.5/3.0, 15 pairs, $20)\n`;
+  text += `GARCH v2: LIVE (z4.5/3.0, 20 pairs, compound 4%, max 6/dir)\n`;
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
