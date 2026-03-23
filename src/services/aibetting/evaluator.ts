@@ -113,7 +113,7 @@ function calculateBetSize(
   return Math.min(rawSize, maxBet);
 }
 
-const MAX_BETS_PER_GROUP = 1;
+const MAX_BETS_PER_GROUP = 999; // no limit
 const MAX_MARKET_DISAGREEMENT = 0.30;
 
 function extractSignificantWords(title: string): string[] {
