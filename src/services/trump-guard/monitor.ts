@@ -1,6 +1,7 @@
 import { loadEnv } from "../../config/env.js";
 import { classifyPost } from "./classifier.js";
 import { closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
+import { sendMessage } from "../telegram/bot.js";
 
 // All RSS feeds to monitor (polled every few seconds)
 const RSS_FEEDS = [
@@ -66,11 +67,17 @@ async function classifyAndAct(content: string): Promise<void> {
     }
   }
 
-  if (targets.length === 0) {
-    console.log(`[TrumpGuard] No ${closeDirection} positions to close`);
-  } else {
-    console.log(`[TrumpGuard] Closed ${targets.length} ${closeDirection} position(s), cooldown active 30min`);
-  }
+  const action = targets.length === 0
+    ? `No ${closeDirection}s open`
+    : `Closed ${targets.length} ${closeDirection}(s)`;
+  console.log(`[TrumpGuard] ${action}, cooldown 30min`);
+
+  void sendMessage(
+    `<b>NEWS ALERT</b>\n` +
+    `${verdict}: ${preview}\n` +
+    `Action: ${action}\n` +
+    `Cooldown: 30min (${closeDirection}s blocked)`
+  );
 }
 
 // Keywords that indicate crypto-relevant news (filter out noise from CoinDesk/CoinTelegraph)
