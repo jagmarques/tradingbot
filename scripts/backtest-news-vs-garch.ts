@@ -112,13 +112,15 @@ function getSpread(filename: string): number {
 }
 
 // ---- News Event Detection ----
+// FIX Issue 1: Tighter keyword list - removed generic terms that match
+// non-crypto Trump posts (rate, tax, economy, shutdown, china, russia, etc.)
+// Only keep terms directly tied to crypto markets or high-impact macro events
 
 const CRYPTO_KEYWORDS = [
   "crypto", "bitcoin", "btc", "ethereum", "tariff", "trade war", "reserve",
-  "defi", "blockchain", "digital asset", "stablecoin", "sec", "cftc",
-  "regulation", "ban", "executive order", "tax", "sanctions", "china",
-  "russia", "iran", "powell", "fed", "rate", "interest rate", "inflation",
-  "economy", "recession", "stimulus", "debt ceiling", "default", "shutdown",
+  "defi", "blockchain", "digital asset", "stablecoin", "sec ", "cftc",
+  "regulation", "ban crypto", "executive order", "digital currency",
+  "strategic reserve", "national reserve",
 ];
 
 function isCryptoRelevant(content: string): boolean {
@@ -150,6 +152,8 @@ function loadNewsEvents(): NewsEvent[] {
 
   const events: NewsEvent[] = [];
   let relevantCount = 0;
+  let bullishCount = 0;
+  let bearishCount = 0;
 
   for (const post of posts) {
     if (!post.created_at || !post.content) continue;
@@ -184,11 +188,27 @@ function loadNewsEvents(): NewsEvent[] {
       if (move < maxDown) maxDown = move;
     }
 
+    // FIX Issue 1: When both up and down exceed threshold, take the
+    // direction with the larger absolute move (not always bullish first)
     const THRESHOLD = 0.003; // 0.3%
-    if (maxUp > THRESHOLD) {
+    const upExceeds = maxUp > THRESHOLD;
+    const downExceeds = Math.abs(maxDown) > THRESHOLD;
+
+    if (upExceeds && downExceeds) {
+      // Both exceed - take the larger absolute move
+      if (maxUp >= Math.abs(maxDown)) {
+        events.push({ ts: postTs, direction: "long" });
+        bullishCount++;
+      } else {
+        events.push({ ts: postTs, direction: "short" });
+        bearishCount++;
+      }
+    } else if (upExceeds) {
       events.push({ ts: postTs, direction: "long" });
-    } else if (maxDown < -THRESHOLD) {
+      bullishCount++;
+    } else if (downExceeds) {
       events.push({ ts: postTs, direction: "short" });
+      bearishCount++;
     }
   }
 
@@ -197,8 +217,78 @@ function loadNewsEvents(): NewsEvent[] {
   console.log(`[News] Scanned ${posts.filter(p => {
     const ts = new Date(p.created_at).getTime();
     return ts >= START_TS && ts <= END_TS;
-  }).length} posts in period, ${relevantCount} crypto-relevant, found ${events.length} price-confirmed events`);
+  }).length} posts in period, ${relevantCount} crypto-relevant, found ${events.length} price-confirmed events (${bullishCount} BULLISH, ${bearishCount} BEARISH)`);
   return events;
+}
+
+// ---- All BTC-Move Event Detection ----
+
+function loadAllBtcMoveEvents(): NewsEvent[] {
+  const btc1mPath = "/tmp/btc-1m-candles.json";
+  if (!fs.existsSync(btc1mPath)) {
+    console.error("[AllEvents] BTC 1m candles not found at", btc1mPath);
+    return [];
+  }
+  const btc1mRaw = JSON.parse(fs.readFileSync(btc1mPath, "utf8")) as number[][];
+  const btc1m = btc1mRaw.map(b => ({ t: b[0], o: b[1], h: b[2], l: b[3], c: b[4] }));
+  btc1m.sort((a, b) => a.t - b.t);
+
+  const THRESHOLD = 0.003; // 0.3%
+  const DEDUP_WINDOW = HOUR_MS; // 60 minutes
+
+  const rawEvents: NewsEvent[] = [];
+
+  for (let i = 0; i < btc1m.length; i++) {
+    const candle = btc1m[i];
+    if (candle.t < START_TS || candle.t > END_TS) continue;
+
+    const startPrice = candle.o;
+    if (!startPrice || startPrice <= 0) continue;
+
+    let maxUp = 0;
+    let maxDown = 0;
+
+    // Look 15 bars forward
+    for (let j = i; j < btc1m.length && j <= i + 15; j++) {
+      const up = (btc1m[j].h - startPrice) / startPrice;
+      const down = (btc1m[j].l - startPrice) / startPrice;
+      if (up > maxUp) maxUp = up;
+      if (down < maxDown) maxDown = down;
+    }
+
+    const upExceeds = maxUp > THRESHOLD;
+    const downExceeds = Math.abs(maxDown) > THRESHOLD;
+
+    if (upExceeds && downExceeds) {
+      if (maxUp >= Math.abs(maxDown)) {
+        rawEvents.push({ ts: candle.t, direction: "long" });
+      } else {
+        rawEvents.push({ ts: candle.t, direction: "short" });
+      }
+    } else if (upExceeds) {
+      rawEvents.push({ ts: candle.t, direction: "long" });
+    } else if (downExceeds) {
+      rawEvents.push({ ts: candle.t, direction: "short" });
+    }
+  }
+
+  // Sort by timestamp
+  rawEvents.sort((a, b) => a.ts - b.ts);
+
+  // Deduplicate: skip events within 60min of previous kept event
+  const deduped: NewsEvent[] = [];
+  let lastKeptTs = -Infinity;
+  for (const evt of rawEvents) {
+    if (evt.ts - lastKeptTs >= DEDUP_WINDOW) {
+      deduped.push(evt);
+      lastKeptTs = evt.ts;
+    }
+  }
+
+  const longCount = deduped.filter(e => e.direction === "long").length;
+  const shortCount = deduped.filter(e => e.direction === "short").length;
+  console.log(`[AllEvents] Scanned ${btc1m.filter(c => c.t >= START_TS && c.t <= END_TS).length} candles, found ${rawEvents.length} raw events, ${deduped.length} after dedup (${longCount} long, ${shortCount} short)`);
+  return deduped;
 }
 
 // ---- Precomputed Pair Data ----
@@ -336,10 +426,13 @@ interface Stats {
   annRet: number;
 }
 
+// FIX Issue 4: computeStats now takes mark-to-market equity curve
+// (includes unrealized P&L at each bar, not just realized)
 function computeStats(name: string, trades: Trade[], equityCurve: number[]): Stats {
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
   const wins = trades.filter(t => t.pnl > 0).length;
 
+  // MaxDD from mark-to-market equity curve
   let maxDd = 0, peak = -Infinity;
   for (const eq of equityCurve) {
     if (eq > peak) peak = eq;
@@ -434,8 +527,11 @@ function simulate(
   for (const ts of sortedTs) {
     const closedThisBar = new Set<string>();
 
-    // Check for news events in the last hour [ts - HOUR_MS, ts)
-    const newsInWindow = sortedNews.filter(e => e.ts >= ts - HOUR_MS && e.ts < ts);
+    // FIX Issue 2: Check for news events in the CURRENT hour [ts, ts + HOUR_MS)
+    // This means if event fires at hour X minute 5, we enter at hour X open price
+    // In live trading, RSS detects in 3-11 seconds, so using the current bar's
+    // open is the closest proxy for real-time entry with 1h data
+    const newsInWindow = sortedNews.filter(e => e.ts >= ts && e.ts < ts + HOUR_MS);
 
     // --- EXITS ---
     for (const [posKey, pos] of openPositions) {
@@ -493,7 +589,11 @@ function simulate(
         }
       }
 
-      // Stale exit (news positions only)
+      // FIX Issue 3: Stale exit uses hourly granularity
+      // Since we use 1h bars, 30min stale can't fire until the next bar (1h later)
+      // So minimum granularity is 1 bar = 1h. The staleCheckMs still works
+      // but we document that with 1h data, staleCheckMs < HOUR_MS effectively
+      // rounds up to 1h (first bar check)
       if (!reason && pos.engine === "news" && cfg.newsConfig && cfg.newsConfig.staleCheckMs > 0) {
         if (ts >= pos.staleCheckTs && !pos.staleClosed) {
           // Check if moved in our direction
@@ -617,7 +717,28 @@ function simulate(
       }
     }
 
-    equityCurve.push(cumulativePnl);
+    // FIX Issue 4: Mark-to-market equity curve
+    // At each bar, compute: cumulativeRealizedPnl + sum(unrealized P&L of open positions)
+    let unrealizedPnl = 0;
+    for (const [, pos] of openPositions) {
+      const filename = pairToFile.get(pos.pair);
+      if (!filename) continue;
+      const pd = pairDataMap.get(filename);
+      if (!pd) continue;
+      const barIdx = pd.tsMap.get(ts) ?? -1;
+      if (barIdx < 0) continue;
+      const bar = pd.candles[barIdx];
+      const spread = getSpread(filename);
+
+      // Compute unrealized P&L at this bar's close (using mid-price approximation)
+      const markPrice = bar.c;
+      const rawUnrealized = pos.direction === "long"
+        ? (markPrice / pos.entryPrice - 1) * SIZE * LEVERAGE
+        : (pos.entryPrice / markPrice - 1) * SIZE * LEVERAGE;
+      // Subtract estimated exit fees (entry fees already "paid")
+      unrealizedPnl += rawUnrealized - SIZE * LEVERAGE * HL_FEE;
+    }
+    equityCurve.push(cumulativePnl + unrealizedPnl);
   }
 
   return { trades, equityCurve };
@@ -652,7 +773,16 @@ function printHeader(): void {
 // ---- Main ----
 
 async function main() {
-  console.log("=== Comprehensive News vs GARCH v2 Backtest ===");
+  // Capture all console output for file saving
+  const outputLines: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => {
+    const line = args.map(a => String(a)).join(" ");
+    outputLines.push(line);
+    origLog(...args);
+  };
+
+  console.log("=== All-Sources News vs GARCH v2 Backtest (Task 335) ===");
   console.log(`Period: 2025-06-01 to 2026-03-20 (${DAYS.toFixed(0)} days)`);
   console.log("Loading data...\n");
 
@@ -677,158 +807,174 @@ async function main() {
 
   console.log(`Loaded ${pairDataMap.size - 1} altcoin pairs + BTC 1h`);
 
-  // Load news events
-  const newsEvents = loadNewsEvents();
+  // Load both event sources
+  const trumpEvents = loadNewsEvents();
+  const allBtcEvents = loadAllBtcMoveEvents();
+
+  // Compute overlap: Trump events within 30min of an AllEvents event
+  let overlapCount = 0;
+  for (const te of trumpEvents) {
+    const hasMatch = allBtcEvents.some(ae => Math.abs(ae.ts - te.ts) <= 30 * 60_000);
+    if (hasMatch) overlapCount++;
+  }
+  console.log(`\nEvent sources: Trump-only: ${trumpEvents.length} | All BTC moves: ${allBtcEvents.length} | Overlap: ${overlapCount} (${trumpEvents.length > 0 ? ((overlapCount / trumpEvents.length) * 100).toFixed(0) : 0}% of Trump events)`);
+
   console.log(`\nRunning simulations...\n`);
 
-  // ---- Build Configs ----
-
-  const allResults: Stats[] = [];
-
-  // Helper to run a config
-  function run(cfg: SimConfig): Stats {
-    const { trades, equityCurve } = simulate(cfg, pairDataMap, btcPd, newsEvents);
+  // Helper to run a config with specific events
+  function runWith(cfg: SimConfig, events: NewsEvent[]): Stats {
+    const { trades, equityCurve } = simulate(cfg, pairDataMap, btcPd, events);
     return computeStats(cfg.name, trades, equityCurve);
   }
 
-  // 1. GARCH v2 baseline
-  const garchBaseline = run({
+  // ==============================
+  // PHASE A: Trump-only (baseline from 334)
+  // ==============================
+  console.log("--- Phase A: Trump-only baseline ---");
+
+  const allTrumpResults: Stats[] = [];
+
+  // GARCH baselines (no events needed)
+  const garchBaseline = runWith({
     name: "GARCH-v2-baseline",
     runGarch: true, runNews: false,
     garchDefense: false, garchCooldown: false, sharedCap: false,
-  });
-  allResults.push(garchBaseline);
+  }, trumpEvents);
+  allTrumpResults.push(garchBaseline);
 
-  // 2. GARCH + defense only
-  const garchDefense = run({
-    name: "GARCH+defense",
+  const garchDefense = runWith({
+    name: "GARCH+defense(trump)",
     runGarch: true, runNews: false,
     garchDefense: true, garchCooldown: true, sharedCap: false,
-  });
-  allResults.push(garchDefense);
+  }, trumpEvents);
+  allTrumpResults.push(garchDefense);
 
-  // ---- News-only configs ----
-
-  // Section A: pair set sweep (fixed SL2% TP5% hold4h stale1h@0.5%)
+  // Trump pair set sweep
   const pairSets = [
     { name: "all20", pairs: ALL20 },
     { name: "top15", pairs: TOP15 },
     { name: "top10", pairs: TOP10 },
     { name: "top5", pairs: TOP5 },
   ];
-  const pairSetResults: Stats[] = [];
+  const trumpPairSetResults: Stats[] = [];
   for (const ps of pairSets) {
-    const s = run({
-      name: `News-${ps.name}-TP5-SL2-h4-s1h`,
+    const s = runWith({
+      name: `Trump-${ps.name}-TP5-SL2-h4-s1h`,
       runGarch: false, runNews: true,
       newsConfig: { tp: 0.05, sl: 0.02, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: ps.pairs },
       garchDefense: false, garchCooldown: false, sharedCap: false,
-    });
-    pairSetResults.push(s);
-    allResults.push(s);
+    }, trumpEvents);
+    trumpPairSetResults.push(s);
+    allTrumpResults.push(s);
   }
 
-  // Section B: TP x SL grid (top10, stale1h@0.5%, hold4h)
+  // Trump TP/SL grid
   const tpValues = [0.03, 0.05, 0.07, 0.10];
   const slValues = [0.01, 0.015, 0.02, 0.03];
-  const tpSlResults: Stats[] = [];
+  const trumpTpSlResults: Stats[] = [];
   for (const tp of tpValues) {
     for (const sl of slValues) {
       const slLabel = sl === 0.015 ? "1.5" : (sl * 100).toFixed(0);
-      const s = run({
-        name: `News-top10-TP${(tp * 100).toFixed(0)}-SL${slLabel}-h4-s1h`,
+      const s = runWith({
+        name: `Trump-top10-TP${(tp * 100).toFixed(0)}-SL${slLabel}-h4-s1h`,
         runGarch: false, runNews: true,
         newsConfig: { tp, sl, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: TOP10 },
         garchDefense: false, garchCooldown: false, sharedCap: false,
-      });
-      tpSlResults.push(s);
-      allResults.push(s);
+      }, trumpEvents);
+      trumpTpSlResults.push(s);
+      allTrumpResults.push(s);
     }
   }
 
-  // Section C: stale exit sweep (top10, SL2% TP5% hold4h)
+  // Trump stale sweep
   const staleConfigs = [
     { name: "no-stale", staleCheckMs: 0, staleMinMove: 0 },
-    { name: "s30m@0.3%", staleCheckMs: 30 * 60_000, staleMinMove: 0.003 },
+    { name: "s1h@0.3%", staleCheckMs: HOUR_MS, staleMinMove: 0.003 },
     { name: "s1h@0.5%", staleCheckMs: HOUR_MS, staleMinMove: 0.005 },
     { name: "s1h@1%", staleCheckMs: HOUR_MS, staleMinMove: 0.01 },
     { name: "s2h@0.5%", staleCheckMs: 2 * HOUR_MS, staleMinMove: 0.005 },
   ];
-  const staleResults: Stats[] = [];
+  const trumpStaleResults: Stats[] = [];
   for (const sc of staleConfigs) {
-    const s = run({
-      name: `News-top10-TP5-SL2-h4-${sc.name}`,
+    const s = runWith({
+      name: `Trump-top10-TP5-SL2-h4-${sc.name}`,
       runGarch: false, runNews: true,
       newsConfig: { tp: 0.05, sl: 0.02, maxHoldMs: 4 * HOUR_MS, staleCheckMs: sc.staleCheckMs, staleMinMove: sc.staleMinMove, pairs: TOP10 },
       garchDefense: false, garchCooldown: false, sharedCap: false,
-    });
-    staleResults.push(s);
-    allResults.push(s);
+    }, trumpEvents);
+    trumpStaleResults.push(s);
+    allTrumpResults.push(s);
   }
 
-  // Section D: max hold sweep (top10, SL2% TP5% stale1h@0.5%)
+  // Trump hold sweep
   const holdConfigs = [2, 4, 6, 8, 12];
-  const holdResults: Stats[] = [];
+  const trumpHoldResults: Stats[] = [];
   for (const h of holdConfigs) {
-    const s = run({
-      name: `News-top10-TP5-SL2-h${h}-s1h`,
+    const s = runWith({
+      name: `Trump-top10-TP5-SL2-h${h}-s1h`,
       runGarch: false, runNews: true,
       newsConfig: { tp: 0.05, sl: 0.02, maxHoldMs: h * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: TOP10 },
       garchDefense: false, garchCooldown: false, sharedCap: false,
-    });
-    holdResults.push(s);
-    allResults.push(s);
+    }, trumpEvents);
+    trumpHoldResults.push(s);
+    allTrumpResults.push(s);
   }
 
-  // Best news config (all20, TP5%, SL2%, hold4h, stale1h@0.5%)
-  const bestNewsConfig: NewsConfig = {
+  // Trump best configs for head-to-head: TP10/SL3 and TP5/SL2
+  const trumpTP10SL3 = runWith({
+    name: "Trump-top10-TP10-SL3-h4to8-s1h@0.3",
+    runGarch: false, runNews: true,
+    newsConfig: { tp: 0.10, sl: 0.03, maxHoldMs: 8 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.003, pairs: TOP10 },
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, trumpEvents);
+
+  const trumpTP5SL2 = runWith({
+    name: "Trump-top10-TP5-SL2-h4-s1h@0.5",
+    runGarch: false, runNews: true,
+    newsConfig: { tp: 0.05, sl: 0.02, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: TOP10 },
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, trumpEvents);
+
+  // Trump combined configs
+  const trumpBestNewsConfig: NewsConfig = {
     tp: 0.05, sl: 0.02, maxHoldMs: 4 * HOUR_MS,
     staleCheckMs: HOUR_MS, staleMinMove: 0.005,
     pairs: ALL20,
   };
 
-  // 3. Combined configs
-  const combinedShared = run({
-    name: "Combined-shared-cap",
+  const trumpCombinedNoDefense = runWith({
+    name: "GARCH+Trump-no-defense",
     runGarch: true, runNews: true,
-    newsConfig: bestNewsConfig,
-    garchDefense: true, garchCooldown: true, sharedCap: true,
-  });
-  allResults.push(combinedShared);
+    newsConfig: trumpBestNewsConfig,
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, trumpEvents);
+  allTrumpResults.push(trumpCombinedNoDefense);
 
-  const combinedSeparate = run({
-    name: "Combined-separate-cap",
+  const trumpCombinedWithDefense = runWith({
+    name: "GARCH+Trump-with-defense",
     runGarch: true, runNews: true,
-    newsConfig: bestNewsConfig,
+    newsConfig: trumpBestNewsConfig,
     garchDefense: true, garchCooldown: true, sharedCap: false,
-  });
-  allResults.push(combinedSeparate);
+  }, trumpEvents);
+  allTrumpResults.push(trumpCombinedWithDefense);
 
-  const combinedNoDefense = run({
-    name: "Combined-no-defense",
-    runGarch: true, runNews: true,
-    newsConfig: bestNewsConfig,
-    garchDefense: false, garchCooldown: false, sharedCap: false,
-  });
-  allResults.push(combinedNoDefense);
-
-  // ---- Per-pair news analysis (best news config = all20) ----
-  const perPairStats: Stats[] = [];
-  const { trades: bestNewsTrades } = simulate({
-    name: "best-news-all20",
+  // Per-pair Trump analysis
+  const trumpPerPairStats: Stats[] = [];
+  const { trades: trumpBestTrades } = simulate({
+    name: "trump-best-all20",
     runGarch: false, runNews: true,
-    newsConfig: bestNewsConfig,
+    newsConfig: trumpBestNewsConfig,
     garchDefense: false, garchCooldown: false, sharedCap: false,
-  }, pairDataMap, btcPd, newsEvents);
+  }, pairDataMap, btcPd, trumpEvents);
 
   for (const shortPair of ALL20) {
-    const pairTrades = bestNewsTrades.filter(t => t.pair === shortPair);
+    const pairTrades = trumpBestTrades.filter(t => t.pair === shortPair);
     if (pairTrades.length === 0) continue;
-    let maxDd = 0, peak = -Infinity, cum = 0;
+    let maxDd = 0, peak2 = -Infinity, cum = 0;
     for (const t of pairTrades) {
       cum += t.pnl;
-      if (cum > peak) peak = cum;
-      const dd = peak - cum;
+      if (cum > peak2) peak2 = cum;
+      const dd = peak2 - cum;
       if (dd > maxDd) maxDd = dd;
     }
     const wins = pairTrades.filter(t => t.pnl > 0).length;
@@ -840,7 +986,7 @@ async function main() {
       ? Math.abs((avgWin * winTrades.length) / (avgLoss * lossTrades.length))
       : 0;
     const totalPnl = pairTrades.reduce((s, t) => s + t.pnl, 0);
-    perPairStats.push({
+    trumpPerPairStats.push({
       name: shortPair,
       trades: pairTrades.length,
       wins,
@@ -856,25 +1002,129 @@ async function main() {
       annRet: (totalPnl / DAYS * 365) / 400 * 100,
     });
   }
-  perPairStats.sort((a, b) => b.perDay - a.perDay);
+  trumpPerPairStats.sort((a, b) => b.perDay - a.perDay);
 
-  // ---- OUTPUT ----
+  // ==============================
+  // PHASE B: All BTC-move events
+  // ==============================
+  console.log("--- Phase B: All BTC-move events ---");
 
-  console.log("\n=== STRATEGY COMPARISON === (sorted by $/day desc)");
+  const allEvtResults: Stats[] = [];
+
+  // Same two configs as Phase A head-to-head
+  const allEvtTP10SL3 = runWith({
+    name: "AllEvt-top10-TP10-SL3-h4to8-s1h@0.3",
+    runGarch: false, runNews: true,
+    newsConfig: { tp: 0.10, sl: 0.03, maxHoldMs: 8 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.003, pairs: TOP10 },
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, allBtcEvents);
+  allEvtResults.push(allEvtTP10SL3);
+
+  const allEvtTP5SL2 = runWith({
+    name: "AllEvt-top10-TP5-SL2-h4-s1h@0.5",
+    runGarch: false, runNews: true,
+    newsConfig: { tp: 0.05, sl: 0.02, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: TOP10 },
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, allBtcEvents);
+  allEvtResults.push(allEvtTP5SL2);
+
+  // AllEvt TP/SL sweep
+  const allEvtTpSlResults: Stats[] = [];
+  for (const tp of [0.03, 0.05, 0.07, 0.10]) {
+    for (const sl of [0.01, 0.02, 0.03]) {
+      const s = runWith({
+        name: `AllEvt-top10-TP${(tp * 100).toFixed(0)}-SL${(sl * 100).toFixed(0)}-h4-s1h`,
+        runGarch: false, runNews: true,
+        newsConfig: { tp, sl, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: TOP10 },
+        garchDefense: false, garchCooldown: false, sharedCap: false,
+      }, allBtcEvents);
+      allEvtTpSlResults.push(s);
+      allEvtResults.push(s);
+    }
+  }
+
+  // Find best TP/SL for AllEvt
+  const bestAllEvtTpSl = [...allEvtTpSlResults].sort((a, b) => b.perDay - a.perDay)[0];
+
+  // AllEvt stale sweep using best TP/SL
+  const bestTpMatch = allEvtTpSlResults.indexOf(bestAllEvtTpSl);
+  const bestTpVal = [0.03, 0.05, 0.07, 0.10][Math.floor(bestTpMatch / 3)];
+  const bestSlVal = [0.01, 0.02, 0.03][bestTpMatch % 3];
+
+  const allEvtStaleResults: Stats[] = [];
+  for (const sc of [
+    { name: "no-stale", staleCheckMs: 0, staleMinMove: 0 },
+    { name: "s1h@0.3%", staleCheckMs: HOUR_MS, staleMinMove: 0.003 },
+    { name: "s1h@0.5%", staleCheckMs: HOUR_MS, staleMinMove: 0.005 },
+    { name: "s2h@0.5%", staleCheckMs: 2 * HOUR_MS, staleMinMove: 0.005 },
+  ]) {
+    const s = runWith({
+      name: `AllEvt-top10-TP${(bestTpVal * 100).toFixed(0)}-SL${(bestSlVal * 100).toFixed(0)}-h4-${sc.name}`,
+      runGarch: false, runNews: true,
+      newsConfig: { tp: bestTpVal, sl: bestSlVal, maxHoldMs: 4 * HOUR_MS, staleCheckMs: sc.staleCheckMs, staleMinMove: sc.staleMinMove, pairs: TOP10 },
+      garchDefense: false, garchCooldown: false, sharedCap: false,
+    }, allBtcEvents);
+    allEvtStaleResults.push(s);
+    allEvtResults.push(s);
+  }
+
+  // AllEvt pair set sweep with best TP/SL
+  const allEvtPairSetResults: Stats[] = [];
+  for (const ps of pairSets) {
+    const s = runWith({
+      name: `AllEvt-${ps.name}-TP${(bestTpVal * 100).toFixed(0)}-SL${(bestSlVal * 100).toFixed(0)}`,
+      runGarch: false, runNews: true,
+      newsConfig: { tp: bestTpVal, sl: bestSlVal, maxHoldMs: 4 * HOUR_MS, staleCheckMs: HOUR_MS, staleMinMove: 0.005, pairs: ps.pairs },
+      garchDefense: false, garchCooldown: false, sharedCap: false,
+    }, allBtcEvents);
+    allEvtPairSetResults.push(s);
+    allEvtResults.push(s);
+  }
+
+  // ==============================
+  // PHASE C: Combined GARCH + all-events
+  // ==============================
+  console.log("--- Phase C: GARCH + All-events combined ---");
+
+  const allEvtBestConfig: NewsConfig = {
+    tp: bestTpVal, sl: bestSlVal, maxHoldMs: 4 * HOUR_MS,
+    staleCheckMs: HOUR_MS, staleMinMove: 0.005,
+    pairs: TOP10,
+  };
+
+  const allEvtCombinedNoDefense = runWith({
+    name: "GARCH+AllEvt-no-defense",
+    runGarch: true, runNews: true,
+    newsConfig: allEvtBestConfig,
+    garchDefense: false, garchCooldown: false, sharedCap: false,
+  }, allBtcEvents);
+
+  const allEvtCombinedWithDefense = runWith({
+    name: "GARCH+AllEvt-with-defense",
+    runGarch: true, runNews: true,
+    newsConfig: allEvtBestConfig,
+    garchDefense: true, garchCooldown: true, sharedCap: false,
+  }, allBtcEvents);
+
+  // ==============================
+  // OUTPUT: Trump-only sections (preserved from 334)
+  // ==============================
+  console.log("\n\n=== PHASE A: TRUMP-ONLY RESULTS ===\n");
+
+  console.log("=== TRUMP STRATEGY COMPARISON === (sorted by $/day desc)");
   printHeader();
-  const sortedAll = [...allResults].sort((a, b) => b.perDay - a.perDay);
-  for (const s of sortedAll) {
+  const sortedTrump = [...allTrumpResults].sort((a, b) => b.perDay - a.perDay);
+  for (const s of sortedTrump) {
     console.log(fmtRow(s));
   }
 
-  console.log("\n\n=== NEWS PAIR SET COMPARISON ===");
+  console.log("\n\n=== TRUMP PAIR SET COMPARISON ===");
   printHeader();
-  for (const s of pairSetResults) {
+  for (const s of trumpPairSetResults) {
     console.log(fmtRow(s));
   }
 
-  console.log("\n\n=== NEWS TP/SL GRID === (top10 pairs, hold4h, stale1h@0.5%)");
-  // Grid names use format: News-top10-TP{tp}-SL{sl}-h4-s1h
+  console.log("\n\n=== TRUMP TP/SL GRID === (top10 pairs, hold4h, stale1h@0.5%)");
   const slFmt = (sl: number) => sl === 0.015 ? "1.5" : (sl * 100).toFixed(0);
   const tpFmt = (tp: number) => (tp * 100).toFixed(0);
   const slHeaders = slValues.map(sl => `SL${slFmt(sl)}%`.padStart(14)).join("");
@@ -882,48 +1132,48 @@ async function main() {
   for (const tp of tpValues) {
     const tpLabel = `TP${tpFmt(tp)}%`.padEnd(10);
     const cells = slValues.map(sl => {
-      const expName = `News-top10-TP${tpFmt(tp)}-SL${slFmt(sl)}-h4-s1h`;
-      const s = tpSlResults.find(r => r.name === expName);
+      const expName = `Trump-top10-TP${tpFmt(tp)}-SL${slFmt(sl)}-h4-s1h`;
+      const s = trumpTpSlResults.find(r => r.name === expName);
       return s ? `$${s.perDay.toFixed(2)}/d WR${s.winRate.toFixed(0)}%`.padStart(14) : "           N/A";
     }).join("");
     console.log(tpLabel + cells);
   }
 
-  console.log("\n\n=== NEWS STALE EXIT COMPARISON === (top10, TP5% SL2% hold4h)");
+  console.log("\n\n=== TRUMP STALE EXIT COMPARISON === (top10, TP5% SL2% hold4h)");
   printHeader();
-  for (const s of staleResults) {
+  for (const s of trumpStaleResults) {
     console.log(fmtRow(s));
   }
 
-  console.log("\n\n=== NEWS MAX HOLD COMPARISON === (top10, TP5% SL2% stale1h@0.5%)");
+  console.log("\n\n=== TRUMP MAX HOLD COMPARISON === (top10, TP5% SL2% stale1h@0.5%)");
   printHeader();
-  for (const s of holdResults) {
+  for (const s of trumpHoldResults) {
     console.log(fmtRow(s));
   }
 
-  console.log("\n\n=== COMBINED vs SEPARATE ===");
+  console.log("\n\n=== TRUMP COMBINED vs SEPARATE ===");
   printHeader();
-  for (const s of [garchBaseline, garchDefense, combinedShared, combinedSeparate, combinedNoDefense]) {
+  for (const s of [garchBaseline, garchDefense, trumpCombinedNoDefense, trumpCombinedWithDefense]) {
     console.log(fmtRow(s));
   }
 
-  // Top 5 by risk-adjusted score
-  const scored = sortedAll.map(s => ({
+  // Trump top 5 risk-adjusted
+  const trumpScored = sortedTrump.map(s => ({
     ...s,
     riskScore: s.maxDd > 0 ? (s.perDay * s.profitFactor) / s.maxDd : 0,
   }));
-  scored.sort((a, b) => b.riskScore - a.riskScore);
+  trumpScored.sort((a, b) => b.riskScore - a.riskScore);
 
-  console.log("\n\n=== TOP 5 OVERALL === (by $/day * PF / MaxDD)");
+  console.log("\n\n=== TRUMP TOP 5 === (by $/day * PF / MaxDD)");
   printHeader();
-  for (const s of scored.slice(0, 5)) {
+  for (const s of trumpScored.slice(0, 5)) {
     console.log(fmtRow(s));
   }
 
-  console.log("\n\n=== PER-PAIR NEWS PROFITABILITY === (best news config: all20, TP5% SL2% hold4h stale1h@0.5%)");
+  console.log("\n\n=== TRUMP PER-PAIR PROFITABILITY === (all20, TP5% SL2% hold4h stale1h@0.5%)");
   console.log(`${"Pair".padEnd(12)} | ${"Trades".padStart(6)} | ${"WR%".padStart(5)} | ${"PnL".padStart(7)} | ${"$/day".padStart(7)} | ${"MaxDD".padStart(6)} | ${"PF".padStart(5)} | ${"AvgW".padStart(7)} | ${"AvgL".padStart(8)}`);
   console.log("-".repeat(90));
-  for (const s of perPairStats) {
+  for (const s of trumpPerPairStats) {
     const wr = `${s.winRate.toFixed(0)}%`;
     const pnl = `$${s.totalPnl.toFixed(0)}`;
     const pd2 = `$${s.perDay.toFixed(2)}`;
@@ -934,35 +1184,134 @@ async function main() {
     console.log(`${s.name.padEnd(12)} | ${s.trades.toString().padStart(6)} | ${wr.padStart(5)} | ${pnl.padStart(7)} | ${pd2.padStart(7)} | ${dd.padStart(6)} | ${pf.padStart(5)} | ${aw.padStart(7)} | ${al.padStart(8)}`);
   }
 
-  // Final recommendation
-  const bestOverall = scored[0];
-  const bestNews = pairSetResults.sort((a, b) => b.perDay - a.perDay)[0];
-  const bestCombined = [combinedShared, combinedSeparate, combinedNoDefense].sort((a, b) => b.perDay - a.perDay)[0];
+  // ==============================
+  // OUTPUT: All-events sections (new)
+  // ==============================
+  console.log("\n\n=== PHASE B: ALL BTC-MOVE EVENTS RESULTS ===\n");
 
+  console.log("=== ALL-EVENTS TP/SL GRID === (top10 pairs, hold4h, stale1h@0.5%)");
+  const aeTpVals = [0.03, 0.05, 0.07, 0.10];
+  const aeSlVals = [0.01, 0.02, 0.03];
+  const aeSlHeaders = aeSlVals.map(sl => `SL${(sl * 100).toFixed(0)}%`.padStart(18)).join("");
+  console.log("           " + aeSlHeaders);
+  for (const tp of aeTpVals) {
+    const tpLabel2 = `TP${(tp * 100).toFixed(0)}%`.padEnd(10);
+    const cells2 = aeSlVals.map(sl => {
+      const expName = `AllEvt-top10-TP${(tp * 100).toFixed(0)}-SL${(sl * 100).toFixed(0)}-h4-s1h`;
+      const s = allEvtTpSlResults.find(r => r.name === expName);
+      return s ? `$${s.perDay.toFixed(2)}/d WR${s.winRate.toFixed(0)}% ${s.trades}t`.padStart(18) : "               N/A";
+    }).join("");
+    console.log(tpLabel2 + cells2);
+  }
+
+  console.log(`\nBest AllEvt TP/SL: ${bestAllEvtTpSl.name} -> $${bestAllEvtTpSl.perDay.toFixed(2)}/day WR${bestAllEvtTpSl.winRate.toFixed(0)}% ${bestAllEvtTpSl.trades} trades MaxDD $${bestAllEvtTpSl.maxDd.toFixed(0)}`);
+
+  console.log("\n\n=== ALL-EVENTS STALE COMPARISON === (best TP/SL)");
+  printHeader();
+  for (const s of allEvtStaleResults) {
+    console.log(fmtRow(s));
+  }
+
+  console.log("\n\n=== ALL-EVENTS PAIR SET COMPARISON === (best TP/SL)");
+  printHeader();
+  for (const s of allEvtPairSetResults) {
+    console.log(fmtRow(s));
+  }
+
+  console.log("\n\n=== ALL-EVENTS FULL RESULTS === (sorted by $/day desc)");
+  printHeader();
+  const sortedAllEvt = [...allEvtResults].sort((a, b) => b.perDay - a.perDay);
+  for (const s of sortedAllEvt) {
+    console.log(fmtRow(s));
+  }
+
+  // ==============================
+  // OUTPUT: Phase C - Combined
+  // ==============================
+  console.log("\n\n=== PHASE C: GARCH + ALL-EVENTS COMBINED ===");
+  printHeader();
+  for (const s of [garchBaseline, allEvtCombinedNoDefense, allEvtCombinedWithDefense]) {
+    console.log(fmtRow(s));
+  }
+
+  // ==============================
+  // PHASE D: Head-to-head comparison
+  // ==============================
+  console.log("\n\n=== PHASE D: TRUMP-ONLY vs ALL-EVENTS HEAD-TO-HEAD ===");
+  const h2hHeader = `${"".padEnd(36)} | ${"Events".padStart(6)} | ${"Trades".padStart(6)} | ${"$/day".padStart(7)} | ${"WR%".padStart(5)} | ${"MaxDD".padStart(6)} | ${"Sharpe".padStart(6)} | ${"PF".padStart(5)}`;
+  console.log(h2hHeader);
+  console.log("-".repeat(100));
+
+  function h2hRow(name: string, events: number, s: Stats): string {
+    return `${pad(name, 36)} | ${pad(events, 6, true)} | ${pad(s.trades, 6, true)} | ${pad(`$${s.perDay.toFixed(2)}`, 7, true)} | ${pad(`${s.winRate.toFixed(0)}%`, 5, true)} | ${pad(`$${s.maxDd.toFixed(0)}`, 6, true)} | ${pad(s.sharpe.toFixed(2), 6, true)} | ${pad(s.profitFactor.toFixed(2), 5, true)}`;
+  }
+
+  console.log(h2hRow("Trump TP10/SL3 h8 s1h@0.3%", trumpEvents.length, trumpTP10SL3));
+  console.log(h2hRow("AllEvt TP10/SL3 h8 s1h@0.3%", allBtcEvents.length, allEvtTP10SL3));
+  console.log(h2hRow("Trump TP5/SL2 h4 s1h@0.5%", trumpEvents.length, trumpTP5SL2));
+  console.log(h2hRow("AllEvt TP5/SL2 h4 s1h@0.5%", allBtcEvents.length, allEvtTP5SL2));
+  console.log("-".repeat(100));
+  console.log(h2hRow("GARCH baseline", 0, garchBaseline));
+  console.log(h2hRow("GARCH + Trump combined", trumpEvents.length, trumpCombinedWithDefense));
+  console.log(h2hRow("GARCH + AllEvt combined", allBtcEvents.length, allEvtCombinedWithDefense));
+
+  // Best overall from all-events
+  const bestAllEvt = [...allEvtResults].sort((a, b) => b.perDay - a.perDay)[0];
+  const bestTrumpNews = [...allTrumpResults].filter(s => !s.name.includes("GARCH")).sort((a, b) => b.perDay - a.perDay)[0];
+
+  // ==============================
+  // FINAL RECOMMENDATION
+  // ==============================
   console.log("\n\n=== FINAL RECOMMENDATION ===");
-  console.log(`Best news config:     ${bestNews.name}`);
-  console.log(`  -> $${bestNews.perDay.toFixed(2)}/day | WR ${bestNews.winRate.toFixed(0)}% | MaxDD $${bestNews.maxDd.toFixed(0)} | PF ${bestNews.profitFactor.toFixed(2)} | Sharpe ${bestNews.sharpe.toFixed(2)}`);
-  console.log(`Best combined:        ${bestCombined.name}`);
-  console.log(`  -> $${bestCombined.perDay.toFixed(2)}/day | WR ${bestCombined.winRate.toFixed(0)}% | MaxDD $${bestCombined.maxDd.toFixed(0)} | PF ${bestCombined.profitFactor.toFixed(2)} | Sharpe ${bestCombined.sharpe.toFixed(2)}`);
-  console.log(`Best risk-adjusted:   ${bestOverall.name}`);
-  console.log(`  -> $${bestOverall.perDay.toFixed(2)}/day | Score ${(bestOverall as Stats & { riskScore: number }).riskScore.toFixed(4)}`);
+  console.log(`Trump-only events:       ${trumpEvents.length} events`);
+  console.log(`All BTC-move events:     ${allBtcEvents.length} events (${(allBtcEvents.length / trumpEvents.length).toFixed(1)}x more)`);
+  console.log(`Overlap:                 ${overlapCount} (${trumpEvents.length > 0 ? ((overlapCount / trumpEvents.length) * 100).toFixed(0) : 0}% of Trump events are also detected as BTC moves)`);
   console.log("");
-  console.log(`GARCH v2 baseline:    $${garchBaseline.perDay.toFixed(2)}/day`);
-  console.log(`GARCH + defense:      $${garchDefense.perDay.toFixed(2)}/day (delta: +$${(garchDefense.perDay - garchBaseline.perDay).toFixed(2)}/day)`);
-  console.log(`News alone (best):    $${bestNews.perDay.toFixed(2)}/day`);
-  console.log(`Combined (best):      $${bestCombined.perDay.toFixed(2)}/day`);
+  if (bestTrumpNews) {
+    console.log(`Best Trump-only:         ${bestTrumpNews.name}`);
+    console.log(`  -> $${bestTrumpNews.perDay.toFixed(2)}/day | WR ${bestTrumpNews.winRate.toFixed(0)}% | MaxDD $${bestTrumpNews.maxDd.toFixed(0)} | PF ${bestTrumpNews.profitFactor.toFixed(2)} | Sharpe ${bestTrumpNews.sharpe.toFixed(2)}`);
+  }
+  if (bestAllEvt) {
+    console.log(`Best All-events:         ${bestAllEvt.name}`);
+    console.log(`  -> $${bestAllEvt.perDay.toFixed(2)}/day | WR ${bestAllEvt.winRate.toFixed(0)}% | MaxDD $${bestAllEvt.maxDd.toFixed(0)} | PF ${bestAllEvt.profitFactor.toFixed(2)} | Sharpe ${bestAllEvt.sharpe.toFixed(2)}`);
+  }
+  console.log(`GARCH baseline:          $${garchBaseline.perDay.toFixed(2)}/day`);
+  console.log(`GARCH + Trump combined:  $${trumpCombinedWithDefense.perDay.toFixed(2)}/day`);
+  console.log(`GARCH + AllEvt combined: $${allEvtCombinedWithDefense.perDay.toFixed(2)}/day`);
+  console.log("");
 
-  const addingNewsHelps = bestCombined.perDay > garchDefense.perDay;
-  const newsAloneWins = bestNews.perDay > bestCombined.perDay;
-  console.log("");
-  if (newsAloneWins) {
-    console.log("VERDICT: News-only trading outperforms GARCH on $/day. Consider running news engine as primary strategy.");
-  } else if (addingNewsHelps) {
-    console.log(`VERDICT: Adding news offense to GARCH+defense adds +$${(bestCombined.perDay - garchDefense.perDay).toFixed(2)}/day. Recommend building news trading engine.`);
+  const allEvtWinsTrump = bestAllEvt && bestTrumpNews && bestAllEvt.perDay > bestTrumpNews.perDay;
+  const combinedAllEvtWins = allEvtCombinedWithDefense.perDay > trumpCombinedWithDefense.perDay;
+
+  if (allEvtWinsTrump && combinedAllEvtWins) {
+    console.log("VERDICT: All BTC-move events OUTPERFORM Trump-only on $/day. Higher frequency detection yields better results.");
+    console.log(`  All-events: $${bestAllEvt!.perDay.toFixed(2)}/day vs Trump: $${bestTrumpNews!.perDay.toFixed(2)}/day (+$${(bestAllEvt!.perDay - bestTrumpNews!.perDay).toFixed(2)}/day)`);
+  } else if (allEvtWinsTrump) {
+    console.log("VERDICT: All BTC-move events outperform Trump-only standalone, but combined with GARCH, Trump events are better.");
   } else {
-    console.log("VERDICT: Adding news offense does not improve over GARCH+defense alone. Keep defense only.");
+    console.log("VERDICT: Trump-only events outperform or match all BTC-move events. Trump signal has higher quality per-event.");
+    if (bestTrumpNews && bestAllEvt) {
+      console.log(`  Trump: $${bestTrumpNews.perDay.toFixed(2)}/day vs All-events: $${bestAllEvt.perDay.toFixed(2)}/day`);
+    }
+  }
+
+  // Risk-adjusted verdict
+  if (bestAllEvt && bestTrumpNews) {
+    const trumpRiskAdj = bestTrumpNews.maxDd > 0 ? bestTrumpNews.perDay / bestTrumpNews.maxDd : 0;
+    const allEvtRiskAdj = bestAllEvt.maxDd > 0 ? bestAllEvt.perDay / bestAllEvt.maxDd : 0;
+    console.log(`\nRisk-adjusted ($/day per $MaxDD):`);
+    console.log(`  Trump: ${trumpRiskAdj.toFixed(4)} | All-events: ${allEvtRiskAdj.toFixed(4)}`);
+    if (allEvtRiskAdj > trumpRiskAdj) {
+      console.log("  -> All-events is also better risk-adjusted");
+    } else {
+      console.log("  -> Trump-only is better risk-adjusted despite fewer events");
+    }
   }
   console.log("");
+
+  // Save output to file
+  fs.writeFileSync("/tmp/335-all-events-backtest.txt", outputLines.join("\n"));
+  origLog("[Output] Saved full results to /tmp/335-all-events-backtest.txt");
 }
 
 main().catch(console.error);
