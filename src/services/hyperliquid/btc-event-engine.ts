@@ -1,6 +1,7 @@
 // BTC event-driven momentum engine: detects 0.7% BTC 1h moves, opens alts
-// Optimized params from task 338 deep backtest (292 days, 3720 trades):
-//   TP7/SL7: WR 53%, $14.96/day, PF 2.00, Sharpe 7.11, MaxDD $163
+// Audit task 339 honest numbers (292 days, 0.1% slippage, proper fees):
+//   Top5 TP7/SL7: WR 50%, $7.97/day, PF 1.86, Sharpe 5.47, MaxDD $115
+//   Risk: 4% per EVENT (not per position) - critical fix from audit
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
@@ -11,18 +12,19 @@ import { isTrumpCooldownActive } from "../trump-guard/index.js";
 
 const TRADE_TYPE = "btc-event" as const;
 const LEVERAGE = 10;
-const RISK_PCT = 4; // compound 4% of equity per trade
+const EVENT_RISK_PCT = 4; // 4% of equity per EVENT total (split across pairs)
 const MIN_POSITION_USD = 10;
+const MAX_POSITION_USD = 500; // liquidity cap per position
 const EVENT_THRESHOLD = 0.007; // 0.7% BTC move
 const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1h
 const DAILY_CAP_PER_DIR = 10;
-const SL_PCT = 0.07; // 7% (was 5%, optimized task 338)
-const TP_PCT = 0.07; // 7% (was 5%, optimized task 338)
+const SL_PCT = 0.07; // 7%
+const TP_PCT = 0.07; // 7%
 const DAILY_LOSS_LIMIT = 15; // $15
-const MAX_PER_DIRECTION = 6; // (was 10, optimized task 338 for risk-adjusted)
+const MAX_PER_DIRECTION = 5; // top5 best risk-adjusted from audit
 
-// Proven top10 reactive pairs from research
-const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT", "NEAR", "ARB", "ENA", "WLD", "ADA"];
+// Top 5 reactive pairs (best risk-adjusted from task 339 audit)
+const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT"];
 
 // In-memory state
 const lastEventTs = new Map<string, number>(); // "long"|"short" -> timestamp
@@ -89,7 +91,7 @@ export async function runBtcEventCycle(): Promise<number> {
   const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
   const openPairs = new Set(myPositions.map(p => p.pair));
 
-  // Compound sizing (same formula as garch-chan)
+  // Per-EVENT risk sizing: 4% of equity split across all positions in this event
   let equity = 200; // fallback
   try {
     await ensureConnected();
@@ -100,8 +102,14 @@ export async function runBtcEventCycle(): Promise<number> {
     const usdcBal = spotState.balances.find((b: { coin: string; total: string }) => b.coin === "USDC" || b.coin === "USDC-SPOT");
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
-  // Risk 4% equity per trade: size = equity * riskPct / (SL * leverage)
-  const compoundSize = Math.max(MIN_POSITION_USD, Math.floor(equity * (RISK_PCT / 100) / (SL_PCT * LEVERAGE)));
+  // Risk EVENT_RISK_PCT of equity per event, split across N pairs
+  // Each position risks (4% / numPairs) of equity
+  const numPairs = EVENT_TRADING_PAIRS.length;
+  const riskPerPosition = equity * (EVENT_RISK_PCT / 100) / numPairs;
+  const compoundSize = Math.min(
+    MAX_POSITION_USD,
+    Math.max(MIN_POSITION_USD, Math.floor(riskPerPosition / (SL_PCT * LEVERAGE))),
+  );
 
   let executed = 0;
 
