@@ -8,7 +8,7 @@ const RSS_FEEDS = [
   { name: "Fed FOMC", url: "https://www.federalreserve.gov/feeds/press_monetary.xml", intervalMs: 5_000 },
   { name: "Fed All Press", url: "https://www.federalreserve.gov/feeds/press_all.xml", intervalMs: 10_000 },
   { name: "Powell Speeches", url: "https://www.federalreserve.gov/feeds/s_t_powell.xml", intervalMs: 10_000 },
-  { name: "White House", url: "https://www.whitehouse.gov/news/feed/", intervalMs: 10_000 },
+  { name: "White House", url: "https://www.whitehouse.gov/news/feed/", intervalMs: 30_000 },
   { name: "CFTC Enforcement", url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml", intervalMs: 30_000 },
   { name: "CFTC General", url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", intervalMs: 30_000 },
   { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", intervalMs: 15_000 },
@@ -30,14 +30,21 @@ export function isTrumpCooldownActive(): boolean {
   return Date.now() < cooldownUntil;
 }
 
+// Rate limit Groq calls (max 1 per 3 seconds)
+let lastGroqCall = 0;
+
 async function classifyAndAct(content: string): Promise<void> {
+  const now = Date.now();
+  if (now - lastGroqCall < 3_000) return; // skip if called too recently
+  lastGroqCall = now;
+
+  // Skip if cooldown already active (no need to classify more)
+  if (isTrumpCooldownActive()) return;
+
   const preview = content.slice(0, 80);
   const verdict = await classifyPost(content);
 
-  if (verdict === "NEUTRAL") {
-    console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> no action`);
-    return;
-  }
+  if (verdict === "NEUTRAL") return; // silent on neutral
 
   const closeDirection = verdict === "BULLISH" ? "short" : "long";
   console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> closing ${closeDirection}s`);
