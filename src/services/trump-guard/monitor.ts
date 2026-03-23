@@ -27,6 +27,11 @@ let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 const seenGuids = new Set<string>();
 const seenUrls = new Set<string>();
 
+// News event emission for news-trading engine
+let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string } | null = null;
+
+export function getLastNewsEvent() { return lastNewsEvent; }
+
 export function isTrumpCooldownActive(direction?: "long" | "short"): boolean {
   if (Date.now() >= cooldownUntil) return false;
   if (!direction || !cooldownBlockedDir) return true;
@@ -48,6 +53,10 @@ async function classifyAndAct(content: string): Promise<void> {
   const verdict = await classifyPost(content);
 
   if (verdict === "NEUTRAL") return; // silent on neutral
+
+  // Emit news event for offensive news-trading engine
+  const newsDirection = verdict === "BULLISH" ? "long" : "short";
+  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview };
 
   const closeDirection = verdict === "BULLISH" ? "short" : "long";
   console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> closing ${closeDirection}s`);

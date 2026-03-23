@@ -19,12 +19,14 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "btc-hedge": 24 * 60 * 60 * 1000,  // 24h safety net
   "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
   "btc-event": 24 * 60 * 60 * 1000, // 24h max hold
+  "news-trade": 24 * 60 * 60 * 1000, // 24h max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "garch-chan": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only, no trailing
   "btc-mr": { activation: 8, distance: 3 },
   "btc-event": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only
+  "news-trade": { activation: 50, distance: 20 }, // 5% price * 10x = 50% leveraged PnL, 2% * 10x = 20%
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -265,6 +267,19 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
+      // Stale exit for news-trade: close if hasn't moved 0.3% after 1 hour
+      if (position.tradeType === "news-trade") {
+        const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
+        if (staleHoldMs >= 60 * 60 * 1000) {
+          const movePct = Math.abs(pricePct);
+          if (movePct < 0.003) {
+            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, only ${(movePct * 100).toFixed(2)}% move`);
+            await tryClose(position, "stale-exit");
+            continue;
+          }
+        }
+      }
+
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
@@ -481,6 +496,19 @@ async function checkTrailActivePositions(): Promise<void> {
           );
           await tryClose(position, "trailing-stop");
           continue;
+        }
+      }
+
+      // Stale exit for news-trade (fast poll): close if hasn't moved 0.3% after 1 hour
+      if (position.tradeType === "news-trade") {
+        const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
+        if (staleHoldMs >= 60 * 60 * 1000) {
+          const movePct = Math.abs(pricePct);
+          if (movePct < 0.003) {
+            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} held 1h, only ${(movePct * 100).toFixed(2)}% move`);
+            await tryClose(position, "stale-exit");
+            continue;
+          }
         }
       }
 

@@ -127,6 +127,9 @@ export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./
 // BTC Event Engine
 export { runBtcEventCycle } from "./btc-event-engine.js";
 
+// News Trading Engine
+export { runNewsTradingCycle } from "./news-trading-engine.js";
+
 // Lighter DEX
 export { getLighterLivePositions } from "../lighter/executor.js";
 
