@@ -1,6 +1,7 @@
 import { isQuantKilled } from "./risk-manager.js";
 import { runGarchChanCycle } from "./garch-chan-engine.js";
 import { runBtcMrCycle } from "./btc-mr-engine.js";
+import { runBtcEventCycle } from "./btc-event-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +34,10 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runBtcMrCycle(); }
     catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: GARCH-v2 + BTC-MR running`);
+    try { await runBtcEventCycle(); }
+    catch (err) { console.error(`[QuantScheduler] BTC-Event error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: GARCH-v2 + BTC-MR + BTC-Event running`);
   } finally { cycleRunning = false; }
 }
 

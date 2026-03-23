@@ -18,11 +18,13 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-chan": 48 * 60 * 60 * 1000,  // 48h max hold
   "btc-hedge": 24 * 60 * 60 * 1000,  // 24h safety net
   "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
+  "btc-event": 24 * 60 * 60 * 1000, // 24h max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
   "garch-chan": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only, no trailing
   "btc-mr": { activation: 8, distance: 3 },
+  "btc-event": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 

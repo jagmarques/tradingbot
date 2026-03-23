@@ -68,6 +68,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "garch-chan": "hyperliquid",
   "btc-hedge": "hyperliquid",
   "btc-mr": "hyperliquid",
+  "btc-event": "hyperliquid",
 };
 
 // Engines that go live in hybrid mode (rest stay paper)

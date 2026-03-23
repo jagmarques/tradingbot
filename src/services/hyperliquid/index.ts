@@ -124,6 +124,9 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
+// BTC Event Engine
+export { runBtcEventCycle } from "./btc-event-engine.js";
+
 // Lighter DEX
 export { getLighterLivePositions } from "../lighter/executor.js";
 
