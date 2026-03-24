@@ -103,12 +103,14 @@ export async function runNewsTradingCycle(): Promise<number> {
     return 0;
   }
 
-  // BTC price confirmation (skip for HIGH impact - trade immediately)
+  // BTC price confirmation - delay varies by impact
+  // HIGH: 0s (trade immediately), MEDIUM: 30s, LOW: 60s
   const direction = event.direction;
-  if (impact !== "high") {
+  const confirmDelay = impact === "high" ? 0 : impact === "medium" ? 30_000 : 60_000;
+  if (confirmDelay > 0) {
     const btcPriceBefore = btcCandles[btcCandles.length - 1].close;
-    console.log(`[News-Trade] BTC confirmation: waiting 2min (${impact} impact)...`);
-    await new Promise(r => setTimeout(r, 2 * 60 * 1000));
+    console.log(`[News-Trade] BTC confirmation: waiting ${confirmDelay / 1000}s (${impact})...`);
+    await new Promise(r => setTimeout(r, confirmDelay));
 
     const btcAfter = await fetchCandles("BTC", "1h", 1);
     if (btcAfter.length === 0) return 0;

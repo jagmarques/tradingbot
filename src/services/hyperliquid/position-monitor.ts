@@ -287,8 +287,8 @@ async function checkPositionStops(): Promise<void> {
       if (position.tradeType === "news-trade") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
         if (holdMs >= 5 * 60 * 1000 && peak <= trailCfg.activation) {
-          // Clear advice cache every 60s to trigger fresh AI call
-          if (Date.now() - newsAdviceCacheTime > 30 * 1000) {
+          // Clear advice cache every 15s to trigger fresh AI call
+          if (Date.now() - newsAdviceCacheTime > 15 * 1000) {
             newsTradeAdviceCache.clear();
             newsAdviceCacheTime = Date.now();
           }
