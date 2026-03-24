@@ -164,7 +164,7 @@ export async function runNewsTradingCycle(): Promise<number> {
 
   let executed = 0;
 
-  for (const pair of (PAIRS_BY_IMPACT[impact] ?? TOP3_PAIRS)) {
+  for (const pair of (PAIRS_BY_IMPACT[impact] ?? NEWS_TRADING_PAIRS)) {
     if (openPairs.has(pair)) continue;
     if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
