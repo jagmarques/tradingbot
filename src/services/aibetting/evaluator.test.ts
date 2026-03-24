@@ -5,6 +5,7 @@ import type { PolymarketEvent, AIAnalysis, AIBettingConfig, AIBettingPosition } 
 
 vi.mock("../../config/env.js", () => ({
   isPaperMode: vi.fn(() => true),
+  isLiveMode: vi.fn(() => false),
 }));
 
 vi.mock("../../utils/dates.js", () => ({
@@ -26,16 +27,20 @@ vi.mock("./analyzer.js", () => ({
 import { fetchMarketByConditionId } from "./scanner.js";
 import { fetchNewsForMarket } from "./news.js";
 import { analyzeMarket } from "./analyzer.js";
-import { isPaperMode } from "../../config/env.js";
+import { isPaperMode, isLiveMode } from "../../config/env.js";
 
 const mockConfig: AIBettingConfig = {
   maxBetSize: 10,
   maxTotalExposure: 50,
   maxPositions: 5,
-  minEdge: 0.05,
-  minConfidence: 0.6,
+  minEdge: 0.08,
+  minConfidence: 0.70,
   scanIntervalMs: 300000,
   categoriesEnabled: ["politics", "crypto", "sports"],
+  bayesianWeight: 0.5,
+  takeProfitThreshold: 0.40,
+  stopLossThreshold: 0.15,
+  holdResolutionDays: 7,
 };
 
 function makeMarket(overrides: Partial<PolymarketEvent> = {}): PolymarketEvent {
@@ -115,10 +120,9 @@ describe("calculateEV", () => {
 });
 
 describe("evaluateBetOpportunity", () => {
-  it("should recommend YES bet when AI probability > market price", () => {
+  it("should recommend YES bet when AI probability > market price with evidence", () => {
     const market = makeMarket();
-    // Raw 0.65 -> extremized 0.695 -> edge ~0.195, effective ~0.19 (politics +1%, YES -1.5%)
-    const analysis = makeAnalysis({ probability: 0.65 });
+    const analysis = makeAnalysis({ probability: 0.70 }); // 20% edge, above 8% min
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(true);
@@ -127,10 +131,9 @@ describe("evaluateBetOpportunity", () => {
     expect(decision.tokenId).toBe("token-yes");
   });
 
-  it("should recommend NO bet when AI probability < market price", () => {
+  it("should recommend NO bet when AI probability < market price with evidence", () => {
     const market = makeMarket();
-    // Raw 0.35 -> extremized 0.305 -> edge ~-0.195, effective ~0.22 (politics +1%, NO +1.5%)
-    const analysis = makeAnalysis({ probability: 0.35 });
+    const analysis = makeAnalysis({ probability: 0.30 }); // -20% edge -> NO side
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(true);
@@ -141,26 +144,35 @@ describe("evaluateBetOpportunity", () => {
 
   it("should reject when confidence is too low", () => {
     const market = makeMarket();
-    const analysis = makeAnalysis({ confidence: 0.4 }); // Below 60% min
+    const analysis = makeAnalysis({ confidence: 0.5 }); // Below 70% min
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(false);
     expect(decision.reason).toContain("Confidence too low");
   });
 
-  it("should handle floating point confidence near threshold", () => {
+  it("should reject when no evidence cited", () => {
     const market = makeMarket();
-    // Floating point edge case: 0.5999... should round to 0.60
-    const analysis = makeAnalysis({ probability: 0.7, confidence: 0.5999999999999999 });
+    const analysis = makeAnalysis({ probability: 0.70, evidenceCited: [] });
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
-    // Should round to 0.60 and pass the 0.60 threshold
+    expect(decision.shouldBet).toBe(false);
+    expect(decision.reason).toContain("No evidence cited");
+  });
+
+  it("should handle floating point confidence near threshold", () => {
+    const market = makeMarket();
+    // Floating point edge case: 0.6999... should round to 0.70
+    const analysis = makeAnalysis({ probability: 0.70, confidence: 0.6999999999999999 });
+    const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
+
+    // Should round to 0.70 and pass the 0.70 threshold
     expect(decision.shouldBet).toBe(true);
   });
 
   it("should reject when edge is too small", () => {
     const market = makeMarket();
-    const analysis = makeAnalysis({ probability: 0.52 }); // Only 2% edge, below 5% min
+    const analysis = makeAnalysis({ probability: 0.55 }); // Only 5% edge, below 8% min
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(false);
@@ -176,19 +188,18 @@ describe("evaluateBetOpportunity", () => {
     expect(decision.reason).toContain("Insufficient bankroll");
   });
 
-  it("should reject when AI disagrees with market by more than 30pp", () => {
+  it("should reject when AI disagrees with market by more than 25pp", () => {
     const market = makeMarket(); // market price 50%
-    const analysis = makeAnalysis({ probability: 0.85 }); // AI says 85% = 35pp disagreement
+    const analysis = makeAnalysis({ probability: 0.80 }); // AI says 80% = 30pp disagreement
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(false);
     expect(decision.reason).toContain("Market disagreement too high");
   });
 
-  it("should accept when AI disagrees with market within 30pp", () => {
+  it("should accept when AI disagrees with market within 25pp", () => {
     const market = makeMarket(); // market price 50%
-    // Raw 0.70 -> extremized 0.76 -> absEdge 0.26 < 30pp cap
-    const analysis = makeAnalysis({ probability: 0.70 });
+    const analysis = makeAnalysis({ probability: 0.70 }); // 20pp edge, within 25pp cap
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.shouldBet).toBe(true);
@@ -196,7 +207,6 @@ describe("evaluateBetOpportunity", () => {
 
   it("should cap bet size at maxBetSize", () => {
     const market = makeMarket();
-    // Raw 0.70 -> extremized 0.76 -> absEdge 0.26 (within 30pp cap)
     const analysis = makeAnalysis({ probability: 0.70, confidence: 0.95 });
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 100000);
 
@@ -205,8 +215,7 @@ describe("evaluateBetOpportunity", () => {
 
   it("should use NO token ID when betting NO", () => {
     const market = makeMarket();
-    // Raw 0.35 -> extremized 0.305 -> edge -0.195 -> NO side
-    const analysis = makeAnalysis({ probability: 0.35 });
+    const analysis = makeAnalysis({ probability: 0.30 }); // NO side
     const decision = evaluateBetOpportunity(market, analysis, mockConfig, 0, 10000);
 
     expect(decision.side).toBe("NO");
@@ -214,7 +223,6 @@ describe("evaluateBetOpportunity", () => {
   });
 
   it("should bypass exposure cap in paper mode", () => {
-    // Mock paper mode (already default: true)
     vi.mocked(isPaperMode).mockReturnValue(true);
 
     const market = makeMarket();
@@ -228,8 +236,8 @@ describe("evaluateBetOpportunity", () => {
   });
 
   it("should enforce exposure cap in live mode", () => {
-    // Mock live mode
     vi.mocked(isPaperMode).mockReturnValue(false);
+    vi.mocked(isLiveMode).mockReturnValue(true);
 
     const market = makeMarket();
     const analysis = makeAnalysis({ probability: 0.70, confidence: 0.80 });
@@ -239,6 +247,8 @@ describe("evaluateBetOpportunity", () => {
     expect(decision.shouldBet).toBe(true);
     expect(decision.recommendedSize).toBeLessThanOrEqual(5);
     expect(decision.recommendedSize).toBeGreaterThan(0);
+
+    vi.mocked(isLiveMode).mockReturnValue(false);
   });
 });
 
@@ -251,18 +261,18 @@ describe("evaluateAllOpportunities", () => {
     ];
 
     const analyses = new Map<string, AIAnalysis>();
-    // m1: raw 0.62 -> ext 0.656, edge ~15.6%
+    // m1: 62% vs 50% = 12% edge (above 8% min)
     analyses.set("m1", makeAnalysis({ marketId: "m1", probability: 0.62 }));
-    // m2: raw 0.52 -> ext 0.526, edge ~2.6% (below min)
+    // m2: 52% vs 50% = 2% edge (below 8% min)
     analyses.set("m2", makeAnalysis({ marketId: "m2", probability: 0.52 }));
-    // m3: raw 0.70 -> ext 0.76, edge ~26% (within 30pp cap)
+    // m3: 70% vs 50% = 20% edge (within 25pp cap)
     analyses.set("m3", makeAnalysis({ marketId: "m3", probability: 0.70 }));
 
     const decisions = evaluateAllOpportunities(markets, analyses, mockConfig, [], 10000);
 
     // Only m1 and m3 should pass (m2 edge too small)
     expect(decisions.length).toBe(2);
-    // Sorted by EV descending - m3 (26%) first, m1 (15.6%) second
+    // Sorted by EV descending - m3 (20%) first, m1 (12%) second
     expect(decisions[0].marketId).toBe("m3");
     expect(decisions[1].marketId).toBe("m1");
   });

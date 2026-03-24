@@ -46,8 +46,8 @@ const envSchema = z.object({
   AIBETTING_MAX_BET: numericString("999999"),
   AIBETTING_MAX_EXPOSURE: numericString("999999"),
   AIBETTING_MAX_POSITIONS: numericString("999"),
-  AIBETTING_MIN_EDGE: numericStringMax1("0.03"),
-  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.60"),
+  AIBETTING_MIN_EDGE: numericStringMax1("0.08"),
+  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.70"),
   AIBETTING_SCAN_INTERVAL: numericString("900000"), // 15 min
   AIBETTING_BAYESIAN_WEIGHT: numericStringMax1("0.50"),
   AIBETTING_TAKE_PROFIT: numericStringMax1("0.40"),

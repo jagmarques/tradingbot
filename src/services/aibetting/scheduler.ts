@@ -253,7 +253,8 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
       analysis.r1RawProbability = r1FinalRaw;
 
       // 1. Create prior from market price (strength controls market trust)
-      const priorStrength = 8; // Balance: respect market but let AI have real influence
+      // Higher = harder for AI to override market consensus (was 8, way too weak)
+      const priorStrength = 20;
       const prior = createPrior(yesPrice, priorStrength);
 
       // 2. Compute signal weight from R1 confidence, citation accuracy, and news recency
@@ -272,12 +273,14 @@ async function _runAnalysisCycleInner(): Promise<AnalysisCycleResult> {
         })
         .filter(t => !isNaN(t));
       const newsRecency = averageNewsRecency(newsTimestamps);
-      const citationAcc = analysis.citationAccuracy ?? 0.5;
+      // No citation data = no verified evidence = near-zero weight (was 0.5)
+      const citationAcc = analysis.citationAccuracy ?? 0.1;
+      // bayesian.ts recommends 0.15-0.25 until calibrated. Was 0.8 (way too aggressive).
       const signalWeight = computeSignalWeight(
         analysis.confidence,
         citationAcc,
         newsRecency,
-        0.8  // base weight: let AI move the posterior meaningfully
+        0.3
       );
 
       // 3. Update prior with R1 signal

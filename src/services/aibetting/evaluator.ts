@@ -52,19 +52,22 @@ export function getDrawdownState(): { date: string; pnl: number; pct: number; mu
   };
 }
 
+// Category bonuses removed - they were reducing effective minEdge to zero
+// for politics+NO combos, letting any tiny edge pass. Crypto penalty kept.
 const CATEGORY_EDGE_BONUS: Record<string, number> = {
-  politics: 0.02,
-  geopolitics: 0.03,
-  weather: 0.03,
-  science: 0.02,
-  other: 0.02,
-  entertainment: 0.01,
-  sports: 0.01,
+  politics: 0,
+  geopolitics: 0,
+  weather: 0,
+  science: 0,
+  other: 0,
+  entertainment: 0,
+  sports: 0,
   crypto: -0.05,
-  business: 0.01,
+  business: 0,
 };
 
-const NO_SIDE_EDGE_BONUS = 0.015;
+// NO side bonus removed - was creating 0% threshold for NO bets
+const NO_SIDE_EDGE_BONUS = 0;
 
 function calculateKellyFraction(
   winProbability: number,
@@ -77,10 +80,10 @@ function calculateKellyFraction(
 
 function getPriceZoneMultiplier(marketPrice: number): number {
   // Markets near 50% are hardest to find edge - require full edge
-  // Markets near extremes have structural edge compression
+  // Markets near extremes: require MORE edge (harder to be right, vig is higher)
   if (marketPrice >= 0.30 && marketPrice <= 0.70) return 1.0;   // No change
-  if (marketPrice >= 0.10 && marketPrice <= 0.90) return 0.7;   // 10-30% or 70-90%
-  return 0.4;                                                     // <10% or >90%
+  if (marketPrice >= 0.15 && marketPrice <= 0.85) return 1.3;   // 15-30% or 70-85%: harder
+  return 1.8;                                                     // <15% or >85%: much harder
 }
 
 export function calculateEV(aiProbability: number, currentPrice: number, side: "YES" | "NO"): number {
@@ -114,8 +117,8 @@ function calculateBetSize(
   return Math.min(rawSize, maxBet);
 }
 
-const MAX_BETS_PER_GROUP = 999; // no limit
-const MAX_MARKET_DISAGREEMENT = 0.30;
+const MAX_BETS_PER_GROUP = 2;
+const MAX_MARKET_DISAGREEMENT = 0.25;
 
 function extractSignificantWords(title: string): string[] {
   const stopWords = new Set([
@@ -340,12 +343,17 @@ export function evaluateBetOpportunity(
   const hasBudget = recommendedSize >= 1; // At least $1 bet
   const hasTokenId = tokenId !== "";
 
-  const shouldBet = meetsConfidence && meetsEdge && withinDisagreement && hasBudget && hasTokenId && liquidityOk;
+  // Evidence gate: reject bets where the AI cited no evidence
+  const hasEvidence = !!(analysis.evidenceCited && analysis.evidenceCited.length > 0);
+
+  const shouldBet = meetsConfidence && meetsEdge && withinDisagreement && hasBudget && hasTokenId && liquidityOk && hasEvidence;
 
   let reason: string;
   if (shouldBet) {
     const ddNote = ddMultiplier < 1 ? ` DD=${(ddMultiplier * 100).toFixed(0)}%` : "";
-    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% -${(frictionCost * 100).toFixed(2)}%friction ${categoryBonus >= 0 ? '+' : ''}${(categoryBonus * 100).toFixed(1)}%cat ${sideBonus >= 0 ? '+' : ''}${(sideBonus * 100).toFixed(1)}%${side}), C=${(analysis.confidence * 100).toFixed(0)}%${ddNote}`;
+    reason = `Edge ${(effectiveEdge * 100).toFixed(1)}% (raw ${(absEdge * 100).toFixed(1)}% -${(frictionCost * 100).toFixed(2)}%friction), C=${(analysis.confidence * 100).toFixed(0)}%${ddNote}`;
+  } else if (!hasEvidence) {
+    reason = `No evidence cited - refusing to bet on AI guesswork`;
   } else if (!liquidityOk) {
     reason = `Illiquid: score ${clobMetrics?.liquidityScore ?? 0}/100 < 15`;
   } else if (!meetsConfidence) {

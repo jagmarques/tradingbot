@@ -2,12 +2,8 @@ import type { PolymarketEvent, NewsItem, AIAnalysis } from "./types.js";
 import { callDeepSeekEnsemble } from "../shared/llm.js";
 import { getMarketAnalysisHistory, getBettingStats, saveAnalysis, savePrediction } from "../database/aibetting.js";
 
-function plattScale(p: number, alpha: number = 1.732): number {
-  // Clamp to avoid log(0) or log(infinity)
-  const clamped = Math.max(0.001, Math.min(0.999, p));
-  const logit = Math.log(clamped / (1 - clamped));
-  return 1 / (1 + Math.exp(-alpha * logit));
-}
+// Platt scaling removed: it amplified weak LLM signals into strong convictions
+// e.g. 65% -> 74.5%, creating false edge where none existed
 
 interface AnalysisResponse {
   probability: number;
@@ -307,8 +303,8 @@ export async function analyzeMarket(
     );
     analysis.probability = medianProb;
 
-    // Apply Platt scaling to sharpen calibration
-    analysis.probability = plattScale(analysis.probability);
+    // Platt scaling removed: it amplified weak signals (65% -> 74.5%)
+    // turning mild LLM leans into strong convictions without evidence
 
     console.log(
       `[Analyzer] Ensemble: ${parsedAll.length}/${responses.length} parsed, ` +
@@ -340,13 +336,15 @@ export async function analyzeMarket(
         console.warn(`[Analyzer] Missing reasoning for change in ${market.title} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`);
       }
 
-      // Validate reasoning consistency
+      // Validate reasoning consistency - penalize confidence for inconsistencies
       const validation = validateReasoning(analysis);
       if (!validation.valid) {
+        const penalty = 0.15 * validation.issues.length;
+        const before = analysis.confidence;
+        analysis.confidence = Math.max(0.1, analysis.confidence - penalty);
         console.warn(
-          `[Analyzer] Reasoning issues for ${market.title}: ${validation.issues.join("; ")}`
+          `[Analyzer] Reasoning issues for ${market.title}: ${validation.issues.join("; ")} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`
         );
-        // Log warning but do NOT reject
       }
 
       saveAnalysis(analysis, market.title);
