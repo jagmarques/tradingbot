@@ -62,6 +62,8 @@ const closingInProgress = new Set<string>(); // prevent double-close across loop
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
 const closeFailCounts = new Map<string, number>();
+const newsTradeAdviceCache = new Map<string, "HOLD" | "TAKE_PROFIT" | "CLOSE" | null>();
+let newsAdviceCacheTime = 0; // when cache was last populated
 let lastCriticalAlertMs = 0;
 const CRITICAL_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -281,70 +283,60 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // AI-powered exit monitor (checks every 1min after 1min hold)
+      // AI-powered exit monitor for news-trade (every 1min, non-blocking)
       if (position.tradeType === "news-trade") {
-        const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
-        if (staleHoldMs >= 60 * 1000) {
-          if (peak > trailCfg.activation) continue;
+        const holdMs = Date.now() - new Date(position.openedAt).getTime();
+        if (holdMs >= 60 * 1000 && peak <= trailCfg.activation) {
+          // Clear advice cache every 60s to trigger fresh AI call
+          if (Date.now() - newsAdviceCacheTime > 60 * 1000) {
+            newsTradeAdviceCache.clear();
+            newsAdviceCacheTime = Date.now();
+          }
 
           const meta = parseIndicatorsMeta(position.indicatorsAtEntry);
           const impact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
-          const eventTs = meta.eventTs ? parseInt(meta.eventTs) : 0;
+          const eventTs = meta.eventTs ? parseInt(meta.eventTs) : (new Date(position.openedAt).getTime());
 
-          // Extract news content: everything after the last known key (ets:...)
-          const etsIdx = position.indicatorsAtEntry?.indexOf(`ets:${meta.eventTs ?? ""}|`) ?? -1;
-          const newsContent = etsIdx >= 0
-            ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
-            : "";
+          // Build batch + call AI for first position without cached advice
+          if (!newsTradeAdviceCache.has(position.id)) {
+            const etsIdx = position.indicatorsAtEntry?.indexOf(`ets:${meta.eventTs ?? ""}|`) ?? -1;
+            const newsContent = etsIdx >= 0
+              ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
+              : "";
+            const allEligible = positions.filter(p =>
+              p.tradeType === "news-trade" && Date.now() - new Date(p.openedAt).getTime() >= 60 * 1000,
+            );
+            const posInfos = allEligible.map(p => {
+              const pRaw = (p.exchange === "lighter" ? lighterMids : mids)[p.pair];
+              const pPrice = pRaw ? parseFloat(pRaw) : p.entryPrice;
+              return {
+                pair: p.pair,
+                direction: p.direction as "long" | "short",
+                pricePct: p.direction === "long" ? (pPrice - p.entryPrice) / p.entryPrice : (p.entryPrice - pPrice) / p.entryPrice,
+                holdMinutes: Math.round((Date.now() - new Date(p.openedAt).getTime()) / 60000),
+              };
+            });
+            // Fire and forget - don't block the monitor loop
+            getExitAdvice(newsContent, impact, posInfos, eventTs).then(advice => {
+              for (const p of allEligible) newsTradeAdviceCache.set(p.id, advice.get(p.pair) ?? null);
+            }).catch(() => {});
+          }
 
-          // Build batch info for ALL eligible news-trades (getExitAdvice caches per eventTs)
-          const allStale = positions.filter(p =>
-            p.tradeType === "news-trade" &&
-            Date.now() - new Date(p.openedAt).getTime() >= 60 * 1000,
-          );
-          const posInfos = allStale.map(p => {
-            const pSource = p.exchange === "lighter" ? lighterMids : mids;
-            const pRaw = pSource[p.pair];
-            const pPrice = pRaw ? parseFloat(pRaw) : p.entryPrice;
-            const pPct = p.direction === "long"
-              ? (pPrice - p.entryPrice) / p.entryPrice
-              : (p.entryPrice - pPrice) / p.entryPrice;
-            return {
-              pair: p.pair,
-              direction: p.direction as "long" | "short",
-              pricePct: pPct,
-              holdMinutes: Math.round((Date.now() - new Date(p.openedAt).getTime()) / 60000),
-            };
-          });
-
-          const advice = await getExitAdvice(newsContent, impact, posInfos, eventTs);
-          const decision = advice.get(position.pair);
-
+          // Apply cached decision (non-blocking)
+          const decision = newsTradeAdviceCache.get(position.id);
           if (decision === "TAKE_PROFIT") {
             console.log(`[PositionMonitor] AI take-profit: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
+            newsTradeAdviceCache.delete(position.id);
             await tryClose(position, "ai-take-profit");
             continue;
           }
           if (decision === "CLOSE") {
             console.log(`[PositionMonitor] AI close: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
+            newsTradeAdviceCache.delete(position.id);
             await tryClose(position, "ai-stale-exit");
             continue;
           }
-          if (decision === "HOLD") {
-            continue;
-          }
-
-          // Fallback if AI didn't return advice for this pair
-          if (pricePct > 0) {
-            console.log(`[PositionMonitor] Take profit (fallback): ${position.pair} +${(pricePct * 100).toFixed(2)}%`);
-            await tryClose(position, "stale-take-profit");
-            continue;
-          }
-          if (pricePct > -0.005) {
-            console.log(`[PositionMonitor] Stale exit (fallback): ${position.pair} ${(pricePct * 100).toFixed(2)}%`);
-            await tryClose(position, "stale-exit");
-            continue;
-          }
+          // HOLD or no advice yet: fall through to stagnation check (24h max hold still enforced)
         }
       }
 
@@ -447,6 +439,9 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of closeFailCounts.keys()) {
       if (!openIds.has(id)) closeFailCounts.delete(id);
+    }
+    for (const id of newsTradeAdviceCache.keys()) {
+      if (!openIds.has(id)) newsTradeAdviceCache.delete(id);
     }
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
