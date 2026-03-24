@@ -67,13 +67,18 @@ BREAKING = a specific NEW event just happened RIGHT NOW. Examples:
   "Fed cuts rates by 50bps" = BREAKING
   "Binance hacked for $500M" = BREAKING
   "Iran strikes Israel" = BREAKING
-OPINION = analysis, editorial, magazine article, recap, prediction, commentary. Examples:
-  "The everything shock" = OPINION (editorial headline)
+OPINION = analysis, editorial, recap, prediction, market summary, commentary. Examples:
+  "The everything shock" = OPINION
   "Why Bitcoin could reach $100K" = OPINION
   "Wall Street won't tame DeFi" = OPINION
-  "Energy Crisis Will Not Be Resolved" = OPINION (analysis)
-  "New Statesman" or any magazine/editorial source = OPINION
-  Article titles with dramatic/clickbait language = usually OPINION
+  "Energy Crisis Will Not Be Resolved" = OPINION
+  "Wall Street mixed after relief rally" = OPINION (market recap/summary)
+  "Middle East uncertainty lingers" = OPINION (analysis of ongoing situation)
+  "Here's what to expect" = OPINION
+  "Markets react to..." = OPINION (recap, already happened)
+  "As War in Iran Disrupts..." = OPINION (analysis of existing situation)
+  Words that signal OPINION: mixed, lingers, uncertainty, could, might, may, expected, outlook, analysis, recap, review, what to know, here's
+BREAKING must describe a NEW action: "announces", "approves", "bans", "cuts", "strikes", "hacked", "signs"
 If unsure: OPINION (safer to miss than trade on commentary)
 
 Step 4 - Direction: LONG or SHORT?
