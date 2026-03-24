@@ -49,7 +49,6 @@ const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
   "CNBC Economy": "medium",
   "Google News Business": "low",
   "BBC World": "low",
-  "CNBC Economy": "medium",
 };
 
 const IMPACT_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
