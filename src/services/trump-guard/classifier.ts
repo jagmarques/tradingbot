@@ -12,10 +12,17 @@ const DEFAULT_RESULT: ClassificationResult = { sentiment: "NEUTRAL", impact: "lo
 const MARKET_KEYWORDS = /tariff|trade war|trade deal|china.*trade|crypto|bitcoin|btc|blockchain|digital asset|strategic reserve|sec |cftc|regulation|etf |stablecoin|rate cut|rate hike|interest rate|federal reserve|fed |powell|inflation|recession|economy|gdp|jobs|unemployment|stimulus|debt ceiling|executive order|sanctions|elon|musk|doge|ban |tax |hack|exchange|oil price|crude oil|opec|war |ceasefire|peace deal|nuclear|iran.*deal|russia.*sanction|china.*sanction/i;
 const NOISE_KEYWORDS = /immigration|border|illegal|deport|fentanyl|hollywood|movie|actor|actress|nfl|nba|mlb|baseball|football|basketball|golf|super bowl|grammy|oscar|emmy|concert|album|song|music|birthday|wedding|funeral|church|pastor|prayer|god bless/i;
 
+function stripHtml(text: string): string {
+  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function preFilter(content: string): "skip" | "classify" {
-  if (NOISE_KEYWORDS.test(content) && !MARKET_KEYWORDS.test(content)) return "skip";
-  if (content.length < 20) return "skip"; // too short (RT links with no content)
-  if (content.startsWith("RT: http") && content.length < 100) return "skip"; // bare retweet URL
+  const clean = stripHtml(content);
+  if (clean.length < 20) return "skip";
+  if (NOISE_KEYWORDS.test(clean) && !MARKET_KEYWORDS.test(clean)) return "skip";
+  if (clean.startsWith("RT: http") && clean.length < 100) return "skip";
+  if (clean.startsWith("http") && clean.length < 80) return "skip"; // bare URL
   return "classify";
 }
 
@@ -33,7 +40,8 @@ function quickClassify(content: string): ClassificationResult | null {
 }
 
 export async function classifyPost(content: string): Promise<ClassificationResult> {
-  // Pre-filter noise
+  // Strip HTML and pre-filter noise
+  content = stripHtml(content);
   if (preFilter(content) === "skip") return DEFAULT_RESULT;
 
   // Quick keyword-based classification for obvious cases
