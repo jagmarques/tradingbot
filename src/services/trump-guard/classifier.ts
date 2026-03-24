@@ -22,12 +22,12 @@ function stripHtml(text: string): string {
 
 function preFilter(content: string): "skip" | "classify" {
   const clean = stripHtml(content);
-  if (clean.length < 30) return "skip"; // too short after stripping
-  if (NOISE_KEYWORDS.test(clean) && !MARKET_KEYWORDS.test(clean)) return "skip";
-  if (clean.startsWith("RT: ") && clean.length < 100) return "skip";
-  // Skip if content is mostly just link text or list markers after HTML strip
+  if (clean.length < 30) return "skip";
   const alphaCount = (clean.match(/[a-zA-Z]/g) ?? []).length;
-  if (alphaCount < 20) return "skip"; // not enough actual text
+  if (alphaCount < 20) return "skip";
+  if (clean.startsWith("RT: ") && clean.length < 100) return "skip";
+  // Must contain at least one market-relevant keyword to proceed to AI
+  if (!MARKET_KEYWORDS.test(clean)) return "skip";
   return "classify";
 }
 
