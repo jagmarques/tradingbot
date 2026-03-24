@@ -106,28 +106,8 @@ export async function runNewsTradingCycle(): Promise<number> {
     return 0;
   }
 
-  // BTC price confirmation - HIGH: 0s, MEDIUM: 10s
+  // No BTC confirmation delay - AI analysis is the filter, enter immediately
   const direction = event.direction;
-  const confirmDelay = impact === "high" ? 0 : 10_000;
-  if (confirmDelay > 0) {
-    const btcPriceBefore = btcCandles[btcCandles.length - 1].close;
-    console.log(`[News-Trade] BTC confirmation: waiting ${confirmDelay / 1000}s (${impact})...`);
-    await new Promise(r => setTimeout(r, confirmDelay));
-
-    const btcAfter = await fetchCandles("BTC", "1h", 1);
-    if (btcAfter.length === 0) return 0;
-    const btcPriceAfter = btcAfter[btcAfter.length - 1].close;
-    const btcMove = (btcPriceAfter - btcPriceBefore) / btcPriceBefore;
-
-    const expectedDir = direction === "long" ? 1 : -1;
-    const moveInDir = btcMove * expectedDir;
-
-    if (moveInDir < 0.003) {
-      console.log(`[News-Trade] BTC confirmation failed: moved ${(btcMove * 100).toFixed(3)}%, need 0.3% ${direction}. Skipping.`);
-      return 0;
-    }
-    console.log(`[News-Trade] BTC confirmed: ${(btcMove * 100).toFixed(3)}% move`);
-  }
 
   // Get open positions for this trade type
   const openPositions = getOpenQuantPositions();
