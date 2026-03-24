@@ -92,25 +92,32 @@ Real-time WebSocket monitoring for EVM token rugs via Alchemy (Uniswap V2/V3 Bur
 - Tracks rugged tokens in DB to skip future buys
 - Rug count and USD lost shown in Status view
 
-### Hyperliquid Quant Trading (GARCH-chan)
+### Hyperliquid Quant Trading
 
-GARCH z-score momentum with Chandelier ATR stop-loss on 19 perpetual futures pairs.
+**GARCH-chan (LIVE)**
 
-**Pairs:** OP, WIF, ARB, LDO, AVAX, TRUMP, DASH, DOT, ENA, DOGE, APT, SEI, LINK, ADA, WLD, XRP, SUI, TON, UNI
+GARCH(1,1) z-score momentum on 20 perpetual futures pairs.
 
-**Engine:**
-- GARCH(1,1) volatility model with z-score entry signals
-- Chandelier ATR trailing stop-loss
-- 15-minute scheduler cycle
-- $10 fixed margin per trade, 10x leverage
+- z > 4.5 longs, z < -3.0 shorts, ADX 30/25, EMA 9/21 + BTC trend
+- 10x leverage, compound 4% sizing, SL 3%, TP 10%, max hold 48h
+- 15-minute scheduler, 10s position monitor, $15/day loss limit
 
-**Execution:**
-- $25 rolling 24h drawdown limit per strategy
-- 10s position monitor
-- ATR-based stop-loss (capped 3.5%), trailing stop activation/distance configurable
-- Bidirectional reconciliation: orphan close + phantom detection
-- Paper spread: 0.04% per side
-- Exchange-level stop-loss orders on Hyperliquid
+**News Trading Engine (LIVE)**
+
+Opens positions on 20 altcoins immediately on crypto-relevant news.
+
+- 9 RSS feeds + Tavily, 3-30s detection latency
+- Groq AI BULLISH/BEARISH/NEUTRAL classification
+- BTC EMA9/21 trend filter, SL 2%, trail-only exit (5%/2%)
+- Stale exit: 1h if < 0.3% directional move, max hold 24h
+- Compound 4% per event, $15/day loss limit
+
+**BTC Event Engine (PAPER)**
+
+Detects BTC >0.7% 1h moves, trades 10 altcoins with BTC trend filter.
+
+- SL 3%, TP 7%, 24h max hold
+- Paper validation before live promotion
 
 **Unified Account (Hyperliquid):**
 - `getSpotClearinghouseState` returns real portfolio value

@@ -1,11 +1,52 @@
-# News vs GARCH Comparison Results
+# Final Results - March 24, 2026 (Corrected)
+
+## Winning Strategy: News Trading (trail-only, all 20 pairs, no cap)
+
+| Metric | Value |
+|--------|-------|
+| Events (Trump-only) | 73 (with trend filter) |
+| Trades | 768 |
+| Win Rate | 74% |
+| PnL | $8,897 |
+| $/day | $30.47 |
+| MaxDD | $100 |
+| Sharpe | 2.85 |
+| Profit Factor | 25.16 |
+| SL | 2% (20% margin at 10x) |
+| TP | None - trail only |
+| Trail | 5% activate, 2% distance |
+| Stale exit | 1h if < 0.3% directional move |
+| Max hold | 24h |
+
+Note: Backtest uses Trump posts only (~0.25 events/day). Live system has 9 RSS + Tavily = estimated 1+ events/day.
+
+## Audit Fixes Applied
+- 0.1% slippage modeled
+- Per-event risk cap (4% split across pairs)
+- $500 max position per pair
+- Stale exit uses directional move (not absolute)
+- Orphan detection skips news-trade pairs
+- Defense only closes garch-chan positions
+
+---
+
+# News vs GARCH Comparison Results (v2 - corrected)
 
 Date: 2026-03-23
 Script: scripts/backtest-news-vs-garch.ts
 Period: 2025-06-01 to 2026-03-20 (292 days)
 Position size: $20 fixed, 10x leverage
 Fee: 0.035% taker (HL corrected)
-News events: 356 price-confirmed (BTC moved >0.3% within 15min of crypto-relevant Trump post)
+News events: 163 price-confirmed (BTC moved >0.3% within 15min of crypto-relevant Trump post)
+Direction split: 75 BULLISH, 88 BEARISH
+
+## Fixes Applied (v2)
+
+1. **Tighter keyword list** - removed "rate", "tax", "economy", "shutdown", "china", "russia", "iran", etc. that matched non-crypto posts. Events: 356 -> 163 (closer to prior research's 187)
+2. **Same-bar entry** - news entry now uses the SAME hourly bar's open where event falls (not next bar). If event at hour X minute 5, enter at hour X open. Simulates real-time RSS detection (3-11s latency)
+3. **Stale exit hourly granularity** - 30min stale can't fire until next hourly bar anyway, so relabeled to 1h@0.3% (honest minimum granularity with 1h data)
+4. **Mark-to-market MaxDD** - equity curve now includes unrealized P&L of open positions at each bar, not just realized trade P&L. MaxDD is more realistic (higher for GARCH: $320 vs prior $136)
+5. **Direction tiebreaker** - when both up and down exceed 0.3% threshold in 15min window, takes the larger absolute move (not always bullish first)
 
 ---
 
@@ -13,11 +54,11 @@ News events: 356 price-confirmed (BTC moved >0.3% within 15min of crypto-relevan
 
 | Strategy | Trades | WR% | PnL | $/day | MaxDD | Sharpe | PF | AnnRet |
 |----------|--------|-----|-----|-------|-------|--------|----|--------|
-| Combined-no-defense | 1855 | 48% | $2288 | $7.83 | $186 | 3.53 | 1.66 | 715% |
-| GARCH-v2-baseline | 633 | 40% | $1567 | $5.37 | $136 | 3.21 | 1.73 | 490% |
-| Combined-separate-cap | 1881 | 48% | $1806 | $6.18 | $166 | 2.89 | 1.56 | 564% |
-| Combined-shared-cap | 1714 | 47% | $1545 | $5.29 | $169 | 2.82 | 1.50 | 483% |
-| GARCH+defense | 659 | 41% | $1085 | $3.72 | $136 | 2.52 | 1.56 | 339% |
+| News-top10-TP10-SL3 | 416 | 69% | $1059 | $3.63 | $46 | 8.12 | 4.92 | 331% |
+| News-top10-TP7-SL3 | 420 | 69% | $1027 | $3.52 | $46 | 8.15 | 4.72 | 321% |
+| News-top10-TP10-SL2 | 416 | 67% | $1006 | $3.44 | $48 | 7.56 | 4.22 | 314% |
+| News-top10-TP7-SL2 | 420 | 67% | $976 | $3.34 | $48 | 7.61 | 4.08 | 305% |
+| News-top10-TP10-SL1.5 | 416 | 65% | $975 | $3.34 | $48 | 7.26 | 3.96 | 305% |
 
 ---
 
@@ -25,13 +66,13 @@ News events: 356 price-confirmed (BTC moved >0.3% within 15min of crypto-relevan
 
 | Strategy | Trades | WR% | PnL | $/day | MaxDD | Sharpe | PF | AnnRet |
 |----------|--------|-----|-----|-------|-------|--------|----|--------|
-| GARCH-v2-baseline | 633 | 40% | $1567 | $5.37 | $136 | 3.21 | 1.73 | 490% |
-| GARCH+defense | 659 | 41% | $1085 | $3.72 | $136 | 2.52 | 1.56 | 339% |
-| Combined-shared-cap | 1714 | 47% | $1545 | $5.29 | $169 | 2.82 | 1.50 | 483% |
-| Combined-separate-cap | 1881 | 48% | $1806 | $6.18 | $166 | 2.89 | 1.56 | 564% |
-| Combined-no-defense | 1855 | 48% | $2288 | $7.83 | $186 | 3.53 | 1.66 | 715% |
+| GARCH-v2-baseline | 633 | 40% | $1567 | $5.37 | $320 | 3.21 | 1.73 | 490% |
+| GARCH+defense | 631 | 41% | $1409 | $4.82 | $320 | 3.05 | 1.70 | 440% |
+| Combined-shared-cap | 1013 | 51% | $2055 | $7.04 | $320 | 3.74 | 1.89 | 642% |
+| Combined-separate-cap | 1062 | 52% | $2236 | $7.66 | $320 | 3.90 | 1.96 | 699% |
+| Combined-no-defense | 1064 | 51% | $2394 | $8.20 | $320 | 4.09 | 1.97 | 748% |
 
-Key finding: defense costs -$1.65/day vs GARCH baseline. Adding news offense (no-defense) adds +$2.46/day over baseline.
+Key finding: defense costs -$0.54/day vs GARCH baseline. Adding news offense (no-defense) adds +$2.83/day over baseline.
 
 ---
 
@@ -39,22 +80,20 @@ Key finding: defense costs -$1.65/day vs GARCH baseline. Adding news offense (no
 
 | Pair | Trades | WR% | PnL | $/day | MaxDD | PF |
 |------|--------|-----|-----|-------|-------|----|
-| ARB | 184 | 55% | $152 | $0.52 | $34 | 1.79 |
-| OP | 183 | 51% | $145 | $0.50 | $24 | 1.70 |
-| ENA | 183 | 52% | $108 | $0.37 | $48 | 1.47 |
-| LDO | 181 | 50% | $102 | $0.35 | $28 | 1.49 |
-| DOT | 180 | 52% | $86 | $0.29 | $18 | 1.49 |
-| TRUMP | 181 | 51% | $73 | $0.25 | $22 | 1.48 |
-| XRP | 14 | 64% | $19 | $0.07 | $5 | 3.15 |
-| WLD | 17 | 65% | $16 | $0.05 | $6 | 2.15 |
-| LINK | 20 | 60% | $9 | $0.03 | $9 | 1.38 |
-| APT | 26 | 50% | $5 | $0.02 | $13 | 1.13 |
-| DOGE | 34 | 47% | $3 | $0.01 | $20 | 1.08 |
-| ADA | 19 | 53% | $2 | $0.01 | $12 | 1.08 |
+| ENA | 67 | 63% | $145 | $0.50 | $12 | 3.17 |
+| OP | 67 | 66% | $137 | $0.47 | $9 | 3.63 |
+| LDO | 66 | 68% | $135 | $0.46 | $10 | 3.47 |
+| DOT | 67 | 69% | $123 | $0.42 | $8 | 3.62 |
+| ARB | 67 | 67% | $118 | $0.40 | $9 | 3.36 |
+| TRUMP | 67 | 72% | $106 | $0.36 | $7 | 4.44 |
+| DOGE | 6 | 83% | $14 | $0.05 | $4 | 4.53 |
+| LINK | 5 | 80% | $14 | $0.05 | $2 | 8.99 |
+| APT | 5 | 80% | $13 | $0.04 | $4 | 4.09 |
+| ADA | 5 | 80% | $10 | $0.03 | $2 | 6.33 |
+| WLD | 5 | 60% | $8 | $0.03 | $2 | 4.29 |
+| XRP | 4 | 75% | $4 | $0.02 | $2 | 3.66 |
 
-Actual performers: ARB, OP, ENA, LDO, DOT, TRUMP. TIA, kBONK, NEAR, kSHIB, SOL, BNB, HYPE, ONDO, XRP had 0 trades (not in all20 per-pair sim or no events matched).
-
-Note: Prior research ranked TIA/kBONK top - this backtest uses hourly entry (1h delay from event), which filters out fast-movers. ARB/OP/ENA/LDO show best hourly persistence.
+Top performers: ENA, OP, LDO, DOT, ARB, TRUMP (all with 60+ trades, 63-72% WR, PF 3.17-4.44). Lower-volume pairs (DOGE, LINK, APT, ADA, WLD, XRP) show high WR but too few trades for statistical significance.
 
 ---
 
@@ -62,25 +101,24 @@ Note: Prior research ranked TIA/kBONK top - this backtest uses hourly entry (1h 
 
 - Pairs: top15 (TIA, kBONK, OP, LDO, APT, NEAR, ARB, ENA, WLD, ADA, DOT, ONDO, LINK, DOGE, SOL)
 - TP: 5%, SL: 2%
-- Max hold: 4h (6-12h slightly better on $/day, diminishing returns)
-- Stale exit: 30min@0.3% wins on $/day; 1h@0.5% better Sharpe and lower DD
-- Result: $2.72/day, 52% WR, $185 MaxDD, Sharpe 3.61
+- Max hold: 4h (12h gives $3.45/day but extends risk window)
+- Stale exit: 1h@0.3% best on $/day ($3.17/day); 1h@0.5% best Sharpe
+- Result: $3.26/day, 68% WR, $57 MaxDD, Sharpe 7.91, PF 3.99
 
-Optimal sweet spot for stale exit: 30min@0.3% ($2.82/day, lower DD than no-stale)
-Optimal TP/SL: wider SL3% improves WR and $/day (SL3 across all TPs = best results)
+Optimal TP/SL: wider SL3% + wider TP10% wins ($3.63/day, 69% WR, $46 MaxDD, PF 4.92)
 
 ---
 
 ## News Pair Set Comparison
 
-| Pairs | Trades | WR% | $/day | MaxDD | Sharpe |
-|-------|--------|-----|-------|-------|--------|
-| all20 | 1222 | 52% | $2.47 | $185 | 3.56 |
-| top15 | 1216 | 52% | $2.72 | $185 | 3.61 |
-| top10 | 1177 | 52% | $2.65 | $175 | 3.59 |
-| top5 | 819 | 52% | $1.87 | $111 | 3.37 |
+| Pairs | Trades | WR% | $/day | MaxDD | Sharpe | PF |
+|-------|--------|-----|-------|-------|--------|-----|
+| all20 | 431 | 68% | $2.83 | $84 | 7.60 | 3.61 |
+| top15 | 431 | 68% | $3.26 | $57 | 7.91 | 3.99 |
+| top10 | 421 | 67% | $3.14 | $57 | 7.94 | 3.89 |
+| top5 | 301 | 67% | $2.23 | $52 | 7.77 | 3.98 |
 
-top15 > top10 > all20 - adding bottom 5 pairs hurts (all20 adds noise pairs)
+top15 > top10 > all20 > top5. Adding bottom 5 pairs hurts (noise). top15 is sweet spot.
 
 ---
 
@@ -88,12 +126,12 @@ top15 > top10 > all20 - adding bottom 5 pairs hurts (all20 adds noise pairs)
 
 | | SL1% | SL1.5% | SL2% | SL3% |
 |-|------|--------|------|------|
-| TP3% | $1.75/d WR45% | $1.79/d WR50% | $1.98/d WR52% | $2.17/d WR53% |
-| TP5% | $2.24/d WR44% | $2.42/d WR50% | $2.65/d WR52% | $2.92/d WR53% |
-| TP7% | $2.09/d WR44% | $2.37/d WR50% | $2.65/d WR52% | $2.86/d WR54% |
-| TP10% | $2.22/d WR43% | $2.46/d WR49% | $2.69/d WR52% | $2.90/d WR53% |
+| TP3% | $2.57/d WR63% | $2.69/d WR67% | $2.81/d WR70% | $2.96/d WR71% |
+| TP5% | $2.93/d WR60% | $3.05/d WR65% | $3.14/d WR67% | $3.31/d WR69% |
+| TP7% | $3.11/d WR60% | $3.24/d WR65% | $3.34/d WR67% | $3.52/d WR69% |
+| TP10% | $3.18/d WR60% | $3.34/d WR65% | $3.44/d WR67% | $3.63/d WR69% |
 
-Wider SL consistently better. TP doesn't matter much (5-10% similar). Best: TP5%/SL3%.
+Wider SL consistently better. Wider TP consistently better. Best: TP10%/SL3% ($3.63/day, PF 4.92).
 
 ---
 
@@ -101,13 +139,13 @@ Wider SL consistently better. TP doesn't matter much (5-10% similar). Best: TP5%
 
 | Config | $/day | WR% | MaxDD | Sharpe |
 |--------|-------|-----|-------|--------|
-| no-stale | $0.51 | 45% | $313 | 0.67 |
-| 30min@0.3% | $2.82 | 53% | $176 | 3.79 |
-| 1h@0.5% | $2.65 | 52% | $175 | 3.59 |
-| 1h@1% | $2.21 | 49% | $244 | 2.94 |
-| 2h@0.5% | $1.76 | 49% | $239 | 2.27 |
+| no-stale | $2.32 | 56% | $132 | 5.45 |
+| 1h@0.3% | $3.17 | 68% | $57 | 8.01 |
+| 1h@0.5% | $3.14 | 67% | $57 | 7.94 |
+| 1h@1% | $2.88 | 64% | $57 | 7.45 |
+| 2h@0.5% | $2.88 | 63% | $102 | 6.72 |
 
-Stale exit is CRITICAL - without it: WR drops from 52% to 45%, MaxDD doubles, near-zero profit. The 30min@0.3% stale wins on all metrics.
+Stale exit remains CRITICAL - without it: WR drops from 67% to 56%, MaxDD more than doubles, $/day drops 26%. The 1h@0.3% stale wins on $/day with same low MaxDD.
 
 ---
 
@@ -115,46 +153,55 @@ Stale exit is CRITICAL - without it: WR drops from 52% to 45%, MaxDD doubles, ne
 
 | Hold | $/day | WR% | MaxDD | Sharpe |
 |------|-------|-----|-------|--------|
-| 2h | $1.82 | 53% | $197 | 2.58 |
-| 4h | $2.65 | 52% | $175 | 3.59 |
-| 6h | $2.84 | 52% | $144 | 3.76 |
-| 8h | $2.96 | 51% | $145 | 3.86 |
-| 12h | $3.26 | 51% | $137 | 4.11 |
+| 2h | $2.65 | 69% | $61 | 7.72 |
+| 4h | $3.14 | 67% | $57 | 7.94 |
+| 6h | $3.12 | 66% | $55 | 8.51 |
+| 8h | $3.25 | 66% | $55 | 8.50 |
+| 12h | $3.45 | 66% | $55 | 8.79 |
 
-Longer hold = better Sharpe + lower MaxDD (positions find their target). 12h optimal if comfortable with extended hold.
+Longer hold = better Sharpe + lower MaxDD + higher $/day. 12h optimal but 4-8h is safe default.
 
 ---
 
 ## Key Findings vs Prior Research
 
-Prior research showed news-only best at $13.97/day. This run shows $2.72-3.26/day.
-Differences:
-1. This uses hourly candles (1h delay) - prior was minute-level entry timing
-2. This has 356 events vs 187 in prior (more events = more average trades, but also more noise)
-3. Prior research used position-level entry at exact event timestamp (minute bars)
+Prior research showed news-only best at $12.84/day (187 events). This corrected run shows $3.26/day (163 events).
 
-Hourly entry dilutes the edge significantly - the fast post-event move (first 15-60min) is missed.
+Remaining gap explained by:
+1. Prior research likely used minute-level entry (exact event timestamp) - we use hourly bar open as proxy
+2. With same-bar entry fix, we now enter within the event hour (not next hour), but hourly granularity still misses the first 0-55 minutes of move
+3. Tighter keywords reduced events from 356 to 163 (fewer false positives = fewer trades = less total PnL but better quality)
 
-GARCH baseline: $5.37/day (vs $4.70/day prior - difference = fee correction 0.045% -> 0.035%)
+Key improvements in v2:
+- News WR jumped from 52% to 67-69% (much closer to prior's 60.5%)
+- MaxDD for news dropped from $185 to $57 (mark-to-market is honest, but news positions are short-lived so unrealized doesn't add much)
+- GARCH MaxDD now $320 (mark-to-market reveals true drawdown including unrealized losses on open positions)
+- PF improved from ~1.5 to 3.89-4.92 (higher quality signals from tighter keywords)
+
+GARCH baseline: $5.37/day (same as before - GARCH code unchanged)
 
 ---
 
 ## Recommendation
 
-**Build the news trading engine.** Combined-no-defense delivers $7.83/day vs GARCH alone $5.37/day.
+**Build the news trading engine.** Combined-no-defense delivers $8.20/day vs GARCH alone $5.37/day (+53%).
 
 **Optimal combined config:**
 - GARCH v2 as-is (separate cap, 6/dir)
-- News engine: top15 pairs, TP5%, SL3%, max hold 8-12h, stale exit 30min@0.3%
-- No defense (defense costs -$1.65/day; real-time RSS detection makes it less necessary since we enter fast)
-- Separate position caps (separate-cap adds $0.81/day vs shared-cap)
+- News engine: top15 pairs, TP10%, SL3%, max hold 4-8h, stale exit 1h@0.3%
+- No defense (defense costs -$0.54/day; real-time RSS detection makes it unnecessary since we enter fast)
+- Separate position caps (separate-cap > shared-cap by $0.62/day)
+
+**Best risk-adjusted news config:**
+- top10, TP10%, SL3%, hold4h, stale1h@0.5%
+- $3.63/day, 69% WR, $46 MaxDD, PF 4.92, Sharpe 8.12
 
 **Why no defense in combined:**
 The defense was designed for live positions already open. In combined mode, the news offense positions being added actually benefit from the same event that would trigger defense. Net effect: keep both GARCH positions AND add news positions in event direction.
 
 **Next steps:**
 1. Build NewsTrading engine (RSS -> Groq classifier -> open positions on top15 pairs)
-2. Use: TP5%, SL3%, max hold 8h, stale exit 30min if <0.3% move in direction
+2. Use: TP10%, SL3%, max hold 4-8h, stale exit 1h if <0.3% move in direction
 3. Paper trade 2 weeks alongside live GARCH
 4. Deploy with separate cap (6/dir news independent of GARCH cap)
 5. Keep NewsGuard defense for GARCH-only positions (before news engine live)
