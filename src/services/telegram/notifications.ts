@@ -256,12 +256,14 @@ export async function notifyQuantTradeEntry(params: {
   stopLoss: number;
   takeProfit: number;
   positionMode?: "paper" | "live";
+  newsContext?: string;
 }): Promise<void> {
   const tradingMode = getTradingMode();
   if (params.positionMode !== "live" && (tradingMode === "hybrid" || tradingMode === "live")) return;
   const mode = (params.positionMode === "live" ? "[LIVE] " : "[PAPER] ");
   const dirLabel = params.direction === "long" ? "LONG" : "SHORT";
   const typeLabel = quantTypeLabel(params.tradeType);
+  const newsLine = params.newsContext ? `\nNews: ${escapeHtml(params.newsContext)}` : "";
   const message =
     `${mode}<b>QUANT ENTRY</b>\n\n` +
     `Pair: <b>${escapeHtml(params.pair)}</b>\n` +
@@ -271,7 +273,8 @@ export async function notifyQuantTradeEntry(params: {
     `Leverage: ${params.leverage}x\n` +
     `Type: ${typeLabel}\n` +
     `Stop-Loss: ${Number(params.stopLoss.toPrecision(6))}\n` +
-    `Take-Profit: ${Number(params.takeProfit.toPrecision(6))}`;
+    `Take-Profit: ${Number(params.takeProfit.toPrecision(6))}` +
+    newsLine;
   await sendMessage(message);
 }
 

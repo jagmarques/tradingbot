@@ -572,10 +572,13 @@ export async function liveOpenPosition(
     livePositions.set(position.id, position);
     positionContext.set(position.id, { indicatorsAtEntry });
 
+    // Extract news context from indicatorsAtEntry for telegram notification
+    const newsCtx = indicatorsAtEntry?.includes("|") ? indicatorsAtEntry.split("|").slice(1).join("|") : undefined;
     void notifyQuantTradeEntry({
       pair, direction, size: actualSizeUsd, entryPrice: fillPrice,
       leverage, tradeType, stopLoss: adjStop, takeProfit: adjTP,
       positionMode: "live",
+      newsContext: tradeType === "news-trade" ? newsCtx : undefined,
     });
 
     console.log(`[Quant Live] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice} (${fillSize} coins)`);

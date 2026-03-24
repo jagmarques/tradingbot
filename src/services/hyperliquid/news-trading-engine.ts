@@ -97,7 +97,7 @@ export async function runNewsTradingCycle(): Promise<number> {
   }
 
   if (existingDir && existingDir !== direction) {
-    const existingImpact = myPositions[0].indicatorsAtEntry?.replace("impact:", "") ?? "medium";
+    const existingImpact = myPositions[0].indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
     const newRank = impactRank[impact] ?? 2;
     const oldRank = impactRank[existingImpact as "high" | "medium" | "low"] ?? 2;
 
@@ -158,9 +158,10 @@ export async function runNewsTradingCycle(): Promise<number> {
 
       console.log(`[News-Trade] Opening ${pair} ${direction} size=$${compoundSize} entry=${entryPrice} impact=${impact}`);
 
+      const indicators = `impact:${impact}|${event.content.slice(0, 100)}`;
       const position = await openPosition(
         pair, direction, compoundSize, LEVERAGE,
-        sl, tp, "trending", TRADE_TYPE, `impact:${impact}`, entryPrice,
+        sl, tp, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (position) {
         executed++;
