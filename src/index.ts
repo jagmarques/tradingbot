@@ -62,43 +62,11 @@ async function main(): Promise<void> {
     // Notify startup
     await notifyBotStarted();
 
-    // Validate EVM copy-trading chains
-    await validateCopyChains();
-
-    // Verify Polymarket API key matches wallet
-    await validateApiConnection();
-
-    // AI-powered Polymarket betting
-    if (env.AIBETTING_ENABLED === "true" && env.GROQ_API_KEY) {
-      const recoveredAIBets = initAIBettingPositions();
-      if (recoveredAIBets > 0) {
-        console.log(`[Bot] Recovered ${recoveredAIBets} AI betting positions`);
-      }
-
-      startAIBetting({
-        maxBetSize: env.AIBETTING_MAX_BET,
-        maxTotalExposure: env.AIBETTING_MAX_EXPOSURE,
-        maxPositions: env.AIBETTING_MAX_POSITIONS,
-        minEdge: env.AIBETTING_MIN_EDGE,
-        minConfidence: env.AIBETTING_MIN_CONFIDENCE,
-        scanIntervalMs: env.AIBETTING_SCAN_INTERVAL,
-        categoriesEnabled: ["politics", "crypto", "sports", "business", "entertainment", "other"],
-        bayesianWeight: env.AIBETTING_BAYESIAN_WEIGHT,
-        takeProfitThreshold: env.AIBETTING_TAKE_PROFIT,
-        stopLossThreshold: env.AIBETTING_STOP_LOSS,
-        holdResolutionDays: env.AIBETTING_HOLD_RESOLUTION_DAYS,
-      });
-      console.log("[Bot] AI Betting started");
-    } else {
-      console.log("[Bot] AI Betting disabled (set AIBETTING_ENABLED=true and GROQ_API_KEY to enable)");
-    }
-
-    // High-frequency scanner (Binance WS + Polymarket 15-min markets)
-    if (env.AIBETTING_ENABLED === "true") {
-      await startHFScanner();
-      console.log("[Bot] Bonds scanner started");
-
-    }
+    // AI Betting, Copy Betting, Insider Trading - DISABLED (not profitable)
+    // To re-enable: uncomment below and set env vars
+    console.log("[Bot] AI Betting: DISABLED");
+    console.log("[Bot] Copy Betting: DISABLED");
+    console.log("[Bot] Insider Scanner: DISABLED");
 
     // Quant trading on Hyperliquid (opt-in)
     if (env.QUANT_ENABLED === "true" && env.HYPERLIQUID_PRIVATE_KEY) {
@@ -111,17 +79,9 @@ async function main(): Promise<void> {
       console.log("[Bot] Quant trading disabled (set QUANT_ENABLED=true and HYPERLIQUID_PRIVATE_KEY to enable)");
     }
 
-    // Start Polymarket top trader tracking
-    startPolyTraderTracking(5000);
-    console.log("[Bot] Polymarket trader tracking started");
-
-    // EVM insider wallet detection
-    if (process.env.ETHERSCAN_API_KEY) {
-      startInsiderScanner();
-      console.log("[Bot] Insider scanner started");
-    } else {
-      console.log("[Bot] Insider scanner disabled (set ETHERSCAN_API_KEY to enable)");
-    }
+    // Polymarket copy trading + insider scanner - DISABLED
+    // startPolyTraderTracking(5000);
+    // startInsiderScanner();
 
     // Start P&L daily snapshot cron
     startPnlCron();

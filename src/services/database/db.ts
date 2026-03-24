@@ -563,6 +563,14 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added backtest columns");
   }
 
+  // Migration: Add score column to insider_wallets
+  const iwCols = db.prepare("PRAGMA table_info(insider_wallets)").all() as Array<{ name: string }>;
+  if (!iwCols.map(c => c.name).includes("score")) {
+    db.exec(`ALTER TABLE insider_wallets ADD COLUMN score REAL DEFAULT 0`);
+    db.exec(`ALTER TABLE insider_wallets ADD COLUMN gem_hit_count INTEGER DEFAULT 0`);
+    console.log("[Database] Migrated insider_wallets: added score, gem_hit_count");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }
