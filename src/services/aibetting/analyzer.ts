@@ -130,8 +130,8 @@ OUTPUT JSON ONLY (no other text):
   "reasoning": "2-3 sentence summary of your conclusion from Step 2",
   "keyFactors": ["factor1", "factor2", "factor3"],
   "evidenceCited": ["quote key phrases from articles verbatim", "another direct quote or key phrase"],
-  "consistencyNote": "why different from prior OR 'consistent with prior estimate' OR 'first analysis'",
-  "changeReason": "what new evidence caused the change, or null",
+  "consistencyNote": "REQUIRED: explain why your estimate differs from prior, or say 'first analysis' if no prior exists",
+  "changeReason": "REQUIRED: what specific new evidence caused the change, or 'no new evidence' if none",
   "timeline": "what needs to happen by when, or null"
 }`;
 }
@@ -328,9 +328,11 @@ export async function analyzeMarket(
         }
       }
 
-      // Penalize when model can't explain reasoning change (has history but null changeReason)
-      if (history.length > 0 && !analysis.consistencyNote) {
-        const penalty = 0.10;
+      // Penalize when model can't explain reasoning change (has history but no explanation)
+      const hasConsistency = analysis.consistencyNote && analysis.consistencyNote.length > 5
+        && !["null", "n/a", "none"].includes(analysis.consistencyNote.toLowerCase());
+      if (history.length > 0 && !hasConsistency) {
+        const penalty = 0.05;
         const before = analysis.confidence;
         analysis.confidence = Math.max(0.1, analysis.confidence - penalty);
         console.warn(`[Analyzer] Missing reasoning for change in ${market.title} (confidence ${(before * 100).toFixed(0)}% -> ${(analysis.confidence * 100).toFixed(0)}%)`);
