@@ -3,6 +3,7 @@
 import { EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
+import { saveQuantPosition } from "../database/quant.js";
 import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal, isQuantKilled } from "./risk-manager.js";
@@ -58,6 +59,7 @@ export async function runNewsTradingCycle(): Promise<number> {
     return 0;
   }
   const btcCloses = btcCandles.map(c => c.close);
+  const btcPrice = btcCandles[btcCandles.length - 1].close;
   const ema9Vals = EMA.calculate({ period: 9, values: btcCloses });
   const ema21Vals = EMA.calculate({ period: 21, values: btcCloses });
   if (ema9Vals.length === 0 || ema21Vals.length === 0) {
@@ -157,12 +159,15 @@ export async function runNewsTradingCycle(): Promise<number> {
 
       console.log(`[News-Trade] Opening ${pair} ${direction} size=$${compoundSize} entry=${entryPrice} impact=${impact}`);
 
-      const indicators = `impact:${impact}|${event.content.slice(0, 100)}`;
+      const indicators = `impact:${impact}|src:${event.source ?? "unknown"}|btc:${btcPrice}|eq:${equity.toFixed(0)}|ets:${event.ts}|${event.content.slice(0, 100)}`;
       const position = await openPosition(
         pair, direction, compoundSize, LEVERAGE,
         sl, tp, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (position) {
+        position.btcPriceAtEntry = btcPrice;
+        position.equityAtEntry = equity;
+        saveQuantPosition(position);
         executed++;
         openPairs.add(pair);
       }

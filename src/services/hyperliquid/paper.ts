@@ -8,7 +8,7 @@ import {
   loadOpenQuantPositions,
 } from "../database/quant.js";
 import { QUANT_DEFAULT_VIRTUAL_BALANCE, LIGHTER_PAPER_SPREAD_PCT } from "../../config/constants.js";
-import { calcPnl, rebaseStops } from "./quant-utils.js";
+import { calcPnl, rebaseStops, parseIndicatorsMeta } from "./quant-utils.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
 import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
@@ -256,6 +256,8 @@ export async function paperClosePosition(
   saveQuantPosition(closedPosition);
 
   const ctx = positionContext.get(positionId);
+  const indMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? position.indicatorsAtEntry);
+  const holdDurationMs = Date.now() - new Date(position.openedAt).getTime();
   saveQuantTrade({
     id: position.id,
     pair: position.pair,
@@ -275,6 +277,11 @@ export async function paperClosePosition(
     tradeType: position.tradeType ?? "directional",
     exchange: position.exchange,
     maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
+    btcPriceAtEntry: position.btcPriceAtEntry ?? indMeta.btcPrice,
+    equityAtEntry: position.equityAtEntry ?? indMeta.equity,
+    newsSource: indMeta.source,
+    eventTimestamp: indMeta.eventTs,
+    holdDurationMs,
   });
   positionContext.delete(positionId);
   lastFundingAccrual.delete(positionId);

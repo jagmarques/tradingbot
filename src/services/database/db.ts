@@ -540,6 +540,29 @@ export function initDb(dbPath?: string): Database.Database {
   // Index on instance (must be after migration ensures column exists)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_instance ON hf_maker_trades(instance)`);
 
+  // Migration: Add backtest improvement columns to quant_positions
+  const qpCols2 = db.prepare("PRAGMA table_info(quant_positions)").all() as Array<{ name: string }>;
+  const qpColNames2 = qpCols2.map(c => c.name);
+  if (!qpColNames2.includes("btc_price_at_entry")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN btc_price_at_entry REAL`);
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN equity_at_entry REAL`);
+    console.log("[Database] Migrated quant_positions: added btc_price_at_entry, equity_at_entry");
+  }
+
+  // Migration: Add backtest improvement columns to quant_trades
+  const qtCols2 = db.prepare("PRAGMA table_info(quant_trades)").all() as Array<{ name: string }>;
+  const qtColNames2 = qtCols2.map(c => c.name);
+  if (!qtColNames2.includes("btc_price_at_entry")) {
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN btc_price_at_entry REAL`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN event_timestamp TEXT`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN news_source TEXT`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN hold_duration_ms INTEGER`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN slippage_pct REAL`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN equity_at_entry REAL`);
+    db.exec(`ALTER TABLE quant_trades ADD COLUMN event_position_count INTEGER`);
+    console.log("[Database] Migrated quant_trades: added backtest columns");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }

@@ -20,6 +20,8 @@ export interface QuantPosition {
   spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
   maxUnrealizedPnlPct?: number; // High-water mark for trailing stop
   indicatorsAtEntry?: string; // Engine-specific context (e.g. "impact:high")
+  btcPriceAtEntry?: number;
+  equityAtEntry?: number;
 }
 
 export interface QuantTrade {
@@ -41,6 +43,13 @@ export interface QuantTrade {
   updatedAt: string;
   tradeType?: TradeType;
   maxUnrealizedPnlPct?: number;
+  btcPriceAtEntry?: number;
+  eventTimestamp?: string;
+  newsSource?: string;
+  holdDurationMs?: number;
+  slippagePct?: number;
+  equityAtEntry?: number;
+  eventPositionCount?: number;
 }
 
 export interface QuantAccountState {

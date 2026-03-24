@@ -49,6 +49,34 @@ export function inferExitReason(
   return `closed ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
+// Parse metadata from indicatorsAtEntry string (format: "impact:high|src:Trump|btc:87500|eq:150|ets:17743...")
+export function parseIndicatorsMeta(indicators?: string): {
+  btcPrice?: number;
+  equity?: number;
+  source?: string;
+  eventTs?: string;
+} {
+  if (!indicators) return {};
+  const parts = indicators.split("|");
+  const meta: Record<string, string> = {};
+  for (const part of parts) {
+    const idx = part.indexOf(":");
+    if (idx > 0) {
+      const key = part.slice(0, idx);
+      const val = part.slice(idx + 1);
+      if (key === "src" || key === "btc" || key === "eq" || key === "ets") {
+        meta[key] = val;
+      }
+    }
+  }
+  return {
+    btcPrice: meta.btc ? parseFloat(meta.btc) : undefined,
+    equity: meta.eq ? parseFloat(meta.eq) : undefined,
+    source: meta.src || undefined,
+    eventTs: meta.ets || undefined,
+  };
+}
+
 // Rebase SL/TP from expected entry to actual fill (preserves % offset)
 export function rebaseStops(
   stopLoss: number,

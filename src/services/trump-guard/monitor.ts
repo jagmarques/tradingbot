@@ -43,7 +43,7 @@ const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
 const IMPACT_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 // News event emission for news-trading engine
-let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string; impact: "high" | "medium" | "low" } | null = null;
+let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string; impact: "high" | "medium" | "low"; source: string } | null = null;
 
 export function getLastNewsEvent() { return lastNewsEvent; }
 
@@ -74,7 +74,7 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
 
   // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
-  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact };
+  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact, source: feedName ?? "tavily" };
 
   // Trigger news-trading immediately (dynamic import avoids circular dependency)
   import("../hyperliquid/news-trading-engine.js").then(m => m.runNewsTradingCycle()).catch(err => {
@@ -238,7 +238,7 @@ async function pollTavily(): Promise<void> {
       const url = r.url ?? "";
       if (!url || seenUrls.has(url)) continue;
       const content = r.content ?? r.title ?? url;
-      await classifyAndAct(content);
+      await classifyAndAct(content, "tavily");
       seenUrls.add(url); // only mark as seen AFTER classification
     }
   } catch (err) {

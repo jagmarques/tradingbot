@@ -11,7 +11,7 @@ import { notifyQuantTradeEntry, notifyQuantTradeExit, notifyCriticalError } from
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
-import { capStopLoss, calcPnl, inferExitReason, rebaseStops } from "../hyperliquid/quant-utils.js";
+import { capStopLoss, calcPnl, inferExitReason, rebaseStops, parseIndicatorsMeta } from "../hyperliquid/quant-utils.js";
 
 const MAX_SLIPPAGE = 0.005;
 
@@ -310,6 +310,8 @@ async function reconcileWithExchange(): Promise<void> {
       livePositions.set(pos.id, closedPosition);
       saveQuantPosition(closedPosition);
       const ctx = positionContext.get(pos.id);
+      const reconIndMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? pos.indicatorsAtEntry);
+      const reconHoldMs = Date.now() - new Date(pos.openedAt).getTime();
       saveQuantTrade({
         id: pos.id, pair: pos.pair, direction: pos.direction,
         entryPrice: pos.entryPrice, exitPrice, size: pos.size, leverage: pos.leverage,
@@ -318,6 +320,11 @@ async function reconcileWithExchange(): Promise<void> {
         createdAt: pos.openedAt, updatedAt: now,
         tradeType: pos.tradeType ?? "directional",
         maxUnrealizedPnlPct: pos.maxUnrealizedPnlPct,
+        btcPriceAtEntry: pos.btcPriceAtEntry ?? reconIndMeta.btcPrice,
+        equityAtEntry: pos.equityAtEntry ?? reconIndMeta.equity,
+        newsSource: reconIndMeta.source,
+        eventTimestamp: reconIndMeta.eventTs,
+        holdDurationMs: reconHoldMs,
       });
       positionContext.delete(pos.id);
       await cancelExchangeStop(pos.id, pos.pair);
@@ -720,6 +727,8 @@ export async function liveClosePosition(
     saveQuantPosition(closedPosition);
 
     const ctx = positionContext.get(positionId);
+    const indMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? position.indicatorsAtEntry);
+    const holdDurationMs = Date.now() - new Date(position.openedAt).getTime();
     saveQuantTrade({
       id: position.id,
       pair: position.pair,
@@ -739,6 +748,11 @@ export async function liveClosePosition(
       updatedAt: now,
       tradeType: position.tradeType ?? "directional",
       maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
+      btcPriceAtEntry: position.btcPriceAtEntry ?? indMeta.btcPrice,
+      equityAtEntry: position.equityAtEntry ?? indMeta.equity,
+      newsSource: indMeta.source,
+      eventTimestamp: indMeta.eventTs,
+      holdDurationMs,
     });
     positionContext.delete(positionId);
 
@@ -801,6 +815,8 @@ export async function liveClosePosition(
             livePositions.set(positionId, reconciled);
             saveQuantPosition(reconciled);
             const ctx = positionContext.get(positionId);
+            const trIndMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? position.indicatorsAtEntry);
+            const trHoldMs = Date.now() - new Date(position.openedAt).getTime();
             saveQuantTrade({
               id: position.id, pair: position.pair, direction: position.direction,
               entryPrice: position.entryPrice, exitPrice: reconPrice,
@@ -810,6 +826,11 @@ export async function liveClosePosition(
               createdAt: position.openedAt, updatedAt: now,
               tradeType: position.tradeType ?? "directional",
               maxUnrealizedPnlPct: position.maxUnrealizedPnlPct,
+              btcPriceAtEntry: position.btcPriceAtEntry ?? trIndMeta.btcPrice,
+              equityAtEntry: position.equityAtEntry ?? trIndMeta.equity,
+              newsSource: trIndMeta.source,
+              eventTimestamp: trIndMeta.eventTs,
+              holdDurationMs: trHoldMs,
             });
             positionContext.delete(positionId);
             if (reason === "stop-loss") {

@@ -12,8 +12,9 @@ export function saveQuantTrade(trade: QuantTrade): void {
     INSERT OR REPLACE INTO quant_trades (
       id, pair, direction, entry_price, exit_price, size, leverage,
       pnl, fees, mode, status, ai_confidence, ai_reasoning, exit_reason,
-      indicators_at_entry, trade_type, ai_agreed, exchange, created_at, updated_at, max_unrealized_pnl_pct
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+      indicators_at_entry, trade_type, ai_agreed, exchange, created_at, updated_at, max_unrealized_pnl_pct,
+      btc_price_at_entry, event_timestamp, news_source, hold_duration_ms, slippage_pct, equity_at_entry, event_position_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     trade.id,
     trade.pair,
@@ -35,6 +36,13 @@ export function saveQuantTrade(trade: QuantTrade): void {
     trade.exchange ?? "hyperliquid",
     trade.createdAt,
     trade.maxUnrealizedPnlPct ?? null,
+    trade.btcPriceAtEntry ?? null,
+    trade.eventTimestamp ?? null,
+    trade.newsSource ?? null,
+    trade.holdDurationMs ?? null,
+    trade.slippagePct ?? null,
+    trade.equityAtEntry ?? null,
+    trade.eventPositionCount ?? null,
   );
 }
 
@@ -44,8 +52,9 @@ export function saveQuantPosition(position: QuantPosition): void {
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
       unrealized_pnl, mode, status, trade_type, opened_at, closed_at,
-      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, exchange, indicators_at_entry, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, exchange, indicators_at_entry,
+      btc_price_at_entry, equity_at_entry, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -65,6 +74,8 @@ export function saveQuantPosition(position: QuantPosition): void {
     null, // ai_agreed (column kept for DB compat)
     position.exchange ?? "hyperliquid",
     position.indicatorsAtEntry ?? null,
+    position.btcPriceAtEntry ?? null,
+    position.equityAtEntry ?? null,
   );
 }
 
@@ -108,6 +119,8 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     exitReason: undefined,
     tradeType: (row.trade_type ?? "directional") as TradeType,
     indicatorsAtEntry: (row as Record<string, unknown>).indicators_at_entry as string | undefined ?? undefined,
+    btcPriceAtEntry: (row as Record<string, unknown>).btc_price_at_entry as number | undefined ?? undefined,
+    equityAtEntry: (row as Record<string, unknown>).equity_at_entry as number | undefined ?? undefined,
   }));
 }
 
@@ -141,25 +154,35 @@ export function loadClosedQuantTrades(limit: number = 20, mode?: "live" | "paper
     trade_type: string | null;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    pair: row.pair,
-    direction: row.direction as "long" | "short",
-    entryPrice: row.entry_price,
-    exitPrice: row.exit_price ?? undefined,
-    size: row.size,
-    leverage: row.leverage,
-    pnl: row.pnl,
-    fees: row.fees,
-    mode: row.mode as "paper" | "live",
-    status: row.status as "open" | "closed" | "failed",
-    exitReason: row.exit_reason ?? undefined,
-    indicatorsAtEntry: row.indicators_at_entry ?? undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    tradeType: (row.trade_type ?? "directional") as TradeType,
-    exchange: ((row as Record<string, unknown>).exchange as string | null) === "lighter" ? "lighter" as const : "hyperliquid" as const,
-  }));
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: row.id,
+      pair: row.pair,
+      direction: row.direction as "long" | "short",
+      entryPrice: row.entry_price,
+      exitPrice: row.exit_price ?? undefined,
+      size: row.size,
+      leverage: row.leverage,
+      pnl: row.pnl,
+      fees: row.fees,
+      mode: row.mode as "paper" | "live",
+      status: row.status as "open" | "closed" | "failed",
+      exitReason: row.exit_reason ?? undefined,
+      indicatorsAtEntry: row.indicators_at_entry ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      tradeType: (row.trade_type ?? "directional") as TradeType,
+      exchange: (r.exchange as string | null) === "lighter" ? "lighter" as const : "hyperliquid" as const,
+      btcPriceAtEntry: r.btc_price_at_entry as number | undefined ?? undefined,
+      eventTimestamp: r.event_timestamp as string | undefined ?? undefined,
+      newsSource: r.news_source as string | undefined ?? undefined,
+      holdDurationMs: r.hold_duration_ms as number | undefined ?? undefined,
+      slippagePct: r.slippage_pct as number | undefined ?? undefined,
+      equityAtEntry: r.equity_at_entry as number | undefined ?? undefined,
+      eventPositionCount: r.event_position_count as number | undefined ?? undefined,
+    };
+  });
 }
 
 export function getQuantStats(tradeType?: TradeType | string, mode?: "live" | "paper"): {
