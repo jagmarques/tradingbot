@@ -17,7 +17,8 @@ const RSS_FEEDS = [
   { name: "CFTC Enforcement", url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml", intervalMs: 30_000 },
   { name: "CFTC General", url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", intervalMs: 30_000 },
   // Global news (geopolitical, oil, war, economy)
-  { name: "Reuters Business", url: "https://www.reutersagency.com/feed/?best-topics=business-finance", intervalMs: 30_000 },
+  { name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/topstories/", intervalMs: 30_000 },
+  { name: "Google News Business", url: "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB", intervalMs: 60_000 },
   { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", intervalMs: 60_000 },
   { name: "CNBC Economy", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", intervalMs: 30_000 },
 ];
@@ -45,7 +46,8 @@ const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
   "CFTC General": "low",
   "Fed All Press": "medium",
   "Powell Speeches": "high",
-  "Reuters Business": "medium",
+  "MarketWatch": "medium",
+  "Google News Business": "low",
   "BBC World": "low",
   "CNBC Economy": "medium",
 };
