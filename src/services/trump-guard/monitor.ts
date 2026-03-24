@@ -75,7 +75,10 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
 
   // Cooldown only blocks GARCH defense, not news classification
   // We always classify so the news-trading engine gets events
-  const preview = content.slice(0, 80);
+  // Strip HTML for clean preview
+  const cleanContent = content.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
+  const preview = cleanContent.slice(0, 80) || content.slice(0, 80);
   const result = await classifyPost(content);
 
   if (result.sentiment === "NEUTRAL") return; // silent on neutral
