@@ -2088,7 +2088,7 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${openPositions.length} open | Live ${$(liveLoss)} Paper ${$(paperLoss)} / $${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
-  text += `GARCH v2: LIVE (z4.5/3.0, 20 pairs, compound 4%, max 6/dir)\n`;
+  text += `GARCH v2: LIVE | News-Trade: LIVE | BTC-Event: PAPER\n`;
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
@@ -2154,6 +2154,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     const typeTag =
       pos.tradeType === "garch-chan" ? "[G2]" :
       pos.tradeType === "btc-mr" ? "[MR]" :
+      pos.tradeType === "btc-event" ? "[BE]" :
+      pos.tradeType === "news-trade" ? "[NT]" :
       "[??]";
     const exchTag = pos.exchange === "hyperliquid" ? "/HL" : pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -2256,6 +2258,8 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const engines: [string, string][] = [
     ["G2", "garch-chan"],
+    ["NT", "news-trade"],
+    ["BE", "btc-event"],
     ["MR", "btc-mr"],
   ];
 
