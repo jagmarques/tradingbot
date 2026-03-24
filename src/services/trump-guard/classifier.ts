@@ -55,46 +55,38 @@ export async function classifyPost(content: string): Promise<ClassificationResul
   if (quick) return quick;
 
   try {
-    const prompt = `Does this news DIRECTLY affect cryptocurrency/financial markets? Answer NEUTRAL unless it clearly moves markets.
+    const prompt = `You are a crypto market analyst. Analyze this news and decide if crypto traders should act.
 
-Format: SENTIMENT IMPACT
-SENTIMENT = BULLISH, BEARISH, or NEUTRAL
-IMPACT = HIGH, MEDIUM, or LOW
+Content: ${content.slice(0, 500)}
 
-Categories that move crypto (from historical analysis):
-- Tariffs/trade war: usually BEARISH HIGH (64% bearish historically)
-- SEC/CFTC regulation: BEARISH or BULLISH HIGH depending on direction
-- Rate decisions (Fed): cuts = BULLISH, hikes = BEARISH HIGH
-- Crypto-specific (reserve, ETF, adoption): BULLISH or BEARISH HIGH
-- Elon Musk crypto mentions: MEDIUM impact
-- Economy (GDP, jobs, recession): MEDIUM impact
-- Geopolitical (sanctions, war): MEDIUM if affects trade/economy
+Step 1 - Is this market-moving? Answer NEUTRAL if not directly about money/markets/crypto.
+Step 2 - Impact: HIGH (crypto regulation, tariffs, rate decisions, strategic reserve, war/peace), MEDIUM (indirect market effect), LOW (vague connection)
+Step 3 - Type: BREAKING (new event) or OPINION (analysis/commentary)
+Step 4 - Direction: Should traders go LONG or SHORT on crypto?
 
-NOT market-moving (answer NEUTRAL LOW):
-- Immigration, border, deportation
-- Military operations, veterans
-- Sports, entertainment, celebrities
-- Social issues, religion, culture
-- General political commentary without economic content
-- Retweets without substantive content
+Historical patterns:
+- Tariffs/trade war: 64% bearish for crypto historically
+- Rate cuts: LONG. Rate hikes: SHORT
+- Crypto reserve/ETF/adoption: LONG
+- Crypto ban/hack/crackdown: SHORT
+- War/sanctions/geopolitical tension: SHORT (risk-off)
+- Ceasefire/peace deal: LONG (risk-on)
+- Oil spike: slight SHORT
 
-Also classify: BREAKING or OPINION
-BREAKING = new event just happened, first report, developing situation
-OPINION = analysis, commentary, recap of existing situation, editorial
+NOT market-moving (NEUTRAL):
+- Immigration, sports, entertainment, social issues, general politics
 
-When in doubt: NEUTRAL LOW
+Answer in EXACTLY this format on one line:
+SENTIMENT IMPACT TYPE DIRECTION
+Example: BEARISH HIGH BREAKING SHORT
+Example: NEUTRAL LOW OPINION NONE`;
 
-Content: ${content.slice(0, 500)}`;
-
-    const response = await callLLM(
-      prompt,
-      undefined,
-      "You are a financial news classifier. Respond with EXACTLY: SENTIMENT IMPACT BREAKING_OR_OPINION",
-      0,
-      "news-classifier",
-    );
-
+    const response = await callLLM(prompt, undefined, "Respond with exactly one line: SENTIMENT IMPACT TYPE DIRECTION", 0, "news-classifier");
     const text = response.trim().toUpperCase();
+
+    let sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
+    if (text.includes("BULLISH")) sentiment = "BULLISH";
+    else if (text.includes("BEARISH")) sentiment = "BEARISH";
 
     let impact: "high" | "medium" | "low" = "low";
     if (text.includes("HIGH")) impact = "high";
@@ -102,48 +94,12 @@ Content: ${content.slice(0, 500)}`;
 
     const isBreaking = text.includes("BREAKING");
 
-    // Quick sentiment from first pass
-    let sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
-    if (text.includes("BULLISH")) sentiment = "BULLISH";
-    else if (text.includes("BEARISH")) sentiment = "BEARISH";
+    // Override sentiment with explicit direction if present
+    if (text.includes("SHORT")) sentiment = "BEARISH";
+    else if (text.includes("LONG") && !text.includes("NEUTRAL")) sentiment = "BULLISH";
 
-    // For HIGH impact: deep AI analysis to decide direction
-    if (impact === "high" && sentiment !== "NEUTRAL") {
-      try {
-        const deepPrompt = `You are a crypto market analyst. This HIGH IMPACT news just broke. Decide: should crypto traders go LONG or SHORT?
-
-News: ${content.slice(0, 500)}
-
-Think step by step:
-1. What happened? (one sentence)
-2. How does this affect crypto markets? (one sentence)
-3. Historical precedent: similar events in the past moved crypto which direction?
-4. Your decision: LONG or SHORT
-
-Consider:
-- Tariffs/trade war = usually crypto dumps (SHORT)
-- Rate cuts = crypto pumps (LONG), rate hikes = dumps (SHORT)
-- Crypto-specific good news (reserve, ETF, adoption) = LONG
-- Geopolitical tension (war, sanctions) = usually SHORT (risk-off)
-- Ceasefire/peace = usually LONG (risk-on)
-- Oil price spike = mixed, slight SHORT
-
-Answer with your reasoning then end with exactly: DIRECTION: LONG or DIRECTION: SHORT`;
-
-        const deepResponse = await callLLM(deepPrompt, undefined, "You are a crypto market analyst.", 0, "news-deep-analysis");
-        const deepText = deepResponse.trim().toUpperCase();
-
-        if (deepText.includes("DIRECTION: LONG")) {
-          sentiment = "BULLISH";
-          console.log(`[TrumpGuard] Deep analysis: LONG - ${deepResponse.slice(-100)}`);
-        } else if (deepText.includes("DIRECTION: SHORT")) {
-          sentiment = "BEARISH";
-          console.log(`[TrumpGuard] Deep analysis: SHORT - ${deepResponse.slice(-100)}`);
-        }
-        // If parsing fails, keep the first-pass sentiment
-      } catch {
-        // Deep analysis failed, use first-pass sentiment
-      }
+    if (sentiment !== "NEUTRAL") {
+      console.log(`[TrumpGuard] AI analysis: ${sentiment} ${impact} ${isBreaking ? "BREAKING" : "OPINION"}`);
     }
 
     return { sentiment, impact, isBreaking };
