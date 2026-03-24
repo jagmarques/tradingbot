@@ -12,7 +12,7 @@ import { getLastNewsEvent } from "../trump-guard/monitor.js";
 
 const TRADE_TYPE = "news-trade" as const;
 const LEVERAGE = 10;
-const EVENT_RISK_PCT = 4; // 4% of equity per event (split across pairs)
+// Position sizing: 80% of equity split across active pairs
 const MIN_POSITION_USD = 10;
 const MAX_POSITION_USD = 500; // liquidity cap
 // No daily loss limit - SL on exchange + AI exit advisor protect each trade
