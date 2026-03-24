@@ -12,16 +12,8 @@ import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
 import { notifyBotStarted, notifyBotStopped, notifyCriticalError } from "./services/telegram/notifications.js";
 import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { setDailyStartBalance } from "./services/risk/manager.js";
-import { validateCopyChains } from "./services/evm/index.js";
-import { startAIBetting, stopAIBetting, initPositions as initAIBettingPositions } from "./services/aibetting/index.js";
-import { startPolyTraderTracking, stopPolyTraderTracking } from "./services/polytraders/index.js";
-import { initCryptoCopyTracking } from "./services/copy/executor.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
-import { validateApiConnection } from "./services/polygon/polymarket.js";
-import { startInsiderScanner, stopInsiderScanner } from "./services/traders/index.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
-import { startHFScanner, stopHFScanner } from "./services/aibetting/hf-scanner.js";
-import { stopHFMaker } from "./services/aibetting/hf-maker.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -37,14 +29,10 @@ async function main(): Promise<void> {
     initDb();
     console.log("[Bot] Database initialized");
 
-    // Initialize crypto copy tracking
-    const recoveredCryptocopies = initCryptoCopyTracking();
-
     // Load open positions from database (recovery from crash)
     const recoveredPolymarket = loadPolymarketPositions();
-    const totalRecovered = recoveredPolymarket + recoveredCryptocopies;
-    if (totalRecovered > 0) {
-      console.log(`[Bot] Recovered ${totalRecovered} open positions (${recoveredPolymarket} Polymarket, ${recoveredCryptocopies} Crypto copies)`);
+    if (recoveredPolymarket > 0) {
+      console.log(`[Bot] Recovered ${recoveredPolymarket} Polymarket positions`);
     }
 
     // Set daily loss baseline
@@ -112,11 +100,6 @@ async function shutdown(signal: string): Promise<void> {
 
   try {
     stopPnlCron();
-    stopHFScanner();
-    stopHFMaker();
-    stopAIBetting();
-    stopPolyTraderTracking();
-    stopInsiderScanner();
     stopQuant();
     stopBot();
     stopHealthServer();
