@@ -144,15 +144,17 @@ export async function runNewsTradingCycle(): Promise<number> {
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
 
-  // 4% of wallet per position
-  const rawSize = equity * (EVENT_RISK_PCT / 100);
-  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(rawSize)));
+  // Use 80% of equity split across pairs (protected by SL + AI exits)
+  const pairs = PAIRS_BY_IMPACT[impact] ?? NEWS_TRADING_PAIRS;
+  const maxPairs = Math.max(1, Math.floor(equity * 0.80 / MIN_POSITION_USD));
+  const activePairs = pairs.slice(0, maxPairs);
+  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(equity * 0.80 / activePairs.length)));
 
-  console.log(`[News-Trade] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${EVENT_RISK_PCT}%, impact=${impact})`);
+  console.log(`[News-Trade] Size: $${compoundSize} x ${activePairs.length} pairs (equity=$${equity.toFixed(0)}, ${impact})`);
 
   let executed = 0;
 
-  for (const pair of (PAIRS_BY_IMPACT[impact] ?? NEWS_TRADING_PAIRS)) {
+  for (const pair of activePairs) {
     if (openPairs.has(pair)) continue;
     if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
