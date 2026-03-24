@@ -283,7 +283,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
-    const responses = await callLLMEnsemble(prompt, undefined, "aibetting", 3);
+    const responses = await callLLMEnsemble(prompt, undefined, "aibetting", 1);
     const parsedAll = responses
       .map(r => parseAnalysisResponse(r, market.conditionId))
       .filter((a): a is AIAnalysis => a !== null);

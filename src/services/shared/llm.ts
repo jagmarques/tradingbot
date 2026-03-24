@@ -92,11 +92,16 @@ export async function callLLM(
 
       if (!response.ok) {
         const errorText = await response.text();
-        if (response.status >= 500 || response.status === 429) {
-          const delay = response.status === 429 ? 15000 : RETRY_DELAY_MS * attempt;
+        if (response.status === 429) {
+          // Rate limited - skip retries, go straight to fallback
+          lastError = new Error(`${provider.name} 429 rate limited`);
+          console.warn(`[${provider.name}] Rate limited (429), skipping to fallback`);
+          break;
+        }
+        if (response.status >= 500) {
           lastError = new Error(`${provider.name} ${response.status}: ${errorText.slice(0, 200)}`);
-          console.warn(`[${provider.name}] Attempt ${attempt}/${MAX_RETRIES} (${response.status}), wait ${(delay/1000).toFixed(0)}s`);
-          await sleep(delay);
+          console.warn(`[${provider.name}] Attempt ${attempt}/${MAX_RETRIES} (${response.status}), wait ${RETRY_DELAY_MS}s`);
+          await sleep(RETRY_DELAY_MS * attempt);
           continue;
         }
         throw new Error(`${provider.name} ${response.status}: ${errorText.slice(0, 200)}`);
