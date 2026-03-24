@@ -28,6 +28,13 @@ const NEWS_TRADING_PAIRS = [
   "OP", "ARB", "LDO", "TRUMP", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA",
   "WLD", "XRP", "SOL", "BNB", "kSHIB", "TIA", "NEAR", "kBONK", "ONDO", "HYPE",
 ];
+const TOP5_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT"];
+const TOP3_PAIRS = ["TIA", "kBONK", "OP"];
+const PAIRS_BY_IMPACT: Record<string, string[]> = {
+  high: NEWS_TRADING_PAIRS,
+  medium: TOP5_PAIRS,
+  low: TOP3_PAIRS,
+};
 
 // Track last processed event timestamp to avoid re-trading same event
 let lastProcessedEventTs = 0;
@@ -39,6 +46,12 @@ export async function runNewsTradingCycle(): Promise<number> {
   const dailyLoss = getDailyLossTotal("news-trade", "live");
   if (dailyLoss >= DAILY_LOSS_LIMIT) {
     console.log(`[News-Trade] Daily loss limit hit ($${dailyLoss.toFixed(2)} >= $${DAILY_LOSS_LIMIT}), skipping`);
+    return 0;
+  }
+
+  const remainingBudget = DAILY_LOSS_LIMIT - dailyLoss;
+  if (remainingBudget < 3) {
+    console.log(`[News-Trade] Low daily budget ($${remainingBudget.toFixed(2)} remaining), skipping`);
     return 0;
   }
 
@@ -84,12 +97,39 @@ export async function runNewsTradingCycle(): Promise<number> {
     }
   }
 
+  // Skip opinion/analysis pieces (only trade breaking news, unless HIGH impact)
+  if (!event.isBreaking && impact !== "high") {
+    console.log(`[News-Trade] Skipping opinion piece (not breaking news, ${impact} impact)`);
+    return 0;
+  }
+
+  // BTC price confirmation (skip for HIGH impact - trade immediately)
+  const direction = event.direction;
+  if (impact !== "high") {
+    const btcPriceBefore = btcCandles[btcCandles.length - 1].close;
+    console.log(`[News-Trade] BTC confirmation: waiting 2min (${impact} impact)...`);
+    await new Promise(r => setTimeout(r, 2 * 60 * 1000));
+
+    const btcAfter = await fetchCandles("BTC", "1h", 1);
+    if (btcAfter.length === 0) return 0;
+    const btcPriceAfter = btcAfter[btcAfter.length - 1].close;
+    const btcMove = (btcPriceAfter - btcPriceBefore) / btcPriceBefore;
+
+    const expectedDir = direction === "long" ? 1 : -1;
+    const moveInDir = btcMove * expectedDir;
+
+    if (moveInDir < 0.002) {
+      console.log(`[News-Trade] BTC confirmation failed: moved ${(btcMove * 100).toFixed(3)}%, need 0.2% ${direction}. Skipping.`);
+      return 0;
+    }
+    console.log(`[News-Trade] BTC confirmed: ${(btcMove * 100).toFixed(3)}% move`);
+  }
+
   // Get open positions for this trade type
   const openPositions = getOpenQuantPositions();
   const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
   const openPairs = new Set(myPositions.map(p => p.pair));
 
-  const direction = event.direction;
   const impactRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
   // Reversal logic: check existing positions
@@ -141,7 +181,7 @@ export async function runNewsTradingCycle(): Promise<number> {
 
   let executed = 0;
 
-  for (const pair of NEWS_TRADING_PAIRS) {
+  for (const pair of (PAIRS_BY_IMPACT[impact] ?? TOP3_PAIRS)) {
     if (openPairs.has(pair)) continue;
     if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 

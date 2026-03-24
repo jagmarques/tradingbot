@@ -3,9 +3,10 @@ import { loadEnv } from "../../config/env.js";
 export interface ClassificationResult {
   sentiment: "BULLISH" | "BEARISH" | "NEUTRAL";
   impact: "high" | "medium" | "low";
+  isBreaking: boolean;
 }
 
-const DEFAULT_RESULT: ClassificationResult = { sentiment: "NEUTRAL", impact: "low" };
+const DEFAULT_RESULT: ClassificationResult = { sentiment: "NEUTRAL", impact: "low", isBreaking: false };
 
 // Pre-filter: skip obvious noise before calling AI (saves Groq rate limit)
 // Based on analysis of 3837 posts: "other" category has 21% hit rate vs 30%+ for financial
@@ -35,12 +36,12 @@ function preFilter(content: string): "skip" | "classify" {
 // Based on research: tariffs = 64% bearish, crypto reserve = always bullish
 function quickClassify(content: string): ClassificationResult | null {
   const lower = content.toLowerCase();
-  if (lower.match(/strategic.*reserve.*crypto|bitcoin.*reserve|crypto.*reserve/)) return { sentiment: "BULLISH", impact: "high" };
-  if (lower.match(/ban.*crypto|crypto.*ban|bitcoin.*ban/)) return { sentiment: "BEARISH", impact: "high" };
-  if (lower.match(/rate.*cut|cut.*rate|lower.*rate/)) return { sentiment: "BULLISH", impact: "high" };
-  if (lower.match(/rate.*hike|hike.*rate|raise.*rate/)) return { sentiment: "BEARISH", impact: "high" };
-  if (lower.match(/new.*tariff|raise.*tariff|increase.*tariff|tariff.*increase/)) return { sentiment: "BEARISH", impact: "high" };
-  if (lower.match(/remove.*tariff|lower.*tariff|tariff.*deal|tariff.*pause/)) return { sentiment: "BULLISH", impact: "high" };
+  if (lower.match(/strategic.*reserve.*crypto|bitcoin.*reserve|crypto.*reserve/)) return { sentiment: "BULLISH", impact: "high", isBreaking: true };
+  if (lower.match(/ban.*crypto|crypto.*ban|bitcoin.*ban/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
+  if (lower.match(/rate.*cut|cut.*rate|lower.*rate/)) return { sentiment: "BULLISH", impact: "high", isBreaking: true };
+  if (lower.match(/rate.*hike|hike.*rate|raise.*rate/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
+  if (lower.match(/new.*tariff|raise.*tariff|increase.*tariff|tariff.*increase/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
+  if (lower.match(/remove.*tariff|lower.*tariff|tariff.*deal|tariff.*pause/)) return { sentiment: "BULLISH", impact: "high", isBreaking: true };
   return null;
 }
 
@@ -93,6 +94,10 @@ NOT market-moving (answer NEUTRAL LOW):
 - General political commentary without economic content
 - Retweets without substantive content
 
+Also classify: BREAKING or OPINION
+BREAKING = new event just happened, first report, developing situation
+OPINION = analysis, commentary, recap of existing situation, editorial
+
 When in doubt: NEUTRAL LOW
 
 Content: ${content.slice(0, 500)}`,
@@ -114,7 +119,8 @@ Content: ${content.slice(0, 500)}`,
     if (text.includes("HIGH")) impact = "high";
     else if (text.includes("MEDIUM")) impact = "medium";
 
-    return { sentiment, impact };
+    const isBreaking = text.includes("BREAKING");
+    return { sentiment, impact, isBreaking };
   } catch (err) {
     console.log(`[TrumpGuard] Classifier error: ${err instanceof Error ? err.message : String(err)}`);
     return DEFAULT_RESULT;

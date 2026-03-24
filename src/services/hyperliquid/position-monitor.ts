@@ -286,7 +286,7 @@ async function checkPositionStops(): Promise<void> {
       // AI-powered exit monitor for news-trade (every 1min, non-blocking)
       if (position.tradeType === "news-trade") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
-        if (holdMs >= 60 * 1000 && peak <= trailCfg.activation) {
+        if (holdMs >= 5 * 60 * 1000 && peak <= trailCfg.activation) {
           // Clear advice cache every 60s to trigger fresh AI call
           if (Date.now() - newsAdviceCacheTime > 60 * 1000) {
             newsTradeAdviceCache.clear();
@@ -304,7 +304,7 @@ async function checkPositionStops(): Promise<void> {
               ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
               : "";
             const allEligible = positions.filter(p =>
-              p.tradeType === "news-trade" && Date.now() - new Date(p.openedAt).getTime() >= 60 * 1000,
+              p.tradeType === "news-trade" && Date.now() - new Date(p.openedAt).getTime() >= 5 * 60 * 1000,
             );
             // Mark ALL as pending BEFORE async call (prevents 20 concurrent AI calls)
             for (const p of allEligible) newsTradeAdviceCache.set(p.id, null);
