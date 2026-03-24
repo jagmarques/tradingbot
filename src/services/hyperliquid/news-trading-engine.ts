@@ -129,9 +129,8 @@ export async function runNewsTradingCycle(): Promise<number> {
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
 
-  // Compound size: equity * (EVENT_RISK_PCT / 100) / (numPairs * SL_PCT * LEVERAGE)
-  const numPairs = NEWS_TRADING_PAIRS.length;
-  const rawSize = equity * (EVENT_RISK_PCT / 100) / (numPairs * cfg.sl * LEVERAGE);
+  // 4% of wallet per position
+  const rawSize = equity * (EVENT_RISK_PCT / 100);
   const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(rawSize)));
 
   console.log(`[News-Trade] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${EVENT_RISK_PCT}%, impact=${impact})`);
