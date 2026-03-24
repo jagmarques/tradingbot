@@ -1,5 +1,5 @@
 import type { PolymarketEvent, NewsItem, AIAnalysis } from "./types.js";
-import { callDeepSeekEnsemble } from "../shared/llm.js";
+import { callLLMEnsemble } from "../shared/llm.js";
 import { getMarketAnalysisHistory, getBettingStats, saveAnalysis, savePrediction } from "../database/aibetting.js";
 
 // Platt scaling removed: it amplified weak LLM signals into strong convictions
@@ -283,7 +283,7 @@ export async function analyzeMarket(
   const prompt = buildAnalysisPrompt(market, news, history, stats, siblingTitles);
 
   try {
-    const responses = await callDeepSeekEnsemble(prompt, undefined, "aibetting", 3);
+    const responses = await callLLMEnsemble(prompt, undefined, "aibetting", 3);
     const parsedAll = responses
       .map(r => parseAnalysisResponse(r, market.conditionId))
       .filter((a): a is AIAnalysis => a !== null);

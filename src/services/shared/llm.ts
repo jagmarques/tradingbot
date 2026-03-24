@@ -46,7 +46,7 @@ function getProvider(): { url: string; key: string; model: string; name: string 
   throw new Error("No LLM API key (CEREBRAS_API_KEY or GROQ_API_KEY)");
 }
 
-export async function callDeepSeek(
+export async function callLLM(
   prompt: string,
   _model?: string,
   systemMessage?: string,
@@ -131,7 +131,7 @@ export async function callDeepSeek(
   throw lastError || new Error("LLM call failed");
 }
 
-export async function callDeepSeekEnsemble(
+export async function callLLMEnsemble(
   prompt: string,
   systemMessage?: string,
   caller: string = "unknown",
@@ -141,7 +141,7 @@ export async function callDeepSeekEnsemble(
   const results: string[] = [];
   for (let i = 0; i < ensembleSize; i++) {
     const temp = temps[i] ?? 0.3;
-    const response = await callDeepSeek(prompt, undefined, systemMessage, temp, `${caller}-e${i}`);
+    const response = await callLLM(prompt, undefined, systemMessage, temp, `${caller}-e${i}`);
     results.push(response);
     if (i < ensembleSize - 1) await sleep(1000);
   }

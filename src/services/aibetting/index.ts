@@ -1,5 +1,5 @@
 export * from "./types.js";
-export { callDeepSeek } from "../shared/llm.js";
+export { callLLM } from "../shared/llm.js";
 export { discoverMarkets } from "./scanner.js";
 export { fetchNewsForMarket } from "./news.js";
 export { analyzeMarket } from "./analyzer.js";

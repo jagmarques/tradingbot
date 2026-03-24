@@ -1,5 +1,5 @@
 // AI-powered exit decisions for news-trade positions using Cerebras
-import { callDeepSeek } from "../shared/llm.js";
+import { callLLM } from "../shared/llm.js";
 
 interface PositionInfo {
   pair: string;
@@ -10,8 +10,9 @@ interface PositionInfo {
 
 type ExitDecision = "HOLD" | "TAKE_PROFIT" | "CLOSE";
 
-// Cache: eventTs -> Map<pair, decision>
-const adviceCache = new Map<number, Map<string, ExitDecision>>();
+// Cache: eventTs -> { advice, fetchedAt } - refreshes every 3 minutes
+const adviceCache = new Map<number, { advice: Map<string, ExitDecision>; fetchedAt: number }>();
+const CACHE_TTL_MS = 3 * 60 * 1000; // refresh every 3 minutes
 
 function cleanCache(): void {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
@@ -28,8 +29,9 @@ export async function getExitAdvice(
 ): Promise<Map<string, ExitDecision>> {
   cleanCache();
 
+  // Return cached if still fresh
   const cached = adviceCache.get(eventTs);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.advice;
 
   const positionList = positions
     .map(p => `${p.pair}: ${p.direction} ${p.pricePct > 0 ? "+" : ""}${(p.pricePct * 100).toFixed(2)}% (${p.holdMinutes}min)`)
@@ -59,7 +61,7 @@ Respond with ONLY valid JSON, no markdown:
 {${positions.map(p => `"${p.pair}": "DECISION"`).join(", ")}}`;
 
   try {
-    const response = await callDeepSeek(
+    const response = await callLLM(
       prompt,
       undefined,
       "You are a crypto trading exit advisor. Respond with valid JSON only.",
@@ -78,7 +80,7 @@ Respond with ONLY valid JSON, no markdown:
       }
     }
 
-    adviceCache.set(eventTs, result);
+    adviceCache.set(eventTs, { advice: result, fetchedAt: Date.now() });
     console.log(`[ExitAdvisor] AI decisions for ${positions.length} positions: ${[...result.entries()].map(([p, d]) => `${p}=${d}`).join(", ")}`);
     return result;
   } catch (err) {

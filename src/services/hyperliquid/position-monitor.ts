@@ -281,10 +281,10 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // AI-powered stale exit for news-trade after 1 hour
+      // AI-powered exit monitor (checks every 3min after 5min hold)
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
-        if (staleHoldMs >= 60 * 60 * 1000) {
+        if (staleHoldMs >= 5 * 60 * 1000) {
           if (peak > trailCfg.activation) continue;
 
           const meta = parseIndicatorsMeta(position.indicatorsAtEntry);
@@ -297,10 +297,10 @@ async function checkPositionStops(): Promise<void> {
             ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
             : "";
 
-          // Build batch info for ALL stale news-trades (getExitAdvice caches per eventTs)
+          // Build batch info for ALL eligible news-trades (getExitAdvice caches per eventTs)
           const allStale = positions.filter(p =>
             p.tradeType === "news-trade" &&
-            Date.now() - new Date(p.openedAt).getTime() >= 60 * 60 * 1000,
+            Date.now() - new Date(p.openedAt).getTime() >= 5 * 60 * 1000,
           );
           const posInfos = allStale.map(p => {
             const pSource = p.exchange === "lighter" ? lighterMids : mids;
