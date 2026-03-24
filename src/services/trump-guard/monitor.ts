@@ -126,19 +126,19 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
     }
   }
 
-  const action = targets.length === 0
-    ? `No ${closeDirection}s open`
-    : `Closed ${targets.length} ${closeDirection}(s)`;
-  console.log(`[TrumpGuard] ${action}, cooldown 30min`);
-
-  const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  void sendMessage(
-    `<b>NEWS ALERT</b> ${nlTime}\n` +
-    `${result.sentiment}: ${preview}\n` +
-    `Impact: ${impact.toUpperCase()}\n` +
-    `Action: ${action}\n` +
-    `Cooldown: 30min (${closeDirection}s blocked)`
-  );
+  if (targets.length > 0) {
+    console.log(`[TrumpGuard] Closed ${targets.length} ${closeDirection}(s), cooldown 30min`);
+    const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    void sendMessage(
+      `<b>NEWS ALERT</b> ${nlTime}\n` +
+      `${result.sentiment}: ${preview}\n` +
+      `Impact: ${impact.toUpperCase()}\n` +
+      `Closed ${targets.length} GARCH ${closeDirection}(s)\n` +
+      `Cooldown: 30min`
+    );
+  } else {
+    console.log(`[TrumpGuard] No ${closeDirection}s open, cooldown 30min`);
+  }
 }
 
 // Keywords for market-moving news (crypto + global macro)
