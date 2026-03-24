@@ -28,11 +28,10 @@ const NEWS_TRADING_PAIRS = [
   "OP", "ARB", "LDO", "TRUMP", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA",
   "WLD", "XRP", "SOL", "BNB", "kSHIB", "TIA", "NEAR", "kBONK", "ONDO", "HYPE",
 ];
-const TOP5_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT"];
-const TOP3_PAIRS = ["TIA", "kBONK", "OP"];
+// Both HIGH and MEDIUM trade all 20 pairs (LOW is already filtered out)
 const PAIRS_BY_IMPACT: Record<string, string[]> = {
   high: NEWS_TRADING_PAIRS,
-  medium: TOP5_PAIRS,
+  medium: NEWS_TRADING_PAIRS,
 };
 
 // Track last processed event timestamp to avoid re-trading same event
