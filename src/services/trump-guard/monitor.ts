@@ -3,17 +3,23 @@ import { classifyPost } from "./classifier.js";
 import { closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
 import { sendMessage } from "../telegram/bot.js";
 
-// All RSS feeds to monitor (polled every few seconds)
+// All RSS feeds to monitor
 const RSS_FEEDS = [
+  // Crypto-specific (fast polling)
   { name: "Trump Truth Social", url: "https://trumpstruth.org/feed", intervalMs: 3_000 },
+  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", intervalMs: 15_000 },
+  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", intervalMs: 15_000 },
+  // Central banks & regulators
   { name: "Fed FOMC", url: "https://www.federalreserve.gov/feeds/press_monetary.xml", intervalMs: 5_000 },
   { name: "Fed All Press", url: "https://www.federalreserve.gov/feeds/press_all.xml", intervalMs: 10_000 },
   { name: "Powell Speeches", url: "https://www.federalreserve.gov/feeds/s_t_powell.xml", intervalMs: 10_000 },
   { name: "White House", url: "https://www.whitehouse.gov/news/feed/", intervalMs: 30_000 },
   { name: "CFTC Enforcement", url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml", intervalMs: 30_000 },
   { name: "CFTC General", url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", intervalMs: 30_000 },
-  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", intervalMs: 15_000 },
-  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", intervalMs: 15_000 },
+  // Global news (geopolitical, oil, war, economy)
+  { name: "Reuters Business", url: "https://www.reutersagency.com/feed/?best-topics=business-finance", intervalMs: 30_000 },
+  { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", intervalMs: 60_000 },
+  { name: "CNBC Economy", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", intervalMs: 30_000 },
 ];
 
 const TAVILY_INTERVAL_MS = 180_000;
@@ -39,6 +45,9 @@ const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
   "CFTC General": "low",
   "Fed All Press": "medium",
   "Powell Speeches": "high",
+  "Reuters Business": "medium",
+  "BBC World": "low",
+  "CNBC Economy": "medium",
 };
 
 const IMPACT_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
@@ -121,8 +130,8 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
   );
 }
 
-// Keywords that indicate crypto-relevant news (filter out noise from CoinDesk/CoinTelegraph)
-const CRYPTO_KEYWORDS = /bitcoin|btc|crypto|ethereum|eth|regulation|sec |cftc|federal reserve|fomc|interest rate|tariff|executive order|ban|approve|etf|stablecoin|digital asset|trump|elon|musk|doge/i;
+// Keywords for market-moving news (crypto + global macro)
+const MARKET_MOVING_KEYWORDS = /bitcoin|btc|crypto|ethereum|eth|regulation|sec |cftc|federal reserve|fomc|interest rate|tariff|executive order|ban|approve|etf|stablecoin|digital asset|trump|elon|musk|doge|oil price|crude oil|opec|sanctions|war |ceasefire|peace deal|nuclear|iran|missile|invasion|recession|inflation|gdp |unemployment|debt ceiling|default|treasury|bond yield|dollar |stimulus|rate cut|rate hike|trade war|china.*trade|emergency/i;
 
 function extractItems(xml: string): Array<{ guid: string; content: string }> {
   const items: Array<{ guid: string; content: string }> = [];
@@ -179,7 +188,7 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
     for (const item of items) {
       if (seenGuids.has(item.guid)) continue;
       const isCriticalFeed = feedName.includes("Trump") || feedName.includes("Fed") || feedName.includes("White House");
-      if (!isCriticalFeed && !CRYPTO_KEYWORDS.test(item.content)) {
+      if (!isCriticalFeed && !MARKET_MOVING_KEYWORDS.test(item.content)) {
         seenGuids.add(item.guid); // safe to mark non-crypto as seen
         continue;
       }
@@ -195,12 +204,20 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
 
 // Rotate through multiple queries covering key people who move crypto
 const TAVILY_QUERIES = [
+  // Crypto-specific
   "Trump crypto Bitcoin latest statement",
   "Elon Musk Bitcoin Dogecoin crypto tweet",
   "SEC crypto regulation breaking news",
-  "Federal Reserve interest rate crypto",
+  "Federal Reserve interest rate decision",
   "FOMC decision Bitcoin impact",
   "US government crypto executive order",
+  // Global macro (moves crypto indirectly)
+  "Iran war oil price breaking news",
+  "Russia Ukraine ceasefire sanctions",
+  "China trade tariff breaking news",
+  "global economic crisis recession breaking",
+  "oil price OPEC production cut",
+  "US dollar treasury bond yield breaking",
 ];
 let tavilyQueryIndex = 0;
 
