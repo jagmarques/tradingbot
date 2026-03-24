@@ -571,6 +571,16 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated insider_wallets: added score, gem_hit_count");
   }
 
+  // Fix insider tables: drop old schema and let initInsiderTables recreate with correct columns
+  const gemCols = db.prepare("PRAGMA table_info(insider_gem_hits)").all() as Array<{ name: string }>;
+  if (gemCols.length > 0 && !gemCols.map(c => c.name).includes("wallet_address")) {
+    db.exec(`DROP TABLE IF EXISTS insider_gem_hits`);
+    db.exec(`DROP TABLE IF EXISTS insider_gem_analyses`);
+    db.exec(`DROP TABLE IF EXISTS insider_gem_paper_trades`);
+    db.exec(`DROP TABLE IF EXISTS insider_copy_trades`);
+    console.log("[Database] Dropped old insider tables (will be recreated with correct schema)");
+  }
+
   console.log("[Database] Initialized at", finalPath);
   return db;
 }
