@@ -1,4 +1,4 @@
-import { loadEnv } from "../../config/env.js";
+import { callLLM } from "../shared/llm.js";
 
 export interface ClassificationResult {
   sentiment: "BULLISH" | "BEARISH" | "NEUTRAL";
@@ -54,24 +54,8 @@ export async function classifyPost(content: string): Promise<ClassificationResul
   const quick = quickClassify(content);
   if (quick) return quick;
 
-  const env = loadEnv();
-  const apiKey = env.GROQ_API_KEY;
-  if (!apiKey) return DEFAULT_RESULT;
-
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        temperature: 0,
-        messages: [
-          {
-            role: "user",
-            content: `Does this news DIRECTLY affect cryptocurrency/financial markets? Answer NEUTRAL unless it clearly moves markets.
+    const prompt = `Does this news DIRECTLY affect cryptocurrency/financial markets? Answer NEUTRAL unless it clearly moves markets.
 
 Format: SENTIMENT IMPACT
 SENTIMENT = BULLISH, BEARISH, or NEUTRAL
@@ -100,16 +84,17 @@ OPINION = analysis, commentary, recap of existing situation, editorial
 
 When in doubt: NEUTRAL LOW
 
-Content: ${content.slice(0, 500)}`,
-          },
-        ],
-      }),
-    });
+Content: ${content.slice(0, 500)}`;
 
-    if (!res.ok) return DEFAULT_RESULT;
+    const response = await callLLM(
+      prompt,
+      undefined,
+      "You are a financial news classifier. Respond with EXACTLY: SENTIMENT IMPACT BREAKING_OR_OPINION",
+      0,
+      "news-classifier",
+    );
 
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const text = data.choices?.[0]?.message?.content?.trim().toUpperCase() ?? "";
+    const text = response.trim().toUpperCase();
 
     let sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
     if (text.includes("BULLISH")) sentiment = "BULLISH";

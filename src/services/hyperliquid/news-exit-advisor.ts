@@ -12,7 +12,7 @@ type ExitDecision = "HOLD" | "TAKE_PROFIT" | "CLOSE";
 
 // Cache: eventTs -> { advice, fetchedAt } - refreshes every 3 minutes
 const adviceCache = new Map<number, { advice: Map<string, ExitDecision>; fetchedAt: number }>();
-const CACHE_TTL_MS = 60 * 1000; // refresh every 1 minute
+const CACHE_TTL_MS = 30 * 1000; // refresh every 30 seconds
 
 function cleanCache(): void {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
