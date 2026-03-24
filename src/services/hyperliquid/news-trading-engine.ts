@@ -24,9 +24,11 @@ const IMPACT_CONFIG = {
   low:    { sl: 0.02, tp: 0, trailAct: 0.01, trailDist: 0.005 },   // 1%/0.5% trail
 };
 
+// Ordered by historical profitability + WR (best first, worst last)
+// With limited margin, first pairs get opened first
 const NEWS_TRADING_PAIRS = [
-  "OP", "ARB", "LDO", "TRUMP", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA",
-  "WLD", "XRP", "SOL", "BNB", "kSHIB", "TIA", "NEAR", "kBONK", "ONDO", "HYPE",
+  "DOT", "TIA", "LDO", "kBONK", "WLD", "ARB", "ONDO", "ADA", "LINK", "DOGE",
+  "XRP", "NEAR", "kSHIB", "SOL", "HYPE", "APT", "OP", "TRUMP", "ENA", "BNB",
 ];
 // Both HIGH and MEDIUM trade all 20 pairs (LOW is already filtered out)
 const PAIRS_BY_IMPACT: Record<string, string[]> = {
