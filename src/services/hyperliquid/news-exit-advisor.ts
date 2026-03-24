@@ -46,16 +46,19 @@ Open positions (held for ~${positions[0]?.holdMinutes ?? 60} minutes):
 ${positionList}
 
 For each pair, decide ONE action:
-- HOLD: the news is significant enough that this pair should keep running (expect more movement)
-- TAKE_PROFIT: this pair has some profit, lock it in now (the move is fading)
-- CLOSE: this pair isn't reacting to the news, cut it (dead trade)
+- HOLD: expect more movement in our direction, keep running
+- TAKE_PROFIT: position is profitable ABOVE 0.15% (fees cost ~0.1%), lock in real gains
+- CLOSE: position is flat or negative, cut it
 
 Rules:
-- If a position is profitable, prefer TAKE_PROFIT unless the news is very high impact and the pair typically reacts strongly
-- If a position is slightly negative (<0.5% loss), CLOSE it
-- If a position is more than 0.5% against, HOLD it (might recover, SL protects downside)
-- HIGH impact news (crypto regulation, strategic reserve): more HOLDs
-- LOW impact news (vague economy talk): more TAKE_PROFIT and CLOSE
+- TAKE_PROFIT only if profit > 0.15% (below that, fees eat the gain - use CLOSE instead)
+- If profit > 1%: HOLD for HIGH impact news, TAKE_PROFIT for LOW/MEDIUM
+- If profit 0.15%-1%: TAKE_PROFIT (secure small gain)
+- If position is flat (between -0.15% and +0.15%): CLOSE (no edge, just fees)
+- If position is negative (-0.15% to -0.5%): CLOSE (dead trade)
+- If position is more than 0.5% against: HOLD (might recover, SL protects)
+- HIGH impact crypto news: more HOLDs (expect bigger moves)
+- LOW impact or non-crypto news: more CLOSE (weak signal)
 
 Respond with ONLY valid JSON, no markdown:
 {${positions.map(p => `"${p.pair}": "DECISION"`).join(", ")}}`;
