@@ -2,7 +2,8 @@ import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
-import { capStopLoss } from "./quant-utils.js";
+import { capStopLoss, parseIndicatorsMeta } from "./quant-utils.js";
+import { getExitAdvice } from "./news-exit-advisor.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { getWsMids, isWsConnected } from "./ws-prices.js";
@@ -280,26 +281,70 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Smart stale exit for news-trade after 1 hour
+      // AI-powered stale exit for news-trade after 1 hour
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
         if (staleHoldMs >= 60 * 60 * 1000) {
-          // Skip if trail already activated (let trail handle it)
           if (peak > trailCfg.activation) continue;
 
+          const meta = parseIndicatorsMeta(position.indicatorsAtEntry);
+          const impact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
+          const eventTs = meta.eventTs ? parseInt(meta.eventTs) : 0;
+
+          // Extract news content: everything after the last known key (ets:...)
+          const etsIdx = position.indicatorsAtEntry?.indexOf(`ets:${meta.eventTs ?? ""}|`) ?? -1;
+          const newsContent = etsIdx >= 0
+            ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
+            : "";
+
+          // Build batch info for ALL stale news-trades (getExitAdvice caches per eventTs)
+          const allStale = positions.filter(p =>
+            p.tradeType === "news-trade" &&
+            Date.now() - new Date(p.openedAt).getTime() >= 60 * 60 * 1000,
+          );
+          const posInfos = allStale.map(p => {
+            const pSource = p.exchange === "lighter" ? lighterMids : mids;
+            const pRaw = pSource[p.pair];
+            const pPrice = pRaw ? parseFloat(pRaw) : p.entryPrice;
+            const pPct = p.direction === "long"
+              ? (pPrice - p.entryPrice) / p.entryPrice
+              : (p.entryPrice - pPrice) / p.entryPrice;
+            return {
+              pair: p.pair,
+              direction: p.direction as "long" | "short",
+              pricePct: pPct,
+              holdMinutes: Math.round((Date.now() - new Date(p.openedAt).getTime()) / 60000),
+            };
+          });
+
+          const advice = await getExitAdvice(newsContent, impact, posInfos, eventTs);
+          const decision = advice.get(position.pair);
+
+          if (decision === "TAKE_PROFIT") {
+            console.log(`[PositionMonitor] AI take-profit: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
+            await tryClose(position, "ai-take-profit");
+            continue;
+          }
+          if (decision === "CLOSE") {
+            console.log(`[PositionMonitor] AI close: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
+            await tryClose(position, "ai-stale-exit");
+            continue;
+          }
+          if (decision === "HOLD") {
+            continue;
+          }
+
+          // Fallback if AI didn't return advice for this pair
           if (pricePct > 0) {
-            // Profitable: take profit now (news wasn't big enough for trail but we have gains)
-            console.log(`[PositionMonitor] Take profit (1h): ${position.pair} ${position.direction} +${(pricePct * 100).toFixed(2)}%`);
+            console.log(`[PositionMonitor] Take profit (fallback): ${position.pair} +${(pricePct * 100).toFixed(2)}%`);
             await tryClose(position, "stale-take-profit");
             continue;
           }
           if (pricePct > -0.005) {
-            // Break-even or small loss (<0.5%): cut it, dead trade
-            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, ${(pricePct * 100).toFixed(2)}%`);
+            console.log(`[PositionMonitor] Stale exit (fallback): ${position.pair} ${(pricePct * 100).toFixed(2)}%`);
             await tryClose(position, "stale-exit");
             continue;
           }
-          // Moved >0.5% against us: let SL handle it, might recover
         }
       }
 
