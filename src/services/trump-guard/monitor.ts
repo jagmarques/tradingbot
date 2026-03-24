@@ -16,7 +16,7 @@ const RSS_FEEDS = [
   { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", intervalMs: 15_000 },
 ];
 
-const TAVILY_INTERVAL_MS = 90_000;
+const TAVILY_INTERVAL_MS = 180_000;
 const COOLDOWN_MS = 30 * 60 * 1000;
 
 let cooldownUntil = 0;
@@ -207,7 +207,7 @@ async function pollTavily(): Promise<void> {
     });
 
     if (!res.ok) {
-      console.log(`[TrumpGuard] Tavily error ${res.status}`);
+      if (res.status !== 432) console.log(`[TrumpGuard] Tavily error ${res.status}`);
       return;
     }
 

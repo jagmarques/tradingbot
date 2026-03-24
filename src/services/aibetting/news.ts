@@ -337,7 +337,7 @@ async function tavilySearch(query: string, maxResults: number = 5): Promise<Tavi
     });
 
     if (!response.ok) {
-      console.warn(`[News] Tavily ${response.status}`);
+      if (response.status !== 432) console.warn(`[News] Tavily ${response.status}`);
       return [];
     }
 

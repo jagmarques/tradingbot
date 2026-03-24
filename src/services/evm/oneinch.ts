@@ -406,6 +406,11 @@ export async function validateCopyChains(): Promise<{ working: Chain[]; failed: 
   const chains = Object.keys(CHAIN_IDS) as Chain[];
 
   for (const chain of chains) {
+    // Skip ethereum if no explicit RPC configured - public fallback is unreliable and floods logs
+    if (chain === "ethereum" && !process.env.RPC_URL_ETHEREUM) {
+      continue;
+    }
+
     try {
       // Test RPC connection
       const provider = getProvider(chain);
