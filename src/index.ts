@@ -50,11 +50,9 @@ async function main(): Promise<void> {
     // Notify startup
     await notifyBotStarted();
 
-    // AI Betting, Copy Betting, Insider Trading - DISABLED (not profitable)
-    // To re-enable: uncomment below and set env vars
+    // AI Betting + Copy Betting - DISABLED
     console.log("[Bot] AI Betting: DISABLED");
     console.log("[Bot] Copy Betting: DISABLED");
-    console.log("[Bot] Insider Scanner: DISABLED");
 
     // Quant trading on Hyperliquid (opt-in)
     if (env.QUANT_ENABLED === "true" && env.HYPERLIQUID_PRIVATE_KEY) {
@@ -67,9 +65,14 @@ async function main(): Promise<void> {
       console.log("[Bot] Quant trading disabled (set QUANT_ENABLED=true and HYPERLIQUID_PRIVATE_KEY to enable)");
     }
 
-    // Polymarket copy trading + insider scanner - DISABLED
-    // startPolyTraderTracking(5000);
-    // startInsiderScanner();
+    // EVM insider wallet detection
+    if (process.env.ETHERSCAN_API_KEY) {
+      const { startInsiderScanner } = await import("./services/traders/index.js");
+      startInsiderScanner();
+      console.log("[Bot] Insider scanner started");
+    } else {
+      console.log("[Bot] Insider scanner disabled (set ETHERSCAN_API_KEY to enable)");
+    }
 
     // Start P&L daily snapshot cron
     startPnlCron();
