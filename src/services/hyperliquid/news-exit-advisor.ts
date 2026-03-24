@@ -46,19 +46,22 @@ Open positions (held for ~${positions[0]?.holdMinutes ?? 60} minutes):
 ${positionList}
 
 For each pair, decide ONE action:
-- HOLD: expect more movement in our direction, keep running
-- TAKE_PROFIT: position is profitable ABOVE 0.15% (fees cost ~0.1%), lock in real gains
-- CLOSE: position is flat or negative, cut it
+- HOLD: expect more movement, keep running
+- TAKE_PROFIT: lock in gains now
+- CLOSE: not moving or moving against us, cut it
 
-Rules:
-- TAKE_PROFIT only if profit > 0.15% (below that, fees eat the gain - use CLOSE instead)
-- If profit > 1%: HOLD for HIGH impact news, TAKE_PROFIT for LOW/MEDIUM
-- If profit 0.15%-1%: TAKE_PROFIT (secure small gain)
-- If position is flat (between -0.15% and +0.15%): CLOSE (no edge, just fees)
-- If position is negative (-0.15% to -0.5%): CLOSE (dead trade)
-- If position is more than 0.5% against: HOLD (might recover, SL protects)
-- HIGH impact crypto news: more HOLDs (expect bigger moves)
-- LOW impact or non-crypto news: more CLOSE (weak signal)
+Historical data shows: average news event moves BTC 0.3-0.5% within 1h. Only 15% reach 1%+.
+Altcoins typically move 1.5-2x the BTC move.
+
+Rules based on historical move data:
+- profit > 0.5%: TAKE_PROFIT for MEDIUM/LOW impact. HOLD for HIGH impact (might reach 1%+)
+- profit 0.2-0.5%: TAKE_PROFIT (this is the typical peak for most events)
+- profit 0.1-0.2%: HOLD if held < 15min (still building), TAKE_PROFIT if held > 30min (peaked)
+- profit < 0.1%: CLOSE if held > 10min (not reacting to the news)
+- loss 0-0.3%: CLOSE (dead trade, fees making it worse)
+- loss > 0.3%: HOLD (SL at 2% protects, might reverse)
+- HIGH impact (tariff, crypto regulation, rate decision): be more patient, HOLD longer
+- MEDIUM/LOW impact: take profit faster, these moves fade quickly
 
 Respond with ONLY valid JSON, no markdown:
 {${positions.map(p => `"${p.pair}": "DECISION"`).join(", ")}}`;
