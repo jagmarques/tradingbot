@@ -107,8 +107,10 @@ GARCH(1,1) z-score momentum on 20 perpetual futures pairs.
 Opens positions on 20 altcoins immediately on crypto-relevant news.
 
 - 9 RSS feeds + Tavily, 3-30s detection latency
-- Groq AI BULLISH/BEARISH/NEUTRAL classification
-- BTC EMA9/21 trend filter, SL 2%, trail-only exit (5%/2%)
+- Groq AI classifies BULLISH/BEARISH/NEUTRAL + impact level (HIGH/MEDIUM/LOW)
+- Source-based default impact: Trump/FOMC = HIGH, CoinDesk = MEDIUM, CFTC = LOW
+- BTC EMA9/21 trend filter, SL 2%, adaptive trailing by impact (HIGH: 5%/2%, MEDIUM: 2%/1%, LOW: 1%/0.5%)
+- Reversal logic: stronger opposing signal closes positions and reverses
 - Stale exit: 1h if < 0.3% directional move, max hold 24h
 - Compound 4% per event, $15/day loss limit
 

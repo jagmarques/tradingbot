@@ -1,3 +1,5 @@
+> **Update (2026-03-24):** Live engine now uses adaptive trailing by impact level (HIGH: 5%/2%, MEDIUM: 2%/1%, LOW: 1%/0.5%). Reversal logic added: stronger opposing signal closes all positions and reverses. Backtest used fixed 5%/2% trail - live results will differ slightly across impact tiers.
+
 # Final Results - March 24, 2026 (Corrected)
 
 ## Winning Strategy: News Trading (trail-only, all 20 pairs, no cap)
