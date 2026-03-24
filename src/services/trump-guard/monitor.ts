@@ -34,19 +34,19 @@ let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 const seenGuids = new Set<string>();
 const seenUrls = new Set<string>();
 
-// Source defaults from analysis of 3837 posts
-// Trump: 68% noise, AI decides actual impact per post
+// Source defaults from historical analysis (pre-filter removes noise)
 const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
-  "Trump Truth Social": "medium",
+  "Trump Truth Social": "high",
   "Fed FOMC": "high",
-  "White House": "medium",
+  "Powell Speeches": "high",
+  "White House": "high",
   "CoinDesk": "medium",
   "CoinTelegraph": "medium",
   "CFTC Enforcement": "medium",
   "CFTC General": "low",
   "Fed All Press": "medium",
-  "Powell Speeches": "high",
   "MarketWatch": "medium",
+  "CNBC Economy": "medium",
   "Google News Business": "low",
   "BBC World": "low",
   "CNBC Economy": "medium",
