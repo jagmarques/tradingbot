@@ -581,24 +581,8 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Smart stale exit for news-trade (fast poll) after 1 hour
+      // news-trade exit handled by AI in main loop, skip in fast poll
       if (position.tradeType === "news-trade") {
-        const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
-        if (staleHoldMs >= 60 * 60 * 1000) {
-          const trailCfgFast = getTrailConfig(position);
-          if (peak > trailCfgFast.activation) continue;
-
-          if (pricePct > 0) {
-            console.log(`[PositionMonitor] Take profit (1h fast): ${position.pair} ${position.direction} +${(pricePct * 100).toFixed(2)}%`);
-            await tryClose(position, "stale-take-profit");
-            continue;
-          }
-          if (pricePct > -0.005) {
-            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
-            await tryClose(position, "stale-exit");
-            continue;
-          }
-        }
       }
 
       // Skip near-SL for engines with tight fixed stops
