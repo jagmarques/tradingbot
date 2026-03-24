@@ -306,6 +306,9 @@ async function checkPositionStops(): Promise<void> {
             const allEligible = positions.filter(p =>
               p.tradeType === "news-trade" && Date.now() - new Date(p.openedAt).getTime() >= 60 * 1000,
             );
+            // Mark ALL as pending BEFORE async call (prevents 20 concurrent AI calls)
+            for (const p of allEligible) newsTradeAdviceCache.set(p.id, null);
+
             const posInfos = allEligible.map(p => {
               const pRaw = (p.exchange === "lighter" ? lighterMids : mids)[p.pair];
               const pPrice = pRaw ? parseFloat(pRaw) : p.entryPrice;
@@ -316,7 +319,6 @@ async function checkPositionStops(): Promise<void> {
                 holdMinutes: Math.round((Date.now() - new Date(p.openedAt).getTime()) / 60000),
               };
             });
-            // Fire and forget - don't block the monitor loop
             getExitAdvice(newsContent, impact, posInfos, eventTs).then(advice => {
               for (const p of allEligible) newsTradeAdviceCache.set(p.id, advice.get(p.pair) ?? null);
             }).catch(() => {});
