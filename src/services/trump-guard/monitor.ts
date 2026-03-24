@@ -86,6 +86,13 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
   const sourceImpact = feedName ? (SOURCE_IMPACT[feedName] ?? "low") : "low";
   const impact = IMPACT_ORDER[result.impact] >= IMPACT_ORDER[sourceImpact] ? result.impact : sourceImpact;
 
+  // Noisy aggregator sources: only trade HIGH impact from them
+  const noisySources = ["Google News Business", "BBC World"];
+  if (feedName && noisySources.includes(feedName) && impact !== "high") {
+    console.log(`[TrumpGuard] Skipping ${impact} from noisy source ${feedName}`);
+    return;
+  }
+
   // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
   lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact, source: feedName ?? "tavily", isBreaking: result.isBreaking };

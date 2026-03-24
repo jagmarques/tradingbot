@@ -14,10 +14,15 @@ type ExitDecision = "HOLD" | "TAKE_PROFIT" | "CLOSE";
 const adviceCache = new Map<number, { advice: Map<string, ExitDecision>; fetchedAt: number }>();
 const CACHE_TTL_MS = 15 * 1000; // refresh every 15 seconds
 
+const holdStreakCount = new Map<number, number>(); // eventTs -> consecutive HOLD count
+
 function cleanCache(): void {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
   for (const [ts] of adviceCache) {
     if (ts < cutoff) adviceCache.delete(ts);
+  }
+  for (const [ts] of holdStreakCount) {
+    if (ts < cutoff) holdStreakCount.delete(ts);
   }
 }
 
@@ -93,7 +98,24 @@ Respond with ONLY valid JSON, no markdown:
     }
 
     adviceCache.set(eventTs, { advice: result, fetchedAt: Date.now() });
-    console.log(`[ExitAdvisor] AI decisions for ${positions.length} positions: ${[...result.entries()].map(([p, d]) => `${p}=${d}`).join(", ")}`);
+
+    const holdCount = [...result.values()].filter(d => d === "HOLD").length;
+    const totalCount = result.size;
+
+    // If all positions are HOLD, increment streak
+    if (holdCount === totalCount && totalCount > 0) {
+      const streak = (holdStreakCount.get(eventTs) ?? 0) + 1;
+      holdStreakCount.set(eventTs, streak);
+      // After 3 consecutive all-HOLD results, extend cache to 60s
+      if (streak >= 3) {
+        adviceCache.set(eventTs, { advice: result, fetchedAt: Date.now() + 45_000 }); // extra 45s on top of 15s TTL = 60s
+        console.log(`[ExitAdvisor] All HOLD x${streak}, next check in 60s`);
+      }
+    } else {
+      holdStreakCount.set(eventTs, 0);
+    }
+
+    console.log(`[ExitAdvisor] AI decisions: ${positions.map(p => `${p.pair}=${result.get(p.pair) ?? "?"}(${p.pricePct > 0 ? "+" : ""}${(p.pricePct * 100).toFixed(2)}%)`).join(", ")}`);
     return result;
   } catch (err) {
     console.error(`[ExitAdvisor] Failed: ${err instanceof Error ? err.message : String(err)}`);

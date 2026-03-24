@@ -326,22 +326,34 @@ async function checkPositionStops(): Promise<void> {
 
           // Apply cached decision (non-blocking)
           const decision = newsTradeAdviceCache.get(position.id);
-          if (decision === "TAKE_PROFIT") {
+
+          // Hard code overrides - AI doesn't always follow rules
+          let finalDecision = decision;
+          if (decision === "TAKE_PROFIT" && pricePct <= 0) {
+            finalDecision = "CLOSE"; // can't take profit on a loss
+            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> CLOSE (position is ${(pricePct * 100).toFixed(2)}% = loss)`);
+          }
+          if (decision === "HOLD" && pricePct < -0.003 && holdMs > 10 * 60 * 1000) {
+            finalDecision = "CLOSE"; // holding a loser for 10min+, cut it
+            console.log(`[PositionMonitor] Override: HOLD -> CLOSE (${(pricePct * 100).toFixed(2)}% loss after ${Math.round(holdMs/60000)}min)`);
+          }
+
+          if (finalDecision === "TAKE_PROFIT") {
             console.log(`[PositionMonitor] AI take-profit: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
             newsTradeAdviceCache.delete(position.id);
             await tryClose(position, "ai-take-profit");
             continue;
           }
-          if (decision === "CLOSE") {
+          if (finalDecision === "CLOSE") {
             console.log(`[PositionMonitor] AI close: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
             newsTradeAdviceCache.delete(position.id);
             await tryClose(position, "ai-stale-exit");
             continue;
           }
           // HOLD: fall through to stagnation check
-          if (decision === "HOLD") {
+          if (finalDecision === "HOLD") {
             // fall through - 24h max hold still enforced below
-          } else if (decision === null && holdMs >= 60 * 60 * 1000) {
+          } else if (finalDecision === null && holdMs >= 60 * 60 * 1000) {
             // No AI advice after 1h (Cerebras down) - use fallback rules
             if (pricePct > 0) {
               console.log(`[PositionMonitor] Take profit (fallback): ${position.pair} +${(pricePct * 100).toFixed(2)}%`);
