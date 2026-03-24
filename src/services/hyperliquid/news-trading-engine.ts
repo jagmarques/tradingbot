@@ -18,9 +18,9 @@ const DAILY_LOSS_LIMIT = 15;
 
 // Impact-based SL/TP/trail config (price percentages)
 const IMPACT_CONFIG = {
-  high:   { sl: 0.02, tp: 0,    trailAct: 0.05, trailDist: 0.02 },  // let it run big
-  medium: { sl: 0.02, tp: 0,    trailAct: 0.03, trailDist: 0.015 }, // moderate move
-  low:    { sl: 0.015, tp: 0.02, trailAct: 0,    trailDist: 0 },    // quick TP, no trail
+  high:   { sl: 0.02, tp: 0, trailAct: 0.05, trailDist: 0.02 },   // 5%/2% trail
+  medium: { sl: 0.02, tp: 0, trailAct: 0.02, trailDist: 0.01 },   // 2%/1% trail
+  low:    { sl: 0.02, tp: 0, trailAct: 0.01, trailDist: 0.005 },   // 1%/0.5% trail
 };
 
 const NEWS_TRADING_PAIRS = [

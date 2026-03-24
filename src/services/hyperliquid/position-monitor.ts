@@ -32,10 +32,11 @@ const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 // Dynamic trail for news-trade based on impact stored in indicatorsAtEntry
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
   if (position.tradeType === "news-trade" && position.indicatorsAtEntry) {
-    const impact = position.indicatorsAtEntry.replace("impact:", "");
-    if (impact === "high") return { activation: 50, distance: 20 };    // 5%/2% at 10x
-    if (impact === "medium") return { activation: 30, distance: 15 };  // 3%/1.5% at 10x
-    return { activation: 999, distance: 999 }; // low impact uses fixed TP, trail disabled
+    const impact = position.indicatorsAtEntry.split("|")[0]?.replace("impact:", "") ?? "";
+    if (impact === "high") return { activation: 50, distance: 20 };     // 5%/2% at 10x
+    if (impact === "medium") return { activation: 20, distance: 10 };   // 2%/1% at 10x
+    if (impact === "low") return { activation: 10, distance: 5 };       // 1%/0.5% at 10x
+    return { activation: 50, distance: 20 }; // default to high
   }
   return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
 }
