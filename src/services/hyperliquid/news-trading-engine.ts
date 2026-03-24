@@ -33,7 +33,6 @@ const TOP3_PAIRS = ["TIA", "kBONK", "OP"];
 const PAIRS_BY_IMPACT: Record<string, string[]> = {
   high: NEWS_TRADING_PAIRS,
   medium: TOP5_PAIRS,
-  low: TOP3_PAIRS,
 };
 
 // Track last processed event timestamp to avoid re-trading same event
@@ -97,16 +96,19 @@ export async function runNewsTradingCycle(): Promise<number> {
     }
   }
 
-  // Skip opinion/analysis pieces (only trade breaking news, unless HIGH impact)
+  // Skip LOW impact and opinion pieces
+  if (impact === "low") {
+    console.log("[News-Trade] Skipping low impact event");
+    return 0;
+  }
   if (!event.isBreaking && impact !== "high") {
-    console.log(`[News-Trade] Skipping opinion piece (not breaking news, ${impact} impact)`);
+    console.log(`[News-Trade] Skipping opinion piece (${impact} impact)`);
     return 0;
   }
 
-  // BTC price confirmation - opinions already filtered, BREAKING gets fast entry
-  // HIGH: 0s, MEDIUM: 10s, LOW: 30s
+  // BTC price confirmation - HIGH: 0s, MEDIUM: 10s
   const direction = event.direction;
-  const confirmDelay = impact === "high" ? 0 : impact === "medium" ? 10_000 : 30_000;
+  const confirmDelay = impact === "high" ? 0 : 10_000;
   if (confirmDelay > 0) {
     const btcPriceBefore = btcCandles[btcCandles.length - 1].close;
     console.log(`[News-Trade] BTC confirmation: waiting ${confirmDelay / 1000}s (${impact})...`);
@@ -120,8 +122,8 @@ export async function runNewsTradingCycle(): Promise<number> {
     const expectedDir = direction === "long" ? 1 : -1;
     const moveInDir = btcMove * expectedDir;
 
-    if (moveInDir < 0.002) {
-      console.log(`[News-Trade] BTC confirmation failed: moved ${(btcMove * 100).toFixed(3)}%, need 0.2% ${direction}. Skipping.`);
+    if (moveInDir < 0.003) {
+      console.log(`[News-Trade] BTC confirmation failed: moved ${(btcMove * 100).toFixed(3)}%, need 0.3% ${direction}. Skipping.`);
       return 0;
     }
     console.log(`[News-Trade] BTC confirmed: ${(btcMove * 100).toFixed(3)}% move`);
