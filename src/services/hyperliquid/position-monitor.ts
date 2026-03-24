@@ -321,7 +321,7 @@ async function checkPositionStops(): Promise<void> {
             });
             getExitAdvice(newsContent, impact, posInfos, eventTs).then(advice => {
               for (const p of allEligible) newsTradeAdviceCache.set(p.id, advice.get(p.pair) ?? null);
-            }).catch(() => {});
+            }).catch(err => { console.error(`[PositionMonitor] AI exit advice failed: ${err instanceof Error ? err.message : String(err)}`); });
           }
 
           // Apply cached decision (non-blocking)
@@ -338,7 +338,24 @@ async function checkPositionStops(): Promise<void> {
             await tryClose(position, "ai-stale-exit");
             continue;
           }
-          // HOLD or no advice yet: fall through to stagnation check (24h max hold still enforced)
+          // HOLD: fall through to stagnation check
+          if (decision === "HOLD") {
+            // fall through - 24h max hold still enforced below
+          } else if (decision === null && holdMs >= 60 * 60 * 1000) {
+            // No AI advice after 1h (Cerebras down) - use fallback rules
+            if (pricePct > 0) {
+              console.log(`[PositionMonitor] Take profit (fallback): ${position.pair} +${(pricePct * 100).toFixed(2)}%`);
+              newsTradeAdviceCache.delete(position.id);
+              await tryClose(position, "stale-take-profit");
+              continue;
+            }
+            if (pricePct > -0.005) {
+              console.log(`[PositionMonitor] Stale exit (fallback): ${position.pair} ${(pricePct * 100).toFixed(2)}%`);
+              newsTradeAdviceCache.delete(position.id);
+              await tryClose(position, "stale-exit");
+              continue;
+            }
+          }
         }
       }
 

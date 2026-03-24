@@ -128,6 +128,34 @@ export async function callLLM(
     }
   }
 
+  // Fallback: if primary failed and secondary exists, try it
+  const env = loadEnv();
+  const hasCerebras = !!env.CEREBRAS_API_KEY;
+  const hasGroq = !!env.GROQ_API_KEY;
+  if (hasCerebras && hasGroq && provider.name === "Cerebras") {
+    console.warn(`[LLM] Cerebras failed after ${MAX_RETRIES} attempts, falling back to Groq`);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
+        body: JSON.stringify({ ...body, model: GROQ_MODEL }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (response.ok) {
+        const data = (await response.json()) as LLMResponse;
+        const content = data.choices?.[0]?.message?.content;
+        if (content?.trim()) {
+          trackUsage(data.usage.prompt_tokens, data.usage.completion_tokens, caller);
+          console.log(`[Groq] ${data.usage.total_tokens} tokens (${caller} fallback)`);
+          return content;
+        }
+      }
+    } catch { /* groq fallback also failed */ }
+  }
+
   throw lastError || new Error("LLM call failed");
 }
 
