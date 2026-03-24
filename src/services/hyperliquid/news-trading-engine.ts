@@ -50,7 +50,9 @@ export async function runNewsTradingCycle(): Promise<number> {
   // Mark as processed immediately to avoid double-trading
   lastProcessedEventTs = event.ts;
 
-  console.log(`[News-Trade] New event: ${event.direction} - ${event.content.slice(0, 60)}`);
+  const impact = event.impact ?? "medium";
+  const cfg = IMPACT_CONFIG[impact];
+  console.log(`[News-Trade] New event: ${event.direction} [${impact}] - ${event.content.slice(0, 60)}`);
 
   // BTC EMA9/21 trend filter
   const btcCandles = await fetchCandles("BTC", "1h", 30);
@@ -70,14 +72,16 @@ export async function runNewsTradingCycle(): Promise<number> {
   const ema21 = ema21Vals[ema21Vals.length - 1];
   const btcUptrend = ema9 > ema21;
 
-  // Only long in uptrend, short in downtrend
-  if (event.direction === "long" && !btcUptrend) {
-    console.log("[News-Trade] Trend filter: EMA9 < EMA21, skipping long");
-    return 0;
-  }
-  if (event.direction === "short" && btcUptrend) {
-    console.log("[News-Trade] Trend filter: EMA9 > EMA21, skipping short");
-    return 0;
+  // Trend filter: HIGH impact overrides (trade even against trend)
+  if (impact !== "high") {
+    if (event.direction === "long" && !btcUptrend) {
+      console.log("[News-Trade] Trend filter: EMA9 < EMA21, skipping long (not high impact)");
+      return 0;
+    }
+    if (event.direction === "short" && btcUptrend) {
+      console.log("[News-Trade] Trend filter: EMA9 > EMA21, skipping short (not high impact)");
+      return 0;
+    }
   }
 
   // Get open positions for this trade type
@@ -86,8 +90,6 @@ export async function runNewsTradingCycle(): Promise<number> {
   const openPairs = new Set(myPositions.map(p => p.pair));
 
   const direction = event.direction;
-  const impact = event.impact ?? "medium";
-  const cfg = IMPACT_CONFIG[impact];
   const impactRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
   // Reversal logic: check existing positions

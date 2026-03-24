@@ -28,14 +28,21 @@ export async function classifyPost(content: string): Promise<ClassificationResul
         messages: [
           {
             role: "user",
-            content: `Is this news bullish or bearish for cryptocurrency? Also rate the expected market impact.
-Answer in EXACTLY this format: SENTIMENT IMPACT
-Where SENTIMENT is BULLISH, BEARISH, or NEUTRAL
-Where IMPACT is HIGH, MEDIUM, or LOW
+            content: `Does this news DIRECTLY affect cryptocurrency prices? Answer NEUTRAL unless it clearly moves crypto markets.
 
-HIGH = direct crypto regulation, strategic reserve, major tariff, rate decision, exchange hack
-MEDIUM = indirect crypto mention, executive order, major exchange listing, whale movement
-LOW = general economy, minor regulatory update, vague statement
+Answer in EXACTLY this format: SENTIMENT IMPACT
+SENTIMENT = BULLISH, BEARISH, or NEUTRAL
+IMPACT = HIGH, MEDIUM, or LOW
+
+BULLISH examples: crypto strategic reserve, pro-crypto regulation, rate cuts, ETF approval, major adoption
+BEARISH examples: crypto ban, exchange hack, rate hikes, major tariffs, SEC crackdown
+NEUTRAL examples: immigration, military, sports, elections, general politics, social issues, anything not directly about money/markets/crypto
+
+HIGH = directly mentions crypto/bitcoin/blockchain/rates/tariffs
+MEDIUM = economic policy that indirectly affects markets
+LOW = vague or indirect connection to markets
+
+When in doubt, answer NEUTRAL LOW. Only classify as BULLISH or BEARISH if the content CLEARLY and DIRECTLY impacts crypto.
 
 Content: ${content.slice(0, 500)}`,
           },
