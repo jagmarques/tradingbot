@@ -85,12 +85,12 @@ export async function runNewsTradingCycle(): Promise<number> {
     }
   }
 
-  // Skip LOW impact and opinion pieces
+  // Skip LOW impact and ALL opinion pieces (even HIGH opinion)
   if (impact === "low") {
     console.log("[News-Trade] Skipping low impact event");
     return 0;
   }
-  if (!event.isBreaking && impact !== "high") {
+  if (!event.isBreaking) {
     console.log(`[News-Trade] Skipping opinion piece (${impact} impact)`);
     return 0;
   }
