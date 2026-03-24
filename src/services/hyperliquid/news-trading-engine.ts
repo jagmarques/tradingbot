@@ -6,7 +6,7 @@ import { openPosition, closePosition, getOpenQuantPositions } from "./executor.j
 import { saveQuantPosition } from "../database/quant.js";
 import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
-import { getDailyLossTotal, isQuantKilled } from "./risk-manager.js";
+import { isQuantKilled } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { getLastNewsEvent } from "../trump-guard/monitor.js";
 
