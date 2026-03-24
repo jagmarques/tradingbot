@@ -9,20 +9,25 @@ const DEFAULT_RESULT: ClassificationResult = { sentiment: "NEUTRAL", impact: "lo
 
 // Pre-filter: skip obvious noise before calling AI (saves Groq rate limit)
 // Based on analysis of 3837 posts: "other" category has 21% hit rate vs 30%+ for financial
-const MARKET_KEYWORDS = /tariff|trade war|trade deal|china.*trade|crypto|bitcoin|btc|blockchain|digital asset|strategic reserve|sec |cftc|regulation|etf |stablecoin|rate cut|rate hike|interest rate|federal reserve|fed |powell|inflation|recession|economy|gdp|jobs|unemployment|stimulus|debt ceiling|executive order|sanctions|elon|musk|doge|ban |tax |hack|exchange|oil price|crude oil|opec|war |ceasefire|peace deal|nuclear|iran.*deal|russia.*sanction|china.*sanction/i;
+const MARKET_KEYWORDS = /tariff|trade war|trade deal|china.*trade|crypto\b|cryptocurrency|bitcoin|btc\b|blockchain|digital asset|strategic reserve|sec |cftc|regulation|etf |stablecoin|rate cut|rate hike|interest rate|federal reserve|fed |powell|inflation|recession|economy|gdp|jobs|unemployment|stimulus|debt ceiling|executive order|sanctions|elon|musk|doge\b|ban |tax |hack|exchange|oil price|crude oil|opec|war |ceasefire|peace deal|nuclear|iran.*deal|russia.*sanction|china.*sanction/i;
 const NOISE_KEYWORDS = /immigration|border|illegal|deport|fentanyl|hollywood|movie|actor|actress|nfl|nba|mlb|baseball|football|basketball|golf|super bowl|grammy|oscar|emmy|concert|album|song|music|birthday|wedding|funeral|church|pastor|prayer|god bless/i;
 
 function stripHtml(text: string): string {
-  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
-    .replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;/g, "'")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/https?:\/\/\S+/g, " ") // strip URLs
+    .replace(/\s+/g, " ").trim();
 }
 
 function preFilter(content: string): "skip" | "classify" {
   const clean = stripHtml(content);
-  if (clean.length < 20) return "skip";
+  if (clean.length < 30) return "skip"; // too short after stripping
   if (NOISE_KEYWORDS.test(clean) && !MARKET_KEYWORDS.test(clean)) return "skip";
-  if (clean.startsWith("RT: http") && clean.length < 100) return "skip";
-  if (clean.startsWith("http") && clean.length < 80) return "skip"; // bare URL
+  if (clean.startsWith("RT: ") && clean.length < 100) return "skip";
+  // Skip if content is mostly just link text or list markers after HTML strip
+  const alphaCount = (clean.match(/[a-zA-Z]/g) ?? []).length;
+  if (alphaCount < 20) return "skip"; // not enough actual text
   return "classify";
 }
 

@@ -489,8 +489,9 @@ export async function liveOpenPosition(
     if (!status.filled) {
       const statusStr = JSON.stringify(status);
       const isMarginError = statusStr.includes("Insufficient margin");
+      const isLiquidityError = statusStr.includes("could not immediately match");
       console.error(`[Quant Live] Order rejected for ${pair}: ${statusStr}`);
-      if (!isMarginError) {
+      if (!isMarginError && !isLiquidityError) {
         void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${statusStr}`, "liveOpenPosition");
       }
       return null;
