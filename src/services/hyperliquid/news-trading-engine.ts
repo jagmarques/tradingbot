@@ -15,7 +15,7 @@ const LEVERAGE = 10;
 const EVENT_RISK_PCT = 4; // 4% of equity per event (split across pairs)
 const MIN_POSITION_USD = 10;
 const MAX_POSITION_USD = 500; // liquidity cap
-const DAILY_LOSS_LIMIT = 15;
+// No daily loss limit - SL on exchange + AI exit advisor protect each trade
 
 // Impact-based SL/TP/trail config (price percentages)
 const IMPACT_CONFIG = {
@@ -40,18 +40,6 @@ let lastProcessedEventTs = 0;
 export async function runNewsTradingCycle(): Promise<number> {
   if (isQuantKilled()) return 0;
 
-  // Daily loss limit check
-  const dailyLoss = getDailyLossTotal("news-trade", "live");
-  if (dailyLoss >= DAILY_LOSS_LIMIT) {
-    console.log(`[News-Trade] Daily loss limit hit ($${dailyLoss.toFixed(2)} >= $${DAILY_LOSS_LIMIT}), skipping`);
-    return 0;
-  }
-
-  const remainingBudget = DAILY_LOSS_LIMIT - dailyLoss;
-  if (remainingBudget < 3) {
-    console.log(`[News-Trade] Low daily budget ($${remainingBudget.toFixed(2)} remaining), skipping`);
-    return 0;
-  }
 
   // Check for new news event
   const event = getLastNewsEvent();
