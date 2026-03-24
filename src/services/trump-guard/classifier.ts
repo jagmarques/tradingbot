@@ -96,15 +96,56 @@ Content: ${content.slice(0, 500)}`;
 
     const text = response.trim().toUpperCase();
 
-    let sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
-    if (text.includes("BULLISH")) sentiment = "BULLISH";
-    else if (text.includes("BEARISH")) sentiment = "BEARISH";
-
     let impact: "high" | "medium" | "low" = "low";
     if (text.includes("HIGH")) impact = "high";
     else if (text.includes("MEDIUM")) impact = "medium";
 
     const isBreaking = text.includes("BREAKING");
+
+    // Quick sentiment from first pass
+    let sentiment: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
+    if (text.includes("BULLISH")) sentiment = "BULLISH";
+    else if (text.includes("BEARISH")) sentiment = "BEARISH";
+
+    // For HIGH impact: deep AI analysis to decide direction
+    if (impact === "high" && sentiment !== "NEUTRAL") {
+      try {
+        const deepPrompt = `You are a crypto market analyst. This HIGH IMPACT news just broke. Decide: should crypto traders go LONG or SHORT?
+
+News: ${content.slice(0, 500)}
+
+Think step by step:
+1. What happened? (one sentence)
+2. How does this affect crypto markets? (one sentence)
+3. Historical precedent: similar events in the past moved crypto which direction?
+4. Your decision: LONG or SHORT
+
+Consider:
+- Tariffs/trade war = usually crypto dumps (SHORT)
+- Rate cuts = crypto pumps (LONG), rate hikes = dumps (SHORT)
+- Crypto-specific good news (reserve, ETF, adoption) = LONG
+- Geopolitical tension (war, sanctions) = usually SHORT (risk-off)
+- Ceasefire/peace = usually LONG (risk-on)
+- Oil price spike = mixed, slight SHORT
+
+Answer with your reasoning then end with exactly: DIRECTION: LONG or DIRECTION: SHORT`;
+
+        const deepResponse = await callLLM(deepPrompt, undefined, "You are a crypto market analyst.", 0, "news-deep-analysis");
+        const deepText = deepResponse.trim().toUpperCase();
+
+        if (deepText.includes("DIRECTION: LONG")) {
+          sentiment = "BULLISH";
+          console.log(`[TrumpGuard] Deep analysis: LONG - ${deepResponse.slice(-100)}`);
+        } else if (deepText.includes("DIRECTION: SHORT")) {
+          sentiment = "BEARISH";
+          console.log(`[TrumpGuard] Deep analysis: SHORT - ${deepResponse.slice(-100)}`);
+        }
+        // If parsing fails, keep the first-pass sentiment
+      } catch {
+        // Deep analysis failed, use first-pass sentiment
+      }
+    }
+
     return { sentiment, impact, isBreaking };
   } catch (err) {
     console.log(`[TrumpGuard] Classifier error: ${err instanceof Error ? err.message : String(err)}`);
