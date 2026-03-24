@@ -280,15 +280,26 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Stale exit for news-trade: close if move in our direction is less than 0.3% after 1 hour
+      // Smart stale exit for news-trade after 1 hour
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
         if (staleHoldMs >= 60 * 60 * 1000) {
-          if (pricePct < 0.003) {
-            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, only ${(pricePct * 100).toFixed(2)}% move`);
+          // Skip if trail already activated (let trail handle it)
+          if (peak > trailCfg.activation) continue;
+
+          if (pricePct > 0) {
+            // Profitable: take profit now (news wasn't big enough for trail but we have gains)
+            console.log(`[PositionMonitor] Take profit (1h): ${position.pair} ${position.direction} +${(pricePct * 100).toFixed(2)}%`);
+            await tryClose(position, "stale-take-profit");
+            continue;
+          }
+          if (pricePct > -0.005) {
+            // Break-even or small loss (<0.5%): cut it, dead trade
+            console.log(`[PositionMonitor] Stale exit: ${position.pair} ${position.direction} held 1h, ${(pricePct * 100).toFixed(2)}%`);
             await tryClose(position, "stale-exit");
             continue;
           }
+          // Moved >0.5% against us: let SL handle it, might recover
         }
       }
 
@@ -511,12 +522,20 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Stale exit for news-trade (fast poll): close if move in our direction is less than 0.3% after 1 hour
+      // Smart stale exit for news-trade (fast poll) after 1 hour
       if (position.tradeType === "news-trade") {
         const staleHoldMs = Date.now() - new Date(position.openedAt).getTime();
         if (staleHoldMs >= 60 * 60 * 1000) {
-          if (pricePct < 0.003) {
-            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} held 1h, only ${(pricePct * 100).toFixed(2)}% move`);
+          const trailCfgFast = getTrailConfig(position);
+          if (peak > trailCfgFast.activation) continue;
+
+          if (pricePct > 0) {
+            console.log(`[PositionMonitor] Take profit (1h fast): ${position.pair} ${position.direction} +${(pricePct * 100).toFixed(2)}%`);
+            await tryClose(position, "stale-take-profit");
+            continue;
+          }
+          if (pricePct > -0.005) {
+            console.log(`[PositionMonitor] Stale exit (fast): ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
             await tryClose(position, "stale-exit");
             continue;
           }
