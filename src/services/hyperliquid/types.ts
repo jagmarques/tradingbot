@@ -19,6 +19,7 @@ export interface QuantPosition {
   tradeType?: TradeType;
   spotHedgePrice?: number; // Virtual spot long entry price for delta-neutral positions
   maxUnrealizedPnlPct?: number; // High-water mark for trailing stop
+  indicatorsAtEntry?: string; // Engine-specific context (e.g. "impact:high")
 }
 
 export interface QuantTrade {

@@ -2,7 +2,7 @@
 // Uses trump-guard's news classification as signal, BTC EMA trend as filter
 import { EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
-import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal, isQuantKilled } from "./risk-manager.js";
@@ -14,8 +14,14 @@ const LEVERAGE = 10;
 const EVENT_RISK_PCT = 4; // 4% of equity per event (split across pairs)
 const MIN_POSITION_USD = 10;
 const MAX_POSITION_USD = 500; // liquidity cap
-const SL_PCT = 0.02; // 2% price-based SL
 const DAILY_LOSS_LIMIT = 15;
+
+// Impact-based SL/TP/trail config (price percentages)
+const IMPACT_CONFIG = {
+  high:   { sl: 0.02, tp: 0,    trailAct: 0.05, trailDist: 0.02 },  // let it run big
+  medium: { sl: 0.02, tp: 0,    trailAct: 0.03, trailDist: 0.015 }, // moderate move
+  low:    { sl: 0.015, tp: 0.02, trailAct: 0,    trailDist: 0 },    // quick TP, no trail
+};
 
 const NEWS_TRADING_PAIRS = [
   "OP", "ARB", "LDO", "TRUMP", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA",
@@ -77,6 +83,40 @@ export async function runNewsTradingCycle(): Promise<number> {
   const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
   const openPairs = new Set(myPositions.map(p => p.pair));
 
+  const direction = event.direction;
+  const impact = event.impact ?? "medium";
+  const cfg = IMPACT_CONFIG[impact];
+  const impactRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+  // Reversal logic: check existing positions
+  const existingDir = myPositions.length > 0 ? myPositions[0].direction : null;
+
+  if (existingDir === direction) {
+    console.log(`[News-Trade] Already positioned ${direction}, skipping`);
+    return 0;
+  }
+
+  if (existingDir && existingDir !== direction) {
+    const existingImpact = myPositions[0].indicatorsAtEntry?.replace("impact:", "") ?? "medium";
+    const newRank = impactRank[impact] ?? 2;
+    const oldRank = impactRank[existingImpact as "high" | "medium" | "low"] ?? 2;
+
+    if (newRank >= oldRank) {
+      console.log(`[News-Trade] Reversing: ${existingDir} -> ${direction} (${existingImpact} -> ${impact})`);
+      for (const pos of myPositions) {
+        try {
+          await closePosition(pos.id, `news-reversal-${impact}`);
+        } catch (err) {
+          console.error(`[News-Trade] Failed to close ${pos.pair}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      openPairs.clear();
+    } else {
+      console.log(`[News-Trade] Keeping ${existingDir} positions (${existingImpact} > ${impact})`);
+      return 0;
+    }
+  }
+
   // Fetch live equity for compound sizing
   let equity = 200; // fallback
   try {
@@ -91,20 +131,18 @@ export async function runNewsTradingCycle(): Promise<number> {
 
   // Compound size: equity * (EVENT_RISK_PCT / 100) / (numPairs * SL_PCT * LEVERAGE)
   const numPairs = NEWS_TRADING_PAIRS.length;
-  const rawSize = equity * (EVENT_RISK_PCT / 100) / (numPairs * SL_PCT * LEVERAGE);
+  const rawSize = equity * (EVENT_RISK_PCT / 100) / (numPairs * cfg.sl * LEVERAGE);
   const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(rawSize)));
 
-  console.log(`[News-Trade] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${EVENT_RISK_PCT}%, pairs=${numPairs})`);
+  console.log(`[News-Trade] Compound size: $${compoundSize} (equity=$${equity.toFixed(0)}, risk=${EVENT_RISK_PCT}%, impact=${impact})`);
 
   let executed = 0;
-  const direction = event.direction;
 
   for (const pair of NEWS_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
     if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
     try {
-      // Small delay between orders to avoid API rate limits
       if (executed > 0) await new Promise(r => setTimeout(r, 200));
 
       const altCandles = await fetchCandles(pair, "1h", 1);
@@ -112,28 +150,27 @@ export async function runNewsTradingCycle(): Promise<number> {
       const entryPrice = altCandles[altCandles.length - 1].close;
 
       const sl = direction === "long"
-        ? entryPrice * (1 - SL_PCT)
-        : entryPrice * (1 + SL_PCT);
+        ? entryPrice * (1 - cfg.sl)
+        : entryPrice * (1 + cfg.sl);
+      const tp = cfg.tp > 0
+        ? (direction === "long" ? entryPrice * (1 + cfg.tp) : entryPrice * (1 - cfg.tp))
+        : 0;
 
-      // No take profit - trail-only via position monitor
-      const tp = 0;
-
-      console.log(`[News-Trade] Opening ${pair} ${direction} size=$${compoundSize} entry=${entryPrice}`);
+      console.log(`[News-Trade] Opening ${pair} ${direction} size=$${compoundSize} entry=${entryPrice} impact=${impact}`);
 
       const position = await openPosition(
         pair, direction, compoundSize, LEVERAGE,
-        sl, tp, "trending", TRADE_TYPE, undefined, entryPrice,
+        sl, tp, "trending", TRADE_TYPE, `impact:${impact}`, entryPrice,
       );
       if (position) {
         executed++;
         openPairs.add(pair);
-        myPositions.push(position);
       }
     } catch (err) {
       console.error(`[News-Trade] Error ${pair}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  console.log(`[News-Trade] Opened ${executed} positions on ${direction} event`);
+  console.log(`[News-Trade] Opened ${executed} positions on ${direction} event (impact=${impact})`);
   return executed;
 }

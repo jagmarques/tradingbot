@@ -29,6 +29,17 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
+// Dynamic trail for news-trade based on impact stored in indicatorsAtEntry
+function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
+  if (position.tradeType === "news-trade" && position.indicatorsAtEntry) {
+    const impact = position.indicatorsAtEntry.replace("impact:", "");
+    if (impact === "high") return { activation: 50, distance: 20 };    // 5%/2% at 10x
+    if (impact === "medium") return { activation: 30, distance: 15 };  // 3%/1.5% at 10x
+    return { activation: 999, distance: 999 }; // low impact uses fixed TP, trail disabled
+  }
+  return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+}
+
 // Intraday hard-stop counter: track recent stops, half size when 3+ in 2h
 const recentHardStops: number[] = []; // timestamps of hard stop exits
 const HARDSTOP_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -239,7 +250,7 @@ async function checkPositionStops(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+      const trailCfg = getTrailConfig(position);
       if (peak > trailCfg.activation) {
         // alert once per live position
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
@@ -408,7 +419,7 @@ async function checkTrailActivePositions(): Promise<void> {
     // Trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
       if (nearSlIds.has(p.id)) return true;
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[p.tradeType ?? ""] ?? DEFAULT_TRAIL;
+      const trailCfg = getTrailConfig(p);
       return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;
     });
 
@@ -470,7 +481,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailCfg = TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+      const trailCfg = getTrailConfig(position);
 
       if (peak > trailCfg.activation) {
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
@@ -560,7 +571,7 @@ export function startPositionMonitor(): void {
   const existing = getOpenQuantPositions();
   for (const pos of existing) {
     if (pos.mode !== "live") continue;
-    const trailCfg = TRAIL_CONFIG_BY_ENGINE[pos.tradeType ?? ""] ?? DEFAULT_TRAIL;
+    const trailCfg = getTrailConfig(pos);
     if ((pos.maxUnrealizedPnlPct ?? 0) > trailCfg.activation) {
       trailActivatedIds.add(pos.id);
     }

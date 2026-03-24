@@ -44,8 +44,8 @@ export function saveQuantPosition(position: QuantPosition): void {
     INSERT OR REPLACE INTO quant_positions (
       id, pair, direction, entry_price, size, leverage,
       unrealized_pnl, mode, status, trade_type, opened_at, closed_at,
-      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, exchange, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      stop_loss, take_profit, max_unrealized_pnl_pct, ai_agreed, exchange, indicators_at_entry, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     position.id,
     position.pair,
@@ -64,6 +64,7 @@ export function saveQuantPosition(position: QuantPosition): void {
     position.maxUnrealizedPnlPct ?? null,
     null, // ai_agreed (column kept for DB compat)
     position.exchange ?? "hyperliquid",
+    position.indicatorsAtEntry ?? null,
   );
 }
 
@@ -106,6 +107,7 @@ export function loadOpenQuantPositions(): QuantPosition[] {
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType: (row.trade_type ?? "directional") as TradeType,
+    indicatorsAtEntry: (row as Record<string, unknown>).indicators_at_entry as string | undefined ?? undefined,
   }));
 }
 

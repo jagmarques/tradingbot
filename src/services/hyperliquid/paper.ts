@@ -178,6 +178,7 @@ export async function paperOpenPosition(
     realizedPnl: undefined,
     exitReason: undefined,
     tradeType,
+    indicatorsAtEntry,
   };
 
   paperPositions.set(position.id, position);

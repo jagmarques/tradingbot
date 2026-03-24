@@ -523,6 +523,13 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added max_unrealized_pnl_pct column");
   }
 
+  // Migration: Add indicators_at_entry to quant_positions
+  const qpColsLatest = (db.pragma("table_info(quant_positions)") as Array<{ name: string }>).map(c => c.name);
+  if (!qpColsLatest.includes("indicators_at_entry")) {
+    db.exec(`ALTER TABLE quant_positions ADD COLUMN indicators_at_entry TEXT`);
+    console.log("[Database] Migrated quant_positions: added indicators_at_entry column");
+  }
+
   // Migration: Add instance column to hf_maker_trades
   const hfTradesCols = (db.pragma("table_info(hf_maker_trades)") as Array<{ name: string }>).map(c => c.name);
   if (!hfTradesCols.includes("instance")) {

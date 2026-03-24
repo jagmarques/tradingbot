@@ -549,6 +549,7 @@ export async function liveOpenPosition(
       realizedPnl: undefined,
       exitReason: undefined,
       tradeType,
+      indicatorsAtEntry,
     };
 
     if (Math.abs(actualSizeUsd - sizeUsd) > 0.5) {

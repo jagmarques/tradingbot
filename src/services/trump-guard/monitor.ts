@@ -27,8 +27,23 @@ let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 const seenGuids = new Set<string>();
 const seenUrls = new Set<string>();
 
+// Source-based default impact mapping
+const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
+  "Trump Truth Social": "high",
+  "Fed FOMC": "high",
+  "White House": "medium",
+  "CoinDesk": "medium",
+  "CoinTelegraph": "medium",
+  "CFTC Enforcement": "low",
+  "CFTC General": "low",
+  "Fed All Press": "low",
+  "Powell Speeches": "medium",
+};
+
+const IMPACT_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
 // News event emission for news-trading engine
-let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string } | null = null;
+let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string; impact: "high" | "medium" | "low" } | null = null;
 
 export function getLastNewsEvent() { return lastNewsEvent; }
 
@@ -41,7 +56,7 @@ export function isTrumpCooldownActive(direction?: "long" | "short"): boolean {
 // Rate limit Groq calls (max 1 per 3 seconds)
 let lastGroqCall = 0;
 
-async function classifyAndAct(content: string): Promise<void> {
+async function classifyAndAct(content: string, feedName?: string): Promise<void> {
   const now = Date.now();
   if (now - lastGroqCall < 3_000) return; // skip if called too recently
   lastGroqCall = now;
@@ -49,13 +64,17 @@ async function classifyAndAct(content: string): Promise<void> {
   // Cooldown only blocks GARCH defense, not news classification
   // We always classify so the news-trading engine gets events
   const preview = content.slice(0, 80);
-  const verdict = await classifyPost(content);
+  const result = await classifyPost(content);
 
-  if (verdict === "NEUTRAL") return; // silent on neutral
+  if (result.sentiment === "NEUTRAL") return; // silent on neutral
+
+  // Use higher of AI-classified impact and source default
+  const sourceImpact = feedName ? (SOURCE_IMPACT[feedName] ?? "low") : "low";
+  const impact = IMPACT_ORDER[result.impact] >= IMPACT_ORDER[sourceImpact] ? result.impact : sourceImpact;
 
   // Emit news event for offensive news-trading engine (always, even during cooldown)
-  const newsDirection = verdict === "BULLISH" ? "long" : "short";
-  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview };
+  const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
+  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact };
 
   // Trigger news-trading immediately (dynamic import avoids circular dependency)
   import("../hyperliquid/news-trading-engine.js").then(m => m.runNewsTradingCycle()).catch(err => {
@@ -64,12 +83,12 @@ async function classifyAndAct(content: string): Promise<void> {
 
   // Defense: only runs if not in cooldown (avoid closing the same direction twice)
   if (isTrumpCooldownActive()) {
-    console.log(`[TrumpGuard] ${verdict} event emitted for news-trade, defense skipped (cooldown)`);
+    console.log(`[TrumpGuard] ${result.sentiment} event emitted for news-trade, defense skipped (cooldown)`);
     return;
   }
 
-  const closeDirection = verdict === "BULLISH" ? "short" : "long";
-  console.log(`[TrumpGuard] New post: ${preview} -> ${verdict} -> closing ${closeDirection}s`);
+  const closeDirection = result.sentiment === "BULLISH" ? "short" : "long";
+  console.log(`[TrumpGuard] New post: ${preview} -> ${result.sentiment} [${impact}] -> closing ${closeDirection}s`);
 
   cooldownUntil = Date.now() + COOLDOWN_MS;
   cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
@@ -80,7 +99,7 @@ async function classifyAndAct(content: string): Promise<void> {
 
   for (const pos of targets) {
     try {
-      await closePosition(pos.id, `trump-guard-${verdict.toLowerCase()}`);
+      await closePosition(pos.id, `trump-guard-${result.sentiment.toLowerCase()}`);
     } catch (err) {
       console.error(`[TrumpGuard] Failed to close ${pos.pair} ${pos.direction}: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -94,7 +113,8 @@ async function classifyAndAct(content: string): Promise<void> {
   const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   void sendMessage(
     `<b>NEWS ALERT</b> ${nlTime}\n` +
-    `${verdict}: ${preview}\n` +
+    `${result.sentiment}: ${preview}\n` +
+    `Impact: ${impact.toUpperCase()}\n` +
     `Action: ${action}\n` +
     `Cooldown: 30min (${closeDirection}s blocked)`
   );
@@ -163,7 +183,7 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
         continue;
       }
       console.log(`[NewsGuard] ${feedName}: new post detected`);
-      await classifyAndAct(item.content);
+      await classifyAndAct(item.content, feedName);
       seenGuids.add(item.guid); // only mark as seen AFTER classification
     }
     trimSeen();

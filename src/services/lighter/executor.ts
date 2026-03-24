@@ -560,6 +560,7 @@ export async function lighterOpenPosition(
       realizedPnl: undefined,
       exitReason: undefined,
       tradeType,
+      indicatorsAtEntry,
     };
 
     try {
