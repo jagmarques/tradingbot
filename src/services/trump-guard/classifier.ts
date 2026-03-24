@@ -61,22 +61,35 @@ Content: ${content.slice(0, 500)}
 
 Step 1 - Is this market-moving? Answer NEUTRAL if not directly about money/markets/crypto.
 Step 2 - Impact: HIGH (crypto regulation, tariffs, rate decisions, strategic reserve, war/peace), MEDIUM (indirect market effect), LOW (vague connection)
-Step 3 - Type: BREAKING (new event) or OPINION (analysis/commentary)
-Step 4 - Direction: Should traders go LONG or SHORT on crypto?
+Step 3 - Type: Is this BREAKING or OPINION?
+BREAKING = a specific NEW event just happened RIGHT NOW. Examples:
+  "Trump announces 25% tariff on China" = BREAKING
+  "Fed cuts rates by 50bps" = BREAKING
+  "Binance hacked for $500M" = BREAKING
+  "Iran strikes Israel" = BREAKING
+OPINION = analysis, editorial, magazine article, recap, prediction, commentary. Examples:
+  "The everything shock" = OPINION (editorial headline)
+  "Why Bitcoin could reach $100K" = OPINION
+  "Wall Street won't tame DeFi" = OPINION
+  "Energy Crisis Will Not Be Resolved" = OPINION (analysis)
+  "New Statesman" or any magazine/editorial source = OPINION
+  Article titles with dramatic/clickbait language = usually OPINION
+If unsure: OPINION (safer to miss than trade on commentary)
+
+Step 4 - Direction: LONG or SHORT?
 
 Historical patterns:
-- Tariffs/trade war: 64% bearish for crypto historically
+- Tariffs/trade war: 64% bearish historically
 - Rate cuts: LONG. Rate hikes: SHORT
 - Crypto reserve/ETF/adoption: LONG
 - Crypto ban/hack/crackdown: SHORT
-- War/sanctions/geopolitical tension: SHORT (risk-off)
-- Ceasefire/peace deal: LONG (risk-on)
-- Oil spike: slight SHORT
+- War/sanctions/tension: SHORT (risk-off)
+- Ceasefire/peace: LONG (risk-on)
 
 NOT market-moving (NEUTRAL):
 - Immigration, sports, entertainment, social issues, general politics
 
-Answer in EXACTLY this format on one line:
+Answer EXACTLY one line:
 SENTIMENT IMPACT TYPE DIRECTION
 Example: BEARISH HIGH BREAKING SHORT
 Example: NEUTRAL LOW OPINION NONE`;
