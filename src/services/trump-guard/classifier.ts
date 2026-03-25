@@ -40,8 +40,11 @@ function quickClassify(content: string): ClassificationResult | null {
   if (lower.match(/ban.*crypto|crypto.*ban|bitcoin.*ban/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
   if (lower.match(/rate.*cut|cut.*rate|lower.*rate/)) return { sentiment: "BULLISH", impact: "high", isBreaking: true };
   if (lower.match(/rate.*hike|hike.*rate|raise.*rate/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
-  if (lower.match(/new.*tariff|raise.*tariff|increase.*tariff|tariff.*increase/)) return { sentiment: "BEARISH", impact: "high", isBreaking: true };
-  if (lower.match(/remove.*tariff|lower.*tariff|tariff.*deal|tariff.*pause/)) return { sentiment: "BULLISH", impact: "high", isBreaking: true };
+  if (lower.match(/new.*tariff|raise.*tariff|increase.*tariff|tariff.*increase/)) return { sentiment: "BEARISH", impact: "medium", isBreaking: true };
+  if (lower.match(/remove.*tariff|lower.*tariff|tariff.*deal|tariff.*pause/)) return { sentiment: "BULLISH", impact: "medium", isBreaking: true };
+  // War/geopolitical = MEDIUM (crypto decoupled from war since 2022)
+  if (lower.match(/drone.*strike|missile.*strike|air.*strike|bomb|invasion|attack.*port|attack.*base/)) return { sentiment: "BEARISH", impact: "medium", isBreaking: true };
+  if (lower.match(/ceasefire|peace.*deal|peace.*agreement|truce/)) return { sentiment: "BULLISH", impact: "medium", isBreaking: true };
   return null;
 }
 
@@ -60,13 +63,17 @@ export async function classifyPost(content: string): Promise<ClassificationResul
 Content: ${content.slice(0, 500)}
 
 Step 1 - Is this market-moving? Answer NEUTRAL if not directly about money/markets/crypto.
-Step 2 - Impact: HIGH (crypto regulation, tariffs, rate decisions, strategic reserve, war/peace), MEDIUM (indirect market effect), LOW (vague connection)
+Step 2 - Impact:
+HIGH = ONLY direct crypto events: crypto regulation, ETF approval/rejection, strategic reserve, major exchange hack, stablecoin ban, rate decisions by Fed/ECB
+MEDIUM = indirect: tariffs, trade war, sanctions, war/peace, oil prices, geopolitical events, economic data
+LOW = vague connection to markets
+War/military/drone strikes/oil disruptions are MEDIUM, NOT HIGH. Crypto has decoupled from war headlines since 2022.
 Step 3 - Type: Is this BREAKING or OPINION?
 BREAKING = a specific NEW event just happened RIGHT NOW. Examples:
   "Trump announces 25% tariff on China" = BREAKING
   "Fed cuts rates by 50bps" = BREAKING
   "Binance hacked for $500M" = BREAKING
-  "Iran strikes Israel" = BREAKING
+  "Iran strikes Israel" = BREAKING (but MEDIUM impact, not HIGH)
 OPINION = analysis, editorial, recap, prediction, market summary, commentary. Examples:
   "The everything shock" = OPINION
   "Why Bitcoin could reach $100K" = OPINION
@@ -84,12 +91,14 @@ If unsure: OPINION (safer to miss than trade on commentary)
 Step 4 - Direction: LONG or SHORT?
 
 Historical patterns:
-- Tariffs/trade war: 64% bearish historically
-- Rate cuts: LONG. Rate hikes: SHORT
-- Crypto reserve/ETF/adoption: LONG
-- Crypto ban/hack/crackdown: SHORT
-- War/sanctions/tension: SHORT (risk-off)
-- Ceasefire/peace: LONG (risk-on)
+- Rate cuts: LONG (HIGH). Rate hikes: SHORT (HIGH)
+- Crypto reserve/ETF/adoption: LONG (HIGH)
+- Crypto ban/hack/crackdown: SHORT (HIGH)
+- Tariffs/trade war: SHORT (MEDIUM - indirect effect)
+- War/sanctions/tension: SHORT (MEDIUM - crypto decoupled from war news)
+- Ceasefire/peace: LONG (MEDIUM)
+- Oil disruption/drone strike: SHORT (MEDIUM - oil != crypto)
+- Economic data (GDP, jobs, inflation): direction depends (MEDIUM)
 
 NOT market-moving (NEUTRAL):
 - Immigration, sports, entertainment, social issues, general politics

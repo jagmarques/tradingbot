@@ -12,10 +12,10 @@ import { getLastNewsEvent } from "../trump-guard/monitor.js";
 
 const TRADE_TYPE = "news-trade" as const;
 const LEVERAGE = 10;
-// Position sizing: 80% of equity split across active pairs
+// Position sizing: 50% of equity split across active pairs (capped at 5 pairs)
 const MIN_POSITION_USD = 10;
 const MAX_POSITION_USD = 500; // liquidity cap
-// No daily loss limit - SL on exchange + AI exit advisor protect each trade
+const MAX_PAIRS_PER_EVENT = 5; // cap correlated risk - all alts move together
 
 // Impact-based SL/TP/trail config (price percentages)
 const IMPACT_CONFIG = {
@@ -146,11 +146,12 @@ export async function runNewsTradingCycle(): Promise<number> {
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
 
-  // Use 80% of equity split across pairs (protected by SL + AI exits)
+  // Use 50% of equity split across max 5 pairs (all alts are correlated)
   const pairs = PAIRS_BY_IMPACT[impact] ?? NEWS_TRADING_PAIRS;
-  const maxPairs = Math.max(1, Math.floor(equity * 0.80 / MIN_POSITION_USD));
+  const affordablePairs = Math.max(1, Math.floor(equity * 0.50 / MIN_POSITION_USD));
+  const maxPairs = Math.min(affordablePairs, MAX_PAIRS_PER_EVENT);
   const activePairs = pairs.slice(0, maxPairs);
-  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(equity * 0.80 / activePairs.length)));
+  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(equity * 0.50 / activePairs.length)));
 
   console.log(`[News-Trade] Size: $${compoundSize} x ${activePairs.length} pairs (equity=$${equity.toFixed(0)}, ${impact})`);
 
