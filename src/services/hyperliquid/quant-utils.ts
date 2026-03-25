@@ -77,6 +77,60 @@ export function parseIndicatorsMeta(indicators?: string): {
   };
 }
 
+// ATR-based stop-loss price level
+export function calcAtrStopLoss(
+  entryPrice: number,
+  atr: number | null,
+  direction: "long" | "short",
+  multiplier: number = 1.5,
+  fallbackSlPct: number = 0.03,
+): number {
+  const minDistFrac = 0.005;
+  const minDist = entryPrice * minDistFrac;
+
+  let stop: number;
+  if (atr === null || atr <= 0) {
+    stop =
+      direction === "long"
+        ? entryPrice * (1 - fallbackSlPct)
+        : entryPrice * (1 + fallbackSlPct);
+  } else {
+    stop =
+      direction === "long"
+        ? entryPrice - multiplier * atr
+        : entryPrice + multiplier * atr;
+  }
+
+  // Enforce minimum distance from entry
+  if (direction === "long" && entryPrice - stop < minDist) {
+    stop = entryPrice - minDist;
+  } else if (direction === "short" && stop - entryPrice < minDist) {
+    stop = entryPrice + minDist;
+  }
+
+  return stop;
+}
+
+// Quarter-Kelly position size in USD
+export function calcKellySize(
+  confidence: number,
+  equity: number,
+  stopLossPct: number,
+  minSizeUsd: number = 10,
+): number {
+  if (confidence <= 50 || equity <= 0) return 0;
+
+  const edge = confidence / 100 - 0.5;
+  const kellyFraction = edge * 0.25;
+  const kellySize = equity * kellyFraction;
+
+  const balanceCap = equity * 0.2;
+  const riskCap = stopLossPct > 0 ? (equity * 0.02) / stopLossPct : kellySize;
+
+  const result = Math.min(kellySize, riskCap, balanceCap);
+  return result < minSizeUsd ? 0 : result;
+}
+
 // Rebase SL/TP from expected entry to actual fill (preserves % offset)
 export function rebaseStops(
   stopLoss: number,
