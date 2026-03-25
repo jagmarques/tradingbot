@@ -67,7 +67,7 @@ export function isTrumpCooldownActive(direction?: "long" | "short"): boolean {
 // Rate limit Groq calls (max 1 per 3 seconds)
 let lastGroqCall = 0;
 
-async function classifyAndAct(content: string, feedName?: string): Promise<void> {
+async function classifyAndAct(content: string, feedName?: string, articleUrl?: string): Promise<void> {
   const now = Date.now();
   if (now - lastGroqCall < 3_000) return; // skip if called too recently
   lastGroqCall = now;
@@ -96,6 +96,16 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
   // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
   lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact, source: feedName ?? "tavily", isBreaking: result.isBreaking };
+
+  // Send news alert BEFORE opening trades
+  const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const linkLine = articleUrl ? `\n<a href="${articleUrl}">Read article</a>` : "";
+  void sendMessage(
+    `<b>NEWS DETECTED</b> ${nlTime}\n` +
+    `${result.sentiment} ${impact.toUpperCase()} ${result.isBreaking ? "BREAKING" : "OPINION"}\n` +
+    `Source: ${feedName ?? "tavily"}\n` +
+    `${preview}${linkLine}`
+  );
 
   // Trigger news-trading immediately (dynamic import avoids circular dependency)
   import("../hyperliquid/news-trading-engine.js").then(m => m.runNewsTradingCycle()).catch(err => {
@@ -144,8 +154,8 @@ async function classifyAndAct(content: string, feedName?: string): Promise<void>
 // Keywords for market-moving news (crypto + global macro)
 const MARKET_MOVING_KEYWORDS = /bitcoin|btc|crypto|ethereum|eth|regulation|sec |cftc|federal reserve|fomc|interest rate|tariff|executive order|ban|approve|etf|stablecoin|digital asset|trump|elon|musk|doge|oil price|crude oil|opec|sanctions|war |ceasefire|peace deal|nuclear|iran|missile|invasion|recession|inflation|gdp |unemployment|debt ceiling|default|treasury|bond yield|dollar |stimulus|rate cut|rate hike|trade war|china.*trade|emergency/i;
 
-function extractItems(xml: string): Array<{ guid: string; content: string }> {
-  const items: Array<{ guid: string; content: string }> = [];
+function extractItems(xml: string): Array<{ guid: string; content: string; link: string }> {
+  const items: Array<{ guid: string; content: string; link: string }> = [];
   // Match <item>...</item> blocks
   const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/g;
   let im: RegExpExecArray | null;
@@ -154,7 +164,8 @@ function extractItems(xml: string): Array<{ guid: string; content: string }> {
     // Extract guid or link as unique ID
     const guidMatch = block.match(/<guid[^>]*>(.*?)<\/guid>/);
     const linkMatch = block.match(/<link[^>]*>(.*?)<\/link>/);
-    const guid = guidMatch?.[1]?.trim() || linkMatch?.[1]?.trim() || "";
+    const link = linkMatch?.[1]?.trim() || guidMatch?.[1]?.trim() || "";
+    const guid = guidMatch?.[1]?.trim() || link;
     if (!guid) continue;
     // Extract content: try CDATA first, then plain description, then title
     const cdataMatch = block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/);
@@ -164,7 +175,7 @@ function extractItems(xml: string): Array<{ guid: string; content: string }> {
     let content = cdataMatch?.[1] || plainDescMatch?.[1] || titleCdata?.[1] || titleMatch?.[1] || guid;
     // Strip HTML tags
     content = content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    items.push({ guid, content });
+    items.push({ guid, content, link });
   }
   return items;
 }
@@ -204,7 +215,7 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
         continue;
       }
       console.log(`[NewsGuard] ${feedName}: new post detected`);
-      await classifyAndAct(item.content, feedName);
+      await classifyAndAct(item.content, feedName, item.link);
       seenGuids.add(item.guid); // only mark as seen AFTER classification
     }
     trimSeen();
@@ -277,7 +288,7 @@ async function pollTavily(): Promise<void> {
       const url = r.url ?? "";
       if (!url || seenUrls.has(url)) continue;
       const content = r.content ?? r.title ?? url;
-      await classifyAndAct(content, "tavily");
+      await classifyAndAct(content, "tavily", url);
       seenUrls.add(url); // only mark as seen AFTER classification
     }
   } catch (err) {
