@@ -2,7 +2,7 @@
 // Uses trump-guard's news classification as signal, BTC EMA trend as filter
 import { EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
-import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
+import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { saveQuantPosition } from "../database/quant.js";
 import { getClient, ensureConnected } from "./client.js";
 import { loadEnv } from "../../config/env.js";
@@ -39,6 +39,8 @@ const PAIRS_BY_IMPACT: Record<string, string[]> = {
 
 // Track last processed event timestamp to avoid re-trading same event
 let lastProcessedEventTs = 0;
+let lastTradeOpenedTs = 0; // cooldown between events to prevent flip-flopping
+const MIN_EVENT_COOLDOWN_MS = 10 * 60 * 1000; // 10 min between trades
 
 export async function runNewsTradingCycle(): Promise<number> {
   if (isQuantKilled()) return 0;
@@ -86,9 +88,9 @@ export async function runNewsTradingCycle(): Promise<number> {
     }
   }
 
-  // Skip LOW impact and ALL opinion pieces (even HIGH opinion)
-  if (impact === "low") {
-    console.log("[News-Trade] Skipping low impact event");
+  // Only trade HIGH impact BREAKING news (MEDIUM loses money historically)
+  if (impact !== "high") {
+    console.log(`[News-Trade] Skipping ${impact} impact (only HIGH trades)`);
     return 0;
   }
   if (!event.isBreaking) {
@@ -96,7 +98,6 @@ export async function runNewsTradingCycle(): Promise<number> {
     return 0;
   }
 
-  // No BTC confirmation delay - AI analysis is the filter, enter immediately
   const direction = event.direction;
 
   // Get open positions for this trade type
@@ -104,35 +105,33 @@ export async function runNewsTradingCycle(): Promise<number> {
   const myPositions = openPositions.filter(p => p.tradeType === TRADE_TYPE);
   const openPairs = new Set(myPositions.map(p => p.pair));
 
-  const impactRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
-
-  // Reversal logic: check existing positions
-  const existingDir = myPositions.length > 0 ? myPositions[0].direction : null;
-
-  if (existingDir === direction) {
-    console.log(`[News-Trade] Already positioned ${direction}, skipping`);
+  // If we have open positions, DON'T reverse - let them play out
+  // Reversals are the #1 money killer (close 9 at loss + open 9 new = double slippage)
+  if (myPositions.length > 0) {
+    const existingDir = myPositions[0].direction;
+    if (existingDir === direction) {
+      console.log(`[News-Trade] Already positioned ${direction}, skipping`);
+      return 0;
+    }
+    // Opposing direction: don't reverse, just skip
+    console.log(`[News-Trade] Existing ${existingDir} positions open, skipping ${direction} event (no reversals)`);
     return 0;
   }
 
-  if (existingDir && existingDir !== direction) {
-    const existingImpact = myPositions[0].indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
-    const newRank = impactRank[impact] ?? 2;
-    const oldRank = impactRank[existingImpact as "high" | "medium" | "low"] ?? 2;
+  // Cooldown: don't open new trades within 10 min of last trade
+  if (Date.now() - lastTradeOpenedTs < MIN_EVENT_COOLDOWN_MS) {
+    console.log(`[News-Trade] Cooldown: ${Math.round((MIN_EVENT_COOLDOWN_MS - (Date.now() - lastTradeOpenedTs)) / 60000)}min remaining, skipping`);
+    return 0;
+  }
 
-    if (newRank >= oldRank) {
-      console.log(`[News-Trade] Reversing: ${existingDir} -> ${direction} (${existingImpact} -> ${impact})`);
-      for (const pos of myPositions) {
-        try {
-          await closePosition(pos.id, `news-reversal-${impact}`);
-        } catch (err) {
-          console.error(`[News-Trade] Failed to close ${pos.pair}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-      openPairs.clear();
-    } else {
-      console.log(`[News-Trade] Keeping ${existingDir} positions (${existingImpact} > ${impact})`);
-      return 0;
-    }
+  // BTC price confirmation: check if BTC moved 0.1%+ in predicted direction
+  const btcNow = btcCandles[btcCandles.length - 1].close;
+  const btc5minAgo = btcCandles.length >= 2 ? btcCandles[btcCandles.length - 2].close : btcNow;
+  const btcMovePct = (btcNow - btc5minAgo) / btc5minAgo;
+  const btcConfirms = direction === "long" ? btcMovePct > 0.001 : btcMovePct < -0.001;
+  if (!btcConfirms && impact !== "high") {
+    console.log(`[News-Trade] BTC not confirming ${direction} (${(btcMovePct * 100).toFixed(3)}%), skipping MEDIUM`);
+    return 0;
   }
 
   // Fetch live equity for compound sizing
@@ -197,6 +196,7 @@ export async function runNewsTradingCycle(): Promise<number> {
     }
   }
 
+  if (executed > 0) lastTradeOpenedTs = Date.now();
   console.log(`[News-Trade] Opened ${executed} positions on ${direction} event (impact=${impact})`);
   return executed;
 }
