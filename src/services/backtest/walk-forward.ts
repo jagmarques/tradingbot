@@ -1,13 +1,17 @@
 import type {
   Candle,
   BacktestConfig,
-  BacktestMetrics,
   Trade,
   WalkForwardWindow,
+  WalkForwardWindowResult,
+  WalkForwardResult,
   SignalGenerator,
 } from "./types.js";
 import { runBacktest } from "./engine.js";
 import { computeMetrics } from "./metrics.js";
+
+// Re-export shared types for convenience
+export type { WalkForwardWindowResult, WalkForwardResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,20 +21,6 @@ export interface WalkForwardSplitConfig {
   trainFrac: number;
   validateFrac: number;
   testFrac: number;
-}
-
-export interface WalkForwardWindowResult {
-  windowIndex: number;
-  bestParams: Record<string, number>;
-  trainSharpe: number;
-  validateSharpe: number;
-  validateTrades: Trade[];
-}
-
-export interface WalkForwardResult {
-  windows: WalkForwardWindowResult[];
-  aggregateOOSMetrics: BacktestMetrics;
-  oosIsRatio: number;
 }
 
 export interface WalkForwardOptions {

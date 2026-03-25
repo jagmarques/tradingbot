@@ -107,3 +107,17 @@ export type SignalGenerator = (
   barIndex: number,
   pair: string,
 ) => Signal | null;
+
+export interface WalkForwardWindowResult {
+  windowIndex: number;
+  bestParams: Record<string, number>;
+  trainSharpe: number;
+  validateSharpe: number;
+  validateTrades: Trade[];
+}
+
+export interface WalkForwardResult {
+  windows: WalkForwardWindowResult[];
+  aggregateOOSMetrics: BacktestMetrics;
+  oosIsRatio: number;
+}
