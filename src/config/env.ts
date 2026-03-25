@@ -46,10 +46,6 @@ const envSchema = z.object({
   LIGHTER_API_KEY_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
   LIGHTER_ACCOUNT_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
 
-  // Tavily search (Trump guard + news) - multiple keys for rate limit rotation
-  TAVILY_API_KEY_1: z.string().min(1).optional(),
-  TAVILY_API_KEY_2: z.string().min(1).optional(),
-  TAVILY_API_KEY_3: z.string().min(1).optional(),
 
   // Explorer API keys (optional, improves rate limits)
   ETHERSCAN_API_KEY: z.string().min(1).optional(),

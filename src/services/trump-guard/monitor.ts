@@ -32,7 +32,7 @@ export function isTrumpCooldownActive(direction?: "long" | "short"): boolean {
 // Rate limit Groq calls (max 1 per 3 seconds)
 let lastGroqCall = 0;
 
-async function classifyAndAct(content: string, feedName?: string, articleUrl?: string): Promise<void> {
+async function classifyAndAct(content: string, feedName: string, articleUrl?: string): Promise<void> {
   const now = Date.now();
   if (now - lastGroqCall < 3_000) return; // skip if called too recently
   lastGroqCall = now;
@@ -52,7 +52,7 @@ async function classifyAndAct(content: string, feedName?: string, articleUrl?: s
 
   // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
-  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact, source: feedName ?? "tavily", isBreaking: result.isBreaking };
+  lastNewsEvent = { ts: Date.now(), direction: newsDirection as "long" | "short", content: preview, impact, source: feedName, isBreaking: result.isBreaking };
 
   // Send news alert BEFORE opening trades
   const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -60,7 +60,7 @@ async function classifyAndAct(content: string, feedName?: string, articleUrl?: s
   void sendMessage(
     `<b>NEWS DETECTED</b> ${nlTime}\n` +
     `${result.sentiment} ${impact.toUpperCase()} ${result.isBreaking ? "BREAKING" : "OPINION"}\n` +
-    `Source: ${feedName ?? "tavily"}\n` +
+    `Source: ${feedName}\n` +
     `${preview}${linkLine}`
   );
 
