@@ -28,13 +28,33 @@ const NEWS_TRADING_PAIRS = [
 ];
 
 // Track last processed event timestamp to avoid re-trading same event
+// Seeded from DB on first call to survive restarts
 let lastProcessedEventTs = 0;
-let lastTradeOpenedTs = 0; // cooldown between events to prevent flip-flopping
+let lastTradeOpenedTs = 0;
+let seededFromDb = false;
 const MIN_EVENT_COOLDOWN_MS = 10 * 60 * 1000; // 10 min between trades
+
+function seedFromDb(): void {
+  if (seededFromDb) return;
+  seededFromDb = true;
+  try {
+    const positions = getOpenQuantPositions();
+    const newsPositions = positions.filter(p => p.tradeType === "news-trade");
+    if (newsPositions.length > 0) {
+      // Extract event timestamp from indicators
+      const etsMatch = newsPositions[0].indicatorsAtEntry?.match(/ets:(\d+)/);
+      if (etsMatch) {
+        lastProcessedEventTs = parseInt(etsMatch[1], 10);
+        lastTradeOpenedTs = Date.now(); // assume recently opened
+        console.log(`[News-Trade] Seeded from DB: lastEventTs=${lastProcessedEventTs}, ${newsPositions.length} open positions`);
+      }
+    }
+  } catch { /* ignore on startup */ }
+}
 
 export async function runNewsTradingCycle(): Promise<number> {
   if (isQuantKilled()) return 0;
-
+  seedFromDb();
 
   // Check for new news event
   const event = getLastNewsEvent();

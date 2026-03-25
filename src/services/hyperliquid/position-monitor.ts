@@ -30,15 +30,9 @@ const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: num
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
-// Dynamic trail for news-trade based on impact stored in indicatorsAtEntry
+// Dynamic trail for news-trade (HIGH only, 5%/2% at 10x leverage)
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
-  if (position.tradeType === "news-trade" && position.indicatorsAtEntry) {
-    const impact = position.indicatorsAtEntry.split("|")[0]?.replace("impact:", "") ?? "";
-    if (impact === "high") return { activation: 50, distance: 20 };     // 5%/2% at 10x
-    if (impact === "medium") return { activation: 20, distance: 10 };   // 2%/1% at 10x
-    if (impact === "low") return { activation: 10, distance: 5 };       // 1%/0.5% at 10x
-    return { activation: 50, distance: 20 }; // default to high
-  }
+  if (position.tradeType === "news-trade") return { activation: 50, distance: 20 };
   return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
 }
 
@@ -294,7 +288,7 @@ async function checkPositionStops(): Promise<void> {
           }
 
           const meta = parseIndicatorsMeta(position.indicatorsAtEntry);
-          const impact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
+          const impact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "high";
           const eventTs = meta.eventTs ? parseInt(meta.eventTs) : (new Date(position.openedAt).getTime());
 
           // Build batch + call AI for first position without cached advice
@@ -337,12 +331,10 @@ async function checkPositionStops(): Promise<void> {
             finalDecision = "CLOSE"; // holding a loser for 15min+, cut it
             console.log(`[PositionMonitor] Override: HOLD -> CLOSE (${(pricePct * 100).toFixed(2)}% loss after ${Math.round(holdMs/60000)}min)`);
           }
-          // Don't take profit on tiny moves - but don't hold forever either
-          const posImpact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
-          const minTakeProfit = posImpact === "high" ? 0.005 : 0.003; // HIGH: 0.5%, MEDIUM: 0.3%
-          if (decision === "TAKE_PROFIT" && pricePct > 0 && pricePct < minTakeProfit) {
-            finalDecision = "HOLD"; // too small, give it more time
-            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> HOLD (${(pricePct * 100).toFixed(2)}% < ${(minTakeProfit * 100).toFixed(1)}% min for ${posImpact})`);
+          // Don't take profit on tiny moves (< 0.5%)
+          if (decision === "TAKE_PROFIT" && pricePct > 0 && pricePct < 0.005) {
+            finalDecision = "HOLD";
+            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> HOLD (${(pricePct * 100).toFixed(2)}% < 0.5% min)`);
           }
 
           if (finalDecision === "TAKE_PROFIT") {
