@@ -45,7 +45,9 @@ export async function openPosition(
 
   const posMode: "live" | "paper" = useLive ? "live" : "paper";
   const strategy = strategyFromTradeType(tradeType);
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode });
+  const allPositions = getOpenQuantPositions();
+  const openCountForEngine = allPositions.filter(p => p.mode === posMode && p.tradeType === tradeType).length;
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode, openPositionCount: openCountForEngine });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;
@@ -61,7 +63,6 @@ export async function openPosition(
 
   // One live position per pair per engine
   if (useLive) {
-    const allPositions = getOpenQuantPositions();
     const existingLive = allPositions.find(p => p.pair === pair && p.exchange === exchange && p.mode === "live" && p.tradeType === tradeType);
     if (existingLive) {
       console.log(`[Quant Executor] ${pair} already open live for ${tradeType}, skipping`);
