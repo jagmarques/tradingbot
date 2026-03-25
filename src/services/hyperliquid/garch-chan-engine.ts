@@ -7,6 +7,8 @@ import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { isTrumpCooldownActive } from "../trump-guard/index.js";
+import { calcAtrStopLoss } from "./quant-utils.js";
+import { QUANT_ATR_SL_MULTIPLIER } from "../../config/constants.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-chan" as const;
@@ -110,9 +112,7 @@ async function analyzeSignal(pair: string, btcCandles: OhlcvCandle[]): Promise<G
   // Use last close as best proxy for current market price (SL/TP must be relative to actual entry)
   const entryPrice = cs[last].close;
   const direction = goLong ? "long" : "short";
-  const stopLoss = direction === "long"
-    ? entryPrice * (1 - SL_PCT)
-    : entryPrice * (1 + SL_PCT);
+  const stopLoss = calcAtrStopLoss(entryPrice, atrNow, direction, QUANT_ATR_SL_MULTIPLIER, SL_PCT);
   const takeProfit = direction === "long"
     ? entryPrice * (1 + TP_PCT)
     : entryPrice * (1 - TP_PCT);

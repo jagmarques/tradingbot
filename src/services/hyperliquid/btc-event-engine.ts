@@ -3,6 +3,7 @@
 //   SL3%/TP7% top10 cap8 +trend: WR 51%, $10.31/day, PF 1.74, Sharpe 4.75, MaxDD $231
 //   SL 3% at 10x = 30% margin loss per trade (safe vs old 7% = 70%)
 //   Risk: 4% per EVENT (not per position)
+import { ATR } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getClient, ensureConnected } from "./client.js";
@@ -10,6 +11,8 @@ import { loadEnv } from "../../config/env.js";
 import { getDailyLossTotal } from "./risk-manager.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { isTrumpCooldownActive } from "../trump-guard/index.js";
+import { calcAtrStopLoss } from "./quant-utils.js";
+import { QUANT_ATR_SL_MULTIPLIER } from "../../config/constants.js";
 
 const TRADE_TYPE = "btc-event" as const;
 const LEVERAGE = 10;
@@ -23,6 +26,7 @@ const SL_PCT = 0.03; // 3% (30% margin loss at 10x - safe)
 const TP_PCT = 0.07; // 7%
 const DAILY_LOSS_LIMIT = 25; // $25 (more positions now)
 const MAX_PER_DIRECTION = 8; // cap 8/dir from sweep winner
+const ATR_PERIOD = 14;
 
 // Top 10 reactive pairs (task 340 sweep winner)
 const EVENT_TRADING_PAIRS = ["TIA", "kBONK", "OP", "LDO", "APT", "NEAR", "ARB", "ENA", "WLD", "ADA"];
@@ -150,14 +154,14 @@ export async function runBtcEventCycle(): Promise<number> {
     if (dirCount >= MAX_PER_DIRECTION) break;
 
     try {
-      // Fetch latest price for the alt
-      const altCandles = await fetchCandles(pair, "1h", 1);
-      if (altCandles.length === 0) continue;
+      // Fetch recent candles for ATR computation and price
+      const altCandles = await fetchCandles(pair, "1h", 20);
+      if (altCandles.length < 2) continue;
       const entryPrice = altCandles[altCandles.length - 1].close;
 
-      const sl = direction === "long"
-        ? entryPrice * (1 - SL_PCT)
-        : entryPrice * (1 + SL_PCT);
+      const atrVals = ATR.calculate({ period: ATR_PERIOD, high: altCandles.map(c => c.high), low: altCandles.map(c => c.low), close: altCandles.map(c => c.close) });
+      const atrNow = atrVals.length > 0 ? atrVals[atrVals.length - 1] : null;
+      const sl = calcAtrStopLoss(entryPrice, atrNow, direction, QUANT_ATR_SL_MULTIPLIER, SL_PCT);
       const tp = direction === "long"
         ? entryPrice * (1 + TP_PCT)
         : entryPrice * (1 - TP_PCT);
