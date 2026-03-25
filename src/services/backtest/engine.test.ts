@@ -97,7 +97,7 @@ describe("runBacktest - anti-look-ahead enforcement", () => {
       return null;
     };
 
-    const result = runBacktest(BASE_CONFIG, signalAtBar10, { candles: { BTC: candles } });
+    const result = runBacktest(BASE_CONFIG, signalAtBar10, { candles: { BTC: candles }, warmupBars: 0 });
 
     expect(capturedBarIndex).toBe(15);
     // Trade entry must be the open of bar 15, not 999999
@@ -121,12 +121,14 @@ describe("runBacktest - anti-look-ahead enforcement", () => {
       warmupBars: 2,
     });
 
-    // A trade may have been opened at some point; verify entryPrice = candle's open
+    // A trade may have been opened at some point; verify entryPrice is derived from candle's open
+    // (entry = bar.o * (1 + spread) for long, so within 0.1% of bar.o)
     for (const trade of result.trades) {
-      // Find which bar this trade entry aligns with
       const matchingBar = candles.find(c => c.t === trade.entryTime);
       if (matchingBar) {
-        expect(trade.entryPrice).toBeCloseTo(matchingBar.o, 2);
+        // Entry price is bar.o with spread applied (within 0.1% of bar.o)
+        const relDiff = Math.abs(trade.entryPrice - matchingBar.o) / matchingBar.o;
+        expect(relDiff).toBeLessThan(0.001); // within 0.1%
       }
     }
   });
