@@ -1,57 +1,22 @@
-import { loadEnv } from "../../config/env.js";
 import { classifyPost } from "./classifier.js";
 import { closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
 import { sendMessage } from "../telegram/bot.js";
 
-// All RSS feeds to monitor
+// Only first-mover sources that actually move crypto before the market prices it in
 const RSS_FEEDS = [
-  // Crypto-specific (fast polling)
   { name: "Trump Truth Social", url: "https://trumpstruth.org/feed", intervalMs: 3_000 },
-  { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", intervalMs: 15_000 },
-  { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", intervalMs: 15_000 },
-  // Central banks & regulators
   { name: "Fed FOMC", url: "https://www.federalreserve.gov/feeds/press_monetary.xml", intervalMs: 5_000 },
-  { name: "Fed All Press", url: "https://www.federalreserve.gov/feeds/press_all.xml", intervalMs: 10_000 },
   { name: "Powell Speeches", url: "https://www.federalreserve.gov/feeds/s_t_powell.xml", intervalMs: 10_000 },
   { name: "White House", url: "https://www.whitehouse.gov/news/feed/", intervalMs: 30_000 },
-  { name: "CFTC Enforcement", url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml", intervalMs: 30_000 },
-  { name: "CFTC General", url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", intervalMs: 30_000 },
-  // Global news (geopolitical, oil, war, economy)
-  { name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/topstories/", intervalMs: 30_000 },
-  { name: "Google News Business", url: "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB", intervalMs: 60_000 },
-  { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", intervalMs: 60_000 },
-  { name: "CNBC Economy", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", intervalMs: 30_000 },
 ];
 
-const TAVILY_INTERVAL_MS = 180_000;
 const COOLDOWN_MS = 30 * 60 * 1000;
 
 let cooldownUntil = 0;
 let cooldownBlockedDir: "long" | "short" | null = null;
 const feedIntervals: ReturnType<typeof setInterval>[] = [];
-let tavilyInterval: ReturnType<typeof setInterval> | null = null;
 
 const seenGuids = new Set<string>();
-const seenUrls = new Set<string>();
-
-// Source defaults from historical analysis (pre-filter removes noise)
-const SOURCE_IMPACT: Record<string, "high" | "medium" | "low"> = {
-  "Trump Truth Social": "high",
-  "Fed FOMC": "high",
-  "Powell Speeches": "high",
-  "White House": "high",
-  "CoinDesk": "medium",
-  "CoinTelegraph": "medium",
-  "CFTC Enforcement": "medium",
-  "CFTC General": "low",
-  "Fed All Press": "medium",
-  "MarketWatch": "medium",
-  "CNBC Economy": "medium",
-  "Google News Business": "low",
-  "BBC World": "low",
-};
-
-const IMPACT_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 // News event emission for news-trading engine
 let lastNewsEvent: { ts: number; direction: "long" | "short"; content: string; impact: "high" | "medium" | "low"; source: string; isBreaking: boolean } | null = null;
@@ -82,16 +47,8 @@ async function classifyAndAct(content: string, feedName?: string, articleUrl?: s
 
   if (result.sentiment === "NEUTRAL") return; // silent on neutral
 
-  // Use higher of AI-classified impact and source default
-  const sourceImpact = feedName ? (SOURCE_IMPACT[feedName] ?? "low") : "low";
-  const impact = IMPACT_ORDER[result.impact] >= IMPACT_ORDER[sourceImpact] ? result.impact : sourceImpact;
-
-  // Noisy aggregator sources: only trade HIGH impact from them
-  const noisySources = ["Google News Business", "BBC World"];
-  if (feedName && noisySources.includes(feedName) && impact !== "high") {
-    console.log(`[TrumpGuard] Skipping ${impact} from noisy source ${feedName}`);
-    return;
-  }
+  // All remaining sources are first-mover (Trump, Fed, White House) - use AI impact directly
+  const impact = result.impact;
 
   // Emit news event for offensive news-trading engine (always, even during cooldown)
   const newsDirection = result.sentiment === "BULLISH" ? "long" : "short";
@@ -187,11 +144,6 @@ function trimSeen(): void {
     seenGuids.clear();
     for (const g of arr.slice(-3000)) seenGuids.add(g);
   }
-  if (seenUrls.size > 2000) {
-    const arr = [...seenUrls];
-    seenUrls.clear();
-    for (const u of arr.slice(-1000)) seenUrls.add(u);
-  }
 }
 
 async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Promise<void> {
@@ -224,80 +176,8 @@ async function pollRss(feedName: string, feedUrl: string, isInit: boolean): Prom
   }
 }
 
-// Rotate through multiple queries covering key people who move crypto
-const TAVILY_QUERIES = [
-  // Crypto-specific
-  "Trump crypto Bitcoin latest statement",
-  "Elon Musk Bitcoin Dogecoin crypto tweet",
-  "SEC crypto regulation breaking news",
-  "Federal Reserve interest rate decision",
-  "FOMC decision Bitcoin impact",
-  "US government crypto executive order",
-  // Global macro (moves crypto indirectly)
-  "Iran war oil price breaking news",
-  "Russia Ukraine ceasefire sanctions",
-  "China trade tariff breaking news",
-  "global economic crisis recession breaking",
-  "oil price OPEC production cut",
-  "US dollar treasury bond yield breaking",
-];
-let tavilyQueryIndex = 0;
-
-// Rotate through Tavily API keys for rate limit avoidance
-let tavilyKeyIndex = 0;
-function getNextTavilyKey(): string | undefined {
-  const env = loadEnv();
-  const keys = [env.TAVILY_API_KEY_1, env.TAVILY_API_KEY_2, env.TAVILY_API_KEY_3].filter(Boolean) as string[];
-  if (keys.length === 0) return undefined;
-  const key = keys[tavilyKeyIndex % keys.length];
-  tavilyKeyIndex++;
-  return key;
-}
-
-async function pollTavily(): Promise<void> {
-  const apiKey = getNextTavilyKey();
-  if (!apiKey) return;
-
-  const query = TAVILY_QUERIES[tavilyQueryIndex % TAVILY_QUERIES.length];
-  tavilyQueryIndex++;
-
-  try {
-    const res = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({
-        api_key: apiKey,
-        query,
-        search_depth: "basic",
-        topic: "news",
-        time_range: "d",
-        max_results: 3,
-      }),
-    });
-
-    if (!res.ok) {
-      if (res.status !== 432) console.log(`[TrumpGuard] Tavily error ${res.status}`);
-      return;
-    }
-
-    const data = (await res.json()) as { results?: Array<{ url?: string; content?: string; title?: string }> };
-    const results = data.results ?? [];
-
-    for (const r of results) {
-      const url = r.url ?? "";
-      if (!url || seenUrls.has(url)) continue;
-      const content = r.content ?? r.title ?? url;
-      await classifyAndAct(content, "tavily", url);
-      seenUrls.add(url); // only mark as seen AFTER classification
-    }
-  } catch (err) {
-    console.log(`[TrumpGuard] Tavily error: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
 export function startTrumpGuard(): void {
-  console.log(`[NewsGuard] Starting ${RSS_FEEDS.length} RSS feeds + Tavily monitoring`);
+  console.log(`[NewsGuard] Starting ${RSS_FEEDS.length} first-mover RSS feeds (Tavily disabled - too noisy)`);
 
   // Init all feeds: seed existing posts, then start polling
   for (const feed of RSS_FEEDS) {
@@ -308,20 +188,10 @@ export function startTrumpGuard(): void {
       feedIntervals.push(interval);
     });
   }
-
-  // Tavily: rotating queries every 90s
-  void pollTavily();
-  tavilyInterval = setInterval(() => {
-    void pollTavily();
-  }, TAVILY_INTERVAL_MS);
 }
 
 export function stopTrumpGuard(): void {
   for (const interval of feedIntervals) clearInterval(interval);
   feedIntervals.length = 0;
-  if (tavilyInterval) {
-    clearInterval(tavilyInterval);
-    tavilyInterval = null;
-  }
   console.log("[NewsGuard] Stopped");
 }
