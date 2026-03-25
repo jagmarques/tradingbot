@@ -1,9 +1,9 @@
 import { getDb } from "./db.js";
-import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
+import { isPaperMode } from "../../config/env.js";
 
 export interface TradeRecord {
   id: string;
-  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
+  strategy: string;
   type: "BUY" | "SELL";
   tokenAddress?: string;
   tokenSymbol?: string;
@@ -26,7 +26,7 @@ export interface TradeRecord {
 
 export interface PositionRecord {
   id: string;
-  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
+  strategy: string;
   tokenAddress: string;
   tokenSymbol?: string;
   entryPrice: number;
@@ -99,7 +99,7 @@ export function insertTrade(trade: Omit<TradeRecord, "id" | "createdAt" | "updat
 
 // Get trades with filters
 function getTrades(options: {
-  strategy?: "polymarket" | "base" | "arbitrum" | "avalanche";
+  strategy?: string;
   type?: "BUY" | "SELL";
   startDate?: string;
   endDate?: string;
@@ -199,7 +199,7 @@ export function insertPosition(
 }
 
 // Get open positions
-export function getOpenPositions(strategy?: "polymarket" | "base" | "arbitrum" | "avalanche"): PositionRecord[] {
+export function getOpenPositions(strategy?: string): PositionRecord[] {
   const db = getDb();
   let query = "SELECT * FROM positions WHERE status = 'open'";
   const params: unknown[] = [];

@@ -6,7 +6,6 @@ vi.mock("../../config/env.js", () => ({
     TRADING_MODE: "paper",
   }),
   isPaperMode: (): boolean => true,
-  isPolymarketPaperMode: (): boolean => true,
   isHybridMode: (): boolean => false,
   isLiveMode: (): boolean => false,
   getTradingMode: (): string => "paper",
@@ -45,7 +44,7 @@ describe("Database", () => {
   describe("Trade operations", () => {
     it("should insert a trade", () => {
       const trade = insertTrade({
-        strategy: "polymarket",
+        strategy: "quant",
         type: "BUY",
         tokenSymbol: "TEST",
         tokenAddress: "abc123",
@@ -59,7 +58,7 @@ describe("Database", () => {
       });
 
       expect(trade.id).toBeDefined();
-      expect(trade.strategy).toBe("polymarket");
+      expect(trade.strategy).toBe("quant");
       expect(trade.type).toBe("BUY");
       expect(trade.amountUsd).toBe(10);
     });
@@ -69,7 +68,7 @@ describe("Database", () => {
   describe("Position operations", () => {
     it("should insert a position", () => {
       const position = insertPosition({
-        strategy: "polymarket",
+        strategy: "quant",
         tokenAddress: "xyz789",
         tokenSymbol: "POS",
         entryPrice: 0.01,
@@ -91,7 +90,7 @@ describe("Database", () => {
 
     it("should close position", () => {
       const position = insertPosition({
-        strategy: "polymarket",
+        strategy: "quant",
         tokenAddress: "market1",
         entryPrice: 0.5,
         amountTokens: 100,

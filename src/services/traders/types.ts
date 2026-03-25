@@ -345,3 +345,18 @@ export function checkCircuitBreaker(stats: {
   }
   return { blocked: false, reason: "" };
 }
+
+// Approximate native token prices in USD
+const APPROX_NATIVE_PRICES: Record<string, number> = {
+  ethereum: 3000,
+  polygon: 0.75,
+  base: 3000,
+  arbitrum: 3000,
+  optimism: 3000,
+  avalanche: 35,
+};
+
+export function getApproxUsdValue(amountNative: number, chain: Chain): number {
+  const price = APPROX_NATIVE_PRICES[chain] ?? 1;
+  return amountNative * price;
+}

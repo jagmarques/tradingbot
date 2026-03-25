@@ -1,5 +1,4 @@
-import { loadEnv, isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
-import { getMaticBalance } from "../polygon/wallet.js";
+import { isPaperMode } from "../../config/env.js";
 import {
   STARTING_CAPITAL_USD,
 } from "../../config/constants.js";
@@ -14,15 +13,13 @@ export interface RiskStatus {
   killSwitchActive: boolean;
   dailyPnl: number;
   dailyPnlPercentage: number;
-  maticBalance: number;
-  hasMinGas: boolean;
   isPaperMode: boolean;
   pauseReason?: string;
 }
 
 export interface Trade {
   id: string;
-  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
+  strategy: string;
   type: "BUY" | "SELL";
   amount: number;
   price: number;
@@ -64,9 +61,6 @@ export function getDailyPnl(): number {
 // Get daily P&L breakdown by source
 export function getDailyPnlBreakdown(): {
   total: number;
-  cryptoCopy: number;
-  polyCopy: number;
-  aiBetting: number;
   quantPnl: number;
   insiderCopyPnl: number;
   rugLosses: number;
@@ -75,33 +69,6 @@ export function getDailyPnlBreakdown(): {
   const db = getDb();
   const today = new Date().toISOString().split("T")[0];
   const startOfDay = today + "T00:00:00.000Z";
-
-  // Crypto copy (base, arbitrum, avalanche from trades table)
-  const cryptoCopyResult = db.prepare(`
-    SELECT SUM(pnl) as total
-    FROM trades
-    WHERE strategy IN ('base', 'arbitrum', 'avalanche')
-      AND created_at >= ?
-  `).get(startOfDay) as { total: number | null };
-  const cryptoCopy = cryptoCopyResult.total || 0;
-
-  // Polymarket copy (from polytrader_copies table)
-  const polyCopyResult = db.prepare(`
-    SELECT SUM(pnl) as total
-    FROM polytrader_copies
-    WHERE status = 'closed'
-      AND exit_timestamp >= ?
-  `).get(new Date(startOfDay).getTime()) as { total: number | null };
-  const polyCopy = polyCopyResult.total || 0;
-
-  // AI betting (from aibetting_positions table)
-  const aiBettingResult = db.prepare(`
-    SELECT SUM(pnl) as total
-    FROM aibetting_positions
-    WHERE status = 'closed'
-      AND exit_timestamp >= ?
-  `).get(new Date(startOfDay).getTime()) as { total: number | null };
-  const aiBetting = aiBettingResult.total || 0;
 
   // Quant trading (from quant_trades, closed today)
   const quantResult = db.prepare(`
@@ -131,10 +98,7 @@ export function getDailyPnlBreakdown(): {
   const rugLosses = rugResult.total || 0;
 
   return {
-    total: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl + rugLosses,
-    cryptoCopy,
-    polyCopy,
-    aiBetting,
+    total: quantPnl + insiderCopyPnl + rugLosses,
     quantPnl,
     insiderCopyPnl,
     rugLosses,
@@ -210,35 +174,6 @@ export function canTrade(): boolean {
   return true;
 }
 
-// Check slippage
-export function checkSlippage(
-  expectedPrice: number,
-  actualPrice: number,
-  maxSlippage: number
-): { allowed: boolean; slippage: number } {
-  if (expectedPrice <= 0) {
-    return { allowed: false, slippage: 1 }; // 100% slippage if no expected price
-  }
-  const slippage = Math.abs(actualPrice - expectedPrice) / expectedPrice;
-  return {
-    allowed: slippage <= maxSlippage,
-    slippage,
-  };
-}
-
-// Verify gas balance
-export async function verifyGasBalances(): Promise<{
-  matic: { balance: number; sufficient: boolean };
-}> {
-  const maticWei = await getMaticBalance();
-  const maticBalance = Number(maticWei) / 1e18;
-  const maticSufficient = maticBalance >= 0.1; // Min 0.1 MATIC for gas
-
-  return {
-    matic: { balance: maticBalance, sufficient: maticSufficient },
-  };
-}
-
 // Get full risk status
 export async function getRiskStatus(): Promise<RiskStatus> {
   checkDayReset();
@@ -246,76 +181,14 @@ export async function getRiskStatus(): Promise<RiskStatus> {
   const dailyPnl = getDailyPnl();
   const dailyPnlPercentage = getDailyPnlPercentage();
 
-  // Skip RPC call in paper mode - gas balance is irrelevant
-  let maticBalance = 0;
-  let hasMinGas = true;
-  if (!isPaperMode()) {
-    const gasBalances = await verifyGasBalances();
-    maticBalance = gasBalances.matic.balance;
-    hasMinGas = gasBalances.matic.sufficient;
-  }
-
   return {
     tradingEnabled: canTrade(),
     killSwitchActive,
     dailyPnl,
     dailyPnlPercentage,
-    maticBalance,
-    hasMinGas,
     isPaperMode: isPaperMode(),
     pauseReason,
   };
-}
-
-// Pre-trade validation
-export async function validateTrade(params: {
-  strategy: "polymarket" | "base" | "arbitrum" | "avalanche";
-  type: "BUY" | "SELL";
-  amountUsd: number;
-  expectedPrice: number;
-  actualPrice: number;
-}): Promise<{ allowed: boolean; reason?: string }> {
-  const env = loadEnv();
-
-  // Check kill switch
-  if (killSwitchActive) {
-    return { allowed: false, reason: "Kill switch active" };
-  }
-
-  // Check if trading is paused
-  if (tradingPaused) {
-    return { allowed: false, reason: pauseReason || "Trading paused" };
-  }
-
-  // Check daily loss limit
-  const potentialLoss = params.type === "BUY" ? params.amountUsd : 0;
-  const projectedDailyPnl = getDailyPnl() - potentialLoss;
-  if (projectedDailyPnl < 0 && Math.abs(projectedDailyPnl) > env.DAILY_LOSS_LIMIT_USD) {
-    return { allowed: false, reason: "Would exceed daily loss limit" };
-  }
-
-  const maxSlippage = env.MAX_SLIPPAGE_POLYMARKET;
-  const slippageCheck = checkSlippage(params.expectedPrice, params.actualPrice, maxSlippage);
-  if (!slippageCheck.allowed) {
-    return {
-      allowed: false,
-      reason: `Slippage ${(slippageCheck.slippage * 100).toFixed(2)}% exceeds max ${maxSlippage * 100}%`,
-    };
-  }
-
-  if (!isPaperMode()) {
-    const gasBalances = await verifyGasBalances();
-    if (params.strategy === "polymarket" && !gasBalances.matic.sufficient) {
-      return {
-        allowed: false,
-        reason: `Insufficient MATIC: ${gasBalances.matic.balance.toFixed(4)}`,
-      };
-    }
-  }
-  // EVM chains (base, arbitrum, avalanche) use native gas tokens
-  // Gas check handled in executor before trade
-
-  return { allowed: true };
 }
 
 // Get today's trades (from database)

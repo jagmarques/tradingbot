@@ -1,4 +1,4 @@
-// Date parsing utilities for Polymarket API dates
+// Date parsing utilities
 
 /**
  * Parse a date string or timestamp into milliseconds since epoch.

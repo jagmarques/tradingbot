@@ -10,7 +10,6 @@ import { initDb, closeDb } from "./services/database/db.js";
 import { startHealthServer, stopHealthServer } from "./services/health/server.js";
 import { startBot, stopBot, sendMainMenu } from "./services/telegram/bot.js";
 import { notifyBotStarted, notifyBotStopped, notifyCriticalError } from "./services/telegram/notifications.js";
-import { loadPositionsFromDb as loadPolymarketPositions } from "./services/polygon/positions.js";
 import { setDailyStartBalance } from "./services/risk/manager.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
@@ -29,12 +28,6 @@ async function main(): Promise<void> {
     initDb();
     console.log("[Bot] Database initialized");
 
-    // Load open positions from database (recovery from crash)
-    const recoveredPolymarket = loadPolymarketPositions();
-    if (recoveredPolymarket > 0) {
-      console.log(`[Bot] Recovered ${recoveredPolymarket} Polymarket positions`);
-    }
-
     // Set daily loss baseline
     setDailyStartBalance(0);
 
@@ -49,10 +42,6 @@ async function main(): Promise<void> {
 
     // Notify startup
     await notifyBotStarted();
-
-    // AI Betting + Copy Betting - DISABLED
-    console.log("[Bot] AI Betting: DISABLED");
-    console.log("[Bot] Copy Betting: DISABLED");
 
     // Quant trading on Hyperliquid (opt-in)
     if (env.QUANT_ENABLED === "true" && env.HYPERLIQUID_PRIVATE_KEY) {

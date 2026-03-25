@@ -4,20 +4,10 @@ import { z } from "zod";
 const numericString = (defaultVal: string) =>
   z.string().default(defaultVal).transform(Number).pipe(z.number().positive());
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-const numericStringMax1 = (defaultVal: string) =>
-  z.string().default(defaultVal).transform(Number).pipe(z.number().positive().max(1));
-
 const envSchema = z.object({
   // Mode
   TRADING_MODE: z.enum(["paper", "hybrid", "live"]).default("paper"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-
-  // Polygon / Polymarket
-  POLYMARKET_API_KEY: z.string().min(1, "POLYMARKET_API_KEY is required"),
-  POLYMARKET_SECRET: z.string().min(1, "POLYMARKET_SECRET is required"),
-  POLYMARKET_PASSPHRASE: z.string().default(""),
-  POLYGON_PRIVATE_KEY: z.string().min(1, "POLYGON_PRIVATE_KEY is required"),
 
   // EVM chains (Base, Arbitrum, Avalanche) - uses same key for all EVM chains
   PRIVATE_KEY_EVM: z.string().min(1).optional(),
@@ -37,27 +27,12 @@ const envSchema = z.object({
   GOOGLE_SHEETS_ID: z.string().min(1).optional(),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1).optional(),
 
-  // AI (Cerebras / Groq for Polymarket betting)
+  // AI (Cerebras / Groq for news classification)
   CEREBRAS_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),
 
-  // AI Betting Config
-  AIBETTING_ENABLED: z.enum(["true", "false"]).default("false"),
-  AIBETTING_MAX_BET: numericString("999999"),
-  AIBETTING_MAX_EXPOSURE: numericString("999999"),
-  AIBETTING_MAX_POSITIONS: numericString("999"),
-  AIBETTING_MIN_EDGE: numericStringMax1("0.08"),
-  AIBETTING_MIN_CONFIDENCE: numericStringMax1("0.70"),
-  AIBETTING_SCAN_INTERVAL: numericString("900000"), // 15 min
-  AIBETTING_BAYESIAN_WEIGHT: numericStringMax1("0.50"),
-  AIBETTING_TAKE_PROFIT: numericStringMax1("0.40"),
-  AIBETTING_STOP_LOSS: numericStringMax1("0.15"), // Used as negative threshold in evaluator (-0.15 = -15% P&L)
-  AIBETTING_HOLD_RESOLUTION_DAYS: numericString("7"),
-
   // Risk Limits
-  MAX_POLYMARKET_BET_USDC: numericString("20"),
   DAILY_LOSS_LIMIT_USD: numericString("25"),
-  MAX_SLIPPAGE_POLYMARKET: numericStringMax1("0.005"),
 
   // Quant Trading (Hyperliquid)
   HYPERLIQUID_PRIVATE_KEY: z.string().min(1).optional(),
@@ -71,8 +46,10 @@ const envSchema = z.object({
   LIGHTER_API_KEY_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
   LIGHTER_ACCOUNT_INDEX: z.string().min(1).optional().transform(v => v ? Number(v) : undefined),
 
-  // Tavily search (Trump guard + news)
+  // Tavily search (Trump guard + news) - multiple keys for rate limit rotation
   TAVILY_API_KEY_1: z.string().min(1).optional(),
+  TAVILY_API_KEY_2: z.string().min(1).optional(),
+  TAVILY_API_KEY_3: z.string().min(1).optional(),
 
   // Explorer API keys (optional, improves rate limits)
   ETHERSCAN_API_KEY: z.string().min(1).optional(),
@@ -114,12 +91,6 @@ export function getTradingMode(): TradingMode {
 
 export function isPaperMode(): boolean {
   return getTradingMode() === "paper";
-}
-
-/** Returns true if Polymarket (AI bets + copy trading) should run in paper mode */
-export function isPolymarketPaperMode(): boolean {
-  const mode = getTradingMode();
-  return mode === "paper" || mode === "hybrid";
 }
 
 export function isHybridMode(): boolean {

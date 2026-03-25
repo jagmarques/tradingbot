@@ -15,7 +15,7 @@ function getProvider(): ethers.JsonRpcProvider {
 function getWallet(): ethers.Wallet {
   if (!wallet) {
     const env = loadEnv();
-    const privateKey = env.PRIVATE_KEY_EVM || env.POLYGON_PRIVATE_KEY;
+    const privateKey = env.PRIVATE_KEY_EVM ?? "";
     wallet = new ethers.Wallet(privateKey, getProvider());
   }
   return wallet;

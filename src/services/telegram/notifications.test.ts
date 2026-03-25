@@ -11,7 +11,6 @@ vi.mock("./bot.js", () => ({
 // Mock env
 vi.mock("../../config/env.js", () => ({
   isPaperMode: (): boolean => true,
-  isPolymarketPaperMode: (): boolean => true,
   isHybridMode: (): boolean => false,
   isLiveMode: (): boolean => false,
   getTradingMode: (): string => "paper",
@@ -31,8 +30,8 @@ vi.mock("../risk/manager.js", () => ({
   getDailyPnl: (): number => 25.5,
   getDailyPnlPercentage: (): number => 25.5,
   getTodayTrades: (): Array<Record<string, unknown>> => [
-    { id: "1", strategy: "polymarket", type: "BUY", amount: 10, price: 0.001, pnl: 15, timestamp: Date.now() },
-    { id: "2", strategy: "polymarket", type: "SELL", amount: 20, price: 0.65, pnl: 10.5, timestamp: Date.now() },
+    { id: "1", strategy: "quant", type: "BUY", amount: 10, price: 0.001, pnl: 15, timestamp: Date.now() },
+    { id: "2", strategy: "quant", type: "SELL", amount: 20, price: 0.65, pnl: 10.5, timestamp: Date.now() },
   ],
 }));
 

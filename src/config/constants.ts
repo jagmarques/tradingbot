@@ -5,14 +5,6 @@ export const CAPITAL_PER_STRATEGY_USD = 50;
 // Loss limits
 export const CAPITAL_LOSS_PAUSE_PERCENTAGE = 30;
 
-// Polymarket trading
-export const ARBITRAGE_PAIR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max hold time
-
-// Fees
-export const ESTIMATED_GAS_FEE_MATIC = 0.1;
-export const ESTIMATED_SLIPPAGE_POLYMARKET = 0.005;
-export const POLYMARKET_TAKER_FEE_PCT = 0.0015;
-
 // EVM gas (native token)
 export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
   ethereum: 0.003,
@@ -25,11 +17,6 @@ export const ESTIMATED_GAS_FEE_EVM: Record<string, number> = {
 
 // DEX slippage
 export const ESTIMATED_SLIPPAGE_DEX = 0.01;
-
-// Polymarket API URLs
-export const CLOB_API_URL = process.env.CLOB_PROXY_URL || "https://clob.polymarket.com";
-export const GAMMA_API_URL = "https://gamma-api.polymarket.com";
-export const DATA_API_URL = "https://data-api.polymarket.com/v1";
 
 // Hyperliquid Quant Trading
 export const HYPERLIQUID_MAX_LEVERAGE = 10;

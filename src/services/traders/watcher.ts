@@ -7,9 +7,9 @@ import { fetchGoPlusData, isGoPlusKillSwitch, exitCopyTrade } from "./gem-analyz
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
-import { isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
+import { isPaperMode } from "../../config/env.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported } from "../evm/index.js";
-import { getApproxUsdValue } from "../copy/filter.js";
+import { getApproxUsdValue } from "./types.js";
 
 const lastSeenTxTimestamp = new Map<string, number>();
 const pausedWallets = new Map<string, number>();

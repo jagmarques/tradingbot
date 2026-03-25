@@ -75,7 +75,6 @@ export function initDb(dbPath?: string): Database.Database {
       winning_trades INTEGER DEFAULT 0,
       losing_trades INTEGER DEFAULT 0,
       total_pnl REAL DEFAULT 0,
-      polymarket_pnl REAL DEFAULT 0,
       total_fees REAL DEFAULT 0,
       starting_balance REAL,
       ending_balance REAL,
@@ -86,25 +85,6 @@ export function initDb(dbPath?: string): Database.Database {
       telegram_user_id TEXT PRIMARY KEY,
       timezone TEXT NOT NULL,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS arbitrage_positions (
-      id TEXT PRIMARY KEY,
-      polymarket_token_id TEXT NOT NULL,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      size REAL NOT NULL,
-      order_id TEXT,
-      entry_timestamp INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      target_profit REAL NOT NULL,
-      estimated_fees REAL NOT NULL,
-      spot_symbol TEXT,
-      spot_side TEXT,
-      spot_entry_price REAL,
-      spot_size REAL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS bot_settings (
@@ -118,111 +98,13 @@ export function initDb(dbPath?: string): Database.Database {
       copy_amount_eth REAL DEFAULT 0.001,
       copy_amount_matic REAL DEFAULT 2,
       copy_amount_default REAL DEFAULT 0.005,
-      polymarket_copy_usd REAL DEFAULT 5,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS aibetting_positions (
-      id TEXT PRIMARY KEY,
-      market_id TEXT NOT NULL,
-      market_title TEXT NOT NULL,
-      market_end_date TEXT,
-      token_id TEXT NOT NULL,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      size REAL NOT NULL,
-      ai_probability REAL NOT NULL,
-      confidence REAL NOT NULL,
-      expected_value REAL NOT NULL,
-      status TEXT NOT NULL,
-      entry_timestamp INTEGER NOT NULL,
-      exit_timestamp INTEGER,
-      exit_price REAL,
-      pnl REAL,
-      exit_reason TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS aibetting_analyses (
-      id TEXT PRIMARY KEY,
-      market_id TEXT NOT NULL,
-      market_title TEXT NOT NULL,
-      probability REAL NOT NULL,
-      confidence REAL NOT NULL,
-      reasoning TEXT NOT NULL,
-      key_factors TEXT,
-      analyzed_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS calibration_predictions (
-      id TEXT PRIMARY KEY,
-      market_id TEXT NOT NULL,
-      market_title TEXT NOT NULL,
-      token_id TEXT NOT NULL,
-      side TEXT NOT NULL,
-      predicted_probability REAL NOT NULL,
-      confidence REAL NOT NULL,
-      actual_outcome INTEGER,
-      brier_score REAL,
-      predicted_at TEXT NOT NULL,
-      resolved_at TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS calibration_scores (
-      category TEXT PRIMARY KEY,
-      total_predictions INTEGER NOT NULL,
-      avg_brier_score REAL NOT NULL,
-      trust_score REAL NOT NULL,
-      last_updated TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS calibration_log (
-      id TEXT PRIMARY KEY,
-      market_id TEXT NOT NULL,
-      market_title TEXT NOT NULL,
-      r1_raw_probability REAL NOT NULL,
-      final_probability REAL NOT NULL,
-      market_price_at_prediction REAL NOT NULL,
-      actual_outcome INTEGER,
-      resolved_at TEXT,
-      predicted_at TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS whale_trades (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wallet_address TEXT NOT NULL,
-      market_id TEXT NOT NULL,
-      market_title TEXT,
-      market_category TEXT,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      bet_size REAL NOT NULL,
-      time_to_resolution_hours REAL,
-      outcome INTEGER,
-      profit_loss REAL,
-      traded_at INTEGER NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE INDEX IF NOT EXISTS idx_trades_strategy ON trades(strategy);
     CREATE INDEX IF NOT EXISTS idx_trades_created_at ON trades(created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
     CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
-    CREATE INDEX IF NOT EXISTS idx_arbitrage_positions_status ON arbitrage_positions(status);
-    CREATE INDEX IF NOT EXISTS idx_aibetting_positions_status ON aibetting_positions(status);
-    CREATE INDEX IF NOT EXISTS idx_aibetting_positions_market ON aibetting_positions(market_id);
-    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_market ON calibration_predictions(market_id);
-    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_resolved ON calibration_predictions(resolved_at);
-    CREATE INDEX IF NOT EXISTS idx_calibration_category ON calibration_scores(category);
-    CREATE INDEX IF NOT EXISTS idx_calibration_log_market ON calibration_log(market_id);
-    CREATE INDEX IF NOT EXISTS idx_calibration_log_outcome ON calibration_log(actual_outcome);
-    CREATE INDEX IF NOT EXISTS idx_whale_trades_wallet ON whale_trades(wallet_address);
-    CREATE INDEX IF NOT EXISTS idx_whale_trades_market ON whale_trades(market_id);
-    CREATE INDEX IF NOT EXISTS idx_whale_trades_traded ON whale_trades(traded_at);
 
     CREATE TABLE IF NOT EXISTS quant_trades (
       id TEXT PRIMARY KEY,
@@ -270,36 +152,6 @@ export function initDb(dbPath?: string): Database.Database {
     CREATE TABLE IF NOT EXISTS quant_config (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS hf_maker_trades (
-      id TEXT PRIMARY KEY,
-      coin TEXT NOT NULL,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      shares REAL NOT NULL,
-      size REAL NOT NULL,
-      entry_time INTEGER NOT NULL,
-      window_end INTEGER NOT NULL,
-      window_start_price REAL NOT NULL,
-      binance_price_at_entry REAL NOT NULL,
-      binance_price_at_close REAL,
-      momentum_magnitude REAL NOT NULL,
-      order_id TEXT,
-      status TEXT NOT NULL,
-      pnl REAL NOT NULL DEFAULT 0,
-      instance TEXT NOT NULL DEFAULT 'live-0.3',
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_status ON hf_maker_trades(status);
-    CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_coin ON hf_maker_trades(coin);
-
-    CREATE TABLE IF NOT EXISTS hf_maker_balance (
-      id TEXT PRIMARY KEY DEFAULT 'current',
-      balance REAL NOT NULL,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -359,52 +211,6 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS bonds_trades (
-      id TEXT PRIMARY KEY,
-      market_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      side TEXT NOT NULL,
-      entry_price REAL NOT NULL,
-      size REAL NOT NULL,
-      shares REAL NOT NULL,
-      entry_time INTEGER NOT NULL,
-      days_to_resolution REAL NOT NULL,
-      annualized_yield REAL NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open',
-      pnl REAL NOT NULL DEFAULT 0,
-      resolved_at INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_bonds_trades_status ON bonds_trades(status);
-    CREATE INDEX IF NOT EXISTS idx_bonds_trades_market ON bonds_trades(market_id);
-
-    CREATE TABLE IF NOT EXISTS aibetting_noguard_positions (
-      id TEXT PRIMARY KEY,
-      market_id TEXT,
-      market_title TEXT,
-      market_end_date TEXT,
-      token_id TEXT,
-      side TEXT,
-      entry_price REAL,
-      size REAL,
-      ai_probability REAL,
-      confidence REAL,
-      expected_value REAL,
-      status TEXT DEFAULT 'open',
-      entry_timestamp TEXT,
-      exit_timestamp TEXT,
-      exit_price REAL,
-      pnl REAL,
-      exit_reason TEXT,
-      created_at TEXT,
-      updated_at TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_aibetting_noguard_status ON aibetting_noguard_positions(status);
-    CREATE INDEX IF NOT EXISTS idx_aibetting_noguard_market ON aibetting_noguard_positions(market_id);
-
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
@@ -416,49 +222,14 @@ export function initDb(dbPath?: string): Database.Database {
       ALTER TABLE bot_settings ADD COLUMN copy_amount_eth REAL DEFAULT 0.001;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_matic REAL DEFAULT 2;
       ALTER TABLE bot_settings ADD COLUMN copy_amount_default REAL DEFAULT 0.005;
-      ALTER TABLE bot_settings ADD COLUMN polymarket_copy_usd REAL DEFAULT 5;
     `);
     console.log("[Database] Migrated bot_settings: added copy amount columns");
   }
 
-  // Migration: Add category column to calibration_predictions
-  const predictionColumns = db.pragma("table_info(calibration_predictions)") as Array<{ name: string }>;
-  const predictionColumnNames = predictionColumns.map((c) => c.name);
-
-  if (!predictionColumnNames.includes("category")) {
-    db.exec(`
-      ALTER TABLE calibration_predictions ADD COLUMN category TEXT DEFAULT 'other';
-    `);
-    console.log("[Database] Migrated calibration_predictions: added category column");
-  }
-
-  // Migration: Add prediction_type column to calibration_predictions
-  if (!predictionColumnNames.includes("prediction_type")) {
-    db.exec(`
-      ALTER TABLE calibration_predictions ADD COLUMN prediction_type TEXT DEFAULT 'market';
-    `);
-    console.log("[Database] Migrated calibration_predictions: added prediction_type column");
-  }
-
-  // Index on prediction_type (created after migration ensures column exists)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_calibration_predictions_type ON calibration_predictions(prediction_type);
-  `);
-
-  // Migration: Add P&L breakdown columns to daily_stats
+  // Migration: Add quant/insider/rug P&L breakdown columns to daily_stats
   const dailyStatsColumns = db.pragma("table_info(daily_stats)") as Array<{ name: string }>;
   const dailyStatsColumnNames = dailyStatsColumns.map((c) => c.name);
 
-  if (!dailyStatsColumnNames.includes("crypto_copy_pnl")) {
-    db.exec(`
-      ALTER TABLE daily_stats ADD COLUMN crypto_copy_pnl REAL DEFAULT 0;
-      ALTER TABLE daily_stats ADD COLUMN poly_copy_pnl REAL DEFAULT 0;
-      ALTER TABLE daily_stats ADD COLUMN ai_betting_pnl REAL DEFAULT 0;
-    `);
-    console.log("[Database] Migrated daily_stats: added P&L breakdown columns");
-  }
-
-  // Migration: Add quant/insider/rug P&L breakdown columns to daily_stats
   if (!dailyStatsColumnNames.includes("quant_pnl")) {
     db.exec(`
       ALTER TABLE daily_stats ADD COLUMN quant_pnl REAL DEFAULT 0;
@@ -529,16 +300,6 @@ export function initDb(dbPath?: string): Database.Database {
     db.exec(`ALTER TABLE quant_positions ADD COLUMN indicators_at_entry TEXT`);
     console.log("[Database] Migrated quant_positions: added indicators_at_entry column");
   }
-
-  // Migration: Add instance column to hf_maker_trades
-  const hfTradesCols = (db.pragma("table_info(hf_maker_trades)") as Array<{ name: string }>).map(c => c.name);
-  if (!hfTradesCols.includes("instance")) {
-    db.exec(`ALTER TABLE hf_maker_trades ADD COLUMN instance TEXT NOT NULL DEFAULT 'live-0.3'`);
-    console.log("[Database] Migrated hf_maker_trades: added instance column");
-  }
-
-  // Index on instance (must be after migration ensures column exists)
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_hf_maker_trades_instance ON hf_maker_trades(instance)`);
 
   // Migration: Add backtest improvement columns to quant_positions
   const qpCols2 = db.prepare("PRAGMA table_info(quant_positions)").all() as Array<{ name: string }>;

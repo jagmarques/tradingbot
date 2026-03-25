@@ -7,17 +7,12 @@ import {
   getDailyPnl,
   getDailyPnlPercentage,
   getTodayTrades,
+  activateKillSwitch,
+  deactivateKillSwitch,
 } from "../risk/manager.js";
-import { getUsdcBalanceFormatted } from "../polygon/wallet.js";
 import { getUserTimezone, setUserTimezone } from "../database/timezones.js";
-import { getCopyStats, getOpenCopiedPositions, getClosedCopiedPositions, getOpenPositionsWithValues, getTrackedTraders } from "../polytraders/index.js";
 import { getSettings } from "../settings/settings.js";
 import { callLLM } from "../shared/llm.js";
-import { getBettingStats, loadOpenPositions, loadClosedPositions, getRecentBetOutcomes, deleteAllPositions, deleteAllAnalyses } from "../database/aibetting.js";
-import { getAIBettingStatus, clearAnalysisCache } from "../aibetting/scheduler.js";
-import { getBondsStats } from "../aibetting/hf-scanner.js";
-import { getCurrentPrice as getAIBetCurrentPrice, clearAllPositions } from "../aibetting/executor.js";
-import { getOpenCryptoCopyPositions as getCryptoCopyPositions } from "../copy/executor.js";
 import { getPnlForPeriod } from "../pnl/snapshots.js";
 import { getOpenCopyTrades, getClosedCopyTrades, getRugStats, getHoldComparison } from "../traders/storage.js";
 import { refreshCopyTradePrices } from "../traders/gem-analyzer.js";
@@ -76,12 +71,8 @@ const MAIN_MENU_BUTTONS = [
     { text: "🔄 Trades", callback_data: "trades" },
   ],
   [
-    { text: "🎯 Poly", callback_data: "poly" },
     { text: "⚛️ Quant", callback_data: "quant" },
-  ],
-  [
     { text: "🕵 Insiders", callback_data: "insiders" },
-    { text: "🎲 Bettors", callback_data: "bettors" },
   ],
   [
     { text: "🗂 Manage", callback_data: "manage" },
@@ -100,8 +91,9 @@ export async function startBot(): Promise<void> {
   bot.command("trades", handleTrades);
   bot.command("timezone", handleTimezone);
   bot.command("ai", handleAI);
-  bot.command("hf", handleHF);
-  bot.command("clearcopies", handleClearCopies);
+  bot.command("stop", handleStop);
+  bot.command("resume", handleResume);
+  bot.command("mode", handleMode);
   bot.command("resetpaper", handleReset);
   bot.command("insiders", async (ctx) => {
     try {
@@ -181,20 +173,6 @@ export async function startBot(): Promise<void> {
       callbackProcessing = false;
     }
   });
-  bot.callbackQuery("bettors", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBettors(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bettors):", err);
-      await ctx.reply("Failed to load bettors. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
   bot.callbackQuery("insiders", async (ctx) => {
     if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     callbackProcessing = true;
@@ -232,115 +210,6 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     } catch (err) {
       console.error("[Telegram] Callback error (insiders_wallets):", err);
       await ctx.reply("Failed to load insiders. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-
-  bot.callbackQuery("poly", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handlePoly(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (poly):", err);
-      await ctx.reply("Failed to load poly. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("poly_bets", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "open");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("hf_detail", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleHF(ctx);
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("bets", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "open");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bets):", err);
-      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("bets_open", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "open");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bets_open):", err);
-      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("bets_closed", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "closed");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bets_closed):", err);
-      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("bets_copy", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "copy");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bets_copy):", err);
-      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
-      await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
-    }
-  });
-  bot.callbackQuery("bets_copy_closed", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
-    try {
-      await handleBets(ctx, "copy_closed");
-      await ctx.answerCallbackQuery();
-    } catch (err) {
-      console.error("[Telegram] Callback error (bets_copy_closed):", err);
-      await ctx.reply("Failed to load bets. Try again.").catch(() => {});
       await ctx.answerCallbackQuery().catch(() => {});
     } finally {
       callbackProcessing = false;
@@ -392,32 +261,33 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
       callbackProcessing = false;
     }
   });
-  bot.callbackQuery("manage_close_bets", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
+  bot.callbackQuery("manage_stop", async (ctx) => {
     try {
-      await handleCloseAllBets(ctx);
-      await ctx.answerCallbackQuery();
+      await handleStop(ctx);
+      await ctx.answerCallbackQuery("Kill switch activated");
     } catch (err) {
-      console.error("[Telegram] Callback error (manage_close_bets):", err);
-      await ctx.reply("Failed to close bets. Try again.").catch(() => {});
+      console.error("[Telegram] Callback error (manage_stop):", err);
       await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
     }
   });
-  bot.callbackQuery("manage_close_copies", async (ctx) => {
-    if (callbackProcessing) { await ctx.answerCallbackQuery().catch(() => {}); return; }
-    callbackProcessing = true;
+  bot.callbackQuery("manage_resume", async (ctx) => {
     try {
-      await handleCloseAllCopies(ctx);
-      await ctx.answerCallbackQuery();
+      await handleResume(ctx);
+      await ctx.answerCallbackQuery("Trading resumed");
     } catch (err) {
-      console.error("[Telegram] Callback error (manage_close_copies):", err);
-      await ctx.reply("Failed to close copies. Try again.").catch(() => {});
+      console.error("[Telegram] Callback error (manage_resume):", err);
       await ctx.answerCallbackQuery().catch(() => {});
-    } finally {
-      callbackProcessing = false;
+    }
+  });
+  bot.callbackQuery(/^mode_/, async (ctx) => {
+    try {
+      const mode = ctx.callbackQuery.data.replace("mode_", "") as "paper" | "hybrid" | "live";
+      setTradingMode(mode);
+      await handleMode(ctx);
+      await ctx.answerCallbackQuery(`Mode: ${mode}`);
+    } catch (err) {
+      console.error("[Telegram] Callback error (mode):", err);
+      await ctx.answerCallbackQuery().catch(() => {});
     }
   });
   bot.callbackQuery("manage_resetpaper", async (ctx) => {
@@ -809,27 +679,6 @@ async function handlePnl(ctx: Context): Promise<void> {
     let message = `<b>Status</b> | ${modeTag}${killTag} | All-Time\n`;
 
     // Compute unrealized P&L first (needed for total)
-    const openBets = loadOpenPositions();
-    let aiBetUnrealized = 0;
-    for (const bet of openBets) {
-      const price = await getAIBetCurrentPrice(bet.tokenId);
-      if (price !== null) {
-        const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
-        aiBetUnrealized += (bet.size / bet.entryPrice) * diff;
-      }
-    }
-
-    let copyPositions: Awaited<ReturnType<typeof getOpenPositionsWithValues>> = [];
-    try {
-      copyPositions = await getOpenPositionsWithValues();
-    } catch { /* non-fatal */ }
-    let copyUnrealized = 0;
-    for (const pos of copyPositions) {
-      if (pos.currentValue !== null) {
-        copyUnrealized += (pos.currentValue ?? 0) - pos.size;
-      }
-    }
-
     try {
       await refreshCopyTradePrices();
     } catch { /* DexScreener failure non-fatal */ }
@@ -915,15 +764,12 @@ async function handlePnl(ctx: Context): Promise<void> {
       } catch { /* prices unavailable */ }
     }
 
-    const totalUnrealized = aiBetUnrealized + copyUnrealized + insiderUnrealized + quantUnrealized;
+    const totalUnrealized = insiderUnrealized + quantUnrealized;
 
     // Total (realized + unrealized)
     const data = getPnlForPeriod(null);
     const realizedNonRug = data.totalPnl - data.rugPnl;
     const breakdownStr = formatBreakdown(
-      data.cryptoCopyPnl,
-      data.polyCopyPnl,
-      data.aiBettingPnl,
       data.quantPnl,
       data.insiderCopyPnl,
     );
@@ -943,24 +789,8 @@ async function handlePnl(ctx: Context): Promise<void> {
     message += `\nRugs: ${rugStats.count}${rugPnlStr}`;
 
     // Unrealized (open positions) - grouped by platform
-    const schedulerStatus = getAIBettingStatus();
-    const bondsSt = getBondsStats();
-    const totalUnrAll = totalUnrealized + bondsSt.totalPnl;
-
     message += `\n-------------------\n`;
-    message += `<b>Unrealized</b> ${pnl(totalUnrAll)}\n`;
-
-    // Polymarket
-    const aiInvested = openBets.reduce((sum, b) => sum + b.size, 0);
-    const copyInvested = copyPositions.reduce((sum, p) => sum + p.size, 0);
-    const polyOpen = openBets.length + copyPositions.length + bondsSt.openTrades;
-    const polyUnr = aiBetUnrealized + copyUnrealized + bondsSt.totalPnl;
-    const logOnly = schedulerStatus.logOnly ? " Log" : "";
-
-    message += `<b>Polymarket</b> ${pnl(polyUnr)} | ${polyOpen} open\n`;
-    message += `  AI: ${openBets.length}${aiInvested > 0 ? ` ($${aiInvested.toFixed(0)})` : ""}${openBets.length > 0 ? ` ${pnl(aiBetUnrealized)}` : ""}${logOnly}\n`;
-    message += `  Copy: ${copyPositions.length}${copyInvested > 0 ? ` ($${copyInvested.toFixed(0)})` : ""}${copyPositions.length > 0 ? ` ${pnl(copyUnrealized)}` : ""}\n`;
-    message += `  Bonds: ${bondsSt.openTrades} open ${bondsSt.totalTrades > 0 ? `${pnl(bondsSt.totalPnl)} ${bondsSt.winRate.toFixed(0)}%WR` : ""}\n`;
+    message += `<b>Unrealized</b> ${pnl(totalUnrealized)}\n`;
 
     const insiderInvested = openInsider.reduce((sum, t) => sum + t.amountUsd, 0);
     message += `<b>Insider</b> ${openInsider.length}${insiderInvested > 0 ? ` ($${insiderInvested.toFixed(0)})` : ""}${openInsider.length > 0 ? ` ${pnl(insiderUnrealized)}` : ""}\n`;
@@ -995,18 +825,12 @@ async function handlePnl(ctx: Context): Promise<void> {
 }
 
 function formatBreakdown(
-  cryptoCopy: number,
-  polyCopy: number,
-  aiBetting: number,
   quantPnl: number,
   insiderCopyPnl: number,
 ): string {
   const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
 
   const sources = [
-    { name: "Crypto Copy", value: cryptoCopy },
-    { name: "Poly Copy", value: polyCopy },
-    { name: "AI Bets", value: aiBetting },
     { name: "Quant", value: quantPnl },
     { name: "Insider", value: insiderCopyPnl },
   ];
@@ -1023,20 +847,10 @@ async function handleTrades(ctx: Context): Promise<void> {
 
   try {
     const trades = getTodayTrades();
-    const cryptoCopyPositions = getCryptoCopyPositions();
     const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
     const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 
     let message = `<b>Trades</b>\n\n`;
-
-    // Crypto copy positions
-    if (cryptoCopyPositions.length > 0) {
-      message += `<b>Crypto Copy</b> ${cryptoCopyPositions.length} open\n`;
-      for (const pos of cryptoCopyPositions) {
-        message += `${pos.tokenSymbol} | ${pos.chain} | ${pos.entryAmountNative.toFixed(4)} native\n`;
-      }
-      message += `\n`;
-    }
 
     // Insider copy trades
     try { await refreshCopyTradePrices(); } catch { /* non-fatal */ }
@@ -1077,7 +891,7 @@ async function handleTrades(ctx: Context): Promise<void> {
         const time = new Date(trade.timestamp).toLocaleTimeString().slice(0, 5);
         message += `${time} | ${trade.strategy} | ${$(trade.amount)} | ${pnl(trade.pnl)}\n`;
       }
-    } else if (cryptoCopyPositions.length === 0 && openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
+    } else if (openCopyTrades.length === 0 && closedCopyTrades.length === 0) {
       message += "No trades or positions.";
     }
 
@@ -1090,60 +904,6 @@ async function handleTrades(ctx: Context): Promise<void> {
   }
 }
 
-
-async function handleBettors(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /bettors from user ${ctx.from?.id}`);
-    return;
-  }
-
-  try {
-    const trackedBettors = getTrackedTraders();
-    const copyStats = getCopyStats();
-    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-
-    // Noguard shadow tracker stats
-    let noguardOpen = 0;
-    let noguardClosedPnl = 0;
-    try {
-      const db = (await import("../database/db.js")).getDb();
-      const ngOpen = db.prepare(`SELECT COUNT(*) as cnt FROM aibetting_noguard_positions WHERE status = 'open'`).get() as { cnt: number };
-      const ngClosed = db.prepare(`SELECT COALESCE(SUM(pnl), 0) as total FROM aibetting_noguard_positions WHERE status != 'open'`).get() as { total: number };
-      noguardOpen = ngOpen.cnt;
-      noguardClosedPnl = ngClosed.total;
-    } catch { /* non-fatal */ }
-
-    // Only show bettors we copy (10%+ ROI)
-    const copiedBettors = trackedBettors.filter(b => b.roi >= 0.10).sort((a, b) => b.roi - a.roi);
-
-    let message = `<b>Bettors</b> | ${copyStats.openPositions} open ${copyStats.closedPositions} closed | WR ${copyStats.winRate.toFixed(0)}% | ${pnl(copyStats.totalPnl)}\n`;
-    message += `Noguard shadow: ${noguardOpen} open | closed P&L ${pnl(noguardClosedPnl)}\n`;
-
-    if (copiedBettors.length === 0) {
-      message += "No bettors with 10%+ ROI found.";
-      const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-      await sendDataMessage(message, backButton);
-      return;
-    }
-
-    const rows = copiedBettors.map(b => {
-      const name = b.name.length > 13 ? b.name.slice(0, 12) + "..." : b.name;
-      const roi = `${(b.roi * 100).toFixed(1)}%`;
-      const bPnl = `${b.pnl > 0 ? "+" : ""}$${b.pnl.toFixed(0)}`;
-      const vol = `$${(b.vol / 1000).toFixed(0)}k`;
-      return `${name} | ${roi} | ${bPnl} | ${vol}`;
-    });
-
-    message += rows.join("\n");
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(message, backButton);
-  } catch (err) {
-    console.error("[Telegram] Bettors error:", err);
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to fetch bettors", backButton);
-  }
-}
 
 async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallets"): Promise<void> {
   if (!isAuthorized(ctx)) {
@@ -1244,328 +1004,51 @@ async function handleInsiders(ctx: Context, tab: "holding" | "wallets" = "wallet
   }
 }
 
-async function handlePoly(ctx: Context): Promise<void> {
+async function handleStop(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
-
-  const myOpId = activeOpId;
-  const pnl = (n: number): string => `${n >= 0 ? "+" : "-"}$${Math.abs(n).toFixed(2)}`;
-
-  const aiStatus = getAIBettingStatus();
-  const aiStats = getBettingStats();
-
-  // AI Betting unrealized
-  const openBets = loadOpenPositions();
-  let aiUnrealized = 0;
-  for (const bet of openBets) {
-    const price = await getAIBetCurrentPrice(bet.tokenId);
-    if (price !== null) {
-      const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
-      aiUnrealized += (bet.size / bet.entryPrice) * diff;
-    }
-  }
-
-  // Copy betting stats
-  const copyStats = getCopyStats();
-  let copyPositions: Awaited<ReturnType<typeof getOpenPositionsWithValues>> = [];
-  try { copyPositions = await getOpenPositionsWithValues(); } catch { /* non-fatal */ }
-  let copyUnrealized = 0;
-  for (const pos of copyPositions) {
-    if (pos.currentValue !== null) copyUnrealized += (pos.currentValue ?? 0) - pos.size;
-  }
-
-  if (activeOpId !== myOpId) return;
-
-  // Bonds stats
-  const bonds = getBondsStats();
-
-  // Combined totals (realized + unrealized)
-  const totalPolyRealized = aiStats.totalPnl + copyStats.totalPnl + bonds.totalPnl;
-  const totalPolyUnrealized = aiUnrealized + copyUnrealized;
-  const totalPolyPnl = totalPolyRealized + totalPolyUnrealized;
-  const totalPolyOpen = openBets.length + copyStats.openPositions + bonds.openTrades;
-
-  let text = `<b>Polymarket</b> | Paper\n`;
-  text += `<b>Total: ${pnl(totalPolyPnl)}</b> | ${totalPolyOpen} open\n`;
-
-  const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + "." : s;
-  const c = (n: number): string => `${(n * 100).toFixed(0)}c`;
-
-  // 1. AI Betting
-  text += `-------------------\n`;
-  const aiRunning = aiStatus.running ? "ON" : "OFF";
-  text += `<b>AI Betting</b> ${aiRunning}\n`;
-  text += `${openBets.length} open | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% WR\n`;
-  text += `Real: ${pnl(aiStats.totalPnl)} | Unreal: ${pnl(aiUnrealized)}\n`;
-
-  for (const bet of openBets) {
-    const price = await getAIBetCurrentPrice(bet.tokenId);
-    let betPnl = "";
-    if (price !== null) {
-      const diff = bet.side === "YES" ? price - bet.entryPrice : bet.entryPrice - price;
-      const p = (bet.size / bet.entryPrice) * diff;
-      betPnl = ` ${pnl(p)}`;
-    }
-    text += `  ${bet.side === "YES" ? "Y" : "N"} ${trunc(bet.marketTitle, 25)} @${c(bet.entryPrice)}${betPnl}\n`;
-  }
-
-  // 2. Copy Betting
-  text += `-------------------\n`;
-  text += `<b>Copy Betting</b>\n`;
-  text += `${copyStats.openPositions} open | ${copyStats.closedPositions} closed | ${copyStats.winRate.toFixed(0)}% WR\n`;
-  text += `Real: ${pnl(copyStats.totalPnl)} | Unreal: ${pnl(copyUnrealized)}\n`;
-
-  for (const pos of copyPositions) {
-    let cpPnl = "";
-    if (pos.currentValue !== null) {
-      cpPnl = ` ${pnl((pos.currentValue ?? 0) - pos.size)}`;
-    }
-    text += `  ${trunc(pos.marketTitle, 25)} $${pos.size.toFixed(0)}${cpPnl}\n`;
-  }
-
-
-  // 6. Bonds
-  text += `-------------------\n`;
-  text += `<b>Bonds</b> (&gt;90c)\n`;
-  text += `${bonds.totalTrades} trades (${bonds.openTrades} open) | ${bonds.winRate.toFixed(0)}% WR\n`;
-  text += `P&L: ${pnl(bonds.totalPnl)}\n`;
-
-  if (bonds.recentTrades.length > 0) {
-    for (const t of bonds.recentTrades.slice(0, 3)) {
-      const tPnl = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
-      const tag = t.status === "open" ? "OPEN" : t.status.toUpperCase();
-      text += `  ${tag} ${t.side} ${trunc(t.title, 20)} yield=${t.annualizedYield.toFixed(0)}% ${tPnl}\n`;
-    }
-  }
-
-  const buttons = [
-    [{ text: "Back", callback_data: "main_menu" }],
-  ];
-
-  await sendDataMessage(text, buttons);
+  activateKillSwitch();
+  const { setQuantKilled } = await import("../hyperliquid/risk-manager.js");
+  setQuantKilled(true);
+  await sendDataMessage("<b>KILL SWITCH ACTIVATED</b>\nAll trading stopped. Use /resume to restart.");
 }
 
-async function handleBets(ctx: Context, tab: "open" | "closed" | "copy" | "copy_closed"): Promise<void> {
-  if (!isAuthorized(ctx)) {
-    console.warn(`[Telegram] Unauthorized /bets from user ${ctx.from?.id}`);
-    return;
-  }
+async function handleResume(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+  deactivateKillSwitch();
+  const { setQuantKilled } = await import("../hyperliquid/risk-manager.js");
+  setQuantKilled(false);
+  await sendDataMessage("<b>Trading resumed</b>\nAll engines restarted.");
+}
 
-  const myOpId = activeOpId;
-
-  try {
-    const pnl = (n: number): string => `${n > 0 ? "+" : ""}$${n.toFixed(2)}`;
-    const $ = (n: number): string => n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
-    const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + "." : s;
-    const c = (n: number): string => `${(n * 100).toFixed(0)}c`;
-    const shortDate = (ts: number): string => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
-
-    let message = `<b>Bets</b>\n\n`;
-
-    const tabButtons = [
-      [
-        { text: tab === "open" ? "* AI Open" : "AI Open", callback_data: "bets_open" },
-        { text: tab === "closed" ? "* AI Closed" : "AI Closed", callback_data: "bets_closed" },
-      ],
-      [
-        { text: tab === "copy" ? "* Copy Open" : "Copy Open", callback_data: "bets_copy" },
-        { text: tab === "copy_closed" ? "* Copy Closed" : "Copy Closed", callback_data: "bets_copy_closed" },
-      ],
-    ];
-
-    if (tab === "open") {
-      const openBets = loadOpenPositions();
-      const aiStats = getBettingStats();
-
-      if (openBets.length === 0) {
-        message += `Unreal: ${pnl(0)} | Real: ${pnl(aiStats.totalPnl)}\n`;
-        message += `0 open | $0 inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
-        message += "No open AI bets.";
-        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(message, allButtons);
-        return;
-      }
-
-      let totalInvested = 0;
-      let totalPnlVal = 0;
-      let positionLines = "";
-
-      for (const bet of openBets) {
-        const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-        let betPnl = 0;
-        if (currentPrice !== null) {
-          const priceDiff = bet.side === "YES"
-            ? currentPrice - bet.entryPrice
-            : bet.entryPrice - currentPrice;
-          betPnl = (bet.size / bet.entryPrice) * priceDiff;
-          totalInvested += bet.size;
-          totalPnlVal += betPnl;
-        }
-
-        positionLines += `${trunc(bet.marketTitle, 30)}\n`;
-        const side = bet.side === "YES" ? "Y" : "N";
-        positionLines += `  ${side} ${$(bet.size)} @${c(bet.entryPrice)}`;
-        if (currentPrice !== null) {
-          const pnlPct = (betPnl / bet.size) * 100;
-          positionLines += `->${c(currentPrice)} ${pnl(betPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
-        }
-        positionLines += `\n`;
-        const conf = (bet.confidence * 100).toFixed(0);
-        const ev = (bet.expectedValue * 100).toFixed(0);
-        positionLines += `  ${conf}%conf | ${ev}%ev | ${shortDate(bet.entryTimestamp)}\n\n`;
-      }
-
-      if (activeOpId !== myOpId) return;
-
-      message += `Unreal: ${pnl(totalPnlVal)} | Real: ${pnl(aiStats.totalPnl)}\n`;
-      message += `${openBets.length} open | ${$(totalInvested)} inv | ${aiStats.totalBets} closed | ${aiStats.winRate.toFixed(0)}% win\n\n`;
-      message += positionLines;
-
-    } else if (tab === "closed") {
-      const closedBets = loadClosedPositions(1000);
-      const aiStats = getBettingStats();
-
-      if (closedBets.length === 0) {
-        message += `Real: ${pnl(0)}\n`;
-        message += `0 closed\n\n`;
-        message += "No closed AI bets yet.";
-        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(message, allButtons);
-        return;
-      }
-
-      let closedTotalInvested = 0;
-      let closedTotalPnl = 0;
-      let closedLines = "";
-
-      for (const bet of closedBets) {
-        const betPnl = bet.pnl ?? 0;
-        const pnlPct = bet.size > 0 ? (betPnl / bet.size) * 100 : 0;
-        const exitDate = bet.exitTimestamp ? shortDate(bet.exitTimestamp) : "?";
-
-        closedTotalInvested += bet.size;
-        closedTotalPnl += betPnl;
-
-        closedLines += `${trunc(bet.marketTitle, 30)}\n`;
-        const side = bet.side === "YES" ? "Y" : "N";
-        closedLines += `  ${side} ${$(bet.size)} @${c(bet.entryPrice)}`;
-        if (bet.exitPrice !== undefined) {
-          closedLines += `->${c(bet.exitPrice)}`;
-        }
-        closedLines += ` ${pnl(betPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%\n`;
-        closedLines += `  ${bet.exitReason ? bet.exitReason + " | " : ""}${exitDate}\n\n`;
-      }
-
-      message += `Real: ${pnl(closedTotalPnl)}\n`;
-      message += `${aiStats.totalBets} closed | ${$(closedTotalInvested)} inv | ${aiStats.winRate.toFixed(0)}% win\n\n`;
-      message += closedLines;
-
-    } else if (tab === "copy") {
-      // Copy Open tab - Polymarket copy positions
-      const positionsWithValues = await getOpenPositionsWithValues();
-      if (activeOpId !== myOpId) return;
-      const polyStats = getCopyStats();
-
-      if (positionsWithValues.length === 0) {
-        message += `Unreal: ${pnl(0)} | Real: ${pnl(polyStats.totalPnl)}\n`;
-        message += `0 open | $0 inv | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
-        message += "No open copy positions.";
-        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(message, allButtons);
-        return;
-      }
-
-      let totalInvested = 0;
-      let totalCurrentValue = 0;
-      let copyLines = "";
-
-      for (const pos of positionsWithValues) {
-        copyLines += `${trunc(pos.marketTitle, 30)}\n`;
-        copyLines += `  ${$(pos.size)} @${c(pos.entryPrice)}`;
-
-        if (pos.currentPrice !== null) {
-          const currentVal = pos.currentValue ?? 0;
-          const pnlPct = pos.unrealizedPnlPct ?? 0;
-          const posPnl = (pos.currentValue ?? 0) - pos.size;
-          copyLines += `->${c(pos.currentPrice)} ${pnl(posPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}%`;
-          totalInvested += pos.size;
-          totalCurrentValue += currentVal;
-        }
-
-        copyLines += `\n\n`;
-      }
-
-      const unrealizedPnl = totalCurrentValue - totalInvested;
-      message += `Unreal: ${pnl(unrealizedPnl)} | Real: ${pnl(polyStats.totalPnl)}\n`;
-      message += `${positionsWithValues.length} open | ${$(totalInvested)} inv | ${polyStats.totalCopies} closed | ${polyStats.winRate.toFixed(0)}% win\n\n`;
-      message += copyLines;
-
-    } else {
-      // Copy Closed tab
-      const closedCopies = getClosedCopiedPositions(1000);
-      const polyStats = getCopyStats();
-
-      if (closedCopies.length === 0) {
-        message += `Real: ${pnl(polyStats.totalPnl)}\n`;
-        message += `0 closed\n\n`;
-        message += "No closed copy positions yet.";
-        const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
-        await sendDataMessage(message, allButtons);
-        return;
-      }
-
-      let copyClosedInvested = 0;
-      let copyClosedPnlVal = 0;
-      let copyClosedLines = "";
-
-      for (const pos of closedCopies) {
-        const posPnl = pos.pnl ?? 0;
-        const pnlPct = pos.size > 0 ? (posPnl / pos.size) * 100 : 0;
-        const exitDate = pos.exitTimestamp ? shortDate(pos.exitTimestamp) : "?";
-
-        copyClosedInvested += pos.size;
-        copyClosedPnlVal += posPnl;
-
-        copyClosedLines += `${trunc(pos.marketTitle, 30)}\n`;
-        copyClosedLines += `  ${$(pos.size)} @${c(pos.entryPrice)}`;
-        if (pos.exitPrice !== undefined) {
-          copyClosedLines += `->${c(pos.exitPrice)}`;
-        }
-        copyClosedLines += ` ${pnl(posPnl)} ${pnlPct > 0 ? "+" : ""}${pnlPct.toFixed(0)}% | ${exitDate}\n\n`;
-      }
-
-      message += `Real: ${pnl(copyClosedPnlVal)}\n`;
-      message += `${polyStats.closedPositions} closed | ${$(copyClosedInvested)} inv | ${polyStats.winRate.toFixed(0)}% win\n\n`;
-      message += copyClosedLines;
-    }
-
-    const allButtons = [...tabButtons, [{ text: "Back", callback_data: "main_menu" }]];
-    if (activeOpId !== myOpId) return;
-    await sendDataMessage(message, allButtons);
-  } catch (err) {
-    console.error("[Telegram] Bets error:", err);
-    if (activeOpId !== myOpId) return;
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage("Failed to fetch bets", backButton);
-  }
+async function handleMode(ctx: Context): Promise<void> {
+  if (!isAuthorized(ctx)) return;
+  const currentMode = getTradingMode();
+  const buttons = [
+    [
+      { text: currentMode === "paper" ? "* Paper" : "Paper", callback_data: "mode_paper" },
+      { text: currentMode === "hybrid" ? "* Hybrid" : "Hybrid", callback_data: "mode_hybrid" },
+      { text: currentMode === "live" ? "* Live" : "Live", callback_data: "mode_live" },
+    ],
+    [{ text: "Back", callback_data: "main_menu" }],
+  ];
+  await sendDataMessage(`<b>Trading Mode:</b> ${currentMode.toUpperCase()}`, buttons);
 }
 
 async function handleManage(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) return;
 
   try {
-    const openBets = loadOpenPositions();
-    const cryptoCopy = getCryptoCopyPositions();
-    const polyStats = getCopyStats();
-
-    let message = `<b>Manage Positions</b>\n\n`;
-    message += `AI Bets: ${openBets.length} open\n`;
-    message += `Crypto Copy: ${cryptoCopy.length} open\n`;
-    message += `Poly Copy: ${polyStats.openPositions} open\n\n`;
+    const status = await getRiskStatus();
+    let message = `<b>Manage</b>\n\n`;
+    message += `Kill switch: ${status.killSwitchActive ? "ACTIVE" : "Off"}\n`;
+    message += `Mode: ${getTradingMode().toUpperCase()}\n\n`;
     message += `Choose an action:`;
 
     const buttons = [
-      [{ text: "Close All AI Bets", callback_data: "manage_close_bets" }],
-      [{ text: "Close All Copy Bets", callback_data: "manage_close_copies" }],
+      [
+        { text: "Stop All", callback_data: "manage_stop" },
+        { text: "Resume", callback_data: "manage_resume" },
+      ],
       [{ text: "Reset Paper Trading", callback_data: "manage_resetpaper" }],
       [{ text: "Back", callback_data: "main_menu" }],
     ];
@@ -1575,52 +1058,6 @@ async function handleManage(ctx: Context): Promise<void> {
     console.error("[Telegram] Manage error:", err);
     const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
     await sendDataMessage("Failed to load manage", backButton);
-  }
-}
-
-async function handleCloseAllBets(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  try {
-    const openBets = loadOpenPositions();
-    if (openBets.length === 0) {
-      const buttons = [[{ text: "Back", callback_data: "manage" }]];
-      await sendDataMessage("No open AI bets to close.", buttons);
-      return;
-    }
-
-    let closed = 0;
-    for (const bet of openBets) {
-      const currentPrice = await getAIBetCurrentPrice(bet.tokenId);
-      if (currentPrice !== null) {
-        const { exitPosition } = await import("../aibetting/executor.js");
-        const { success } = await exitPosition(bet, currentPrice, "Manual close");
-        if (success) closed++;
-      }
-    }
-
-    const buttons = [[{ text: "Back", callback_data: "manage" }]];
-    await sendDataMessage(`Closed ${closed}/${openBets.length} AI bets.`, buttons);
-  } catch (err) {
-    console.error("[Telegram] Close bets error:", err);
-    const buttons = [[{ text: "Back", callback_data: "manage" }]];
-    await sendDataMessage("Failed to close bets", buttons);
-  }
-}
-
-async function handleCloseAllCopies(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  try {
-    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-    const deleted = clearAllCopiedPositions();
-
-    const buttons = [[{ text: "Back", callback_data: "manage" }]];
-    await sendDataMessage(`Cleared ${deleted} copy bet records.`, buttons);
-  } catch (err) {
-    console.error("[Telegram] Close copies error:", err);
-    const buttons = [[{ text: "Back", callback_data: "manage" }]];
-    await sendDataMessage("Failed to close copies", buttons);
   }
 }
 
@@ -1670,10 +1107,6 @@ async function showThinking(ctx: Context): Promise<() => Promise<void>> {
   }
 }
 
-async function handleHF(ctx: Context): Promise<void> {
-  await handlePoly(ctx);
-}
-
 async function handleAI(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /ai from user ${ctx.from?.id}`);
@@ -1687,9 +1120,8 @@ async function handleAI(ctx: Context): Promise<void> {
     await ctx.reply(
       "Usage: /ai <question>\n\n" +
       "Examples:\n" +
-      "- /ai how many bets did I win?\n" +
       "- /ai what's my total PnL?\n" +
-      "- /ai which markets am I in?\n" +
+      "- /ai how are quant positions doing?\n" +
       "- /ai what's the win rate?"
     );
     return;
@@ -1703,21 +1135,12 @@ async function handleAI(ctx: Context): Promise<void> {
 
   try {
     // Gather ALL available context
-    const stats = getBettingStats();
-    const openPositions = loadOpenPositions();
-    const recentOutcomes = getRecentBetOutcomes(10);
-    const schedulerStatus = getAIBettingStatus();
     const riskStatus = await getRiskStatus();
     const dailyPnl = getDailyPnl();
     const dailyPnlPct = getDailyPnlPercentage();
     const todayTrades = getTodayTrades();
     const userId = ctx.from?.id?.toString() || "";
     const settings = getSettings(userId);
-    const usdcBalance = await getUsdcBalanceFormatted().catch(() => "Error");
-
-    // Polymarket copy trading stats
-    const copyStats = getCopyStats();
-    const openCopiedPositions = getOpenCopiedPositions();
 
     // Build comprehensive context for AI
     const context = `
@@ -1728,45 +1151,12 @@ You are a helpful trading bot assistant. Answer questions about ANY bot data bel
 - Trading enabled: ${riskStatus.tradingEnabled}
 - Paper mode: ${riskStatus.isPaperMode}
 - Daily PnL: $${dailyPnl.toFixed(2)} (${dailyPnlPct > 0 ? "+" : ""}${dailyPnlPct.toFixed(1)}%)
-- USDC balance: ${usdcBalance}
 
 === USER SETTINGS ===
 - Auto-copy (wallets): ${settings.autoCopyEnabled ? "ON" : "OFF"}
 - Min trader score: ${settings.minTraderScore}
 - Max copies/day: ${settings.maxCopyPerDay}
 - Today's copies: ${settings.dailyCopyCount}
-
-
-=== POLYMARKET COPY BETTING ===
-- Total copies: ${copyStats.totalCopies}
-- Open copied positions: ${copyStats.openPositions}
-- Closed: ${copyStats.closedPositions}
-- Win rate: ${copyStats.winRate.toFixed(1)}%
-- Total PnL: $${copyStats.totalPnl.toFixed(2)}
-${openCopiedPositions.length > 0 ? `\nOpen copies:\n${openCopiedPositions.map(p => `  - ${p.marketTitle} $${p.size} @ ${(p.entryPrice * 100).toFixed(0)}c (copying ${p.traderName})`).join("\n")}` : ""}
-
-=== AI BETTING (Polymarket) ===
-- Running: ${schedulerStatus.running}
-- Open positions: ${schedulerStatus.openPositions}
-- Total exposure: $${schedulerStatus.totalExposure.toFixed(2)}
-- Analysis cache: ${schedulerStatus.analysisCacheSize} markets
-
-=== BETTING STATS (all time) ===
-- Total bets: ${stats.totalBets}
-- Wins: ${stats.wins} | Losses: ${stats.losses}
-- Win rate: ${stats.winRate.toFixed(1)}%
-- Total PnL: $${stats.totalPnl.toFixed(2)}
-- Avg EV: ${(stats.avgEdge * 100).toFixed(1)}%
-
-=== OPEN POLYMARKET POSITIONS ===
-${openPositions.length === 0 ? "None" : openPositions.map(p =>
-  `- ${p.marketTitle}\n  ${p.side} @ ${(p.entryPrice * 100).toFixed(0)}c, $${p.size.toFixed(2)}, AI:${(p.aiProbability * 100).toFixed(0)}%`
-).join("\n")}
-
-=== RECENT BET OUTCOMES ===
-${recentOutcomes.length === 0 ? "None yet" : recentOutcomes.map(o =>
-  `- ${o.actualOutcome.toUpperCase()}: ${o.marketTitle} $${o.pnl.toFixed(2)}`
-).join("\n")}
 
 === TODAY'S TRADES ===
 - Count: ${todayTrades.length}
@@ -1806,23 +1196,6 @@ Be concise. Answer based on the data above. If asked about something not in the 
   }
 }
 
-async function handleClearCopies(ctx: Context): Promise<void> {
-  if (!isAuthorized(ctx)) return;
-
-  try {
-    // Just delete all data silently - no closing, no notifications
-    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-    const deleted = clearAllCopiedPositions();
-
-    const backButton = [[{ text: "Back", callback_data: "main_menu" }]];
-    await sendDataMessage(`Deleted ${deleted} records. Stats reset.`, backButton);
-  } catch (err) {
-    console.error("[Telegram] Clear copies error:", err);
-    await sendDataMessage("Failed to clear copies. Check logs.");
-  }
-}
-
-
 async function handleReset(ctx: Context): Promise<void> {
   if (!isAuthorized(ctx)) {
     console.warn(`[Telegram] Unauthorized /resetpaper from user ${ctx.from?.id}`);
@@ -1837,10 +1210,6 @@ async function handleReset(ctx: Context): Promise<void> {
   }
 
   // Count what will be deleted
-  const openAIBets = loadOpenPositions();
-  const closedStats = getBettingStats();
-  const cryptoCopy = getCryptoCopyPositions();
-  const polyStats = getCopyStats();
   const db = (await import("../database/db.js")).getDb();
   const insiderWalletCount = (() => { try { return (db.prepare("SELECT COUNT(*) as cnt FROM insider_wallets").get() as { cnt: number }).cnt; } catch { return 0; } })();
   const insiderCopyCount = (() => { try { return (db.prepare("SELECT COUNT(*) as cnt FROM insider_copy_trades").get() as { cnt: number }).cnt; } catch { return 0; } })();
@@ -1849,9 +1218,6 @@ async function handleReset(ctx: Context): Promise<void> {
 
   let message = "<b>RESET - Paper Trading Data</b>\n\n";
   message += "This will permanently delete:\n\n";
-  message += `  AI Bets: ${openAIBets.length} open + ${closedStats.totalBets} closed\n`;
-  message += `  Crypto Copy: ${cryptoCopy.length} positions\n`;
-  message += `  Poly Copy: ${polyStats.totalCopies} copies\n`;
   message += `  Insider Copy: ${insiderCopyCount} trades\n`;
   message += `  Insiders: ${insiderWalletCount} wallets\n`;
   message += `  Quant: ${quantTradeCount} trades + ${quantPosCount} positions\n`;
@@ -1872,82 +1238,42 @@ async function handleResetConfirm(ctx: Context): Promise<void> {
   try {
     const db = (await import("../database/db.js")).getDb();
 
-    // 1. AI Betting - DB + memory
-    const aiBetsDeleted = deleteAllPositions();
-    const aiAnalysesDeleted = deleteAllAnalyses();
-    clearAllPositions();
-    clearAnalysisCache();
-    const { resetAIBettingBalance } = await import("../aibetting/scheduler.js");
-    resetAIBettingBalance();
-
-    // 2. Polymarket copy trades - use existing clear function
-    const { clearAllCopiedPositions } = await import("../polytraders/index.js");
-    const polyCopiesDeleted = clearAllCopiedPositions();
-
-    // 3. Crypto copy positions - DB + memory
-    const cryptoResult = db.prepare("DELETE FROM crypto_copy_positions").run();
-    const { clearCryptoCopyMemory } = await import("../copy/executor.js");
-    clearCryptoCopyMemory();
-
-    // 4. Insider copy trades - delete all (scoring rebuilds from new trades)
+    // 1. Insider copy trades - delete all (scoring rebuilds from new trades)
     const insiderCopyResult = (() => { try { return db.prepare("DELETE FROM insider_copy_trades").run(); } catch { return { changes: 0 }; } })();
 
-    // 5. General trades table
+    // 2. General trades table
     const tradesResult = db.prepare("DELETE FROM trades").run();
 
-    // 6. General positions table
+    // 3. General positions table
     const positionsResult = db.prepare("DELETE FROM positions").run();
 
-    // 7. Daily stats
+    // 4. Daily stats
     const dailyResult = db.prepare("DELETE FROM daily_stats").run();
 
-    // 8. Arbitrage positions
-    const arbResult = db.prepare("DELETE FROM arbitrage_positions").run();
-
-    // 9. Copy outcomes - preserved for scoring history
-    const copyOutcomesResult = { changes: 0 };
-
-    // 12. Calibration data
-    const calPredResult = db.prepare("DELETE FROM calibration_predictions").run();
-    const calScoreResult = db.prepare("DELETE FROM calibration_scores").run();
-    const calLogResult = db.prepare("DELETE FROM calibration_log").run();
-
-    // 13. Whale trades
-    const whaleResult = db.prepare("DELETE FROM whale_trades").run();
-
-    // 14. Quant trades + positions - only paper, preserve live
+    // 5. Quant trades + positions - only paper, preserve live
     const quantTradesResult = db.prepare("DELETE FROM quant_trades WHERE mode != 'live'").run();
     const quantPosResult = db.prepare("DELETE FROM quant_positions WHERE mode != 'live'").run();
     const quantConfigResult = db.prepare("DELETE FROM quant_config").run();
 
-    // 16. Clear all in-memory caches
+    // 9. Clear all in-memory caches
     const { clearWatcherMemory } = await import("../traders/watcher.js");
     const { clearCopyPriceFailures } = await import("../traders/gem-analyzer.js");
     const { clearPaperMemory, resetDailyDrawdown } = await import("../hyperliquid/index.js");
-    const { resetHFPaperData } = await import("../aibetting/hf-scanner.js");
     clearWatcherMemory();
     clearCopyPriceFailures();
     clearPaperMemory();
     resetDailyDrawdown();
-    resetHFPaperData();
 
-    const totalDeleted = aiBetsDeleted + aiAnalysesDeleted
-      + polyCopiesDeleted + cryptoResult.changes + insiderCopyResult.changes
-      + tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes
-      + copyOutcomesResult.changes + calPredResult.changes + calScoreResult.changes
-      + calLogResult.changes + whaleResult.changes
+    const totalDeleted = insiderCopyResult.changes
+      + tradesResult.changes + positionsResult.changes + dailyResult.changes
       + quantTradesResult.changes + quantPosResult.changes + quantConfigResult.changes;
 
     console.log(`[ResetPaper] Paper trading data wiped: ${totalDeleted} total records`);
 
     let message = "<b>Reset Complete</b>\n\n";
-    message += `AI bets: ${aiBetsDeleted} positions + ${aiAnalysesDeleted} analyses\n`;
-    message += `Poly copies: ${polyCopiesDeleted} + ${copyOutcomesResult.changes} outcomes\n`;
-    message += `Crypto copies: ${cryptoResult.changes} records\n`;
     message += `Insider copies: ${insiderCopyResult.changes} trades reset\n`;
     message += `Quant: ${quantTradesResult.changes} trades + ${quantPosResult.changes} positions\n`;
-    message += `Calibration: ${calPredResult.changes + calScoreResult.changes + calLogResult.changes} records\n`;
-    message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes + arbResult.changes + whaleResult.changes} records\n\n`;
+    message += `Other: ${tradesResult.changes + positionsResult.changes + dailyResult.changes} records\n\n`;
     message += `<b>Total: ${totalDeleted} records deleted</b>\n`;
     message += "Paper trading is ready to start fresh.\nAll caches cleared.";
 

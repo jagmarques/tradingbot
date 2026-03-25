@@ -8,9 +8,6 @@ let lastSnapshotTime = 0;
 export interface DailySnapshot {
   date: string;
   totalPnl: number;
-  cryptoCopyPnl: number;
-  polyCopyPnl: number;
-  aiBettingPnl: number;
   quantPnl: number;
   insiderCopyPnl: number;
   rugPnl: number;
@@ -27,22 +24,16 @@ export function takeDailySnapshot(): void {
   const breakdown = getDailyPnlBreakdown();
 
   db.prepare(`
-    INSERT INTO daily_stats (date, total_pnl, crypto_copy_pnl, poly_copy_pnl, ai_betting_pnl, quant_pnl, insider_copy_pnl, rug_pnl)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO daily_stats (date, total_pnl, quant_pnl, insider_copy_pnl, rug_pnl)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(date) DO UPDATE SET
       total_pnl = excluded.total_pnl,
-      crypto_copy_pnl = excluded.crypto_copy_pnl,
-      poly_copy_pnl = excluded.poly_copy_pnl,
-      ai_betting_pnl = excluded.ai_betting_pnl,
       quant_pnl = excluded.quant_pnl,
       insider_copy_pnl = excluded.insider_copy_pnl,
       rug_pnl = excluded.rug_pnl
   `).run(
     today,
     breakdown.total,
-    breakdown.cryptoCopy,
-    breakdown.polyCopy,
-    breakdown.aiBetting,
     breakdown.quantPnl,
     breakdown.insiderCopyPnl,
     breakdown.rugLosses,
@@ -57,33 +48,12 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
 
   let row: {
     totalPnl: number;
-    cryptoCopyPnl: number;
-    polyCopyPnl: number;
-    aiBettingPnl: number;
     quantPnl: number;
     insiderCopyPnl: number;
     rugPnl: number;
   };
 
   if (days === null) {
-    const cryptoCopyResult = db.prepare(`
-      SELECT COALESCE(SUM(pnl), 0) as total
-      FROM trades
-      WHERE strategy IN ('base', 'arbitrum', 'avalanche')
-    `).get() as { total: number };
-
-    const polyCopyResult = db.prepare(`
-      SELECT COALESCE(SUM(pnl), 0) as total
-      FROM polytrader_copies
-      WHERE status = 'closed'
-    `).get() as { total: number };
-
-    const aiBettingResult = db.prepare(`
-      SELECT COALESCE(SUM(pnl), 0) as total
-      FROM aibetting_positions
-      WHERE status = 'closed'
-    `).get() as { total: number };
-
     const quantResult = db.prepare(`
       SELECT COALESCE(SUM(pnl), 0) as total
       FROM quant_trades
@@ -104,18 +74,12 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
         AND exit_reason IN ('liquidity_rug', 'honeypot')
     `).get() as { total: number };
 
-    const cryptoCopy = cryptoCopyResult.total;
-    const polyCopy = polyCopyResult.total;
-    const aiBetting = aiBettingResult.total;
     const quantPnl = quantResult.total;
     const insiderCopyPnl = insiderResult.total;
     const rugPnl = rugResult.total;
 
     row = {
-      totalPnl: cryptoCopy + polyCopy + aiBetting + quantPnl + insiderCopyPnl + rugPnl,
-      cryptoCopyPnl: cryptoCopy,
-      polyCopyPnl: polyCopy,
-      aiBettingPnl: aiBetting,
+      totalPnl: quantPnl + insiderCopyPnl + rugPnl,
       quantPnl,
       insiderCopyPnl,
       rugPnl,
@@ -131,9 +95,6 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
     row = db.prepare(`
       SELECT
         COALESCE(SUM(total_pnl), 0) as totalPnl,
-        COALESCE(SUM(crypto_copy_pnl), 0) as cryptoCopyPnl,
-        COALESCE(SUM(poly_copy_pnl), 0) as polyCopyPnl,
-        COALESCE(SUM(ai_betting_pnl), 0) as aiBettingPnl,
         COALESCE(SUM(quant_pnl), 0) as quantPnl,
         COALESCE(SUM(insider_copy_pnl), 0) + COALESCE(SUM(rug_pnl), 0) as insiderCopyPnl,
         0 as rugPnl
@@ -145,9 +106,6 @@ export function getPnlForPeriod(days: number | null): DailySnapshot {
   return {
     date: "aggregate",
     totalPnl: row.totalPnl,
-    cryptoCopyPnl: row.cryptoCopyPnl,
-    polyCopyPnl: row.polyCopyPnl,
-    aiBettingPnl: row.aiBettingPnl,
     quantPnl: row.quantPnl,
     insiderCopyPnl: row.insiderCopyPnl,
     rugPnl: row.rugPnl,

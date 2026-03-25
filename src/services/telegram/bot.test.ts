@@ -55,12 +55,6 @@ vi.mock("../risk/manager.js", () => ({
   getTodayTrades: vi.fn().mockReturnValue([]),
 }));
 
-// Mock wallets
-vi.mock("../polygon/wallet.js", () => ({
-  getMaticBalanceFormatted: vi.fn().mockResolvedValue("0.5000"),
-  getUsdcBalanceFormatted: vi.fn().mockResolvedValue("50.00"),
-}));
-
 // Mock timezone database
 vi.mock("../database/timezones.js", () => ({
   getUserTimezone: vi.fn().mockReturnValue("UTC"),
@@ -90,7 +84,7 @@ describe("Telegram Bot", () => {
       await startBot();
       expect(mockCommand).toHaveBeenCalledWith("start", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("balance", expect.any(Function));
-      expect(mockCommand).toHaveBeenCalledWith("stop", expect.any(Function));
+      expect(mockCommand).toHaveBeenCalledWith("trades", expect.any(Function));
       expect(mockCommand).toHaveBeenCalledWith("pnl", expect.any(Function));
     });
   });

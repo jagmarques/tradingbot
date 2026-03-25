@@ -1,6 +1,6 @@
 import { sendMessage } from "./bot.js";
 import { getDailyPnl, getDailyPnlPercentage, getTodayTrades } from "../risk/manager.js";
-import { isPolymarketPaperMode as isPaperMode, getTradingMode, loadEnv } from "../../config/env.js";
+import { isPaperMode, getTradingMode, loadEnv } from "../../config/env.js";
 import type { TradeType } from "../hyperliquid/types.js";
 import { getUserTimezone } from "../database/timezones.js";
 import { formatPrice } from "../../utils/format.js";
@@ -330,50 +330,6 @@ export async function notifyTrailActivation(params: {
     `P&L: +${params.unrealizedPnlPct.toFixed(1)}%\n` +
     `Trail: ${params.trailActivation}% / ${params.trailDistance}%\n` +
     `Type: ${typeLabel}`;
-  await sendMessage(message);
-}
-
-export async function notifyHFMakerEntry(params: {
-  coin: string;
-  side: "up" | "down";
-  size: number;
-  entryPrice: number;
-  movePct: number;
-  balance: number;
-  orderId?: string;
-}): Promise<void> {
-  const message =
-    `[LIVE] <b>HF MAKER ENTRY</b>\n\n` +
-    `Coin: <b>${escapeHtml(params.coin)}</b>\n` +
-    `Side: ${params.side.toUpperCase()}\n` +
-    `Size: $${params.size.toFixed(2)} (${((params.size / params.balance) * 100).toFixed(0)}%)\n` +
-    `Entry: ${(params.entryPrice * 100).toFixed(0)}c\n` +
-    `Move: ${(params.movePct * 100).toFixed(2)}%\n` +
-    `Balance: $${params.balance.toFixed(2)}` +
-    (params.orderId ? `\nOrder: ${params.orderId.slice(0, 16)}...` : "");
-  await sendMessage(message);
-}
-
-export async function notifyHFMakerResult(params: {
-  coin: string;
-  side: "up" | "down";
-  status: "won" | "lost" | "cancelled";
-  size: number;
-  pnl: number;
-  balance: number;
-  startPrice: number;
-  closePrice: number;
-}): Promise<void> {
-  const icon = params.status === "won" ? "+" : params.status === "lost" ? "-" : "";
-  const message =
-    `[LIVE] <b>HF MAKER ${params.status.toUpperCase()}</b>\n\n` +
-    `Coin: <b>${escapeHtml(params.coin)}</b>\n` +
-    `Side: ${params.side.toUpperCase()}\n` +
-    `Size: $${params.size.toFixed(2)}\n` +
-    `P&L: ${icon}$${Math.abs(params.pnl).toFixed(2)}\n` +
-    `Start: $${params.startPrice.toFixed(0)}\n` +
-    `Close: $${params.closePrice.toFixed(0)}\n` +
-    `Balance: $${params.balance.toFixed(2)}`;
   await sendMessage(message);
 }
 

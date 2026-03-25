@@ -57,9 +57,10 @@ vi.mock("./watcher.js", () => ({
   estimatePriceImpactPct: vi.fn(() => 0),
 }));
 
-vi.mock("../copy/filter.js", () => ({
-  getApproxUsdValue: vi.fn(() => 3000),
-}));
+vi.mock("./types.js", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return { ...actual, getApproxUsdValue: vi.fn(() => 3000) };
+});
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);

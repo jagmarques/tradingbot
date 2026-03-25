@@ -1,7 +1,7 @@
 // 1inch DEX aggregator for EVM swaps
 import { ethers, JsonRpcProvider, Wallet } from "ethers";
 import type { Chain } from "../traders/types.js";
-import { loadEnv, isPolymarketPaperMode as isPaperMode } from "../../config/env.js";
+import { loadEnv, isPaperMode } from "../../config/env.js";
 import { fetchWithTimeout } from "../../utils/fetch.js";
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 
@@ -76,16 +76,8 @@ function getWallet(chain: Chain): Wallet | null {
 
   const env = loadEnv();
 
-  // Use chain-specific private key or fall back to Polygon key for EVM
-  let privateKey: string | undefined;
-
-  if (chain === "polygon") {
-    privateKey = env.POLYGON_PRIVATE_KEY;
-  } else {
-    // Check for chain-specific env var or use Polygon key as fallback
-    const envKey = `${chain.toUpperCase()}_PRIVATE_KEY`;
-    privateKey = (process.env[envKey] as string) || env.POLYGON_PRIVATE_KEY;
-  }
+  // Use PRIVATE_KEY_EVM for all EVM chains
+  const privateKey = env.PRIVATE_KEY_EVM;
 
   if (!privateKey) {
     return null;

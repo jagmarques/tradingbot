@@ -232,9 +232,19 @@ const TAVILY_QUERIES = [
 ];
 let tavilyQueryIndex = 0;
 
-async function pollTavily(): Promise<void> {
+// Rotate through Tavily API keys for rate limit avoidance
+let tavilyKeyIndex = 0;
+function getNextTavilyKey(): string | undefined {
   const env = loadEnv();
-  const apiKey = env.TAVILY_API_KEY_1;
+  const keys = [env.TAVILY_API_KEY_1, env.TAVILY_API_KEY_2, env.TAVILY_API_KEY_3].filter(Boolean) as string[];
+  if (keys.length === 0) return undefined;
+  const key = keys[tavilyKeyIndex % keys.length];
+  tavilyKeyIndex++;
+  return key;
+}
+
+async function pollTavily(): Promise<void> {
+  const apiKey = getNextTavilyKey();
   if (!apiKey) return;
 
   const query = TAVILY_QUERIES[tavilyQueryIndex % TAVILY_QUERIES.length];
