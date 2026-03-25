@@ -1,8 +1,11 @@
 import { isQuantKilled } from "./risk-manager.js";
-import { runGarchChanCycle } from "./garch-chan-engine.js";
+// VL-04: GARCH-chan killed (negative P&L, unprofitable on live)
+// import { runGarchChanCycle } from "./garch-chan-engine.js";
 import { runBtcMrCycle } from "./btc-mr-engine.js";
-import { runBtcEventCycle } from "./btc-event-engine.js";
-import { runNewsTradingCycle } from "./news-trading-engine.js";
+// VL-04: BTC-Event killed (insufficient edge, paper never promoted)
+// import { runBtcEventCycle } from "./btc-event-engine.js";
+// VL-04: News-Trade killed (high variance, net negative)
+// import { runNewsTradingCycle } from "./news-trading-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -29,19 +32,14 @@ export async function runDirectionalCycle(): Promise<void> {
   try {
     if (isQuantKilled()) return;
 
-    try { await runGarchChanCycle(); }
-    catch (err) { console.error(`[QuantScheduler] GARCH-v2 error: ${err instanceof Error ? err.message : String(err)}`); }
+    // VL-04: runGarchChanCycle removed (negative P&L)
+    // VL-04: runBtcEventCycle removed (insufficient edge)
+    // VL-04: runNewsTradingCycle removed (net negative)
 
     try { await runBtcMrCycle(); }
     catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    try { await runBtcEventCycle(); }
-    catch (err) { console.error(`[QuantScheduler] BTC-Event error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    try { await runNewsTradingCycle(); }
-    catch (err) { console.error(`[QuantScheduler] News-Trade error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    console.log(`[QuantScheduler] Cycle: GARCH-v2 + BTC-MR + BTC-Event + News-Trade running`);
+    console.log(`[QuantScheduler] Cycle: BTC-MR running`);
   } finally { cycleRunning = false; }
 }
 
