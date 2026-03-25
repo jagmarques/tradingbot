@@ -21,6 +21,9 @@ function stripHtml(text: string): string {
     .replace(/\s+/g, " ").trim();
 }
 
+// Boilerplate/non-news patterns - government docs, legal text, academic papers
+const BOILERPLATE_RE = /using these categories|pursuant to|hereinafter|whereas|in accordance with|the commission (shall|may|will)|section \d+\(|subsection|notwithstanding|promulgated|codified at/i;
+
 function preFilter(content: string): "skip" | "classify" {
   const clean = stripHtml(content);
   if (clean.length < 30) return "skip";
@@ -29,6 +32,8 @@ function preFilter(content: string): "skip" | "classify" {
   if (clean.startsWith("RT: ") && clean.length < 100) return "skip";
   // Must contain at least one market-relevant keyword to proceed to AI
   if (!MARKET_KEYWORDS.test(clean)) return "skip";
+  // Skip government boilerplate, legal text, academic content
+  if (BOILERPLATE_RE.test(clean)) return "skip";
   return "classify";
 }
 
@@ -119,7 +124,16 @@ Example: NEUTRAL LOW OPINION NONE`;
     if (text.includes("HIGH")) impact = "high";
     else if (text.includes("MEDIUM")) impact = "medium";
 
-    const isBreaking = text.includes("BREAKING");
+    let isBreaking = text.includes("BREAKING");
+
+    // Post-classification sanity: BREAKING must have action verbs in original content
+    if (isBreaking) {
+      const ACTION_VERBS = /\b(announces?|approves?|bans?|cuts?|strikes?|hacked|signs?|launches?|passes?|rejects?|suspends?|halts?|blocks?|seizes?|arrests?|crashes?|surges?|plunges?|tumbles?|soars?|files?|proposes?|unveils?)\b/i;
+      if (!ACTION_VERBS.test(content)) {
+        isBreaking = false; // no action verb = not breaking news
+        console.log(`[TrumpGuard] Downgrade: BREAKING -> OPINION (no action verb in content)`);
+      }
+    }
 
     // Override sentiment with explicit direction if present
     if (text.includes("SHORT")) sentiment = "BEARISH";
