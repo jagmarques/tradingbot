@@ -55,19 +55,16 @@ For each pair, decide ONE action:
 - TAKE_PROFIT: only if profit is VERY large and momentum is clearly fading
 - CLOSE: dead trade or moving against us
 
-CRITICAL RULES - DO NOT take profit too early:
-- HIGH impact: NEVER take profit below +2%. These events can move 3-5%. Let the trailing stop (activates at 5%, trails at 2%) do its job.
-- MEDIUM impact: NEVER take profit below +1%. Trailing stop activates at 2%, trails at 1%.
+RULES:
+- profit > +0.5%: TAKE_PROFIT (this is a good move for a news event, lock it in before it reverses)
+- profit +0.3% to +0.5%: TAKE_PROFIT if held > 15min (momentum fading). HOLD if held < 10min (still early)
+- profit +0.1% to +0.3%: HOLD if held < 15min. CLOSE if held > 20min and not growing (stale)
 - profit < +0.1% after 15min: CLOSE (not reacting to the news)
-- profit +0.1% to +1%: HOLD (still building, too early to exit)
-- profit +1% to +2%: HOLD for HIGH, TAKE_PROFIT for MEDIUM only if held > 30min and momentum fading
-- profit > +2%: TAKE_PROFIT for MEDIUM, HOLD for HIGH (let trail catch it)
-- profit > +3%: TAKE_PROFIT (exceptional move, lock it in)
-- loss 0 to -0.3% and held < 15min: HOLD (give it time)
-- loss 0 to -0.3% and held > 15min: CLOSE (dead trade)
-- loss > -0.3%: HOLD (SL on exchange protects us at -2%)
+- loss 0 to -0.2% and held < 10min: HOLD (give it time)
+- loss 0 to -0.2% and held > 15min: CLOSE (dead trade)
+- loss > -0.2%: CLOSE (cut the loser, don't wait for SL)
 
-DEFAULT IS HOLD. Only CLOSE dead trades and TAKE_PROFIT on large moves.
+IMPORTANT: Most news events peak at 0.5-0.9% then REVERSE. Do NOT hold waiting for 2%+ - that rarely happens. Take profit at 0.5%+ before the reversal wipes it out.
 
 Respond with ONLY valid JSON, no markdown:
 {${positions.map(p => `"${p.pair}": "DECISION"`).join(", ")}}`;
