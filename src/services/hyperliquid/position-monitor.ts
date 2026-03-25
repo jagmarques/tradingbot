@@ -333,9 +333,16 @@ async function checkPositionStops(): Promise<void> {
             finalDecision = "CLOSE"; // can't take profit on a loss
             console.log(`[PositionMonitor] Override: TAKE_PROFIT -> CLOSE (position is ${(pricePct * 100).toFixed(2)}% = loss)`);
           }
-          if (decision === "HOLD" && pricePct < -0.003 && holdMs > 10 * 60 * 1000) {
-            finalDecision = "CLOSE"; // holding a loser for 10min+, cut it
+          if (decision === "HOLD" && pricePct < -0.003 && holdMs > 15 * 60 * 1000) {
+            finalDecision = "CLOSE"; // holding a loser for 15min+, cut it
             console.log(`[PositionMonitor] Override: HOLD -> CLOSE (${(pricePct * 100).toFixed(2)}% loss after ${Math.round(holdMs/60000)}min)`);
+          }
+          // Never take profit below trail activation - let the trail do its job
+          const posImpact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "medium";
+          const minTakeProfit = posImpact === "high" ? 0.02 : 0.01; // HIGH: 2%, MEDIUM: 1%
+          if (decision === "TAKE_PROFIT" && pricePct > 0 && pricePct < minTakeProfit) {
+            finalDecision = "HOLD"; // too early, let trail catch it
+            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> HOLD (${(pricePct * 100).toFixed(2)}% < ${(minTakeProfit * 100)}% min for ${posImpact})`);
           }
 
           if (finalDecision === "TAKE_PROFIT") {

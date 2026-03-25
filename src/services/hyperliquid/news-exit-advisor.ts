@@ -42,7 +42,7 @@ export async function getExitAdvice(
     .map(p => `${p.pair}: ${p.direction} ${p.pricePct > 0 ? "+" : ""}${(p.pricePct * 100).toFixed(2)}% (${p.holdMinutes}min)`)
     .join("\n");
 
-  const prompt = `You are a crypto trading exit advisor. A news event opened these positions.
+  const prompt = `You are a crypto trading exit advisor. A news event opened these positions. Your job is to let winners RUN and cut losers fast. We have trailing stops that will lock in profits automatically - do NOT take profit early.
 
 News: ${newsContent.slice(0, 200)}
 Impact level: ${impact}
@@ -51,28 +51,23 @@ Open positions (held for ~${positions[0]?.holdMinutes ?? 60} minutes):
 ${positionList}
 
 For each pair, decide ONE action:
-- HOLD: expect more movement, keep running
-- TAKE_PROFIT: lock in gains now
-- CLOSE: not moving or moving against us, cut it
+- HOLD: let it run, trailing stop will protect profits
+- TAKE_PROFIT: only if profit is VERY large and momentum is clearly fading
+- CLOSE: dead trade or moving against us
 
-Historical data: avg news event moves BTC 0.3-0.5% in 1h. Only 15% reach 1%+.
-68% of moves continue at 1h, 32% reverse.
+CRITICAL RULES - DO NOT take profit too early:
+- HIGH impact: NEVER take profit below +2%. These events can move 3-5%. Let the trailing stop (activates at 5%, trails at 2%) do its job.
+- MEDIUM impact: NEVER take profit below +1%. Trailing stop activates at 2%, trails at 1%.
+- profit < +0.1% after 15min: CLOSE (not reacting to the news)
+- profit +0.1% to +1%: HOLD (still building, too early to exit)
+- profit +1% to +2%: HOLD for HIGH, TAKE_PROFIT for MEDIUM only if held > 30min and momentum fading
+- profit > +2%: TAKE_PROFIT for MEDIUM, HOLD for HIGH (let trail catch it)
+- profit > +3%: TAKE_PROFIT (exceptional move, lock it in)
+- loss 0 to -0.3% and held < 15min: HOLD (give it time)
+- loss 0 to -0.3% and held > 15min: CLOSE (dead trade)
+- loss > -0.3%: HOLD (SL on exchange protects us at -2%)
 
-Per-pair BTC multipliers (how much each alt moves vs BTC):
-OP=3.4x, DOGE=2.6x, ADA=2.6x, ARB=2.5x, LDO=2.8x, TIA=3.0x, kBONK=3.2x
-APT=2.3x, ENA=2.5x, WLD=2.0x, DOT=2.2x, LINK=2.0x, NEAR=2.5x
-SOL=1.8x, XRP=1.5x, BNB=1.3x, TRUMP=2.8x, ONDO=2.3x, kSHIB=2.5x, HYPE=2.5x
-
-Adjust thresholds per pair. Example: OP at +0.3% is like BTC at +0.09% (still early). OP at +1% is like BTC at +0.3% (normal peak).
-
-Rules:
-- profit > 0.5%: TAKE_PROFIT for MEDIUM. For HIGH: HOLD if pair multiplier > 2x (expects bigger move)
-- profit 0.2-0.5%: TAKE_PROFIT if held > 20min. HOLD if held < 10min
-- profit < 0.1% after 10min: CLOSE (not reacting)
-- loss 0-0.3%: CLOSE (dead trade)
-- loss > 0.3%: HOLD (SL protects, 68% chance it continues in direction)
-- HIGH impact: be patient, HOLD longer especially on high-multiplier pairs (OP, TIA, kBONK)
-- Slow pairs (BNB=1.3x, XRP=1.5x): take profit faster, they move less
+DEFAULT IS HOLD. Only CLOSE dead trades and TAKE_PROFIT on large moves.
 
 Respond with ONLY valid JSON, no markdown:
 {${positions.map(p => `"${p.pair}": "DECISION"`).join(", ")}}`;
