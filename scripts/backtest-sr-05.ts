@@ -8,6 +8,7 @@
 
 import {
   runBacktest,
+  runWalkForward,
   loadCandles,
   formatMetricsDashboard,
   computeMetrics,
@@ -343,6 +344,22 @@ async function main() {
       }
     }
   }
+
+  // Rolling walk-forward validation using runWalkForward (best IS params)
+  console.log("\n[SR-05] Rolling walk-forward (best params, 30-day windows)...");
+  const allCandles = Object.values(candleMap).flat();
+  const wfResult = await runWalkForward(
+    allCandles,
+    [{ lookback: bestParams.lookback, volWindow: bestParams.volWindow, entryZ: bestParams.entryZ, maxHoldBars: bestParams.maxHoldBars }],
+    (params) => buildGenerator({
+      lookback: params.lookback, volWindow: params.volWindow,
+      entryZ: params.entryZ, maxHoldBars: params.maxHoldBars,
+    }),
+    { ...baseConfig, maxHoldBars: bestParams.maxHoldBars },
+    { warmupBars: 50 },
+  );
+  console.log(`  Rolling WF: ${wfResult.windows.length} windows, ${wfResult.aggregateOOSMetrics.totalTrades} OOS trades`);
+  console.log(`  Rolling OOS/IS ratio: ${wfResult.oosIsRatio.toFixed(3)}`);
 }
 
 main().catch((e) => {

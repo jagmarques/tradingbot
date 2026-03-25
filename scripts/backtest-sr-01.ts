@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   runBacktest,
+  runWalkForward,
   loadCandles,
   formatMetricsDashboard,
   computeMetrics,
@@ -342,7 +343,6 @@ async function main() {
 
   if (aggregateOOS.totalTrades < 100) {
     console.log("\n[WARN] OOS trade count < 100. Relaxing entryZ...");
-    // Try lower entryZ
     for (const lowZ of [1.5, 1.2, 1.0]) {
       const relaxed = { ...bestParams, entryZ: lowZ };
       const rg = buildGenerator(relaxed);
@@ -364,6 +364,22 @@ async function main() {
       }
     }
   }
+
+  // Rolling walk-forward validation using runWalkForward (best IS params)
+  console.log("\n[SR-01] Rolling walk-forward (best params, 30-day windows)...");
+  const allCandles = Object.values(candleMap).flat();
+  const wfResult = await runWalkForward(
+    allCandles,
+    [{ lookback: bestParams.lookback, entryZ: bestParams.entryZ, stopZ: bestParams.stopZ, adfRequired: bestParams.adfRequired }],
+    (params) => buildGenerator({
+      lookback: params.lookback, entryZ: params.entryZ,
+      stopZ: params.stopZ, adfRequired: params.adfRequired,
+    }),
+    { ...baseConfig, maxHoldBars: 24 },
+    { warmupBars: 100 },
+  );
+  console.log(`  Rolling WF: ${wfResult.windows.length} windows, ${wfResult.aggregateOOSMetrics.totalTrades} OOS trades`);
+  console.log(`  Rolling OOS/IS ratio: ${wfResult.oosIsRatio.toFixed(3)}`);
 }
 
 main().catch((e) => {
