@@ -155,26 +155,6 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS insider_copy_trades (
-      id TEXT PRIMARY KEY,
-      wallet_address TEXT,
-      token_address TEXT,
-      token_symbol TEXT,
-      chain TEXT DEFAULT 'ethereum',
-      side TEXT,
-      amount REAL,
-      amount_usd REAL DEFAULT 0,
-      price REAL,
-      pnl REAL DEFAULT 0,
-      pnl_pct REAL DEFAULT 0,
-      insider_count INTEGER DEFAULT 1,
-      status TEXT DEFAULT 'open',
-      exit_reason TEXT,
-      close_timestamp INTEGER DEFAULT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)
@@ -288,11 +268,16 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added backtest columns");
   }
 
-  // Fix insider tables: drop old schema and let initInsiderTables recreate with correct columns
+  // Fix insider tables: drop old schemas and let initInsiderTables recreate with correct columns
   const iwCols = (db.pragma("table_info(insider_wallets)") as Array<{ name: string }>).map(c => c.name);
   if (iwCols.length > 0 && !iwCols.includes("gems")) {
     db.exec(`DROP TABLE IF EXISTS insider_wallets`);
-    console.log("[Database] Dropped old insider_wallets (missing gems column, will be recreated)");
+    console.log("[Database] Dropped old insider_wallets (missing gems column)");
+  }
+  const ictCols = (db.pragma("table_info(insider_copy_trades)") as Array<{ name: string }>).map(c => c.name);
+  if (ictCols.length > 0 && !ictCols.includes("buy_price_usd")) {
+    db.exec(`DROP TABLE IF EXISTS insider_copy_trades`);
+    console.log("[Database] Dropped old insider_copy_trades (wrong schema)");
   }
   const gemCols = db.prepare("PRAGMA table_info(insider_gem_hits)").all() as Array<{ name: string }>;
   if (gemCols.length > 0 && !gemCols.map(c => c.name).includes("wallet_address")) {
