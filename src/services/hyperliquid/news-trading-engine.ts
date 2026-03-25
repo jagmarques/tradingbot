@@ -1,6 +1,5 @@
 // News-driven trading engine: opens positions in the direction of AI-classified news events
 // Uses trump-guard's news classification as signal, BTC EMA trend as filter
-import { EMA } from "technicalindicators";
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { saveQuantPosition } from "../database/quant.js";
@@ -15,27 +14,18 @@ const LEVERAGE = 10;
 // Position sizing: equity split across active pairs
 const MIN_POSITION_USD = 10;
 const MAX_POSITION_USD = 500; // liquidity cap
-const MAX_PAIRS_HIGH = 20; // HIGH = high confidence, go wide
-const MAX_PAIRS_MEDIUM = 5; // MEDIUM = less sure, top 5 only
+const MAX_PAIRS = 20;
 
-// Impact-based SL/TP/trail config (price percentages)
+// SL/TP/trail config (HIGH only)
 const IMPACT_CONFIG = {
   high:   { sl: 0.02, tp: 0, trailAct: 0.05, trailDist: 0.02 },   // 5%/2% trail
-  medium: { sl: 0.02, tp: 0, trailAct: 0.02, trailDist: 0.01 },   // 2%/1% trail
-  low:    { sl: 0.02, tp: 0, trailAct: 0.01, trailDist: 0.005 },   // 1%/0.5% trail
 };
 
 // Ordered by historical profitability + WR (best first, worst last)
-// With limited margin, first pairs get opened first
 const NEWS_TRADING_PAIRS = [
   "DOT", "TIA", "LDO", "kBONK", "WLD", "ARB", "ONDO", "ADA", "LINK", "DOGE",
   "XRP", "NEAR", "kSHIB", "SOL", "HYPE", "APT", "OP", "TRUMP", "ENA", "BNB",
 ];
-// Both HIGH and MEDIUM trade all 20 pairs (LOW is already filtered out)
-const PAIRS_BY_IMPACT: Record<string, string[]> = {
-  high: NEWS_TRADING_PAIRS,
-  medium: NEWS_TRADING_PAIRS,
-};
 
 // Track last processed event timestamp to avoid re-trading same event
 let lastProcessedEventTs = 0;
@@ -54,39 +44,9 @@ export async function runNewsTradingCycle(): Promise<number> {
   // Mark as processed immediately to avoid double-trading
   lastProcessedEventTs = event.ts;
 
-  const impact = event.impact ?? "medium";
-  const cfg = IMPACT_CONFIG[impact];
+  const impact = event.impact ?? "high";
+  const cfg = IMPACT_CONFIG.high;
   console.log(`[News-Trade] New event: ${event.direction} [${impact}] - ${event.content.slice(0, 60)}`);
-
-  // BTC EMA9/21 trend filter
-  const btcCandles = await fetchCandles("BTC", "1h", 30);
-  if (btcCandles.length < 21) {
-    console.log("[News-Trade] Insufficient BTC candles for trend filter, skipping");
-    return 0;
-  }
-  const btcCloses = btcCandles.map(c => c.close);
-  const btcPrice = btcCandles[btcCandles.length - 1].close;
-  const ema9Vals = EMA.calculate({ period: 9, values: btcCloses });
-  const ema21Vals = EMA.calculate({ period: 21, values: btcCloses });
-  if (ema9Vals.length === 0 || ema21Vals.length === 0) {
-    console.log("[News-Trade] EMA calculation failed, skipping");
-    return 0;
-  }
-  const ema9 = ema9Vals[ema9Vals.length - 1];
-  const ema21 = ema21Vals[ema21Vals.length - 1];
-  const btcUptrend = ema9 > ema21;
-
-  // Trend filter: HIGH impact overrides (trade even against trend)
-  if (impact !== "high") {
-    if (event.direction === "long" && !btcUptrend) {
-      console.log("[News-Trade] Trend filter: EMA9 < EMA21, skipping long (not high impact)");
-      return 0;
-    }
-    if (event.direction === "short" && btcUptrend) {
-      console.log("[News-Trade] Trend filter: EMA9 > EMA21, skipping short (not high impact)");
-      return 0;
-    }
-  }
 
   // Only trade HIGH impact BREAKING news (MEDIUM loses money historically)
   if (impact !== "high") {
@@ -97,6 +57,14 @@ export async function runNewsTradingCycle(): Promise<number> {
     console.log(`[News-Trade] Skipping opinion piece (${impact} impact)`);
     return 0;
   }
+
+  // Get BTC price for indicators
+  const btcCandles = await fetchCandles("BTC", "1h", 30);
+  if (btcCandles.length === 0) {
+    console.log("[News-Trade] No BTC candles, skipping");
+    return 0;
+  }
+  const btcPrice = btcCandles[btcCandles.length - 1].close;
 
   const direction = event.direction;
 
@@ -124,16 +92,6 @@ export async function runNewsTradingCycle(): Promise<number> {
     return 0;
   }
 
-  // BTC price confirmation: check if BTC moved 0.1%+ in predicted direction
-  const btcNow = btcCandles[btcCandles.length - 1].close;
-  const btc5minAgo = btcCandles.length >= 2 ? btcCandles[btcCandles.length - 2].close : btcNow;
-  const btcMovePct = (btcNow - btc5minAgo) / btc5minAgo;
-  const btcConfirms = direction === "long" ? btcMovePct > 0.001 : btcMovePct < -0.001;
-  if (!btcConfirms && impact !== "high") {
-    console.log(`[News-Trade] BTC not confirming ${direction} (${(btcMovePct * 100).toFixed(3)}%), skipping MEDIUM`);
-    return 0;
-  }
-
   // Fetch live equity for compound sizing
   let equity = 200; // fallback
   try {
@@ -146,14 +104,11 @@ export async function runNewsTradingCycle(): Promise<number> {
     if (usdcBal) equity = parseFloat(usdcBal.total);
   } catch { /* use fallback */ }
 
-  // HIGH: 80% equity across up to 20 pairs. MEDIUM: 50% equity across top 5.
-  const pairs = PAIRS_BY_IMPACT[impact] ?? NEWS_TRADING_PAIRS;
-  const maxPairsCap = impact === "high" ? MAX_PAIRS_HIGH : MAX_PAIRS_MEDIUM;
-  const equityPct = impact === "high" ? 0.80 : 0.50;
-  const affordablePairs = Math.max(1, Math.floor(equity * equityPct / MIN_POSITION_USD));
-  const maxPairs = Math.min(affordablePairs, maxPairsCap);
-  const activePairs = pairs.slice(0, maxPairs);
-  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(equity * equityPct / activePairs.length)));
+  // 80% of equity split across up to 20 pairs
+  const affordablePairs = Math.max(1, Math.floor(equity * 0.80 / MIN_POSITION_USD));
+  const maxPairs = Math.min(affordablePairs, MAX_PAIRS);
+  const activePairs = NEWS_TRADING_PAIRS.slice(0, maxPairs);
+  const compoundSize = Math.min(MAX_POSITION_USD, Math.max(MIN_POSITION_USD, Math.floor(equity * 0.80 / activePairs.length)));
 
   console.log(`[News-Trade] Size: $${compoundSize} x ${activePairs.length} pairs (equity=$${equity.toFixed(0)}, ${impact})`);
 
