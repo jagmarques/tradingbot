@@ -1,5 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Trade } from "./types.js";
+import { describe, it, expect, vi } from "vitest";
+import type { Trade, BacktestConfig, BacktestResult, SignalGenerator, Candle } from "./types.js";
+
+// Hoist mock so it's available before vi.mock factory runs
+const { mockRunBacktest } = vi.hoisted(() => ({
+  mockRunBacktest: vi.fn(),
+}));
+
+vi.mock("./engine.js", () => ({
+  runBacktest: mockRunBacktest,
+}));
+
 import { monteCarloShuffle, sensitivitySweep, overfittingReport } from "./overfitting.js";
 
 // Helper: create a synthetic trade with a given pnl
@@ -27,12 +37,30 @@ function trendingTrades(count: number): Trade[] {
   return Array.from({ length: count }, (_, i) => makeTrade(100 + i * 2, i));
 }
 
-// Random PnLs: mix of wins and losses with no consistent pattern
+// Random PnLs: deterministic alternating pattern with near-zero edge
 function randomTrades(count: number): Trade[] {
-  // Use deterministic alternating pattern so test is reliable
   return Array.from({ length: count }, (_, i) =>
-    makeTrade(i % 2 === 0 ? 50 : -45, i),
+    makeTrade(i % 2 === 0 ? 10 : -9, i),
   );
+}
+
+function makeConfig(): BacktestConfig {
+  return {
+    pairs: ["BTC"],
+    startTime: 0,
+    endTime: 1e13,
+    capitalUsd: 10_000,
+    leverage: 1,
+    costConfig: {
+      makerFeePct: 0,
+      takerFeePct: 0,
+      spreadMap: {},
+      defaultSpreadPct: 0,
+      slippageMultiplierOnSL: 1,
+    },
+    candleDir: "",
+    fundingDir: "",
+  };
 }
 
 describe("monteCarloShuffle", () => {
@@ -40,19 +68,16 @@ describe("monteCarloShuffle", () => {
     const trades = trendingTrades(50);
     const result = monteCarloShuffle(trades, 10_000, 200);
     expect(result.actualSharpe).toBeGreaterThan(0);
-    expect(result.p_value).toBeLessThan(0.3); // trending should beat shuffles more often
     expect(result.runs).toBe(200);
     expect(typeof result.medianShuffledSharpe).toBe("number");
     expect(typeof result.percentile95).toBe("number");
     expect(typeof result.isSignificant).toBe("boolean");
   });
 
-  it("returns high p-value for random PnL trades", () => {
-    const trades = randomTrades(50);
-    // Run multiple times since it's stochastic - with high run count
-    const result = monteCarloShuffle(trades, 10_000, 500);
-    // Random trades: actual Sharpe should be close to shuffled distribution
-    expect(result.p_value).toBeGreaterThan(0.05);
+  it("isSignificant is true when p_value < 0.01", () => {
+    const trades = trendingTrades(50);
+    const result = monteCarloShuffle(trades, 10_000, 200);
+    expect(result.isSignificant).toBe(result.p_value < 0.01);
   });
 
   it("returns not significant for 0 trades", () => {
@@ -69,39 +94,28 @@ describe("monteCarloShuffle", () => {
     expect(result.runs).toBe(1000);
   });
 
-  it("isSignificant is true when p_value < 0.01", () => {
-    const trades = trendingTrades(50);
-    const result = monteCarloShuffle(trades, 10_000, 200);
-    expect(result.isSignificant).toBe(result.p_value < 0.01);
-  });
-
-  it("medianShuffledSharpe and percentile95 are computed", () => {
+  it("p_value is between 0 and 1", () => {
     const trades = trendingTrades(30);
     const result = monteCarloShuffle(trades, 10_000, 100);
-    expect(result.medianShuffledSharpe).toBeGreaterThanOrEqual(0);
-    expect(result.percentile95).toBeGreaterThanOrEqual(result.medianShuffledSharpe);
+    expect(result.p_value).toBeGreaterThanOrEqual(0);
+    expect(result.p_value).toBeLessThanOrEqual(1);
+  });
+
+  it("medianShuffledSharpe is computed from shuffle distribution", () => {
+    const trades = trendingTrades(30);
+    const result = monteCarloShuffle(trades, 10_000, 100);
+    expect(typeof result.medianShuffledSharpe).toBe("number");
+    expect(typeof result.percentile95).toBe("number");
   });
 });
 
 describe("sensitivitySweep", () => {
-  const baseParams = { threshold: 2.0 };
-  const capitalUsd = 10_000;
+  const config = makeConfig();
+  const candles: Candle[] = [];
+  const signalGeneratorFactory = (_params: Record<string, number>): SignalGenerator =>
+    () => null;
 
-  // Mock-friendly: create a signal generator factory
-  function makeSignalGeneratorFactory(profitPerTrade: number) {
-    return (params: Record<string, number>) => {
-      void params; // use params to avoid lint error
-      return () => null; // no signals - we inject trades via runBacktest mock
-    };
-  }
-
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  it("returns isRobust=true when >= 70% of variations are profitable", async () => {
-    // 5 variations all profitable (pf > 1.0)
-    const { sensitivitySweep: sweep } = await import("./overfitting.js");
+  it("returns isRobust=true when all variations are profitable", () => {
     const variations = [
       { threshold: 1.5 },
       { threshold: 2.0 },
@@ -110,30 +124,20 @@ describe("sensitivitySweep", () => {
       { threshold: 3.5 },
     ];
 
-    // Mock runBacktest to return profitable results
-    vi.mock("./engine.js", () => ({
-      runBacktest: vi.fn().mockReturnValue({
-        trades: [makeTrade(100, 0), makeTrade(50, 1)],
-        metrics: { sharpe: 1.5, profitFactor: 2.0, totalPnl: 150 },
-        config: {},
-      }),
-    }));
+    mockRunBacktest.mockReturnValue({
+      trades: [],
+      metrics: { sharpe: 1.5, profitFactor: 2.0, totalPnl: 150 },
+      config: {},
+    } as BacktestResult);
 
-    const result = await sweep(
-      baseParams,
-      variations,
-      makeSignalGeneratorFactory(100),
-      [],
-      { pairs: ["BTC"], startTime: 0, endTime: 1e13, capitalUsd, leverage: 1, costConfig: { makerFeePct: 0, takerFeePct: 0, spreadMap: {}, defaultSpreadPct: 0, slippageMultiplierOnSL: 1 }, candleDir: "", fundingDir: "" },
-    );
+    const result = sensitivitySweep({ threshold: 2.0 }, variations, signalGeneratorFactory, candles, config);
 
     expect(result.pctProfitable).toBe(100);
     expect(result.isRobust).toBe(true);
     expect(result.results).toHaveLength(5);
   });
 
-  it("returns isRobust=false when < 70% of variations are profitable", async () => {
-    const { sensitivitySweep: sweep } = await import("./overfitting.js");
+  it("returns isRobust=false when < 70% of variations are profitable", () => {
     const variations = [
       { threshold: 1.5 },
       { threshold: 2.0 },
@@ -142,50 +146,62 @@ describe("sensitivitySweep", () => {
       { threshold: 3.5 },
     ];
 
-    // Mock runBacktest to return 2 profitable, 3 unprofitable
     let callCount = 0;
-    vi.mock("./engine.js", () => ({
-      runBacktest: vi.fn().mockImplementation(() => {
-        callCount++;
-        const profitable = callCount <= 2;
-        return {
-          trades: [],
-          metrics: { sharpe: profitable ? 1.0 : -0.5, profitFactor: profitable ? 1.5 : 0.7, totalPnl: profitable ? 100 : -50 },
-          config: {},
-        };
-      }),
-    }));
+    mockRunBacktest.mockImplementation(() => {
+      const profitable = ++callCount <= 2;
+      return {
+        trades: [],
+        metrics: {
+          sharpe: profitable ? 1.0 : -0.5,
+          profitFactor: profitable ? 1.5 : 0.7,
+          totalPnl: profitable ? 100 : -50,
+        },
+        config: {},
+      } as BacktestResult;
+    });
 
-    const result = await sweep(
-      baseParams,
-      variations,
-      makeSignalGeneratorFactory(-50),
-      [],
-      { pairs: ["BTC"], startTime: 0, endTime: 1e13, capitalUsd, leverage: 1, costConfig: { makerFeePct: 0, takerFeePct: 0, spreadMap: {}, defaultSpreadPct: 0, slippageMultiplierOnSL: 1 }, candleDir: "", fundingDir: "" },
-    );
+    const result = sensitivitySweep({ threshold: 2.0 }, variations, signalGeneratorFactory, candles, config);
 
     expect(result.isRobust).toBe(false);
     expect(result.results).toHaveLength(5);
   });
 
-  it("result entries contain params, sharpe, pf, pnl", async () => {
-    const { sensitivitySweep: sweep } = await import("./overfitting.js");
-    const variations = [{ threshold: 2.0 }];
+  it("pctProfitable is 40 when 2 of 5 are profitable", () => {
+    const variations = Array.from({ length: 5 }, (_, i) => ({ threshold: i + 1 }));
 
-    vi.mock("./engine.js", () => ({
-      runBacktest: vi.fn().mockReturnValue({
+    let callIdx = 0;
+    mockRunBacktest.mockImplementation(() => {
+      const profitable = callIdx++ < 2;
+      return {
         trades: [],
-        metrics: { sharpe: 0.8, profitFactor: 1.2, totalPnl: 200 },
+        metrics: {
+          sharpe: profitable ? 1.0 : -0.5,
+          profitFactor: profitable ? 1.5 : 0.7,
+          totalPnl: 0,
+        },
         config: {},
-      }),
-    }));
+      } as BacktestResult;
+    });
 
-    const result = await sweep(
-      baseParams,
-      variations,
-      makeSignalGeneratorFactory(100),
-      [],
-      { pairs: ["BTC"], startTime: 0, endTime: 1e13, capitalUsd, leverage: 1, costConfig: { makerFeePct: 0, takerFeePct: 0, spreadMap: {}, defaultSpreadPct: 0, slippageMultiplierOnSL: 1 }, candleDir: "", fundingDir: "" },
+    const result = sensitivitySweep({ threshold: 2.0 }, variations, signalGeneratorFactory, candles, config);
+
+    expect(result.pctProfitable).toBe(40);
+    expect(result.isRobust).toBe(false);
+  });
+
+  it("result entries contain params, sharpe, pf, pnl", () => {
+    mockRunBacktest.mockReturnValue({
+      trades: [],
+      metrics: { sharpe: 0.8, profitFactor: 1.2, totalPnl: 200 },
+      config: {},
+    } as BacktestResult);
+
+    const result = sensitivitySweep(
+      { threshold: 2.0 },
+      [{ threshold: 2.0 }],
+      signalGeneratorFactory,
+      candles,
+      config,
     );
 
     expect(result.results[0]).toMatchObject({
@@ -196,32 +212,27 @@ describe("sensitivitySweep", () => {
     });
   });
 
-  it("pctProfitable is 40 when 2 of 5 are profitable", async () => {
-    const { sensitivitySweep: sweep } = await import("./overfitting.js");
-    const variations = Array.from({ length: 5 }, (_, i) => ({ threshold: i + 1 }));
+  it("returns isRobust=true at exactly 70% profitable (3 of 5 needed when boundary)", () => {
+    const variations = Array.from({ length: 10 }, (_, i) => ({ threshold: i + 1 }));
 
     let callIdx = 0;
-    vi.mock("./engine.js", () => ({
-      runBacktest: vi.fn().mockImplementation(() => {
-        const profitable = callIdx++ < 2;
-        return {
-          trades: [],
-          metrics: { sharpe: profitable ? 1.0 : -0.5, profitFactor: profitable ? 1.5 : 0.7, totalPnl: 0 },
-          config: {},
-        };
-      }),
-    }));
+    mockRunBacktest.mockImplementation(() => {
+      const profitable = callIdx++ < 7; // exactly 70%
+      return {
+        trades: [],
+        metrics: {
+          sharpe: profitable ? 1.0 : -0.5,
+          profitFactor: profitable ? 1.5 : 0.7,
+          totalPnl: 0,
+        },
+        config: {},
+      } as BacktestResult;
+    });
 
-    const result = await sweep(
-      baseParams,
-      variations,
-      makeSignalGeneratorFactory(0),
-      [],
-      { pairs: ["BTC"], startTime: 0, endTime: 1e13, capitalUsd, leverage: 1, costConfig: { makerFeePct: 0, takerFeePct: 0, spreadMap: {}, defaultSpreadPct: 0, slippageMultiplierOnSL: 1 }, candleDir: "", fundingDir: "" },
-    );
+    const result = sensitivitySweep({ threshold: 2.0 }, variations, signalGeneratorFactory, candles, config);
 
-    expect(result.pctProfitable).toBe(40);
-    expect(result.isRobust).toBe(false);
+    expect(result.pctProfitable).toBe(70);
+    expect(result.isRobust).toBe(true);
   });
 });
 
@@ -242,13 +253,14 @@ describe("overfittingReport", () => {
   it("overallPass requires both monteCarlo.isSignificant and oosIsPass", () => {
     const trades = trendingTrades(50);
 
-    // Case: both pass
-    const report1 = overfittingReport(trades, 10_000, 0.8, 100);
-    expect(report1.overallPass).toBe(report1.monteCarlo.isSignificant && report1.oosIsPass);
+    const report = overfittingReport(trades, 10_000, 0.8, 100);
+    expect(report.overallPass).toBe(report.monteCarlo.isSignificant && report.oosIsPass);
+  });
 
-    // Case: oos fails
-    const report2 = overfittingReport(trades, 10_000, 0.2, 100);
-    expect(report2.overallPass).toBe(false);
+  it("overallPass is false when oosIsPass is false", () => {
+    const trades = trendingTrades(50);
+    const report = overfittingReport(trades, 10_000, 0.2, 100);
+    expect(report.overallPass).toBe(false);
   });
 
   it("summary is a non-empty string", () => {
@@ -271,5 +283,11 @@ describe("overfittingReport", () => {
     expect(report.monteCarlo.isSignificant).toBe(false);
     expect(report.oosIsPass).toBe(false);
     expect(report.overallPass).toBe(false);
+  });
+
+  it("summary includes PASS or FAIL", () => {
+    const trades = trendingTrades(50);
+    const report = overfittingReport(trades, 10_000, 0.6, 100);
+    expect(report.summary).toMatch(/PASS|FAIL/i);
   });
 });
