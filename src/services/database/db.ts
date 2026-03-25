@@ -155,13 +155,6 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS insider_wallets (
-      address TEXT PRIMARY KEY,
-      chain TEXT NOT NULL DEFAULT 'ethereum',
-      label TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
     CREATE TABLE IF NOT EXISTS insider_copy_trades (
       id TEXT PRIMARY KEY,
       wallet_address TEXT,
@@ -178,35 +171,6 @@ export function initDb(dbPath?: string): Database.Database {
       status TEXT DEFAULT 'open',
       exit_reason TEXT,
       close_timestamp INTEGER DEFAULT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS insider_gem_hits (
-      id TEXT PRIMARY KEY,
-      token_address TEXT,
-      chain TEXT DEFAULT 'ethereum',
-      score REAL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS insider_gem_analyses (
-      id TEXT PRIMARY KEY,
-      token_address TEXT,
-      chain TEXT DEFAULT 'ethereum',
-      analysis TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS insider_gem_paper_trades (
-      id TEXT PRIMARY KEY,
-      token_address TEXT,
-      chain TEXT DEFAULT 'ethereum',
-      side TEXT,
-      amount REAL,
-      price REAL,
-      pnl REAL DEFAULT 0,
-      status TEXT DEFAULT 'open',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -324,21 +288,19 @@ export function initDb(dbPath?: string): Database.Database {
     console.log("[Database] Migrated quant_trades: added backtest columns");
   }
 
-  // Migration: Add score column to insider_wallets
-  const iwCols = db.prepare("PRAGMA table_info(insider_wallets)").all() as Array<{ name: string }>;
-  if (!iwCols.map(c => c.name).includes("score")) {
-    db.exec(`ALTER TABLE insider_wallets ADD COLUMN score REAL DEFAULT 0`);
-    db.exec(`ALTER TABLE insider_wallets ADD COLUMN gem_hit_count INTEGER DEFAULT 0`);
-    console.log("[Database] Migrated insider_wallets: added score, gem_hit_count");
-  }
-
   // Fix insider tables: drop old schema and let initInsiderTables recreate with correct columns
+  const iwCols = (db.pragma("table_info(insider_wallets)") as Array<{ name: string }>).map(c => c.name);
+  if (iwCols.length > 0 && !iwCols.includes("gems")) {
+    db.exec(`DROP TABLE IF EXISTS insider_wallets`);
+    console.log("[Database] Dropped old insider_wallets (missing gems column, will be recreated)");
+  }
   const gemCols = db.prepare("PRAGMA table_info(insider_gem_hits)").all() as Array<{ name: string }>;
   if (gemCols.length > 0 && !gemCols.map(c => c.name).includes("wallet_address")) {
     db.exec(`DROP TABLE IF EXISTS insider_gem_hits`);
     db.exec(`DROP TABLE IF EXISTS insider_gem_analyses`);
     db.exec(`DROP TABLE IF EXISTS insider_gem_paper_trades`);
     db.exec(`DROP TABLE IF EXISTS insider_copy_trades`);
+    db.exec(`DROP TABLE IF EXISTS insider_wallets`);
     console.log("[Database] Dropped old insider tables (will be recreated with correct schema)");
   }
 
