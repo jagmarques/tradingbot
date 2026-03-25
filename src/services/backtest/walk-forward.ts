@@ -149,10 +149,8 @@ export async function runWalkForward(
   for (let wi = 0; wi < rollingWindows.length; wi++) {
     const window = rollingWindows[wi];
 
-    // Filter candles to train period
-    const trainCandles = sortedCandles.filter(
-      (c) => c.t >= window.trainStart && c.t < window.trainEnd,
-    );
+    // Filter candles to train period using binary search for performance
+    const trainCandles = sliceByTime(sortedCandles, window.trainStart, window.trainEnd);
 
     // Sweep params on train window
     let bestParams: Record<string, number> = paramGrid[0];
@@ -190,10 +188,8 @@ export async function runWalkForward(
       bestTrainSharpe = 0;
     }
 
-    // Evaluate best params on validate window
-    const validateCandles = sortedCandles.filter(
-      (c) => c.t >= window.validateStart && c.t < window.validateEnd,
-    );
+    // Evaluate best params on validate window using binary search
+    const validateCandles = sliceByTime(sortedCandles, window.validateStart, window.validateEnd);
 
     let validateSharpe = 0;
     let validateTrades: Trade[] = [];
@@ -253,6 +249,38 @@ export async function runWalkForward(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Efficiently slice a sorted candles array by timestamp range using binary search.
+ * O(log n + k) where k is the number of matching candles.
+ * Assumes candles is sorted ascending by t.
+ */
+function sliceByTime(candles: Candle[], startMs: number, endMs: number): Candle[] {
+  const n = candles.length;
+  if (n === 0) return [];
+
+  // Binary search for first index >= startMs
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].t < startMs) lo = mid + 1;
+    else hi = mid;
+  }
+  const firstIdx = lo;
+
+  // Binary search for first index >= endMs
+  lo = firstIdx;
+  hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].t < endMs) lo = mid + 1;
+    else hi = mid;
+  }
+  const lastIdx = lo;
+
+  return candles.slice(firstIdx, lastIdx);
+}
 
 /** Build a candles map for a single pair (the engine expects Record<string, Candle[]>). */
 function buildCandleMap(pairs: string[], candles: Candle[]): Record<string, Candle[]> {
