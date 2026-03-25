@@ -128,12 +128,37 @@ function checkDailyDrawdown(strategy: string, mode: "live" | "paper" = "live", l
 }
 
 
-function checkRegimeAllowed(regime: MarketRegime): {
+const MR_STRATEGIES = new Set(["btc-mr"]);
+const REGIME_EXEMPT_STRATEGIES = new Set(["news-trade", "funding"]);
+
+function checkConcurrentPositions(count: number, max: number): {
+  allowed: boolean;
+  reason: string;
+} {
+  if (count >= max) {
+    return {
+      allowed: false,
+      reason: `Concurrent position limit reached: ${count}/${max}`,
+    };
+  }
+  return { allowed: true, reason: "" };
+}
+
+function checkRegimeForStrategy(regime: MarketRegime, strategy: string): {
   allowed: boolean;
   reason: string;
 } {
   if (regime === "volatile") {
     return { allowed: false, reason: "Volatile regime - no new positions" };
+  }
+  if (REGIME_EXEMPT_STRATEGIES.has(strategy)) {
+    return { allowed: true, reason: "" };
+  }
+  if (regime === "trending" && MR_STRATEGIES.has(strategy)) {
+    return {
+      allowed: false,
+      reason: `Trending regime - ${strategy} sits out (MR only in ranging)`,
+    };
   }
   return { allowed: true, reason: "" };
 }
@@ -147,8 +172,10 @@ export function validateRiskGates(params: {
   strategy: string;
   mode?: "live" | "paper";
   dailyLossLimit?: number;
+  openPositionCount?: number;
+  maxConcurrentPositions?: number;
 }): { allowed: boolean; reason: string } {
-  const { leverage, stopLoss, regime, strategy, mode = "live", dailyLossLimit } = params;
+  const { leverage, stopLoss, regime, strategy, mode = "live", dailyLossLimit, openPositionCount, maxConcurrentPositions } = params;
 
   // 1. Kill switch
   if (isQuantKilled()) {
@@ -157,8 +184,17 @@ export function validateRiskGates(params: {
     return result;
   }
 
-  // 2. Regime check
-  const regimeCheck = checkRegimeAllowed(regime);
+  // 1.5. Concurrent positions check (only when caller provides count)
+  if (openPositionCount !== undefined) {
+    const concurrentCheck = checkConcurrentPositions(openPositionCount, maxConcurrentPositions ?? 5);
+    if (!concurrentCheck.allowed) {
+      console.log(`[RiskManager] Gate check: BLOCKED ${concurrentCheck.reason}`);
+      return concurrentCheck;
+    }
+  }
+
+  // 2. Regime check (strategy-aware)
+  const regimeCheck = checkRegimeForStrategy(regime, strategy);
   if (!regimeCheck.allowed) {
     console.log(`[RiskManager] Gate check: BLOCKED ${regimeCheck.reason}`);
     return regimeCheck;
