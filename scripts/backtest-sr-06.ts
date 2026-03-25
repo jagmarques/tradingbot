@@ -8,10 +8,13 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { ADX } from "technicalindicators";
 import { runWalkForward, formatMetricsDashboard } from "../src/services/backtest/index.js";
 import { computeMetrics } from "../src/services/backtest/metrics.js";
 import { DEFAULT_COST_CONFIG } from "../src/services/backtest/costs.js";
 import type { Candle, Signal, SignalGenerator, Trade } from "../src/services/backtest/types.js";
+
+const ADX_TREND_THRESHOLD = 25;
 
 const CANDLE_DIR = "/tmp/bt-pair-cache";
 const FUNDING_DIR = "/tmp/bt-funding-cache";
@@ -60,10 +63,35 @@ interface SR06Params {
   maxHoldBars: number;
 }
 
-function makeSR06Generator(params: SR06Params): SignalGenerator {
+// Precompute ADX(14) for the full candle array.
+// Returns a Map<timestamp, adxValue> keyed by the timestamp of candles[i].
+// adxMap.get(t) = ADX value at candle with timestamp t, using all candles up to and including t.
+// Lookup in generator uses candles[barIndex-1].t to be index-independent (engine slices arrays).
+function precomputeADX(candles: Candle[], period: number = 14): Map<number, number> {
+  const adxMap = new Map<number, number>();
+  const raw = ADX.calculate({
+    high: candles.map((c) => c.h),
+    low: candles.map((c) => c.l),
+    close: candles.map((c) => c.c),
+    period,
+  });
+  // ADX.calculate: first output corresponds to candle at index (2*period - 1)
+  const offset = candles.length - raw.length;
+  for (let i = 0; i < raw.length; i++) {
+    adxMap.set(candles[offset + i].t, raw[i].adx);
+  }
+  return adxMap;
+}
+
+function makeSR06Generator(params: SR06Params, adxMap: Map<number, number>): SignalGenerator {
   return (candles: Candle[], barIndex: number, pair: string): Signal | null => {
     // Anti-look-ahead: only use candles[0..barIndex-1]
     if (barIndex < params.swingLookback + 16) return null;
+
+    // ADX regime gate: skip trending markets (ADX > 25 = trending, strategy needs ranging)
+    // Look up ADX at candles[barIndex-1].t - no look-ahead (uses confirmed closed bar)
+    const adxAtBar = adxMap.get(candles[barIndex - 1].t);
+    if (adxAtBar !== undefined && adxAtBar > ADX_TREND_THRESHOLD) return null;
 
     const bar = candles[barIndex - 1]; // last confirmed bar
 
@@ -159,6 +187,8 @@ async function main() {
 
   for (const pair of validPairs) {
     const candles = candleMap[pair];
+    // Precompute ADX once per pair - reused across all param combinations and walk-forward windows
+    const adxMap = precomputeADX(candles);
     const config = {
       pairs: [pair],
       capitalUsd: CAPITAL,
@@ -172,13 +202,16 @@ async function main() {
       candles,
       paramGrid,
       (params) =>
-        makeSR06Generator({
-          swingLookback: params.swingLookback,
-          wickRatio: params.wickRatio,
-          stopAtr: params.stopAtr,
-          tpRatio: params.tpRatio,
-          maxHoldBars: params.maxHoldBars,
-        }),
+        makeSR06Generator(
+          {
+            swingLookback: params.swingLookback,
+            wickRatio: params.wickRatio,
+            stopAtr: params.stopAtr,
+            tpRatio: params.tpRatio,
+            maxHoldBars: params.maxHoldBars,
+          },
+          adxMap,
+        ),
       config,
     );
 
