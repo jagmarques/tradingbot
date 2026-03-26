@@ -1414,7 +1414,11 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   let text = `<b>Quant</b> | ${mode} | Kill: ${killed ? "HALTED" : "OFF"}\n`;
   text += `${openPositions.length} open | Live ${$(liveLoss)} Paper ${$(paperLoss)} / $${QUANT_DAILY_DRAWDOWN_LIMIT} daily loss\n`;
-  text += `GARCH v2: LIVE | News-Trade: LIVE | BTC-Event: PAPER\n`;
+  const engineStatus = [...QUANT_HYBRID_LIVE_ENGINES].map(e => {
+    const label = e === "donchian-trend" ? "Donchian" : e === "supertrend-4h" ? "Supertrend" : e === "garch-v2" ? "GARCH-v2" : e;
+    return `${label}: LIVE`;
+  }).join(" | ");
+  text += `${engineStatus}\n`;
 
   let mids: Record<string, string> = {};
   let lighterMids: Record<string, string> = {};
@@ -1478,10 +1482,14 @@ async function handleQuant(ctx: Context): Promise<void> {
   const formatPosLine = (pos: typeof openPositions[0]): string => {
     const dir = pos.direction === "long" ? "L" : "S";
     const typeTag =
+      pos.tradeType === "donchian-trend" ? "[DT]" :
+      pos.tradeType === "supertrend-4h" ? "[ST]" :
+      pos.tradeType === "garch-v2" ? "[GV]" :
       pos.tradeType === "garch-chan" ? "[G2]" :
       pos.tradeType === "btc-mr" ? "[MR]" :
       pos.tradeType === "btc-event" ? "[BE]" :
       pos.tradeType === "news-trade" ? "[NT]" :
+      pos.tradeType === "trump-event" ? "[TE]" :
       "[??]";
     const exchTag = pos.exchange === "hyperliquid" ? "/HL" : pos.exchange === "lighter" ? "/LT" : "";
     let upnlStr = "";
@@ -1583,10 +1591,14 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
+    ["DT", "donchian-trend"],
+    ["ST", "supertrend-4h"],
+    ["GV", "garch-v2"],
     ["G2", "garch-chan"],
-    ["NT", "news-trade"],
-    ["BE", "btc-event"],
     ["MR", "btc-mr"],
+    ["BE", "btc-event"],
+    ["NT", "news-trade"],
+    ["TE", "trump-event"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");
