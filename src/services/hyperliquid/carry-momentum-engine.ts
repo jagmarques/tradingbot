@@ -63,6 +63,18 @@ async function fetchAllMids(): Promise<Record<string, number>> {
 export async function runCarryMomentumCycle(): Promise<void> {
   const now = Date.now();
 
+  // On restart (lastRebalanceTs=0), check if carry positions already exist
+  // If they do, skip rebalance to avoid churning positions opened before restart
+  if (lastRebalanceTs === 0) {
+    const existing = getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE);
+    if (existing.length > 0) {
+      const newestOpen = Math.max(...existing.map(p => new Date(p.openedAt).getTime()));
+      lastRebalanceTs = newestOpen; // Set timer to last position open time
+      console.log(`[CarryMomentum] Restart: found ${existing.length} existing positions, skip rebalance`);
+      return;
+    }
+  }
+
   // Only rebalance weekly
   if (now - lastRebalanceTs < REBALANCE_MS) return;
 
