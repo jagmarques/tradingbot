@@ -26,7 +26,7 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI"];
+export const QUANT_TRADING_PAIRS = ["OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI", "ETH", "TIA", "SOL"];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -62,9 +62,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "garch-v2": "hyperliquid",
 };
 
-// Ensemble engine sizing (Donchian-Trend + Supertrend-4h)
+// Ensemble engine sizing (Donchian-Trend + Supertrend-4h + GarchV2)
 export const ENSEMBLE_POSITION_SIZE_USD = 5;
-export const ENSEMBLE_MAX_CONCURRENT = 10;
+export const ENSEMBLE_MAX_CONCURRENT = 15;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Engines that go live in hybrid mode (rest stay paper)
