@@ -65,7 +65,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 
 // Ensemble engine sizing (Donchian-Trend + Supertrend-4h + GarchV2)
 export const ENSEMBLE_POSITION_SIZE_USD = 5;
-export const ENSEMBLE_MAX_CONCURRENT = 15;
+export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Engines that go live in hybrid mode (rest stay paper)

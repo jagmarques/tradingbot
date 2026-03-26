@@ -18,7 +18,7 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "donchian-trend": 60 * 24 * 60 * 60 * 1000, // 60d max hold
   "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
-  "garch-v2": 168 * 60 * 60 * 1000,            // 168h (7d) max hold
+  "garch-v2": 96 * 60 * 60 * 1000,             // 96h (4d) max hold - optimized from 168h
   "carry-momentum": 8 * 24 * 60 * 60 * 1000,   // 8d max hold (7d + 1d buffer)
   // Legacy engines (for existing DB positions until they close)
   "garch-chan": 48 * 60 * 60 * 1000,

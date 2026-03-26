@@ -1,17 +1,18 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "supertrend-4h" as const;
 const ST_PERIOD = 14;
-const ST_MULTIPLIER = 2;
+const ST_MULTIPLIER = 1.75;
 const ATR_SL_MULTIPLIER = 3;
 const BTC_EMA_FAST = 20;
 const BTC_EMA_SLOW = 50;
 const BAR_MS = 4 * 60 * 60 * 1000;
+const ST_POSITION_SIZE_USD = 3; // Reduced from $5 - high frequency engine, smaller per-trade
 
 let lastProcessedBarOpen = 0;
 
@@ -196,7 +197,7 @@ export async function runSupertrend4hCycle(): Promise<void> {
 
       // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
-        pair, direction, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
+        pair, direction, ST_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
         stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {

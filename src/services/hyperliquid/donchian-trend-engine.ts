@@ -6,8 +6,8 @@ import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "donchian-trend" as const;
-const SMA_FAST = 30;
-const SMA_SLOW = 60;
+const SMA_FAST = 20;
+const SMA_SLOW = 50;
 const DONCHIAN_EXIT_PERIOD = 15;
 const ATR_PERIOD = 14;
 const ATR_SL_MULTIPLIER = 3;

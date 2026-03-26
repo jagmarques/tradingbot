@@ -49,3 +49,4 @@ scripts/sweep-all.sh
 PROMPT.md
 LOGS.md
 data/
+.gstack/

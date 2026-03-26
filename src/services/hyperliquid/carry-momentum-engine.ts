@@ -9,7 +9,7 @@ import { isInStopLossCooldown } from "./scheduler.js";
 import { ensureConnected, getClient } from "./client.js";
 
 const TRADE_TYPE = "carry-momentum" as const;
-const LOOKBACK_DAYS = 7;
+const LOOKBACK_DAYS = 5;
 const TOP_N = 3;
 const SL_PCT = 0.04;
 const REBALANCE_MS = 7 * 24 * 60 * 60 * 1000;

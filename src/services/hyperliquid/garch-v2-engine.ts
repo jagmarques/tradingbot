@@ -18,7 +18,8 @@ const Z_LONG_4H = 3.0;   // 4h confirmation threshold
 const Z_SHORT_4H = -3.0;  // 4h confirmation threshold
 const EMA_FAST = 9;
 const EMA_SLOW = 21;
-const SL_PCT = 0.04;
+const SL_PCT = 0.03;
+const TP_PCT = 0.07; // 7% take-profit (boosts WR from 34% to 46%)
 const MAX_PER_DIRECTION = 6;
 const BTC_EMA_FAST = 9;
 const BTC_EMA_SLOW = 21;
@@ -114,13 +115,14 @@ export async function runGarchV2Cycle(): Promise<void> {
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = direction === "long" ? entryPrice * (1 - SL_PCT) : entryPrice * (1 + SL_PCT);
       const stopLoss = capStopLoss(entryPrice, rawStop, direction);
+      const takeProfit = direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT);
       const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|ema9:${emaFast.toFixed(4)}|ema21:${emaSlow.toFixed(4)}`;
 
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
 
       const pos = await openPosition(
         pair, direction, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
-        stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice,
+        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
         openPairs.add(pair);
