@@ -63,11 +63,12 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runSupertrend4hCycle(); }
     catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    // GARCH v2: auto-activates in bear regimes (+$9.26/mo in bear, bleeds in sideways)
-    if (isBearRegime()) {
-      try { await runGarchV2Cycle(); }
-      catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
-    }
+    // GARCH v2: disabled - auto-bear gate too strict (37/1180 days, PF 0.55 when active)
+    // Waiting for improved regime system (Fear zones + momentum) before re-enabling
+    // if (isBearRegime()) {
+    //   try { await runGarchV2Cycle(); }
+    //   catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err}`); }
+    // }
 
     try { await runCarryMomentumCycle(); }
     catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
