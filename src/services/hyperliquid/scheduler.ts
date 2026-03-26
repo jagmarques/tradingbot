@@ -1,4 +1,6 @@
 import { isQuantKilled } from "./risk-manager.js";
+import { updateBtcBounceCheck } from "../market-regime/fear-greed.js";
+import { fetchCandles } from "./candles.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
@@ -29,6 +31,17 @@ export async function runDirectionalCycle(): Promise<void> {
   cycleRunning = true;
   try {
     if (isQuantKilled()) return;
+
+    // Bounce protection: check BTC 3-day low vs current price
+    try {
+      const btcCandles = await fetchCandles("BTC", "4h", 20);
+      if (btcCandles.length >= 18) {
+        const last18 = btcCandles.slice(-18); // ~3 days of 4h bars
+        const btc3dLow = Math.min(...last18.map(c => c.low));
+        const btcNow = btcCandles[btcCandles.length - 1].close;
+        updateBtcBounceCheck(btcNow, btc3dLow);
+      }
+    } catch { /* non-critical */ }
 
     try { await runDonchianTrendCycle(); }
     catch (err) { console.error(`[QuantScheduler] DonchianTrend error: ${err instanceof Error ? err.message : String(err)}`); }

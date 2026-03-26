@@ -26,10 +26,28 @@ export async function getFearGreedIndex(): Promise<number | null> {
   }
 }
 
-// Returns which directions are allowed based on Fear & Greed
+// Bounce protection: if BTC rips >5% from 3-day low, pause new shorts for 24h
+// Prevents getting caught in a snap reversal when all positions are short
+let bouncePauseUntil = 0;
+
+export function updateBtcBounceCheck(currentBtcPrice: number, btc3dLow: number): void {
+  if (btc3dLow > 0 && currentBtcPrice > btc3dLow * 1.05 && Date.now() > bouncePauseUntil) {
+    bouncePauseUntil = Date.now() + 24 * 60 * 60 * 1000;
+    console.log(`[FearGreed] BOUNCE DETECTED: BTC ${currentBtcPrice.toFixed(0)} is +${((currentBtcPrice / btc3dLow - 1) * 100).toFixed(1)}% from 3d low ${btc3dLow.toFixed(0)} -> pausing new shorts for 24h`);
+  }
+}
+
+export function isBouncePauseActive(): boolean {
+  return Date.now() < bouncePauseUntil;
+}
+
+// Returns which directions are allowed based on Fear & Greed + bounce protection
 export async function getRegimeBias(): Promise<"long" | "short" | "both"> {
+  // Bounce protection overrides Fear/Greed: block shorts during BTC snap reversal
+  if (isBouncePauseActive()) return "long";
+
   const fg = await getFearGreedIndex();
-  if (fg === null) return "both"; // No data = no filter
+  if (fg === null) return "both";
   if (fg <= 20) return "short"; // Extreme Fear: only shorts (trend-aligned)
   if (fg >= 80) return "long"; // Extreme Greed: only longs (trend-aligned)
   return "both";
