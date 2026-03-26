@@ -5,7 +5,7 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-const GARCH_POSITION_SIZE_USD = 5; // Smaller than core engines - conditional bear-only
+const GARCH_POSITION_SIZE_USD = 3; // Small: always-on supplementary engine, not core
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { ema, isBtcBullish } from "./indicators.js";
