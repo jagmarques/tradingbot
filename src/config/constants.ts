@@ -67,8 +67,7 @@ export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Engines that go live in hybrid mode (rest stay paper)
-// VL-04: garch-chan and news-trade killed - emptied until BTC-MR validated
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>();
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

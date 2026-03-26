@@ -175,7 +175,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
         pair, direction, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
-        stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice, true,
+        stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
         openPairs.add(pair);
