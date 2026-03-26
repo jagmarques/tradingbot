@@ -74,16 +74,7 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-function getBreakevenAtr(position: QuantPosition): number {
-  const indicators = position.indicatorsAtEntry ?? "";
-  const atrMatch = indicators.match(/atr:([\d.]+)/);
-  if (atrMatch) {
-    const atr = parseFloat(atrMatch[1]);
-    if (atr > 0) return atr;
-  }
-  // Fallback for engines without ATR in indicators (garch-v2, carry-momentum, range-expansion)
-  return position.entryPrice * 0.02;
-}
+// getBreakevenAtr removed: trailing stops disabled (system backtest showed they hurt)
 
 function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
   // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
