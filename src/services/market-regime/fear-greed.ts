@@ -41,6 +41,26 @@ export function isBouncePauseActive(): boolean {
   return Date.now() < bouncePauseUntil;
 }
 
+// Bear regime detection for auto-activating GARCH v2
+// GARCH v2 makes +$9.26/mo in bear but bleeds in sideways
+// Auto-enable when: BTC EMA(20) < EMA(50) AND Fear < 25 AND BTC 30d return < -10%
+let bearRegimeActive = false;
+
+export function updateBearRegime(btcEma20BelowEma50: boolean, btc30dReturn: number): void {
+  const fg = cachedValue ?? 50;
+  const wasBear = bearRegimeActive;
+  bearRegimeActive = btcEma20BelowEma50 && fg <= 25 && btc30dReturn < -0.10;
+  if (bearRegimeActive && !wasBear) {
+    console.log(`[Regime] BEAR detected: EMA bearish, Fear=${fg}, BTC 30d=${(btc30dReturn * 100).toFixed(1)}% -> activating GARCH v2`);
+  } else if (!bearRegimeActive && wasBear) {
+    console.log(`[Regime] Bear regime ended -> deactivating GARCH v2`);
+  }
+}
+
+export function isBearRegime(): boolean {
+  return bearRegimeActive;
+}
+
 // Returns which directions are allowed based on Fear & Greed + bounce protection
 export async function getRegimeBias(): Promise<"long" | "short" | "both"> {
   // Bounce protection overrides Fear/Greed: block shorts during BTC snap reversal
