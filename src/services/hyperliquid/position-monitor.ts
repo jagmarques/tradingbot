@@ -457,8 +457,8 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Skip near-SL for engines with tight fixed stops
-      const skipNearSl = position.tradeType === "garch-chan";
+      // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
+      const skipNearSl = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
@@ -658,8 +658,8 @@ async function checkTrailActivePositions(): Promise<void> {
       if (position.tradeType === "news-trade") {
       }
 
-      // Skip near-SL for engines with tight fixed stops
-      const skipNearSlFast = position.tradeType === "garch-chan";
+      // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
+      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)

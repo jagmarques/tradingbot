@@ -1,7 +1,7 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
-import { calcAtrStopLoss } from "./quant-utils.js";
+import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
@@ -11,8 +11,9 @@ const ST_MULTIPLIER = 2;
 const ATR_SL_MULTIPLIER = 3;
 const BTC_EMA_FAST = 20;
 const BTC_EMA_SLOW = 50;
+const BAR_MS = 4 * 60 * 60 * 1000;
 
-let last4hCheckTs = 0;
+let lastProcessedBarOpen = 0;
 
 interface SupertrendResult {
   trend: "bull" | "bear";
@@ -24,8 +25,11 @@ interface SupertrendResult {
 function ema(candles: OhlcvCandle[], period: number): number {
   if (candles.length < period) return NaN;
   const mult = 2 / (period + 1);
-  let val = candles[0].close;
-  for (let i = 1; i < candles.length; i++) {
+  // Seed with SMA of first `period` candles (proper initialization)
+  let val = 0;
+  for (let i = 0; i < period; i++) val += candles[i].close;
+  val /= period;
+  for (let i = period; i < candles.length; i++) {
     val = candles[i].close * mult + val * (1 - mult);
   }
   return val;
@@ -99,16 +103,22 @@ function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
 
 export async function runSupertrend4hCycle(): Promise<void> {
   const now = Date.now();
-  if (now - last4hCheckTs < 4 * 60 * 60 * 1000) return;
-  last4hCheckTs = now;
+  // Align to 4h bar boundaries to prevent drift
+  const currentBarOpen = Math.floor(now / BAR_MS) * BAR_MS;
+  if (currentBarOpen <= lastProcessedBarOpen) return;
 
-  const btcCandles = await fetchCandles("BTC", "1d", 60);
+  const btcCandles = await fetchCandles("BTC", "1d", 200);
   if (btcCandles.length < BTC_EMA_SLOW + 1) {
     console.log("[Supertrend4h] Insufficient BTC candles, skipping cycle");
     return;
   }
 
-  const btcBullish = isBtcBullish(btcCandles);
+  // Set timer AFTER successful BTC fetch
+  lastProcessedBarOpen = currentBarOpen;
+
+  // Exclude incomplete current bar for BTC filter
+  const btcCompleted = btcCandles.slice(0, -1);
+  const btcBullish = isBtcBullish(btcCompleted);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -165,23 +175,29 @@ export async function runSupertrend4hCycle(): Promise<void> {
 
       let direction: "long" | "short" | null = null;
       if (st.current.trend === "bull") {
-        if (btcBullish) direction = "long";
+        if (btcBullish) {
+          direction = "long";
+        } else {
+          console.log(`[Supertrend4h] ${pair} bull flip blocked by BTC filter`);
+        }
       } else {
-        direction = "short"; // Short always allowed
+        direction = "short";
       }
 
       if (!direction) continue;
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       const entryPrice = completed[completed.length - 1].close;
-      const stopLoss = calcAtrStopLoss(entryPrice, st.current.atr, direction, ATR_SL_MULTIPLIER);
+      const rawStop = calcAtrStopLoss(entryPrice, st.current.atr, direction, ATR_SL_MULTIPLIER);
+      const stopLoss = capStopLoss(entryPrice, rawStop, direction);
       const indicators = `atr:${st.current.atr.toFixed(6)}`;
 
       console.log(`[Supertrend4h] ${pair} flip -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
+      // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
         pair, direction, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
-        stopLoss, 999999, "trending", TRADE_TYPE, indicators, undefined, true,
+        stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice, true,
       );
       if (pos) {
         openPairs.add(pair);

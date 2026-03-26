@@ -1,7 +1,7 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
-import { calcAtrStopLoss } from "./quant-utils.js";
+import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
@@ -28,8 +28,11 @@ function sma(candles: OhlcvCandle[], period: number): number {
 function ema(candles: OhlcvCandle[], period: number): number {
   if (candles.length < period) return NaN;
   const mult = 2 / (period + 1);
-  let val = candles[0].close;
-  for (let i = 1; i < candles.length; i++) {
+  // Seed with SMA of first `period` candles (proper initialization)
+  let val = 0;
+  for (let i = 0; i < period; i++) val += candles[i].close;
+  val /= period;
+  for (let i = period; i < candles.length; i++) {
     val = candles[i].close * mult + val * (1 - mult);
   }
   return val;
@@ -44,18 +47,18 @@ function atr(candles: OhlcvCandle[], period: number): number {
     const prevClose = candles[i - 1].close;
     trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
   }
-  // SMA of last `period` true ranges
   const recent = trs.slice(-period);
   return recent.reduce((a, b) => a + b, 0) / recent.length;
 }
 
-function donchianChannel(candles: OhlcvCandle[], period: number): { high: number; low: number } {
+// Exit channel uses CLOSES (not highs/lows) for proper trend-following exit
+function donchianExitChannel(candles: OhlcvCandle[], period: number): { high: number; low: number } {
   const slice = candles.slice(-period);
   let high = -Infinity;
   let low = Infinity;
   for (const c of slice) {
-    if (c.high > high) high = c.high;
-    if (c.low < low) low = c.low;
+    if (c.close > high) high = c.close;
+    if (c.close < low) low = c.close;
   }
   return { high, low };
 }
@@ -69,17 +72,22 @@ function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
 
 export async function runDonchianTrendCycle(): Promise<void> {
   const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-  if (now - lastDailyCheckTs < dayMs) return;
-  lastDailyCheckTs = now;
+  // Align to calendar day boundaries (UTC) to prevent drift
+  const todayStart = new Date(now).setUTCHours(0, 0, 0, 0);
+  if (todayStart <= lastDailyCheckTs) return;
 
-  const btcCandles = await fetchCandles("BTC", "1d", 70);
+  const btcCandles = await fetchCandles("BTC", "1d", 200);
   if (btcCandles.length < 62) {
     console.log("[DonchianTrend] Insufficient BTC candles, skipping cycle");
     return;
   }
 
-  const btcBullish = isBtcBullish(btcCandles);
+  // Set timer AFTER successful BTC fetch (not before, to allow retry on failure)
+  lastDailyCheckTs = todayStart;
+
+  // Exclude incomplete current bar for BTC filter
+  const btcCompleted = btcCandles.slice(0, -1);
+  const btcBullish = isBtcBullish(btcCompleted);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -91,8 +99,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
 
       // Use completed bars only (exclude last incomplete bar)
       const completed = pairCandles.slice(0, -1);
-      const exitCandles = completed.slice(-DONCHIAN_EXIT_PERIOD);
-      const channel = donchianChannel(exitCandles, DONCHIAN_EXIT_PERIOD);
+      const channel = donchianExitChannel(completed, DONCHIAN_EXIT_PERIOD);
       const lastClose = completed[completed.length - 1].close;
 
       const shouldExit =
@@ -155,18 +162,20 @@ export async function runDonchianTrendCycle(): Promise<void> {
       if (!direction) continue;
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
-      // ATR for stop-loss
+      // ATR for stop-loss (capped to QUANT_MAX_SL_PCT)
       const atr14 = atr(completed, ATR_PERIOD);
       const entryPrice = completed[completed.length - 1].close;
-      const stopLoss = calcAtrStopLoss(entryPrice, atr14, direction, ATR_SL_MULTIPLIER);
+      const rawStop = calcAtrStopLoss(entryPrice, atr14, direction, ATR_SL_MULTIPLIER);
+      const stopLoss = capStopLoss(entryPrice, rawStop, direction);
       const indicators = `atr:${atr14.toFixed(6)}`;
 
       const crossType = direction === "long" ? "golden cross" : "death cross";
       console.log(`[DonchianTrend] ${pair} SMA30/60 ${crossType} -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
+      // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
         pair, direction, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
-        stopLoss, 999999, "trending", TRADE_TYPE, indicators, undefined, true,
+        stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice, true,
       );
       if (pos) {
         openPairs.add(pair);
