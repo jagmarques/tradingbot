@@ -59,13 +59,18 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  // Hyperliquid tick sizes by price range
+  // Hyperliquid uses 5 significant figures for all assets
+  // Price range determines decimal places
   let decimals: number;
   if (price < 0.001) decimals = 8;
+  else if (price < 0.01) decimals = 7;
+  else if (price < 0.1) decimals = 6;
   else if (price < 1) decimals = 5;
   else if (price < 10) decimals = 4;
   else if (price < 100) decimals = 3;
-  else decimals = 2;
+  else if (price < 1000) decimals = 2;
+  else if (price < 10000) decimals = 1;
+  else decimals = 0;
   const factor = 10 ** decimals;
   return Math.round(price * factor) / factor;
 }
