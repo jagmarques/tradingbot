@@ -15,7 +15,7 @@ const ATR_SL_MULTIPLIER = 3;
 const BTC_EMA_FAST = 20;
 const BTC_EMA_SLOW = 50;
 const BAR_MS = 4 * 60 * 60 * 1000;
-const ST_POSITION_SIZE_USD = 3; // Reduced from $5 - high frequency engine, smaller per-trade
+const ST_POSITION_SIZE_USD = 5; // Increased from $3 - now one of 3 core engines
 
 let lastProcessedBarOpen = 0;
 

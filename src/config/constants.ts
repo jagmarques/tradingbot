@@ -70,7 +70,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 };
 
 // Ensemble engine sizing (Donchian-Trend + Supertrend-4h + GarchV2)
-export const ENSEMBLE_POSITION_SIZE_USD = 5;
+export const ENSEMBLE_POSITION_SIZE_USD = 7; // Increased from $5 - 3 strong engines get bigger allocation
 export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
