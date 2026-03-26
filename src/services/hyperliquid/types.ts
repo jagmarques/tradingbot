@@ -78,7 +78,7 @@ export interface FundingInfo {
   nextFundingTime: number;
 }
 
-export type TradeType = "directional" | "funding" | "garch-chan" | "btc-mr" | "btc-event" | "news-trade" | "donchian-trend" | "supertrend-4h" | "trump-event" | "garch-v2" | "carry-momentum";
+export type TradeType = "directional" | "funding" | "garch-chan" | "btc-mr" | "btc-event" | "news-trade" | "donchian-trend" | "supertrend-4h" | "trump-event" | "garch-v2" | "carry-momentum" | "range-expansion";
 
 export type MarketRegime = "trending" | "ranging" | "volatile";
 

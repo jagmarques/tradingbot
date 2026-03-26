@@ -46,7 +46,7 @@ export async function openPosition(
   const posMode: "live" | "paper" = useLive ? "live" : "paper";
   const strategy = strategyFromTradeType(tradeType);
   const allPositions = getOpenQuantPositions();
-  const ensembleTypes = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum"]);
+  const ensembleTypes = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
   const openCountForEngine = ensembleTypes.has(tradeType)
     ? allPositions.filter(p => p.mode === posMode && ensembleTypes.has(p.tradeType ?? "")).length
     : allPositions.filter(p => p.mode === posMode && p.tradeType === tradeType).length;

@@ -122,7 +122,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       .map(p => p.pair),
   );
   let currentEnsembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum",
+    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum" || p.tradeType === "range-expansion",
   ).length;
 
   // ENTRY LOGIC

@@ -20,6 +20,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
   "garch-v2": 96 * 60 * 60 * 1000,             // 96h (4d) max hold - optimized from 168h
   "carry-momentum": 8 * 24 * 60 * 60 * 1000,   // 8d max hold (7d + 1d buffer)
+  "range-expansion": 30 * 24 * 60 * 60 * 1000,  // 30d max hold
   // Legacy engines (for existing DB positions until they close)
   "garch-chan": 48 * 60 * 60 * 1000,
   "btc-mr": 24 * 60 * 60 * 1000,
@@ -71,7 +72,7 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum"]);
+const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
 
 function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
   // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
@@ -211,7 +212,7 @@ async function checkPositionStops(): Promise<void> {
     let orphanClosed = false;
     for (const position of positions) {
       // Skip orphan check for engines with their own pair lists
-      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2" || position.tradeType === "carry-momentum";
+      const hasOwnPairList = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "news-trade" || position.tradeType === "btc-event";
       if (!hasOwnPairList && position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
@@ -458,7 +459,7 @@ async function checkPositionStops(): Promise<void> {
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
-      const skipNearSl = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2" || position.tradeType === "carry-momentum";
+      const skipNearSl = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =
@@ -659,7 +660,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
-      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2" || position.tradeType === "carry-momentum";
+      const skipNearSlFast = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)

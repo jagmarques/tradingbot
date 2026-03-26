@@ -3,6 +3,7 @@ import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
 import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
+import { runRangeExpansionCycle } from "./range-expansion-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -41,7 +42,10 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runCarryMomentumCycle(); }
     catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h + GarchV2 + CarryMomentum running`);
+    try { await runRangeExpansionCycle(); }
+    catch (err) { console.error(`[QuantScheduler] RangeExpansion error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: 5 engines running`);
   } finally { cycleRunning = false; }
 }
 

@@ -1486,6 +1486,7 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "supertrend-4h" ? "[ST]" :
       pos.tradeType === "garch-v2" ? "[GV]" :
       pos.tradeType === "carry-momentum" ? "[CM]" :
+      pos.tradeType === "range-expansion" ? "[RE]" :
       pos.tradeType === "garch-chan" ? "[G2]" :
       pos.tradeType === "btc-mr" ? "[MR]" :
       pos.tradeType === "btc-event" ? "[BE]" :
@@ -1596,6 +1597,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     ["ST", "supertrend-4h"],
     ["GV", "garch-v2"],
     ["CM", "carry-momentum"],
+    ["RE", "range-expansion"],
     ["G2", "garch-chan"],
     ["MR", "btc-mr"],
     ["BE", "btc-event"],

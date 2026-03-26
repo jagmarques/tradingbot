@@ -61,6 +61,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "supertrend-4h": "hyperliquid",
   "garch-v2": "hyperliquid",
   "carry-momentum": "hyperliquid",
+  "range-expansion": "hyperliquid",
 };
 
 // Ensemble engine sizing (Donchian-Trend + Supertrend-4h + GarchV2)
@@ -69,7 +70,7 @@ export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";
