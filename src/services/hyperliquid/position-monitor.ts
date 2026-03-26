@@ -16,26 +16,24 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-chan": 48 * 60 * 60 * 1000,  // 48h max hold
-  "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
-  "btc-event": 24 * 60 * 60 * 1000, // 24h max hold
-  "news-trade": 24 * 60 * 60 * 1000, // 24h max hold
   "donchian-trend": 60 * 24 * 60 * 60 * 1000, // 60d max hold
   "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
   "garch-v2": 168 * 60 * 60 * 1000,            // 168h (7d) max hold
+  // Legacy engines (for existing DB positions until they close)
+  "garch-chan": 48 * 60 * 60 * 1000,
+  "btc-mr": 24 * 60 * 60 * 1000,
+  "btc-event": 24 * 60 * 60 * 1000,
+  "news-trade": 24 * 60 * 60 * 1000,
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "garch-chan": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only, no trailing
-  "btc-mr": { activation: 8, distance: 3 },
-  "btc-event": { activation: 999, distance: 999 }, // disabled - fixed TP/SL only
-  "news-trade": { activation: 50, distance: 20 }, // 5% price * 10x = 50% leveraged PnL, 2% * 10x = 20%
+  "donchian-trend": { activation: 999, distance: 999 }, // ATR trailing handled separately
+  "supertrend-4h": { activation: 999, distance: 999 },  // ATR trailing handled separately
+  "garch-v2": { activation: 999, distance: 999 },       // Fixed SL, no trailing
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
-// Dynamic trail for news-trade (HIGH only, 5%/2% at 10x leverage)
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
-  if (position.tradeType === "news-trade") return { activation: 50, distance: 20 };
   return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
 }
 
