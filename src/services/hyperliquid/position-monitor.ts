@@ -60,6 +60,7 @@ const nearSlIds = new Map<string, number>(); // positionId -> price at which nea
 
 const closeFailCounts = new Map<string, number>();
 const atrPeakPrices = new Map<string, number>(); // ATR trailing: track peak price per ensemble position
+const breakevenAppliedIds = new Set<string>(); // breakeven stop dedup (log once)
 const newsTradeAdviceCache = new Map<string, "HOLD" | "TAKE_PROFIT" | "CLOSE" | null>();
 let newsAdviceCacheTime = 0; // when cache was last populated
 let lastCriticalAlertMs = 0;
@@ -70,6 +71,17 @@ function throttledCriticalAlert(msg: string, context: string): void {
   if (now - lastCriticalAlertMs < CRITICAL_ALERT_COOLDOWN_MS) return;
   lastCriticalAlertMs = now;
   void notifyCriticalError(msg, context);
+}
+
+function getBreakevenAtr(position: QuantPosition): number {
+  const indicators = position.indicatorsAtEntry ?? "";
+  const atrMatch = indicators.match(/atr:([\d.]+)/);
+  if (atrMatch) {
+    const atr = parseFloat(atrMatch[1]);
+    if (atr > 0) return atr;
+  }
+  // Fallback for engines without ATR in indicators (garch-v2, carry-momentum, range-expansion)
+  return position.entryPrice * 0.02;
 }
 
 function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
@@ -255,6 +267,26 @@ async function checkPositionStops(): Promise<void> {
           deductLiquidationPenalty(position.id, penaltyUsd);
           recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
+        }
+      }
+
+      // Breakeven stop: move SL to entry after 1x ATR profit (ensemble only)
+      if (ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "")) {
+        const beAtr = getBreakevenAtr(position);
+        const isLong = position.direction === "long";
+        const profitFromEntry = isLong
+          ? currentPrice - position.entryPrice
+          : position.entryPrice - currentPrice;
+        const alreadyAtBreakeven = isLong
+          ? (position.stopLoss ?? 0) >= position.entryPrice
+          : (position.stopLoss ?? Infinity) <= position.entryPrice;
+        if (profitFromEntry >= beAtr && !alreadyAtBreakeven) {
+          position.stopLoss = position.entryPrice;
+          saveQuantPosition(position);
+          if (!breakevenAppliedIds.has(position.id)) {
+            breakevenAppliedIds.add(position.id);
+            console.log(`[PositionMonitor] Breakeven stop: ${position.pair} ${position.direction} moved SL to entry ${position.entryPrice}`);
+          }
         }
       }
 
@@ -534,6 +566,9 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of atrPeakPrices.keys()) {
       if (!openIds.has(id)) atrPeakPrices.delete(id);
+    }
+    for (const id of breakevenAppliedIds) {
+      if (!openIds.has(id)) breakevenAppliedIds.delete(id);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
