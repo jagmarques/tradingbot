@@ -1,5 +1,5 @@
 import { getTradingMode } from "../../config/env.js";
-import { getEngineExchange, QUANT_HYBRID_LIVE_ENGINES } from "../../config/constants.js";
+import { getEngineExchange, QUANT_HYBRID_LIVE_ENGINES, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import {
   paperOpenPosition,
@@ -46,8 +46,12 @@ export async function openPosition(
   const posMode: "live" | "paper" = useLive ? "live" : "paper";
   const strategy = strategyFromTradeType(tradeType);
   const allPositions = getOpenQuantPositions();
-  const openCountForEngine = allPositions.filter(p => p.mode === posMode && p.tradeType === tradeType).length;
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode, openPositionCount: openCountForEngine });
+  const ensembleTypes = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum"]);
+  const openCountForEngine = ensembleTypes.has(tradeType)
+    ? allPositions.filter(p => p.mode === posMode && ensembleTypes.has(p.tradeType ?? "")).length
+    : allPositions.filter(p => p.mode === posMode && p.tradeType === tradeType).length;
+  const maxPos = ensembleTypes.has(tradeType) ? ENSEMBLE_MAX_CONCURRENT : 5;
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode, openPositionCount: openCountForEngine, maxConcurrentPositions: maxPos });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;
