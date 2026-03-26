@@ -1,5 +1,6 @@
 import { isQuantKilled } from "./risk-manager.js";
 import { updateBtcBounceCheck } from "../market-regime/fear-greed.js";
+import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
@@ -57,6 +58,10 @@ export async function runDirectionalCycle(): Promise<void> {
 
     try { await runRangeExpansionCycle(); }
     catch (err) { console.error(`[QuantScheduler] RangeExpansion error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    // Log event calendar status (doesn't block, just informs)
+    const eventMult = getEventSizeMultiplier();
+    if (eventMult < 1) console.log(`[QuantScheduler] Event risk active: size multiplier = ${eventMult}`);
 
     console.log(`[QuantScheduler] Cycle: 5 engines running`);
   } finally { cycleRunning = false; }
