@@ -4,7 +4,8 @@
 // Requires 1h z>4.5 AND 4h z>3.0 agreement for longs (or 1h z<-3 AND 4h z<-3 for shorts)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
+const GARCH_POSITION_SIZE_USD = 5; // Smaller than core engines - conditional bear-only
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { ema, isBtcBullish } from "./indicators.js";
@@ -132,7 +133,7 @@ export async function runGarchV2Cycle(): Promise<void> {
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
+        pair, direction, GARCH_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
