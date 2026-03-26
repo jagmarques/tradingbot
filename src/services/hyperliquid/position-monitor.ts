@@ -210,7 +210,7 @@ async function checkPositionStops(): Promise<void> {
     let orphanClosed = false;
     for (const position of positions) {
       // Skip orphan check for engines with their own pair lists
-      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
+      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2";
       if (!hasOwnPairList && position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);

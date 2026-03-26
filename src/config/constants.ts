@@ -101,6 +101,8 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   MKR: 0.05,    // 10x Lighter
   UNI: 0.05,    // 10x max
   TON: 0.05,    // 20x Lighter
+  TIA: 0.05,    // 10x max
+  SOL: 0.025,   // 20x max
 };
 
 
