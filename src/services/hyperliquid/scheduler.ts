@@ -6,6 +6,7 @@ import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
 import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
+import { runAltRotationCycle } from "./alt-rotation-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -66,17 +67,22 @@ export async function runDirectionalCycle(): Promise<void> {
     catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
 
     // GARCH v2: auto-activates in RISK-OFF regime only
+    // Regime-specific engines
+    const regime = getMacroRegime();
     if (isRiskOff()) {
       try { await runGarchV2Cycle(); }
       catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
+    }
+    if (regime === "risk-on") {
+      try { await runAltRotationCycle(); }
+      catch (err) { console.error(`[QuantScheduler] AltRotation error: ${err instanceof Error ? err.message : String(err)}`); }
     }
 
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    const regime = getMacroRegime();
-    const engines = isRiskOff() ? "3+GARCH" : "3";
-    console.log(`[QuantScheduler] Cycle: ${engines} engines | regime=${regime}`);
+    const extra = isRiskOff() ? "+GARCH" : regime === "risk-on" ? "+AltRotation" : "";
+    console.log(`[QuantScheduler] Cycle: 3${extra} engines | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 
