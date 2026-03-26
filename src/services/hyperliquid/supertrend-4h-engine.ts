@@ -154,7 +154,7 @@ export async function runSupertrend4hCycle(): Promise<void> {
       .map(p => p.pair),
   );
   let currentEnsembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2",
+    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum",
   ).length;
 
   // ENTRY LOGIC

@@ -659,7 +659,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
-      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2";
+      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2" || position.tradeType === "carry-momentum";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)

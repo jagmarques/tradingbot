@@ -74,7 +74,7 @@ export async function runGarchV2Cycle(): Promise<void> {
   const openPairs = new Set(myPositions.map(p => p.pair));
 
   const ensembleCount = allPositions.filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === TRADE_TYPE,
+    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === TRADE_TYPE || p.tradeType === "carry-momentum",
   ).length;
 
   for (const pair of QUANT_TRADING_PAIRS) {

@@ -2,7 +2,7 @@
 // Validated: 6/6 PASS, bootstrap 5th pct PF=2.27, p=0.000, 4/4 quarters profitable
 // Uses REAL Hyperliquid hourly funding data
 // Negatively correlated with trend following (-0.11)
-import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
@@ -94,7 +94,6 @@ export async function runCarryMomentumCycle(): Promise<void> {
   // Close existing carry positions
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
-  const { closePosition } = await import("./executor.js");
   for (const pos of myPositions) {
     try {
       await closePosition(pos.id, "carry-rebalance");

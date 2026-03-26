@@ -122,7 +122,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       .map(p => p.pair),
   );
   let currentEnsembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2",
+    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum",
   ).length;
 
   // ENTRY LOGIC
@@ -170,7 +170,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       const indicators = `atr:${atr14.toFixed(6)}`;
 
       const crossType = direction === "long" ? "golden cross" : "death cross";
-      console.log(`[DonchianTrend] ${pair} SMA30/60 ${crossType} -> ${direction} SL=${stopLoss.toFixed(4)}`);
+      console.log(`[DonchianTrend] ${pair} SMA20/50 ${crossType} -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
       // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
