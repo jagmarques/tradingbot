@@ -13,6 +13,7 @@ import { notifyBotStarted, notifyBotStopped, notifyCriticalError } from "./servi
 import { setDailyStartBalance } from "./services/risk/manager.js";
 import { startPnlCron, stopPnlCron } from "./services/pnl/snapshots.js";
 import { initQuant, stopQuant } from "./services/hyperliquid/index.js";
+import { startMonitors, stopMonitors } from "./services/health/monitors.js";
 
 const HEALTH_PORT = Number(process.env.HEALTH_PORT) || 4000;
 
@@ -66,6 +67,9 @@ async function main(): Promise<void> {
     // Start P&L daily snapshot cron
     startPnlCron();
 
+    // Start monitors (daily digest, hourly heartbeat, API health check)
+    startMonitors();
+
     console.log("[Bot] All services started successfully");
     console.log("[Bot] Waiting for trading opportunities...");
 
@@ -91,6 +95,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
+    stopMonitors();
     stopPnlCron();
     stopQuant();
     stopBot();
