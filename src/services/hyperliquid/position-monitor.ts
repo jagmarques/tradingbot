@@ -1,7 +1,7 @@
 import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
-import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS } from "../../config/constants.js";
+import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss, parseIndicatorsMeta } from "./quant-utils.js";
 import { getExitAdvice } from "./news-exit-advisor.js";
 import { recordStopLossCooldown } from "./scheduler.js";
@@ -71,8 +71,6 @@ function throttledCriticalAlert(msg: string, context: string): void {
   lastCriticalAlertMs = now;
   void notifyCriticalError(msg, context);
 }
-
-const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
 
 function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
   // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")

@@ -1,9 +1,9 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
-import type { OhlcvCandle } from "./types.js";
+import { sma, atr, isBtcBullish, donchianExitChannel } from "./indicators.js";
 
 const TRADE_TYPE = "donchian-trend" as const;
 const SMA_FAST = 20;
@@ -15,60 +15,6 @@ const BTC_EMA_FAST = 20;
 const BTC_EMA_SLOW = 50;
 
 let lastDailyCheckTs = 0;
-
-function sma(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period) return NaN;
-  let sum = 0;
-  for (let i = candles.length - period; i < candles.length; i++) {
-    sum += candles[i].close;
-  }
-  return sum / period;
-}
-
-function ema(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period) return NaN;
-  const mult = 2 / (period + 1);
-  // Seed with SMA of first `period` candles (proper initialization)
-  let val = 0;
-  for (let i = 0; i < period; i++) val += candles[i].close;
-  val /= period;
-  for (let i = period; i < candles.length; i++) {
-    val = candles[i].close * mult + val * (1 - mult);
-  }
-  return val;
-}
-
-function atr(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period + 1) return 0;
-  const trs: number[] = [];
-  for (let i = 1; i < candles.length; i++) {
-    const high = candles[i].high;
-    const low = candles[i].low;
-    const prevClose = candles[i - 1].close;
-    trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
-  }
-  const recent = trs.slice(-period);
-  return recent.reduce((a, b) => a + b, 0) / recent.length;
-}
-
-// Exit channel uses CLOSES (not highs/lows) for proper trend-following exit
-function donchianExitChannel(candles: OhlcvCandle[], period: number): { high: number; low: number } {
-  const slice = candles.slice(-period);
-  let high = -Infinity;
-  let low = Infinity;
-  for (const c of slice) {
-    if (c.close > high) high = c.close;
-    if (c.close < low) low = c.close;
-  }
-  return { high, low };
-}
-
-function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
-  const emaFast = ema(btcCandles, BTC_EMA_FAST);
-  const emaSlow = ema(btcCandles, BTC_EMA_SLOW);
-  if (isNaN(emaFast) || isNaN(emaSlow)) return false;
-  return emaFast > emaSlow;
-}
 
 export async function runDonchianTrendCycle(): Promise<void> {
   const now = Date.now();
@@ -87,7 +33,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
 
   // Exclude incomplete current bar for BTC filter
   const btcCompleted = btcCandles.slice(0, -1);
-  const btcBullish = isBtcBullish(btcCompleted);
+  const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -122,7 +68,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       .map(p => p.pair),
   );
   let currentEnsembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum" || p.tradeType === "range-expansion",
+    p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
 
   // ENTRY LOGIC

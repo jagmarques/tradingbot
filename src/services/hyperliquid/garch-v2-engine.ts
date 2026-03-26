@@ -4,9 +4,10 @@
 // Requires 1h z>4.5 AND 4h z>3.0 agreement for longs (or 1h z<-3 AND 4h z<-3 for shorts)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
+import { ema, isBtcBullish } from "./indicators.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
@@ -24,18 +25,6 @@ const MAX_PER_DIRECTION = 6;
 const BTC_EMA_FAST = 9;
 const BTC_EMA_SLOW = 21;
 
-function ema(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period) return NaN;
-  const mult = 2 / (period + 1);
-  let val = 0;
-  for (let i = 0; i < period; i++) val += candles[i].close;
-  val /= period;
-  for (let i = period; i < candles.length; i++) {
-    val = candles[i].close * mult + val * (1 - mult);
-  }
-  return val;
-}
-
 function computeZScore(candles: OhlcvCandle[]): number {
   if (candles.length < GARCH_VOL_WINDOW + GARCH_LOOKBACK + 1) return 0;
   const last = candles.length - 1;
@@ -50,13 +39,6 @@ function computeZScore(candles: OhlcvCandle[]): number {
   return vol === 0 ? 0 : mom / vol;
 }
 
-function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
-  const fast = ema(btcCandles, BTC_EMA_FAST);
-  const slow = ema(btcCandles, BTC_EMA_SLOW);
-  if (isNaN(fast) || isNaN(slow)) return false;
-  return fast > slow;
-}
-
 export async function runGarchV2Cycle(): Promise<void> {
   const btcCandles = await fetchCandles("BTC", "1h", 80);
   if (btcCandles.length < 30) {
@@ -65,7 +47,7 @@ export async function runGarchV2Cycle(): Promise<void> {
   }
 
   const btcCompleted = btcCandles.slice(0, -1);
-  const btcBullish = isBtcBullish(btcCompleted);
+  const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -74,7 +56,7 @@ export async function runGarchV2Cycle(): Promise<void> {
   const openPairs = new Set(myPositions.map(p => p.pair));
 
   const ensembleCount = allPositions.filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === TRADE_TYPE || p.tradeType === "carry-momentum" || p.tradeType === "range-expansion",
+    p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
 
   for (const pair of QUANT_TRADING_PAIRS) {

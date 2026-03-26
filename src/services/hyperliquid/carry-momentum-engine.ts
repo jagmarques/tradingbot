@@ -3,7 +3,7 @@
 // Uses REAL Hyperliquid hourly funding data
 // Negatively correlated with trend following (-0.11)
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 
@@ -117,7 +117,7 @@ export async function runCarryMomentumCycle(): Promise<void> {
 
   // Check ensemble capacity
   const ensembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === TRADE_TYPE,
+    p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
   if (ensembleCount >= ENSEMBLE_MAX_CONCURRENT) {
     console.log(`[CarryMomentum] Ensemble full (${ensembleCount}/${ENSEMBLE_MAX_CONCURRENT}), skipping`);

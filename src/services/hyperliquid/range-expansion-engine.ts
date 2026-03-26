@@ -4,10 +4,10 @@
 // Streaky (5/13 quarters negative) so uses smaller position size ($3)
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
-import type { OhlcvCandle } from "./types.js";
+import { isBtcBullish } from "./indicators.js";
 
 const TRADE_TYPE = "range-expansion" as const;
 const RANGE_THRESHOLD = 2.0; // today's range must be > 2× 20-day avg
@@ -20,25 +20,6 @@ const BTC_EMA_FAST = 20;
 const BTC_EMA_SLOW = 50;
 
 let lastDailyCheckTs = 0;
-
-function ema(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period) return NaN;
-  const mult = 2 / (period + 1);
-  let val = 0;
-  for (let i = 0; i < period; i++) val += candles[i].close;
-  val /= period;
-  for (let i = period; i < candles.length; i++) {
-    val = candles[i].close * mult + val * (1 - mult);
-  }
-  return val;
-}
-
-function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
-  const fast = ema(btcCandles, BTC_EMA_FAST);
-  const slow = ema(btcCandles, BTC_EMA_SLOW);
-  if (isNaN(fast) || isNaN(slow)) return false;
-  return fast > slow;
-}
 
 export async function runRangeExpansionCycle(): Promise<void> {
   const now = Date.now();
@@ -54,7 +35,7 @@ export async function runRangeExpansionCycle(): Promise<void> {
   lastDailyCheckTs = todayStart;
 
   const btcCompleted = btcCandles.slice(0, -1);
-  const btcBullish = isBtcBullish(btcCompleted);
+  const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -92,7 +73,7 @@ export async function runRangeExpansionCycle(): Promise<void> {
     getOpenQuantPositions().filter(p => p.tradeType === TRADE_TYPE).map(p => p.pair),
   );
   const ensembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum" || p.tradeType === TRADE_TYPE,
+    p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
 
   // ENTRY LOGIC

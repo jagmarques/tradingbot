@@ -34,7 +34,6 @@ export async function fetchCandles(
 
     candles.sort((a, b) => a.timestamp - b.timestamp);
 
-    console.log(`[Hyperliquid] Fetched ${candles.length} ${interval} candles for ${pair}`);
     return candles;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

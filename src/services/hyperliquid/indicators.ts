@@ -67,7 +67,7 @@ export function computeIndicators(candles: OhlcvCandle[]): TechnicalIndicators {
 
   // ATR
   const atrResult = ATR.calculate({ period: ATR_PERIOD, high: highs, low: lows, close: closes });
-  const atr = atrResult.length > 0 ? (atrResult[atrResult.length - 1] ?? null) : null;
+  const atrVal = atrResult.length > 0 ? (atrResult[atrResult.length - 1] ?? null) : null;
 
   // VWAP
   const vwapResult = VWAP.calculate({ high: highs, low: lows, close: closes, volume: volumes });
@@ -78,5 +78,65 @@ export function computeIndicators(candles: OhlcvCandle[]): TechnicalIndicators {
   const lastAdx = adxResult.length > 0 ? adxResult[adxResult.length - 1] : undefined;
   const adx = lastAdx !== undefined ? lastAdx.adx : null;
 
-  return { rsi, macd, bollingerBands, atr, vwap, adx };
+  return { rsi, macd, bollingerBands, atr: atrVal, vwap, adx };
+}
+
+// --- Shared engine indicators ---
+
+/** Simple Moving Average over closing prices. */
+export function sma(candles: OhlcvCandle[], period: number): number {
+  if (candles.length < period) return NaN;
+  let sum = 0;
+  for (let i = candles.length - period; i < candles.length; i++) {
+    sum += candles[i].close;
+  }
+  return sum / period;
+}
+
+/** Exponential Moving Average, SMA-seeded, over closing prices. */
+export function ema(candles: OhlcvCandle[], period: number): number {
+  if (candles.length < period) return NaN;
+  const mult = 2 / (period + 1);
+  // Seed with SMA of first `period` candles (proper initialization)
+  let val = 0;
+  for (let i = 0; i < period; i++) val += candles[i].close;
+  val /= period;
+  for (let i = period; i < candles.length; i++) {
+    val = candles[i].close * mult + val * (1 - mult);
+  }
+  return val;
+}
+
+/** Average True Range over the last `period` bars (requires period+1 candles). */
+export function atr(candles: OhlcvCandle[], period: number): number {
+  if (candles.length < period + 1) return 0;
+  const trs: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  const recent = trs.slice(-period);
+  return recent.reduce((a, b) => a + b, 0) / recent.length;
+}
+
+/** BTC regime filter: fast EMA > slow EMA = bullish. */
+export function isBtcBullish(btcCandles: OhlcvCandle[], fastPeriod: number, slowPeriod: number): boolean {
+  const emaFast = ema(btcCandles, fastPeriod);
+  const emaSlow = ema(btcCandles, slowPeriod);
+  if (isNaN(emaFast) || isNaN(emaSlow)) return false;
+  return emaFast > emaSlow;
+}
+
+/** Donchian exit channel using CLOSES (not highs/lows) for trend-following exit. */
+export function donchianExitChannel(candles: OhlcvCandle[], period: number): { high: number; low: number } {
+  const slice = candles.slice(-period);
+  let high = -Infinity;
+  let low = Infinity;
+  for (const c of slice) {
+    if (c.close > high) high = c.close;
+    if (c.close < low) low = c.close;
+  }
+  return { high, low };
 }

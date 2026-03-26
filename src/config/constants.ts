@@ -69,6 +69,9 @@ export const ENSEMBLE_POSITION_SIZE_USD = 5;
 export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
+// Ensemble engine trade types (shared across engines, executor, position-monitor)
+export const ENSEMBLE_TRADE_TYPES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
+
 // Engines that go live in hybrid mode (rest stay paper)
 export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion"]);
 

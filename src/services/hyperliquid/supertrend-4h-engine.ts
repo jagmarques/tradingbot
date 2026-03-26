@@ -1,8 +1,9 @@
 import { fetchCandles } from "./candles.js";
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
+import { isBtcBullish } from "./indicators.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "supertrend-4h" as const;
@@ -21,19 +22,6 @@ interface SupertrendResult {
   upperBand: number;
   lowerBand: number;
   atr: number;
-}
-
-function ema(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period) return NaN;
-  const mult = 2 / (period + 1);
-  // Seed with SMA of first `period` candles (proper initialization)
-  let val = 0;
-  for (let i = 0; i < period; i++) val += candles[i].close;
-  val /= period;
-  for (let i = period; i < candles.length; i++) {
-    val = candles[i].close * mult + val * (1 - mult);
-  }
-  return val;
 }
 
 function atrValue(candles: OhlcvCandle[], endIdx: number, period: number): number {
@@ -95,13 +83,6 @@ function computeSupertrend(
   return { current: currentResult, prev: prevResult };
 }
 
-function isBtcBullish(btcCandles: OhlcvCandle[]): boolean {
-  const emaFast = ema(btcCandles, BTC_EMA_FAST);
-  const emaSlow = ema(btcCandles, BTC_EMA_SLOW);
-  if (isNaN(emaFast) || isNaN(emaSlow)) return false;
-  return emaFast > emaSlow;
-}
-
 export async function runSupertrend4hCycle(): Promise<void> {
   const now = Date.now();
   // Align to 4h bar boundaries to prevent drift
@@ -119,7 +100,7 @@ export async function runSupertrend4hCycle(): Promise<void> {
 
   // Exclude incomplete current bar for BTC filter
   const btcCompleted = btcCandles.slice(0, -1);
-  const btcBullish = isBtcBullish(btcCompleted);
+  const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -154,7 +135,7 @@ export async function runSupertrend4hCycle(): Promise<void> {
       .map(p => p.pair),
   );
   let currentEnsembleCount = getOpenQuantPositions().filter(
-    p => p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h" || p.tradeType === "garch-v2" || p.tradeType === "carry-momentum" || p.tradeType === "range-expansion",
+    p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
 
   // ENTRY LOGIC
