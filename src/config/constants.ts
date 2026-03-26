@@ -30,7 +30,7 @@ export const QUANT_TRADING_PAIRS = [
   // Original 18
   "OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI", "ETH", "TIA", "SOL",
   // New additions (validated PF > 1.2 OOS on Supertrend)
-  "ZEC", "AVAX", "NEAR", "PEPE", "SUI", "HYPE", "FET",
+  "ZEC", "AVAX", "NEAR", "kPEPE", "SUI", "HYPE", "FET",
 ];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
