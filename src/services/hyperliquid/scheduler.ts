@@ -2,6 +2,7 @@ import { isQuantKilled } from "./risk-manager.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
+import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -37,7 +38,10 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runGarchV2Cycle(); }
     catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h + GarchV2 running`);
+    try { await runCarryMomentumCycle(); }
+    catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h + GarchV2 + CarryMomentum running`);
   } finally { cycleRunning = false; }
 }
 
