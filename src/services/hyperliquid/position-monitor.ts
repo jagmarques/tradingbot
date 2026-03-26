@@ -271,46 +271,9 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // ATR trailing stop ladder for ensemble engines:
-      // 1x ATR profit → SL to entry (breakeven)
-      // 2x ATR profit → SL trails at 2x ATR from peak
-      // 3x ATR profit → SL trails at 1.5x ATR from peak
-      if (ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "")) {
-        const trailAtr = getBreakevenAtr(position);
-        const isLong = position.direction === "long";
-        const profitFromEntry = isLong
-          ? currentPrice - position.entryPrice
-          : position.entryPrice - currentPrice;
-
-        let newStop: number | null = null;
-
-        if (profitFromEntry >= 3 * trailAtr) {
-          // Tight trail: 1.5x ATR from current price
-          newStop = isLong ? currentPrice - 1.5 * trailAtr : currentPrice + 1.5 * trailAtr;
-        } else if (profitFromEntry >= 2 * trailAtr) {
-          // Medium trail: 2x ATR from current price
-          newStop = isLong ? currentPrice - 2 * trailAtr : currentPrice + 2 * trailAtr;
-        } else if (profitFromEntry >= 1 * trailAtr) {
-          // Breakeven: SL at entry
-          newStop = position.entryPrice;
-        }
-
-        if (newStop !== null) {
-          const currentSL = position.stopLoss ?? (isLong ? 0 : Infinity);
-          // Only tighten, never loosen (for longs: new > current, for shorts: new < current)
-          const shouldUpdate = isLong ? newStop > currentSL : newStop < currentSL;
-          if (shouldUpdate) {
-            const oldSL = position.stopLoss;
-            position.stopLoss = newStop;
-            saveQuantPosition(position);
-            if (!breakevenAppliedIds.has(position.id) || Math.abs((oldSL ?? 0) - newStop) > trailAtr * 0.1) {
-              breakevenAppliedIds.add(position.id);
-              const label = profitFromEntry >= 3 * trailAtr ? "tight(1.5x)" : profitFromEntry >= 2 * trailAtr ? "medium(2x)" : "breakeven";
-              console.log(`[PositionMonitor] ATR trail ${label}: ${position.pair} ${position.direction} SL ${oldSL?.toFixed(4)} -> ${newStop.toFixed(4)}`);
-            }
-          }
-        }
-      }
+      // ATR trailing DISABLED: system-level backtest showed no trailing (+$2.39/day)
+      // beats all trailing variants (+$1.90-2.00/day). Engine exit signals (Donchian channel,
+      // Supertrend flip, stagnation) already manage winners. Trailing cuts them short.
 
       // Stop-loss check: use position.stopLoss (Chandelier/PSAR update it each cycle)
       const sl = position.stopLoss;
