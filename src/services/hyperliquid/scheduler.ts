@@ -33,23 +33,27 @@ export async function runDirectionalCycle(): Promise<void> {
   try {
     if (isQuantKilled()) return;
 
-    // BTC regime checks: bounce protection + bear detection for GARCH auto-activation
+    // Bounce protection (4h bars for 3-day low)
     try {
-      const btcCandles = await fetchCandles("BTC", "4h", 180);
-      if (btcCandles.length >= 18) {
-        const last18 = btcCandles.slice(-18);
+      const btc4h = await fetchCandles("BTC", "4h", 20);
+      if (btc4h.length >= 18) {
+        const last18 = btc4h.slice(-18);
         const btc3dLow = Math.min(...last18.map(c => c.low));
-        const btcNow = btcCandles[btcCandles.length - 1].close;
+        const btcNow = btc4h[btc4h.length - 1].close;
         updateBtcBounceCheck(btcNow, btc3dLow);
+      }
+    } catch { /* non-critical */ }
 
-        // Bear regime: BTC EMA(20)<EMA(50) on 4h AND 30d return < -10%
-        if (btcCandles.length >= 180) {
-          const btcCompleted = btcCandles.slice(0, -1);
-          const ema20Below50 = !isBtcBullish(btcCompleted, 20, 50);
-          const btc30dAgo = btcCandles[Math.max(0, btcCandles.length - 180)].close;
-          const btc30dReturn = (btcNow - btc30dAgo) / btc30dAgo;
-          updateBearRegime(ema20Below50, btc30dReturn);
-        }
+    // Bear regime detection (daily bars for proper EMA 20/50 = 20 day / 50 day)
+    try {
+      const btcDaily = await fetchCandles("BTC", "1d", 60);
+      if (btcDaily.length >= 52) {
+        const completed = btcDaily.slice(0, -1);
+        const ema20Below50 = !isBtcBullish(completed, 20, 50);
+        const btcNow = completed[completed.length - 1].close;
+        const btc30dAgo = completed[Math.max(0, completed.length - 30)].close;
+        const btc30dReturn = (btcNow - btc30dAgo) / btc30dAgo;
+        updateBearRegime(ema20Below50, btc30dReturn);
       }
     } catch { /* non-critical */ }
 
