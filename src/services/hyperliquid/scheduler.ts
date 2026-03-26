@@ -1,11 +1,14 @@
 import { isQuantKilled } from "./risk-manager.js";
 // VL-04: GARCH-chan killed (negative P&L, unprofitable on live)
 // import { runGarchChanCycle } from "./garch-chan-engine.js";
-import { runBtcMrCycle } from "./btc-mr-engine.js";
+// Replaced by Donchian+Supertrend ensemble
+// import { runBtcMrCycle } from "./btc-mr-engine.js";
 // VL-04: BTC-Event killed (insufficient edge, paper never promoted)
 // import { runBtcEventCycle } from "./btc-event-engine.js";
 // VL-04: News-Trade killed (high variance, net negative)
 // import { runNewsTradingCycle } from "./news-trading-engine.js";
+import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
+import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -36,10 +39,17 @@ export async function runDirectionalCycle(): Promise<void> {
     // VL-04: runBtcEventCycle removed (insufficient edge)
     // VL-04: runNewsTradingCycle removed (net negative)
 
-    try { await runBtcMrCycle(); }
-    catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
+    // Replaced by ensemble
+    // try { await runBtcMrCycle(); }
+    // catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: BTC-MR running`);
+    try { await runDonchianTrendCycle(); }
+    catch (err) { console.error(`[QuantScheduler] DonchianTrend error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    try { await runSupertrend4hCycle(); }
+    catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h running`);
   } finally { cycleRunning = false; }
 }
 
