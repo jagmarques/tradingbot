@@ -14,8 +14,11 @@ import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
-  "garch-chan",
-  "btc-mr",
+  "donchian-trend",
+  "supertrend-4h",
+  "garch-v2",
+  "carry-momentum",
+  "range-expansion",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

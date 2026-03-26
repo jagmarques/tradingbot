@@ -257,7 +257,7 @@ async function reconcileWithExchange(): Promise<void> {
             mode: "live",
             status: "open",
             openedAt: new Date().toISOString(),
-            tradeType: "garch-chan",
+            tradeType: "supertrend-4h",  // Default for orphan restoration (most common live engine)
             unrealizedPnl: 0,
             closedAt: null as any,
             exitPrice: 0,

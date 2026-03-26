@@ -36,7 +36,7 @@ async function fetchFundingHistory(pair: string, startTime: number): Promise<Arr
   }
 }
 
-async function fetchPrice(pair: string): Promise<number | null> {
+async function fetchAllMids(): Promise<Record<string, number>> {
   try {
     const res = await fetch("https://api.hyperliquid.xyz/info", {
       method: "POST",
@@ -44,12 +44,16 @@ async function fetchPrice(pair: string): Promise<number | null> {
       body: JSON.stringify({ type: "allMids" }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
-    const mids = await res.json() as Record<string, string>;
-    const mid = mids[pair];
-    return mid ? parseFloat(mid) : null;
+    if (!res.ok) return {};
+    const raw = await res.json() as Record<string, string>;
+    const mids: Record<string, number> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const n = parseFloat(v);
+      if (!isNaN(n)) mids[k] = n;
+    }
+    return mids;
   } catch {
-    return null;
+    return {};
   }
 }
 
@@ -62,7 +66,10 @@ export async function runCarryMomentumCycle(): Promise<void> {
   const lookbackMs = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
   const startTime = now - lookbackMs;
 
-  // Fetch funding rates and compute 7-day averages
+  // Fetch all prices once (not per-pair)
+  const allMids = await fetchAllMids();
+
+  // Fetch funding rates and compute averages
   const pairData: Array<{ pair: string; avgFunding: number; momentum: number; price: number }> = [];
 
   for (const pair of QUANT_TRADING_PAIRS) {
@@ -72,8 +79,8 @@ export async function runCarryMomentumCycle(): Promise<void> {
 
       const avgFunding = funding.reduce((s, f) => s + f.fundingRate, 0) / funding.length;
 
-      // 7-day price momentum
-      const price = await fetchPrice(pair);
+      // Current price from cached allMids
+      const price = allMids[pair];
       if (!price) continue;
 
       // Get price from 7 days ago via candles
