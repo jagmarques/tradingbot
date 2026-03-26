@@ -6,7 +6,6 @@ import { openPosition, closePosition, getOpenQuantPositions } from "./executor.j
 import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
-import { ensureConnected, getClient } from "./client.js";
 
 const TRADE_TYPE = "carry-momentum" as const;
 const LOOKBACK_DAYS = 5;
@@ -18,15 +17,16 @@ let lastRebalanceTs = 0;
 
 async function fetchFundingHistory(pair: string, startTime: number): Promise<Array<{ fundingRate: number; time: number }>> {
   try {
-    await ensureConnected();
-    const sdk = getClient();
-    const response = await (sdk.info as any).post("/info", {
-      type: "fundingHistory",
-      coin: pair,
-      startTime,
+    const res = await fetch("https://api.hyperliquid.xyz/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "fundingHistory", coin: pair, startTime }),
+      signal: AbortSignal.timeout(10_000),
     });
-    if (!Array.isArray(response)) return [];
-    return response.map((r: any) => ({
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map((r: any) => ({
       fundingRate: parseFloat(r.fundingRate),
       time: r.time,
     }));
@@ -38,9 +38,14 @@ async function fetchFundingHistory(pair: string, startTime: number): Promise<Arr
 
 async function fetchPrice(pair: string): Promise<number | null> {
   try {
-    await ensureConnected();
-    const sdk = getClient();
-    const mids = await sdk.info.getAllMids(true) as Record<string, string>;
+    const res = await fetch("https://api.hyperliquid.xyz/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "allMids" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const mids = await res.json() as Record<string, string>;
     const mid = mids[pair];
     return mid ? parseFloat(mid) : null;
   } catch {
