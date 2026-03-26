@@ -8,6 +8,7 @@ import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
+import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "carry-momentum" as const;
 const LOOKBACK_DAYS = 5;
@@ -155,7 +156,7 @@ export async function runCarryMomentumCycle(): Promise<void> {
     const stopLoss = capStopLoss(c.price, rawStop, "short");
     console.log(`[CarryMomentum] ${c.pair} funding=${(c.avgFunding * 100).toFixed(4)}%/h mom=${(c.momentum * 100).toFixed(1)}% -> SHORT`);
     const pos = await openPosition(
-      c.pair, "short", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
+      c.pair, "short", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
       stopLoss, 0, "trending", TRADE_TYPE, `fund:${c.avgFunding.toFixed(8)}|mom:${c.momentum.toFixed(4)}`, c.price,
     );
     if (pos) opened++;
@@ -172,7 +173,7 @@ export async function runCarryMomentumCycle(): Promise<void> {
     const stopLoss = capStopLoss(c.price, rawStop, "long");
     console.log(`[CarryMomentum] ${c.pair} funding=${(c.avgFunding * 100).toFixed(4)}%/h mom=${(c.momentum * 100).toFixed(1)}% -> LONG`);
     const pos = await openPosition(
-      c.pair, "long", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
+      c.pair, "long", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
       stopLoss, 0, "trending", TRADE_TYPE, `fund:${c.avgFunding.toFixed(8)}|mom:${c.momentum.toFixed(4)}`, c.price,
     );
     if (pos) opened++;

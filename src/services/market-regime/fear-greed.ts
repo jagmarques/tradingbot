@@ -1,10 +1,12 @@
-// Fear & Greed Index - free API from Alternative.me
-// Used as global regime gate: Extreme Fear -> shorts only, Extreme Greed -> longs only
-// Backtested: +35% Sharpe, -29% MaxDD when trend-aligned
+// Market regime system: Fear & Greed + BTC 7d momentum → 4 regimes
+// RISK-OFF: Fear<25 + BTC declining → shorts only, GARCH on
+// RECOVERY: Fear<25 + BTC rising → both directions, GARCH off (sentiment lags price)
+// RISK-ON: Fear>=25 + BTC rising → normal, both directions
+// CORRECTION: Fear>=25 + BTC declining → both but half size
 
 let cachedValue: number | null = null;
 let cachedAt = 0;
-const CACHE_TTL = 4 * 60 * 60 * 1000; // 4h cache (updates daily anyway)
+const CACHE_TTL = 4 * 60 * 60 * 1000;
 
 export async function getFearGreedIndex(): Promise<number | null> {
   if (cachedValue !== null && Date.now() - cachedAt < CACHE_TTL) return cachedValue;
@@ -22,18 +24,17 @@ export async function getFearGreedIndex(): Promise<number | null> {
     }
     return cachedValue;
   } catch {
-    return cachedValue; // Return stale cache on error
+    return cachedValue;
   }
 }
 
-// Bounce protection: if BTC rips >5% from 3-day low, pause new shorts for 24h
-// Prevents getting caught in a snap reversal when all positions are short
+// Bounce protection
 let bouncePauseUntil = 0;
 
 export function updateBtcBounceCheck(currentBtcPrice: number, btc3dLow: number): void {
   if (btc3dLow > 0 && currentBtcPrice > btc3dLow * 1.05 && Date.now() > bouncePauseUntil) {
     bouncePauseUntil = Date.now() + 24 * 60 * 60 * 1000;
-    console.log(`[FearGreed] BOUNCE DETECTED: BTC ${currentBtcPrice.toFixed(0)} is +${((currentBtcPrice / btc3dLow - 1) * 100).toFixed(1)}% from 3d low ${btc3dLow.toFixed(0)} -> pausing new shorts for 24h`);
+    console.log(`[Regime] BOUNCE: BTC +${((currentBtcPrice / btc3dLow - 1) * 100).toFixed(1)}% from 3d low -> pausing shorts 24h`);
   }
 }
 
@@ -41,34 +42,52 @@ export function isBouncePauseActive(): boolean {
   return Date.now() < bouncePauseUntil;
 }
 
-// Bear regime detection for auto-activating GARCH v2
-// GARCH v2 makes +$9.26/mo in bear but bleeds in sideways
-// Auto-enable when: BTC EMA(20) < EMA(50) AND Fear < 25 AND BTC 30d return < -10%
-let bearRegimeActive = false;
+// 4-state macro regime
+export type MacroRegime = "risk-off" | "recovery" | "risk-on" | "correction";
 
-export function updateBearRegime(btcEma20BelowEma50: boolean, btc30dReturn: number): void {
+const FEAR_THRESHOLD = 25;
+const BTC_7D_DECLINE = -0.03;
+
+let currentRegime: MacroRegime = "risk-on";
+
+export function updateMacroRegime(btc7dReturn: number): void {
   const fg = cachedValue ?? 50;
-  const wasBear = bearRegimeActive;
-  bearRegimeActive = btcEma20BelowEma50 && fg <= 25 && btc30dReturn < -0.10;
-  if (bearRegimeActive && !wasBear) {
-    console.log(`[Regime] BEAR detected: EMA bearish, Fear=${fg}, BTC 30d=${(btc30dReturn * 100).toFixed(1)}% -> activating GARCH v2`);
-  } else if (!bearRegimeActive && wasBear) {
-    console.log(`[Regime] Bear regime ended -> deactivating GARCH v2`);
+  const prev = currentRegime;
+  const fearful = fg < FEAR_THRESHOLD;
+  const declining = btc7dReturn < BTC_7D_DECLINE;
+
+  if (fearful && declining) currentRegime = "risk-off";
+  else if (fearful && !declining) currentRegime = "recovery";
+  else if (!fearful && declining) currentRegime = "correction";
+  else currentRegime = "risk-on";
+
+  if (currentRegime !== prev) {
+    console.log(`[Regime] ${prev} -> ${currentRegime} (Fear=${fg}, BTC 7d=${(btc7dReturn * 100).toFixed(1)}%)`);
   }
 }
 
-export function isBearRegime(): boolean {
-  return bearRegimeActive;
-}
+export function getMacroRegime(): MacroRegime { return currentRegime; }
 
-// Returns which directions are allowed based on Fear & Greed + bounce protection
+export function isRiskOff(): boolean { return currentRegime === "risk-off"; }
+
+// Direction bias per regime
 export async function getRegimeBias(): Promise<"long" | "short" | "both"> {
-  // Bounce protection overrides Fear/Greed: block shorts during BTC snap reversal
   if (isBouncePauseActive()) return "long";
-
   const fg = await getFearGreedIndex();
   if (fg === null) return "both";
-  if (fg <= 20) return "short"; // Extreme Fear: only shorts (trend-aligned)
-  if (fg >= 80) return "long"; // Extreme Greed: only longs (trend-aligned)
+
+  if (currentRegime === "risk-off") return "short";
+  if (currentRegime === "recovery") return "both"; // KEY FIX: allow longs in recovery
+  if (fg >= 80) return "long";
   return "both";
+}
+
+// Position size multiplier per regime
+export function getRegimeSizeMultiplier(): number {
+  switch (currentRegime) {
+    case "risk-off": return 1.0;
+    case "recovery": return 0.75;
+    case "risk-on": return 1.0;
+    case "correction": return 0.5;
+  }
 }

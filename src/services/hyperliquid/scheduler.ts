@@ -1,12 +1,11 @@
 import { isQuantKilled } from "./risk-manager.js";
-import { updateBtcBounceCheck, updateBearRegime, isBearRegime } from "../market-regime/fear-greed.js";
+import { updateBtcBounceCheck, updateMacroRegime, isRiskOff, getMacroRegime } from "../market-regime/fear-greed.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
-// import { runGarchV2Cycle } from "./garch-v2-engine.js"; // Disabled pending regime redesign
+import { runGarchV2Cycle } from "./garch-v2-engine.js";
 import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
-import { isBtcBullish } from "./indicators.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -44,40 +43,40 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     } catch { /* non-critical */ }
 
-    // Bear regime detection (daily bars for proper EMA 20/50 = 20 day / 50 day)
+    // Macro regime: Fear & Greed + BTC 7d momentum → 4 states
     try {
-      const btcDaily = await fetchCandles("BTC", "1d", 60);
-      if (btcDaily.length >= 52) {
+      const btcDaily = await fetchCandles("BTC", "1d", 15);
+      if (btcDaily.length >= 9) {
         const completed = btcDaily.slice(0, -1);
-        const ema20Below50 = !isBtcBullish(completed, 20, 50);
         const btcNow = completed[completed.length - 1].close;
-        const btc30dAgo = completed[Math.max(0, completed.length - 30)].close;
-        const btc30dReturn = (btcNow - btc30dAgo) / btc30dAgo;
-        updateBearRegime(ema20Below50, btc30dReturn);
+        const btc7dAgo = completed[Math.max(0, completed.length - 7)].close;
+        const btc7dReturn = (btcNow - btc7dAgo) / btc7dAgo;
+        updateMacroRegime(btc7dReturn);
       }
     } catch { /* non-critical */ }
 
+    // 3 core engines always run
     try { await runDonchianTrendCycle(); }
     catch (err) { console.error(`[QuantScheduler] DonchianTrend error: ${err instanceof Error ? err.message : String(err)}`); }
 
     try { await runSupertrend4hCycle(); }
     catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    // GARCH v2: disabled - auto-bear gate too strict (37/1180 days, PF 0.55 when active)
-    // Waiting for improved regime system (Fear zones + momentum) before re-enabling
-    // if (isBearRegime()) {
-    //   try { await runGarchV2Cycle(); }
-    //   catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err}`); }
-    // }
-
     try { await runCarryMomentumCycle(); }
     catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    // GARCH v2: auto-activates in RISK-OFF regime only
+    if (isRiskOff()) {
+      try { await runGarchV2Cycle(); }
+      catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
+    }
 
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    const engineCount = isBearRegime() ? 4 : 3;
-    console.log(`[QuantScheduler] Cycle: ${engineCount} engines (${isBearRegime() ? "+GARCH bear mode" : "normal"})`);
+    const regime = getMacroRegime();
+    const engines = isRiskOff() ? "3+GARCH" : "3";
+    console.log(`[QuantScheduler] Cycle: ${engines} engines | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 

@@ -6,6 +6,7 @@ import { isInStopLossCooldown } from "./scheduler.js";
 import { sma, atr, isBtcBullish, donchianExitChannel } from "./indicators.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
+import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "donchian-trend" as const;
 const SMA_FAST = 20;
@@ -133,7 +134,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
 
       // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(
-        pair, direction, ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
+        pair, direction, ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
         stopLoss, 0, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {

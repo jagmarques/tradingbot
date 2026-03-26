@@ -12,6 +12,7 @@ import { ema, isBtcBullish } from "./indicators.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
 import type { OhlcvCandle } from "./types.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
+import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
@@ -133,7 +134,7 @@ export async function runGarchV2Cycle(): Promise<void> {
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, GARCH_POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
+        pair, direction, GARCH_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
