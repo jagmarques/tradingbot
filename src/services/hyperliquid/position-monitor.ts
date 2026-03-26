@@ -70,7 +70,7 @@ function throttledCriticalAlert(msg: string, context: string): void {
   void notifyCriticalError(msg, context);
 }
 
-const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h"]);
+const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h", "garch-v2"]);
 
 function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
   // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
@@ -658,7 +658,7 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
-      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
+      const skipNearSlFast = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
         ? capStopLoss(position.entryPrice, rawSlFast, position.direction)
