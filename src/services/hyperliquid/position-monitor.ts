@@ -20,6 +20,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "btc-mr": 24 * 60 * 60 * 1000,     // 24h max hold
   "btc-event": 24 * 60 * 60 * 1000, // 24h max hold
   "news-trade": 24 * 60 * 60 * 1000, // 24h max hold
+  "donchian-trend": 60 * 24 * 60 * 60 * 1000, // 60d max hold
+  "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
@@ -56,6 +58,7 @@ const closingInProgress = new Set<string>(); // prevent double-close across loop
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
 const closeFailCounts = new Map<string, number>();
+const atrPeakPrices = new Map<string, number>(); // ATR trailing: track peak price per ensemble position
 const newsTradeAdviceCache = new Map<string, "HOLD" | "TAKE_PROFIT" | "CLOSE" | null>();
 let newsAdviceCacheTime = 0; // when cache was last populated
 let lastCriticalAlertMs = 0;
@@ -66,6 +69,44 @@ function throttledCriticalAlert(msg: string, context: string): void {
   if (now - lastCriticalAlertMs < CRITICAL_ALERT_COOLDOWN_MS) return;
   lastCriticalAlertMs = now;
   void notifyCriticalError(msg, context);
+}
+
+const ENSEMBLE_TRADE_TYPES = new Set(["donchian-trend", "supertrend-4h"]);
+
+function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
+  // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
+  const indicators = position.indicatorsAtEntry ?? "";
+  const atrMatch = indicators.match(/atr:([\d.]+)/);
+  if (!atrMatch) return null;
+  const atr = parseFloat(atrMatch[1]);
+  if (!atr || atr <= 0) return null;
+
+  const isLong = position.direction === "long";
+  const profitPrice = isLong
+    ? currentPrice - position.entryPrice
+    : position.entryPrice - currentPrice;
+
+  // Update peak price tracking
+  const prevPeak = atrPeakPrices.get(position.id);
+  const favorablePrice = isLong ? Math.max(currentPrice, prevPeak ?? currentPrice) : Math.min(currentPrice, prevPeak ?? currentPrice);
+  atrPeakPrices.set(position.id, favorablePrice);
+
+  // Determine trail multiplier based on profit vs ATR
+  let trailMultiplier: number;
+  if (profitPrice >= 2 * atr) {
+    trailMultiplier = 1.5;
+  } else if (profitPrice >= 1 * atr) {
+    trailMultiplier = 2;
+  } else {
+    return null; // No trailing yet, use initial SL (3x ATR set at entry)
+  }
+
+  // Compute trail stop from peak price
+  const trailStop = isLong
+    ? favorablePrice - trailMultiplier * atr
+    : favorablePrice + trailMultiplier * atr;
+
+  return trailStop;
 }
 
 async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = false): Promise<void> {
@@ -170,7 +211,7 @@ async function checkPositionStops(): Promise<void> {
     let orphanClosed = false;
     for (const position of positions) {
       // Skip orphan check for engines with their own pair lists
-      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event";
+      const hasOwnPairList = position.tradeType === "news-trade" || position.tradeType === "btc-event" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
       if (!hasOwnPairList && position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
         console.log(`[PositionMonitor] Orphan close: ${position.pair}`);
@@ -242,14 +283,30 @@ async function checkPositionStops(): Promise<void> {
         : undefined;
       const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
+      // ATR-based trailing for ensemble engines
+      const isEnsembleEngine = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "");
+      if (isEnsembleEngine) {
+        const atrTrailStop = getAtrTrailStop(position, currentPrice);
+        if (atrTrailStop !== null) {
+          const atrSlHit = (position.direction === "long" && currentPrice <= atrTrailStop) ||
+                           (position.direction === "short" && currentPrice >= atrTrailStop);
+          if (atrSlHit) {
+            console.log(`[PositionMonitor] ATR trail stop: ${position.pair} ${position.direction} price=${currentPrice} trail=${atrTrailStop.toFixed(4)}`);
+            await tryClose(position, "atr-trailing-stop");
+            continue;
+          }
+        }
+      }
+
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
         saveQuantPosition(position);
       }
 
+      // Skip percentage-based trailing for ensemble engines (they use ATR trailing above)
       const peak = position.maxUnrealizedPnlPct ?? 0;
       const trailCfg = getTrailConfig(position);
-      if (peak > trailCfg.activation) {
+      if (!isEnsembleEngine && peak > trailCfg.activation) {
         // alert once per live position
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
           trailActivatedIds.add(position.id);
@@ -476,6 +533,9 @@ async function checkPositionStops(): Promise<void> {
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
     }
+    for (const id of atrPeakPrices.keys()) {
+      if (!openIds.has(id)) atrPeakPrices.delete(id);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[PositionMonitor] Error checking positions: ${msg}`);
@@ -500,6 +560,8 @@ async function checkTrailActivePositions(): Promise<void> {
 
     // Trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
+      // Ensemble engines use ATR-based trailing in main loop, skip fast poll
+      if (ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? "")) return false;
       if (nearSlIds.has(p.id)) return true;
       const trailCfg = getTrailConfig(p);
       return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;

@@ -57,7 +57,14 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "btc-mr": "hyperliquid",
   "btc-event": "hyperliquid",
   "news-trade": "hyperliquid",
+  "donchian-trend": "hyperliquid",
+  "supertrend-4h": "hyperliquid",
 };
+
+// Ensemble engine sizing (Donchian-Trend + Supertrend-4h)
+export const ENSEMBLE_POSITION_SIZE_USD = 5;
+export const ENSEMBLE_MAX_CONCURRENT = 10;
+export const ENSEMBLE_LEVERAGE = 10;
 
 // Engines that go live in hybrid mode (rest stay paper)
 // VL-04: garch-chan and news-trade killed - emptied until BTC-MR validated
