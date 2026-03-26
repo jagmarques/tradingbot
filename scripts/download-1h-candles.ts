@@ -67,6 +67,7 @@ async function downloadCandles(coin: string): Promise<Candle[]> {
   const allCandles: Candle[] = [];
   let cursor = START;
   const oneHourMs = 3600000;
+  let emptyStreak = 0;
 
   while (cursor < END) {
     const batchEnd = Math.min(cursor + BATCH_SIZE * oneHourMs, END);
@@ -77,8 +78,14 @@ async function downloadCandles(coin: string): Promise<Candle[]> {
     });
 
     if (!Array.isArray(data) || data.length === 0) {
-      break;
+      // Skip forward by one batch window and try again
+      cursor = batchEnd;
+      emptyStreak++;
+      if (emptyStreak >= 3) break; // give up after 3 empty batches in a row
+      await sleep(DELAY_MS);
+      continue;
     }
+    emptyStreak = 0;
 
     for (const c of data) {
       allCandles.push([c.t, parseFloat(c.o), parseFloat(c.h), parseFloat(c.l), parseFloat(c.c)]);
