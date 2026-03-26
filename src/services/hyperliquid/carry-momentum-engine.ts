@@ -6,6 +6,7 @@ import { openPosition, closePosition, getOpenQuantPositions } from "./executor.j
 import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
+import { getRegimeBias } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "carry-momentum" as const;
 const LOOKBACK_DAYS = 5;
@@ -140,9 +141,14 @@ export async function runCarryMomentumCycle(): Promise<void> {
 
   let opened = 0;
   const maxNew = ENSEMBLE_MAX_CONCURRENT - ensembleCount;
+  const regimeBias = await getRegimeBias();
 
   for (const c of shortCandidates) {
     if (opened >= maxNew) break;
+    if (regimeBias === "long") {
+      console.log(`[CarryMomentum] ${c.pair} short blocked by Greed regime`);
+      continue;
+    }
     if (isInStopLossCooldown(c.pair, "short", TRADE_TYPE)) continue;
     const rawStop = c.price * (1 + SL_PCT);
     const stopLoss = capStopLoss(c.price, rawStop, "short");
@@ -156,6 +162,10 @@ export async function runCarryMomentumCycle(): Promise<void> {
 
   for (const c of longCandidates) {
     if (opened >= maxNew) break;
+    if (regimeBias === "short") {
+      console.log(`[CarryMomentum] ${c.pair} long blocked by Fear regime`);
+      continue;
+    }
     if (isInStopLossCooldown(c.pair, "long", TRADE_TYPE)) continue;
     const rawStop = c.price * (1 - SL_PCT);
     const stopLoss = capStopLoss(c.price, rawStop, "long");

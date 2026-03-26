@@ -4,6 +4,7 @@ import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENS
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { sma, atr, isBtcBullish, donchianExitChannel } from "./indicators.js";
+import { getRegimeBias } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "donchian-trend" as const;
 const SMA_FAST = 20;
@@ -106,6 +107,17 @@ export async function runDonchianTrendCycle(): Promise<void> {
       }
 
       if (!direction) continue;
+
+      const regimeBias = await getRegimeBias();
+      if (regimeBias === "short" && direction === "long") {
+        console.log(`[DonchianTrend] ${pair} long blocked by Fear regime`);
+        continue;
+      }
+      if (regimeBias === "long" && direction === "short") {
+        console.log(`[DonchianTrend] ${pair} short blocked by Greed regime`);
+        continue;
+      }
+
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       // ATR for stop-loss (capped to QUANT_MAX_SL_PCT)

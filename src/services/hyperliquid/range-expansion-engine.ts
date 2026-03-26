@@ -8,6 +8,7 @@ import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMB
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { isBtcBullish } from "./indicators.js";
+import { getRegimeBias } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "range-expansion" as const;
 const RANGE_THRESHOLD = 2.0; // today's range must be > 2× 20-day avg
@@ -110,6 +111,17 @@ export async function runRangeExpansionCycle(): Promise<void> {
       }
 
       if (!direction) continue;
+
+      const regimeBias = await getRegimeBias();
+      if (regimeBias === "short" && direction === "long") {
+        console.log(`[RangeExpansion] ${pair} long blocked by Fear regime`);
+        continue;
+      }
+      if (regimeBias === "long" && direction === "short") {
+        console.log(`[RangeExpansion] ${pair} short blocked by Greed regime`);
+        continue;
+      }
+
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       // ATR for stop

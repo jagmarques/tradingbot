@@ -4,6 +4,7 @@ import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMB
 import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { isBtcBullish } from "./indicators.js";
+import { getRegimeBias } from "../market-regime/fear-greed.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "supertrend-4h" as const;
@@ -102,16 +103,8 @@ export async function runSupertrend4hCycle(): Promise<void> {
   const btcCompleted = btcCandles.slice(0, -1);
   const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 
-  // BTC momentum regime gate (Fear/Greed proxy): blocks counter-trend entries
-  // Validated: +35% Sharpe, +18% PF, -29% MaxDD vs unfiltered
-  let regimeBias: "long" | "short" | "both" = "both";
-  if (btcCompleted.length >= 180) { // need 30 daily bars ≈ 180 4h bars
-    const btcNow = btcCompleted[btcCompleted.length - 1].close;
-    const btc30dAgo = btcCompleted[Math.max(0, btcCompleted.length - 180)].close;
-    const btc30dReturn = (btcNow - btc30dAgo) / btc30dAgo;
-    if (btc30dReturn < -0.10) regimeBias = "short"; // Fear: only shorts
-    else if (btc30dReturn > 0.15) regimeBias = "long"; // Greed: only longs
-  }
+  // Fear & Greed regime gate: blocks counter-trend entries
+  const regimeBias = await getRegimeBias();
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);

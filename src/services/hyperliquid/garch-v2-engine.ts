@@ -8,6 +8,7 @@ import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENS
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { ema, isBtcBullish } from "./indicators.js";
+import { getRegimeBias } from "../market-regime/fear-greed.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
@@ -92,6 +93,16 @@ export async function runGarchV2Cycle(): Promise<void> {
       }
 
       if (!direction) continue;
+
+      const regimeBias = await getRegimeBias();
+      if (regimeBias === "short" && direction === "long") {
+        console.log(`[GarchV2] ${pair} long blocked by Fear regime`);
+        continue;
+      }
+      if (regimeBias === "long" && direction === "short") {
+        console.log(`[GarchV2] ${pair} short blocked by Greed regime`);
+        continue;
+      }
 
       // Volume + Range confirmation filter (improves PF by 43%, $/day by 11%)
       const signalBar = completed1h[completed1h.length - 1];
