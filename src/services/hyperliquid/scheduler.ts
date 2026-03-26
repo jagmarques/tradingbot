@@ -4,7 +4,7 @@ import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
-import { runGarchV2Cycle } from "./garch-v2-engine.js"; // Auto-activated in bear regimes
+// import { runGarchV2Cycle } from "./garch-v2-engine.js"; // Disabled pending regime redesign
 import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
 import { isBtcBullish } from "./indicators.js";
 
