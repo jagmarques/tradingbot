@@ -1,6 +1,7 @@
 import { classifyPost } from "./classifier.js";
-import { closePosition, getOpenQuantPositions } from "../hyperliquid/executor.js";
+import { openPosition } from "../hyperliquid/executor.js";
 import { sendMessage } from "../telegram/bot.js";
+import { QUANT_TRADING_PAIRS } from "../../config/constants.js";
 
 // Only first-mover sources that actually move crypto before the market prices it in
 const RSS_FEEDS = [
@@ -64,42 +65,49 @@ async function classifyAndAct(content: string, feedName: string, articleUrl?: st
     `${preview}${linkLine}`
   );
 
-  // Defense: only runs if not in cooldown (avoid closing the same direction twice)
-  if (isTrumpCooldownActive()) {
-    console.log(`[TrumpGuard] ${result.sentiment} event emitted for news-trade, defense skipped (cooldown)`);
+  // Paper trade on high-impact events (no closing of live positions)
+  if (impact !== "high") {
+    console.log(`[TrumpGuard] ${result.sentiment} ${impact} - alert only (paper trades only on HIGH impact)`);
     return;
   }
 
-  const closeDirection = result.sentiment === "BULLISH" ? "short" : "long";
-  console.log(`[TrumpGuard] New post: ${preview} -> ${result.sentiment} [${impact}] -> closing ${closeDirection}s`);
+  if (isTrumpCooldownActive()) {
+    console.log(`[TrumpGuard] ${result.sentiment} HIGH event, paper trade skipped (cooldown)`);
+    return;
+  }
+
+  const direction = result.sentiment === "BULLISH" ? "long" : "short";
+  console.log(`[TrumpGuard] HIGH impact: ${preview} -> ${result.sentiment} -> paper ${direction}`);
 
   cooldownUntil = Date.now() + COOLDOWN_MS;
-  cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
+  cooldownBlockedDir = direction;
 
-  // Close ensemble positions in hurt direction on Trump/high-impact events
-  const positions = getOpenQuantPositions();
-  const targets = positions.filter(p => p.direction === closeDirection && (p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h"));
-
-  for (const pos of targets) {
+  // Open paper positions on top 3 liquid pairs
+  const eventPairs = ["BTC", "ETH", "SOL"].filter(p => QUANT_TRADING_PAIRS.includes(p) || p === "BTC");
+  let opened = 0;
+  for (const pair of eventPairs) {
     try {
-      await closePosition(pos.id, `trump-guard-${result.sentiment.toLowerCase()}`);
+      const pos = await openPosition(
+        pair, direction, 5, 10,
+        0.01, 0, "trending", "trump-event" as any,
+        `src:${feedName}|impact:${impact}`, undefined, true,
+      );
+      if (pos) opened++;
     } catch (err) {
-      console.error(`[TrumpGuard] Failed to close ${pos.pair} ${pos.direction}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[TrumpGuard] Paper open failed for ${pair}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  if (targets.length > 0) {
-    console.log(`[TrumpGuard] Closed ${targets.length} ${closeDirection}(s), cooldown 30min`);
-    const nlTime = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (opened > 0) {
+    console.log(`[TrumpGuard] Opened ${opened} paper ${direction}(s), cooldown 30min`);
+    const nlTime2 = new Date().toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     void sendMessage(
-      `<b>NEWS ALERT</b> ${nlTime}\n` +
+      `<b>EVENT TRADE</b> ${nlTime2}\n` +
       `${result.sentiment}: ${preview}\n` +
-      `Impact: ${impact.toUpperCase()}\n` +
-      `Closed ${targets.length} ensemble ${closeDirection}(s)\n` +
+      `Impact: HIGH\n` +
+      `Paper ${direction} ${opened} pairs (BTC/ETH/SOL)\n` +
       `Cooldown: 30min`
     );
-  } else {
-    console.log(`[TrumpGuard] No ${closeDirection}s open, cooldown 30min`);
   }
 }
 
