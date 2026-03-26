@@ -22,6 +22,7 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "news-trade": 24 * 60 * 60 * 1000, // 24h max hold
   "donchian-trend": 60 * 24 * 60 * 60 * 1000, // 60d max hold
   "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
+  "garch-v2": 168 * 60 * 60 * 1000,            // 168h (7d) max hold
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
@@ -458,7 +459,7 @@ async function checkPositionStops(): Promise<void> {
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
       // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
-      const skipNearSl = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
+      const skipNearSl = position.tradeType === "garch-chan" || position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h" || position.tradeType === "garch-v2";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
         const priceDistanceTowardSl =

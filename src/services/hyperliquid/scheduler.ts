@@ -1,6 +1,7 @@
 import { isQuantKilled } from "./risk-manager.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
+import { runGarchV2Cycle } from "./garch-v2-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +34,10 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runSupertrend4hCycle(); }
     catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h running`);
+    try { await runGarchV2Cycle(); }
+    catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    console.log(`[QuantScheduler] Cycle: DonchianTrend + Supertrend4h + GarchV2 running`);
   } finally { cycleRunning = false; }
 }
 
