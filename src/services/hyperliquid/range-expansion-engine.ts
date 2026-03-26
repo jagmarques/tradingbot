@@ -9,6 +9,7 @@ import { calcAtrStopLoss, capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { isBtcBullish } from "./indicators.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
+import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 
 const TRADE_TYPE = "range-expansion" as const;
 const RANGE_THRESHOLD = 2.0; // today's range must be > 2× 20-day avg
@@ -143,7 +144,7 @@ export async function runRangeExpansionCycle(): Promise<void> {
       console.log(`[RangeExpansion] ${pair} range=${(todayRange / avgRange).toFixed(1)}x avg -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
       await openPosition(
-        pair, direction, POSITION_SIZE_USD, ENSEMBLE_LEVERAGE,
+        pair, direction, POSITION_SIZE_USD * getEventSizeMultiplier(), ENSEMBLE_LEVERAGE,
         stopLoss, 0, "trending", TRADE_TYPE, `range:${(todayRange / avgRange).toFixed(2)}`, entryPrice,
       );
     } catch (err) {
