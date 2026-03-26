@@ -1,12 +1,4 @@
 import { isQuantKilled } from "./risk-manager.js";
-// VL-04: GARCH-chan killed (negative P&L, unprofitable on live)
-// import { runGarchChanCycle } from "./garch-chan-engine.js";
-// Replaced by Donchian+Supertrend ensemble
-// import { runBtcMrCycle } from "./btc-mr-engine.js";
-// VL-04: BTC-Event killed (insufficient edge, paper never promoted)
-// import { runBtcEventCycle } from "./btc-event-engine.js";
-// VL-04: News-Trade killed (high variance, net negative)
-// import { runNewsTradingCycle } from "./news-trading-engine.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 
@@ -34,14 +26,6 @@ export async function runDirectionalCycle(): Promise<void> {
   cycleRunning = true;
   try {
     if (isQuantKilled()) return;
-
-    // VL-04: runGarchChanCycle removed (negative P&L)
-    // VL-04: runBtcEventCycle removed (insufficient edge)
-    // VL-04: runNewsTradingCycle removed (net negative)
-
-    // Replaced by ensemble
-    // try { await runBtcMrCycle(); }
-    // catch (err) { console.error(`[QuantScheduler] BTC-MR error: ${err instanceof Error ? err.message : String(err)}`); }
 
     try { await runDonchianTrendCycle(); }
     catch (err) { console.error(`[QuantScheduler] DonchianTrend error: ${err instanceof Error ? err.message : String(err)}`); }

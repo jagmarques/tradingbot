@@ -124,11 +124,9 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
-// BTC Event Engine
-export { runBtcEventCycle } from "./btc-event-engine.js";
-
-// News Trading Engine
-export { runNewsTradingCycle } from "./news-trading-engine.js";
+// Ensemble Engines
+export { runDonchianTrendCycle } from "./donchian-trend-engine.js";
+export { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 
 // Lighter DEX
 export { getLighterLivePositions } from "../lighter/executor.js";

@@ -238,18 +238,25 @@ function loadAllBtcMoveEvents(): NewsEvent[] {
 
   const rawEvents: NewsEvent[] = [];
 
-  for (let i = 0; i < btc1m.length; i++) {
+  // LOOK-AHEAD FIX: Look 15 bars BACKWARD from candle i.
+  // At minute i, we check if BTC moved >0.3% in the PAST 15 minutes.
+  // This is what we'd know in real-time: "BTC just moved 0.3%!"
+  // Event timestamp = candle i (when we detect the move, not when it started).
+  for (let i = 15; i < btc1m.length; i++) {
     const candle = btc1m[i];
     if (candle.t < START_TS || candle.t > END_TS) continue;
 
-    const startPrice = candle.o;
-    if (!startPrice || startPrice <= 0) continue;
+    const currentPrice = candle.c; // current price at detection time
+    if (!currentPrice || currentPrice <= 0) continue;
 
     let maxUp = 0;
     let maxDown = 0;
 
-    // Look 15 bars forward
-    for (let j = i; j < btc1m.length && j <= i + 15; j++) {
+    // Look 15 bars BACKWARD - what happened in the last 15 minutes
+    const startPrice = btc1m[i - 15].o; // price 15 min ago
+    if (!startPrice || startPrice <= 0) continue;
+
+    for (let j = i - 15; j <= i; j++) {
       const up = (btc1m[j].h - startPrice) / startPrice;
       const down = (btc1m[j].l - startPrice) / startPrice;
       if (up > maxUp) maxUp = up;
@@ -259,6 +266,7 @@ function loadAllBtcMoveEvents(): NewsEvent[] {
     const upExceeds = maxUp > THRESHOLD;
     const downExceeds = Math.abs(maxDown) > THRESHOLD;
 
+    // Direction = which way BTC already moved (momentum continuation)
     if (upExceeds && downExceeds) {
       if (maxUp >= Math.abs(maxDown)) {
         rawEvents.push({ ts: candle.t, direction: "long" });
@@ -527,11 +535,12 @@ function simulate(
   for (const ts of sortedTs) {
     const closedThisBar = new Set<string>();
 
-    // FIX Issue 2: Check for news events in the CURRENT hour [ts, ts + HOUR_MS)
-    // This means if event fires at hour X minute 5, we enter at hour X open price
-    // In live trading, RSS detects in 3-11 seconds, so using the current bar's
-    // open is the closest proxy for real-time entry with 1h data
-    const newsInWindow = sortedNews.filter(e => e.ts >= ts && e.ts < ts + HOUR_MS);
+    // LOOK-AHEAD FIX: Check for events in the PREVIOUS hour [ts - HOUR_MS, ts).
+    // Event detected at minute X -> we can only act on the NEXT hourly bar open.
+    // This is realistic: BTC moved, we detect it, we enter at next bar open.
+    // For Trump events: post at 14:05, BTC moves by 14:20, we detect at 14:20,
+    // we enter at 15:00 bar open. ~40 min delay with 1h bars.
+    const newsInWindow = sortedNews.filter(e => e.ts >= ts - HOUR_MS && e.ts < ts);
 
     // --- EXITS ---
     for (const [posKey, pos] of openPositions) {

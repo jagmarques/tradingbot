@@ -64,11 +64,6 @@ async function classifyAndAct(content: string, feedName: string, articleUrl?: st
     `${preview}${linkLine}`
   );
 
-  // Trigger news-trading immediately (dynamic import avoids circular dependency)
-  import("../hyperliquid/news-trading-engine.js").then(m => m.runNewsTradingCycle()).catch(err => {
-    console.error(`[TrumpGuard] News-trade error: ${err instanceof Error ? err.message : String(err)}`);
-  });
-
   // Defense: only runs if not in cooldown (avoid closing the same direction twice)
   if (isTrumpCooldownActive()) {
     console.log(`[TrumpGuard] ${result.sentiment} event emitted for news-trade, defense skipped (cooldown)`);
@@ -81,9 +76,9 @@ async function classifyAndAct(content: string, feedName: string, articleUrl?: st
   cooldownUntil = Date.now() + COOLDOWN_MS;
   cooldownBlockedDir = closeDirection === "short" ? "short" : "long";
 
-  // Close GARCH positions in hurt direction (not news-trade, it manages its own)
+  // Close ensemble positions in hurt direction on Trump/high-impact events
   const positions = getOpenQuantPositions();
-  const targets = positions.filter(p => p.direction === closeDirection && p.mode === "live" && p.tradeType === "garch-chan");
+  const targets = positions.filter(p => p.direction === closeDirection && (p.tradeType === "donchian-trend" || p.tradeType === "supertrend-4h"));
 
   for (const pos of targets) {
     try {
@@ -100,7 +95,7 @@ async function classifyAndAct(content: string, feedName: string, articleUrl?: st
       `<b>NEWS ALERT</b> ${nlTime}\n` +
       `${result.sentiment}: ${preview}\n` +
       `Impact: ${impact.toUpperCase()}\n` +
-      `Closed ${targets.length} GARCH ${closeDirection}(s)\n` +
+      `Closed ${targets.length} ensemble ${closeDirection}(s)\n` +
       `Cooldown: 30min`
     );
   } else {
