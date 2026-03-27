@@ -83,11 +83,8 @@ export async function getRegimeBias(): Promise<"long" | "short" | "both"> {
 }
 
 // Position size multiplier per regime
+// Backtested with real F&G: size reduction HURTS (costs $0.08/day with no DD improvement)
+// Direction-only filter is the free lunch - same $/day as baseline with downside protection
 export function getRegimeSizeMultiplier(): number {
-  switch (currentRegime) {
-    case "risk-off": return 1.0;
-    case "recovery": return 0.75;
-    case "risk-on": return 1.0;
-    case "correction": return 0.5;
-  }
+  return 1.0; // All regimes trade at full size
 }
