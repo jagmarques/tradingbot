@@ -42,7 +42,7 @@ export async function runBtcHedgeCycle(): Promise<void> {
       sizeUsd,
       LEVERAGE,
       0.01,      // dummy SL far from any realistic price
-      999999,    // dummy TP never triggers
+      0,         // TP=0 disables TP check (NEVER use 999999)
       "ranging",
       TRADE_TYPE,
       undefined,
@@ -69,7 +69,7 @@ export async function runBtcHedgeCycle(): Promise<void> {
     sizeUsd,
     LEVERAGE,
     0.01,
-    999999,
+    0,         // TP=0 disables TP check
     "ranging",
     TRADE_TYPE,
     undefined,

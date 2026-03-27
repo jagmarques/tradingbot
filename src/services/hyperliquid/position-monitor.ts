@@ -31,8 +31,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "donchian-trend": { activation: 999, distance: 999 }, // ATR trailing handled separately
-  "supertrend-4h": { activation: 999, distance: 999 },  // ATR trailing handled separately
+  "donchian-trend": { activation: 999, distance: 999 }, // No trailing (backtest proved it hurts)
+  "supertrend-4h": { activation: 999, distance: 999 },  // No trailing
   "garch-v2": { activation: 999, distance: 999 },       // Fixed SL, no trailing
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
@@ -260,7 +260,7 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Skip percentage-based trailing for ensemble engines (they use ATR trailing above)
+      // Skip percentage-based trailing for ensemble engines (no trailing, backtest proven)
       const peak = position.maxUnrealizedPnlPct ?? 0;
       const trailCfg = getTrailConfig(position);
       if (!isEnsembleEngine && peak > trailCfg.activation) {
@@ -414,7 +414,7 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
+      // Skip near-SL for ensemble engines (they use ATR-based stops)
       const skipNearSl = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
       if (hasValidStopLoss && !skipNearSl) {
         const slDistance = Math.abs(position.entryPrice - effectiveSl);
@@ -514,7 +514,7 @@ async function checkTrailActivePositions(): Promise<void> {
 
     // Trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
-      // Ensemble engines use ATR-based trailing in main loop, skip fast poll
+      // Ensemble engines have no trailing, skip fast poll
       if (ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? "")) return false;
       if (nearSlIds.has(p.id)) return true;
       const trailCfg = getTrailConfig(p);
@@ -612,7 +612,7 @@ async function checkTrailActivePositions(): Promise<void> {
       if (position.tradeType === "news-trade") {
       }
 
-      // Skip near-SL for engines with tight fixed stops or ATR-based trailing stops
+      // Skip near-SL for ensemble engines
       const skipNearSlFast = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
       const rawSlFast = position.stopLoss;
       const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)

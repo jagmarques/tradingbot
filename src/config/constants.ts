@@ -77,10 +77,9 @@ export const ENSEMBLE_MAX_CONCURRENT = 20; // Validated: +$0.39/day vs 10, no DD
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)
-export const ENSEMBLE_TRADE_TYPES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion", "alt-rotation", "momentum-confirm"]);
+export const ENSEMBLE_TRADE_TYPES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "momentum-confirm"]);
 
-// Engines that go live in hybrid mode (rest stay paper)
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion", "alt-rotation", "momentum-confirm"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "momentum-confirm"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";
@@ -117,7 +116,7 @@ export const HYPERLIQUID_MAINTENANCE_MARGIN_RATE: Record<string, number> = {
   SOL: 0.025,   // 20x max
   ZEC: 0.05,    // 10x max
   NEAR: 0.05,   // 10x max
-  PEPE: 0.05,   // 10x max
+  kPEPE: 0.05,  // 10x max (HL uses kPEPE ticker)
   HYPE: 0.05,   // 10x max
   FET: 0.05,    // 10x max
 };

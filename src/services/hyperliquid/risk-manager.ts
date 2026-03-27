@@ -50,7 +50,7 @@ export function resetDailyDrawdown(): void {
 }
 
 export function seedDailyLossFromDb(): void {
-  const strategies = ["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "range-expansion", "trump-event", "garch-chan", "btc-event", "news-trade", "btc-mr"];
+  const strategies = ["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "momentum-confirm", "alt-rotation", "range-expansion", "trump-event", "garch-chan", "btc-event", "news-trade", "btc-mr"];
   const modes: Array<"live" | "paper"> = ["live", "paper"];
   for (const mode of modes) {
     for (const strategy of strategies) {
