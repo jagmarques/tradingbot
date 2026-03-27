@@ -9,8 +9,8 @@ import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "donchian-trend" as const;
-const SMA_FAST = 30;
-const SMA_SLOW = 60;
+const SMA_FAST = 20;
+const SMA_SLOW = 50;
 const DONCHIAN_EXIT_PERIOD = 15;
 const ATR_PERIOD = 14;
 const ATR_SL_MULTIPLIER = 3;
@@ -130,7 +130,7 @@ export async function runDonchianTrendCycle(): Promise<void> {
       const indicators = `atr:${atr14.toFixed(6)}`;
 
       const crossType = direction === "long" ? "golden cross" : "death cross";
-      console.log(`[DonchianTrend] ${pair} SMA30/60 ${crossType} -> ${direction} SL=${stopLoss.toFixed(4)}`);
+      console.log(`[DonchianTrend] ${pair} SMA20/50 ${crossType} -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
       // TP=0 disables TP check in monitor; entryPrice enables SL rebase to actual fill
       const pos = await openPosition(

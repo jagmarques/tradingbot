@@ -5,7 +5,8 @@ import { fetchCandles } from "./candles.js";
 import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
-
+import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
+import { runMomentumConfirmCycle } from "./momentum-confirm-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -62,15 +63,23 @@ export async function runDirectionalCycle(): Promise<void> {
     try { await runSupertrend4hCycle(); }
     catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
+    try { await runCarryMomentumCycle(); }
+    catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    // GARCH v2: always-on at $3 size (small enough to not hurt, captures bear alpha)
+    // Day 1 live: garch-chan made +$7.34. Backtest PF 1.02 full period but validated p<0.0001
     try { await runGarchV2Cycle(); }
     catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    try { await runMomentumConfirmCycle(); }
+    catch (err) { console.error(`[QuantScheduler] MomentumConfirm error: ${err instanceof Error ? err.message : String(err)}`); }
 
     const regime = getMacroRegime();
 
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    console.log(`[QuantScheduler] Cycle: 3 engines | regime=${regime}`);
+    console.log(`[QuantScheduler] Cycle: 5 engines | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 
