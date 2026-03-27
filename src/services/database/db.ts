@@ -155,6 +155,14 @@ export function initDb(dbPath?: string): Database.Database {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS daily_alt_data (
+      date TEXT PRIMARY KEY,
+      fear_greed INTEGER,
+      sopr REAL,
+      nupl REAL,
+      collected_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
   `);
 
   // Migration: Add new copy amount columns to bot_settings (for existing DBs)

@@ -4,11 +4,13 @@ import { getOpenQuantPositions } from "../hyperliquid/executor.js";
 import { getPaperStartDate } from "../database/quant.js";
 import { getTradingMode } from "../../config/env.js";
 import { QUANT_PAPER_VALIDATION_DAYS } from "../../config/constants.js";
+import { collectDailyAltData } from "../alt-data/collector.js";
 
 // --- State ---
 let digestInterval: ReturnType<typeof setInterval> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let apiCheckInterval: ReturnType<typeof setInterval> | null = null;
+let altDataInterval: ReturnType<typeof setInterval> | null = null;
 let apiFailCount = 0;
 let apiAlertSent = false;
 const recentErrors: string[] = [];
@@ -216,11 +218,20 @@ export function startMonitors(): void {
   // HL API check every 60s
   apiCheckInterval = setInterval(() => { void checkHlApi(); }, 60_000);
   console.log("[Monitor] HL API health check started (60s interval)");
+
+  // Daily alt data collection at 01:00 UTC
+  const msToAltData = msUntilUtcTime(1, 0);
+  setTimeout(() => {
+    void collectDailyAltData();
+    altDataInterval = setInterval(() => { void collectDailyAltData(); }, DAY_MS);
+  }, msToAltData);
+  console.log(`[Monitor] Alt data collection scheduled (first in ${Math.round(msToAltData / 60_000)}m)`);
 }
 
 export function stopMonitors(): void {
   if (digestInterval) { clearInterval(digestInterval); digestInterval = null; }
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   if (apiCheckInterval) { clearInterval(apiCheckInterval); apiCheckInterval = null; }
+  if (altDataInterval) { clearInterval(altDataInterval); altDataInterval = null; }
   console.log("[Monitor] All monitors stopped");
 }
