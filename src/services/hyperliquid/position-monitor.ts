@@ -77,7 +77,8 @@ function throttledCriticalAlert(msg: string, context: string): void {
 
 // getBreakevenAtr removed: trailing stops disabled (system backtest showed they hurt)
 
-function getAtrTrailStop(position: QuantPosition, currentPrice: number): number | null {
+// ATR trailing removed: system backtest showed no trailing is optimal
+function _getAtrTrailStop_DISABLED(position: QuantPosition, currentPrice: number): number | null {
   // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
   const indicators = position.indicatorsAtEntry ?? "";
   const atrMatch = indicators.match(/atr:([\d.]+)/);
@@ -291,20 +292,9 @@ async function checkPositionStops(): Promise<void> {
         : undefined;
       const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
-      // ATR-based trailing for ensemble engines
+      // ATR trailing REMOVED: system backtest confirmed no trailing beats all variants
+      // Engine exits (Donchian channel, ST flip, stagnation) manage winners better
       const isEnsembleEngine = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "");
-      if (isEnsembleEngine) {
-        const atrTrailStop = getAtrTrailStop(position, currentPrice);
-        if (atrTrailStop !== null) {
-          const atrSlHit = (position.direction === "long" && currentPrice <= atrTrailStop) ||
-                           (position.direction === "short" && currentPrice >= atrTrailStop);
-          if (atrSlHit) {
-            console.log(`[PositionMonitor] ATR trail stop: ${position.pair} ${position.direction} price=${currentPrice} trail=${atrTrailStop.toFixed(4)}`);
-            await tryClose(position, "atr-trailing-stop");
-            continue;
-          }
-        }
-      }
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
