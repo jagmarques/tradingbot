@@ -2,7 +2,7 @@ import { initHyperliquid, isHyperliquidInitialized, ensureConnected, getClient }
 import { initLighter } from "../lighter/client.js";
 import { initLighterEngine } from "../lighter/executor.js";
 import { initPaperEngine } from "./paper.js";
-import { initLiveEngine } from "./live-executor.js";
+import { initLiveEngine, startHeartbeat, stopHeartbeat } from "./live-executor.js";
 import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
 import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
@@ -53,6 +53,7 @@ export function initQuant(): number {
   startHlPriceWs();
   startPositionMonitor();
   startQuantScheduler();
+  startHeartbeat();
   startTrumpGuard();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
@@ -89,6 +90,7 @@ async function verifyLighterConnection(): Promise<void> {
 export function stopQuant(): void {
   stopQuantScheduler();
   stopPositionMonitor();
+  stopHeartbeat();
   stopHlPriceWs();
   stopTrumpGuard();
   console.log("[Quant] Stopped");

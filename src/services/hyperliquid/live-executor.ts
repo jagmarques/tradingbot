@@ -1,5 +1,5 @@
 import { ensureConnected, getClient, resetConnection } from "./client.js";
-import { loadEnv } from "../../config/env.js";
+import { loadEnv, isPaperMode } from "../../config/env.js";
 import type { QuantPosition, TradeType } from "./types.js";
 import {
   generateQuantId,
@@ -30,6 +30,11 @@ let szDecimalsMap: Map<string, number> | null = null;
 let maxLeverageMap: Map<string, number> | null = null;
 let metaFetchedAt = 0;
 const META_TTL_MS = 60 * 60 * 1000;
+
+// Dead-man's switch: schedule auto-cancel of all orders if bot stops heartbeating
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;   // send heartbeat every 5 min
+const HEARTBEAT_TIMEOUT_MS = 10 * 60 * 1000;    // cancel orders 10 min from now
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchMeta(): Promise<void> {
   if (szDecimalsMap && maxLeverageMap && Date.now() - metaFetchedAt < META_TTL_MS) return;
@@ -1042,5 +1047,50 @@ export async function getLiveBalance(): Promise<number> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Quant Live] Failed to fetch balance: ${msg}`);
     return 0;
+  }
+}
+
+// --- Dead-man's switch (scheduleCancel heartbeat) ---
+
+async function sendHeartbeat(): Promise<void> {
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const cancelAt = Date.now() + HEARTBEAT_TIMEOUT_MS;
+    await sdk.exchange.scheduleCancel(cancelAt);
+    console.log(`[Quant Live] Heartbeat: orders auto-cancel at ${new Date(cancelAt).toISOString()}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Log but do not crash; next heartbeat will retry
+    console.error(`[Quant Live] Heartbeat failed: ${msg}`);
+  }
+}
+
+export function startHeartbeat(): void {
+  if (isPaperMode()) return; // no resting orders in paper mode
+  if (heartbeatInterval !== null) return;
+  // First heartbeat after short delay (let SDK connect first)
+  setTimeout(() => void sendHeartbeat(), 20_000);
+  heartbeatInterval = setInterval(() => void sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+  console.log("[Quant Live] Dead-man switch started (5m heartbeat, 10m timeout)");
+}
+
+export function stopHeartbeat(): void {
+  if (heartbeatInterval !== null) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  // Clear scheduled cancel so orders stay alive after graceful shutdown
+  if (!isPaperMode()) {
+    void (async () => {
+      try {
+        await ensureConnected();
+        const sdk = getClient();
+        await sdk.exchange.scheduleCancel(null);
+        console.log("[Quant Live] Dead-man switch cleared (graceful shutdown)");
+      } catch {
+        // best effort
+      }
+    })();
   }
 }
