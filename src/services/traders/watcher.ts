@@ -7,7 +7,12 @@ import { fetchGoPlusData, isGoPlusKillSwitch, exitCopyTrade } from "./gem-analyz
 import { dexScreenerFetch } from "../shared/dexscreener.js";
 import { notifyCopyTrade } from "../telegram/notifications.js";
 import { formatPrice } from "../../utils/format.js";
-import { isPaperMode } from "../../config/env.js";
+// import { isPaperMode } from "../../config/env.js"; // Overridden below
+
+// Insider system: always paper if no gas, regardless of global TRADING_MODE
+function isPaperMode(): boolean {
+  return true; // Force paper until wallet is funded with ETH gas
+}
 import { execute1inchSwap, getNativeBalance, isChainSupported } from "../evm/index.js";
 import { getApproxUsdValue } from "./types.js";
 

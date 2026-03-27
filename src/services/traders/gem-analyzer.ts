@@ -1,7 +1,12 @@
 import { getCachedGemAnalysis, saveGemAnalysis, insertGemPaperTrade, getGemPaperTrade, getOpenGemPaperTrades, closeGemPaperTrade, getTokenAddressForGem, updateGemPaperTradePrice, getInsiderStatsForToken, getOpenCopyTrades, updateCopyTradePrice, closeCopyTrade, updateCopyTradePeakPnl, getRugCount, updateCopyTradeTokenCreatedAt, incrementRugCount, updateCopyTradeHoldPrice, getHoldableClosedTrades, type GemAnalysis } from "./storage.js";
 import { INSIDER_CONFIG, COPY_TRADE_CONFIG } from "./types.js";
 import type { CopyExitReason, CopyTrade } from "./types.js";
-import { isPaperMode } from "../../config/env.js";
+// import { isPaperMode } from "../../config/env.js"; // Overridden below
+
+// Insider system: always paper until wallet funded with ETH gas
+function isPaperMode(): boolean {
+  return true;
+}
 import { dexScreenerFetch, dexScreenerFetchBatch } from "../shared/dexscreener.js";
 import { getApproxUsdValue } from "./types.js";
 import { execute1inchSwap, getNativeBalance, isChainSupported, approveAndSell1inch } from "../evm/index.js";
