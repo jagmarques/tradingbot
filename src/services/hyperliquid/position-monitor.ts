@@ -31,8 +31,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "donchian-trend": { activation: 999, distance: 999 }, // ATR trailing handled separately
-  "supertrend-4h": { activation: 999, distance: 999 },  // ATR trailing handled separately
+  "donchian-trend": { activation: 999, distance: 999 }, // ATR trailing in main loop (3x->2x->1.5x)
+  "supertrend-4h": { activation: 999, distance: 999 },  // ATR trailing in main loop (3x->2x->1.5x)
   "garch-v2": { activation: 999, distance: 999 },       // Fixed SL, no trailing
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
@@ -223,9 +223,8 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // ATR trailing DISABLED: system-level backtest showed no trailing (+$2.39/day)
-      // beats all trailing variants (+$1.90-2.00/day). Engine exit signals (Donchian channel,
-      // Supertrend flip, stagnation) already manage winners. Trailing cuts them short.
+      // ATR trailing for Donchian/Supertrend: 3x ATR -> 2x -> 1.5x as profit grows
+      // GARCH v2 uses fixed SL, no trailing
 
       // Stop-loss check: use position.stopLoss (Chandelier/PSAR update it each cycle)
       const sl = position.stopLoss;
@@ -241,6 +240,48 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
+      // ATR trailing stop for trend engines: tighten as profit grows
+      const isAtrTrailEngine = position.tradeType === "donchian-trend" || position.tradeType === "supertrend-4h";
+      if (isAtrTrailEngine && position.indicatorsAtEntry) {
+        const atrMatch = position.indicatorsAtEntry.match(/atr:([\d.]+)/);
+        if (atrMatch) {
+          const entryAtr = parseFloat(atrMatch[1]);
+          if (entryAtr > 0) {
+            const profitDistance = position.direction === "long"
+              ? currentPrice - position.entryPrice
+              : position.entryPrice - currentPrice;
+
+            // Tighten multiplier based on profit in ATR units
+            let trailMultiplier = 3;
+            if (profitDistance > 2 * entryAtr) {
+              trailMultiplier = 1.5;
+            } else if (profitDistance > 1 * entryAtr) {
+              trailMultiplier = 2;
+            }
+
+            const trailStop = position.direction === "long"
+              ? currentPrice - trailMultiplier * entryAtr
+              : currentPrice + trailMultiplier * entryAtr;
+
+            // Only tighten stop, never loosen it (trail upward for longs, downward for shorts)
+            const currentSl = position.stopLoss ?? 0;
+            const shouldUpdate = position.direction === "long"
+              ? trailStop > currentSl
+              : (currentSl === 0 || trailStop < currentSl);
+
+            if (shouldUpdate && profitDistance > 0) {
+              position.stopLoss = capStopLoss(position.entryPrice, trailStop, position.direction);
+              saveQuantPosition(position);
+              if (trailMultiplier < 3) {
+                console.log(
+                  `[PositionMonitor] ATR trail tightened: ${position.pair} ${position.direction} SL=${position.stopLoss.toFixed(4)} (${trailMultiplier}x ATR, profit=${(profitDistance/entryAtr).toFixed(1)} ATR)`
+                );
+              }
+            }
+          }
+        }
+      }
+
       // Trailing stop
       const pricePct =
         position.direction === "long"
@@ -251,8 +292,6 @@ async function checkPositionStops(): Promise<void> {
         : undefined;
       const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
-      // ATR trailing REMOVED: system backtest confirmed no trailing beats all variants
-      // Engine exits (Donchian channel, ST flip, stagnation) manage winners better
       const isEnsembleEngine = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "");
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
