@@ -31,9 +31,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "donchian-trend": { activation: 999, distance: 999 }, // No trailing (backtest proved it hurts)
+  "donchian-trend": { activation: 999, distance: 999 }, // No trailing (backtest proven: costs 65% profit)
   "supertrend-4h": { activation: 999, distance: 999 },  // No trailing
-  "garch-v2": { activation: 999, distance: 999 },       // Fixed SL, no trailing
+  "garch-v2": { activation: 999, distance: 999 },       // No trailing
+  "carry-momentum": { activation: 999, distance: 999 }, // No trailing
+  "momentum-confirm": { activation: 999, distance: 999 },// No trailing
 };
 const DEFAULT_TRAIL = { activation: 20, distance: 5 };
 
@@ -251,8 +253,7 @@ async function checkPositionStops(): Promise<void> {
         : undefined;
       const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
-      // ATR trailing REMOVED: system backtest confirmed no trailing beats all variants
-      // Engine exits (Donchian channel, ST flip, stagnation) manage winners better
+      // No trailing for ensemble engines (backtest proven: costs 65% profit)
       const isEnsembleEngine = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "");
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
@@ -260,7 +261,7 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Skip percentage-based trailing for ensemble engines (no trailing, backtest proven)
+      // Percentage-based trailing for non-ensemble engines only
       const peak = position.maxUnrealizedPnlPct ?? 0;
       const trailCfg = getTrailConfig(position);
       if (!isEnsembleEngine && peak > trailCfg.activation) {
