@@ -14,6 +14,8 @@ import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constan
 import { capStopLoss, calcPnl, inferExitReason, rebaseStops, parseIndicatorsMeta } from "../hyperliquid/quant-utils.js";
 
 const MAX_SLIPPAGE = 0.005;
+const MAKER_ENTRY_TIMEOUT_MS = 60_000;
+const MAKER_POLL_INTERVAL_MS = 5_000;
 
 const livePositions = new Map<string, QuantPosition>();
 const positionContext = new Map<string, {
@@ -372,6 +374,138 @@ async function setLeverage(pair: string, leverage: number): Promise<boolean> {
   }
 }
 
+async function makerEntryWithFallback(
+  pair: string,
+  isBuy: boolean,
+  sizeInCoins: number,
+  midPrice: number,
+): Promise<{ fillPrice: number; fillSize: number } | null> {
+  const sdk = getClient();
+  const env = loadEnv();
+  const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
+
+  // Place limit price slightly better than mid to ensure maker status
+  const offset = midPrice * 0.0001; // 0.01% offset
+  const limitPrice = isBuy ? roundPrice(midPrice - offset) : roundPrice(midPrice + offset);
+
+  console.log(`[Quant Live] Maker entry: ${isBuy ? "BUY" : "SELL"} ${pair} ${sizeInCoins} @ ${limitPrice} (mid=${midPrice})`);
+
+  try {
+    const result = await withTimeout(
+      sdk.exchange.placeOrder({
+        coin: `${pair}-PERP`,
+        is_buy: isBuy,
+        sz: sizeInCoins,
+        limit_px: roundPrice(limitPrice),
+        order_type: { limit: { tif: "Alo" } },
+        reduce_only: false,
+      }),
+      API_ORDER_TIMEOUT_MS, "HL makerEntry ALO",
+    );
+
+    const statuses = result?.response?.data?.statuses;
+    const status = statuses?.[0];
+
+    // Immediately filled (should not happen with ALO, but handle it)
+    if (status?.filled) {
+      const fp = parseFloat(status.filled.avgPx);
+      const fs = parseFloat(status.filled.totalSz);
+      console.log(`[Quant Live] Maker entry filled immediately for ${pair} @ ${fp}`);
+      return { fillPrice: fp, fillSize: fs };
+    }
+
+    // Resting — poll for fill
+    if (status?.resting) {
+      const oid = status.resting.oid;
+      console.log(`[Quant Live] Maker order resting for ${pair}, oid=${oid}, polling...`);
+
+      const startTime = Date.now();
+      while (Date.now() - startTime < MAKER_ENTRY_TIMEOUT_MS) {
+        await new Promise(r => setTimeout(r, MAKER_POLL_INTERVAL_MS));
+
+        try {
+          if (!wallet) break;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const orderStatus = await sdk.info.getOrderStatus(wallet, oid, true) as any;
+          const order = orderStatus?.order ?? orderStatus;
+          const st = orderStatus?.status ?? order?.status;
+
+          if (st === "filled") {
+            // Get fill price from recent fills
+            let fp = 0;
+            let fs = 0;
+            try {
+              const fills = await sdk.info.getUserFills(wallet, true);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const matchingFill = (fills as any[])
+                .filter((f: any) => f.oid === oid)
+                .sort((a: any, b: any) => b.time - a.time)[0];
+              if (matchingFill) {
+                fp = parseFloat(matchingFill.px);
+                fs = parseFloat(matchingFill.sz);
+              }
+            } catch { /* fallback below */ }
+            if (!fp || !isFinite(fp)) fp = limitPrice;
+            if (!fs || !isFinite(fs)) fs = sizeInCoins;
+            console.log(`[Quant Live] Maker entry filled for ${pair} @ ${fp} (${((Date.now() - startTime) / 1000).toFixed(0)}s)`);
+            return { fillPrice: fp, fillSize: fs };
+          }
+
+          if (st === "canceled" || st === "rejected" || st === "marginCanceled") {
+            console.log(`[Quant Live] Maker order ${st} for ${pair}, falling back to taker`);
+            return null;
+          }
+        } catch {
+          // Poll error, continue trying
+        }
+      }
+
+      // Timeout — cancel and fall back to taker
+      console.log(`[Quant Live] Maker entry timeout for ${pair} (${MAKER_ENTRY_TIMEOUT_MS / 1000}s), cancelling`);
+      try {
+        await sdk.exchange.cancelOrder({ coin: `${pair}-PERP`, o: oid });
+        console.log(`[Quant Live] Maker order cancelled for ${pair}`);
+      } catch (cancelErr) {
+        // Order may have been filled between last poll and cancel
+        const cancelMsg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+        console.log(`[Quant Live] Maker cancel result for ${pair}: ${cancelMsg}`);
+
+        // Check if it filled during cancel
+        if (wallet) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const finalStatus = await sdk.info.getOrderStatus(wallet, oid, true) as any;
+            if (finalStatus?.status === "filled" || finalStatus?.order?.status === "filled") {
+              const fills = await sdk.info.getUserFills(wallet, true);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const matchingFill = (fills as any[])
+                .filter((f: any) => f.oid === oid)
+                .sort((a: any, b: any) => b.time - a.time)[0];
+              if (matchingFill) {
+                const fp = parseFloat(matchingFill.px);
+                const fs = parseFloat(matchingFill.sz);
+                console.log(`[Quant Live] Maker entry filled during cancel for ${pair} @ ${fp}`);
+                return { fillPrice: fp, fillSize: fs };
+              }
+            }
+          } catch { /* fall back to taker */ }
+        }
+      }
+
+      return null; // Fall back to taker
+    }
+
+    // ALO rejected (would cross spread) — fall back to taker
+    const statusStr = JSON.stringify(status);
+    console.log(`[Quant Live] Maker entry rejected for ${pair}: ${statusStr}, falling back to taker`);
+    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Quant Live] Maker entry error for ${pair}: ${msg}, falling back to taker`);
+    return null;
+  }
+}
+
 export async function liveOpenPosition(
   pair: string,
   direction: "long" | "short",
@@ -465,47 +599,61 @@ export async function liveOpenPosition(
     const isBuy = direction === "long";
     console.log(`[Quant Live] Placing ${direction} ${pair}: ${sizeInCoins} coins ($${sizeUsd}x${leverage})`);
 
-    const result = await withTimeout(
-      sdk.custom.marketOpen(pair, isBuy, sizeInCoins, undefined, MAX_SLIPPAGE),
-      API_ORDER_TIMEOUT_MS, "HL marketOpen",
-    );
+    // Try maker entry first (ALO), fall back to taker if not filled
+    let fillPrice = 0;
+    let fillSize = 0;
 
-    const statuses = result?.response?.data?.statuses;
-    if (!statuses || statuses.length === 0) {
-      console.error(`[Quant Live] Order failed for ${pair}: no statuses`);
-      console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
-      void notifyCriticalError(`HL order failed: ${pair} ${direction} $${sizeUsd} — no statuses`, "liveOpenPosition");
-      return null;
-    }
+    const makerResult = await makerEntryWithFallback(pair, isBuy, sizeInCoins, currentPrice);
+    if (makerResult) {
+      fillPrice = makerResult.fillPrice;
+      fillSize = makerResult.fillSize;
+      console.log(`[Quant Live] ${pair} filled via MAKER @ ${fillPrice}`);
+    } else {
+      // Fall back to taker (IOC market order)
+      console.log(`[Quant Live] ${pair} maker failed, falling back to taker`);
 
-    const status = statuses[0];
+      const result = await withTimeout(
+        sdk.custom.marketOpen(pair, isBuy, sizeInCoins, undefined, MAX_SLIPPAGE),
+        API_ORDER_TIMEOUT_MS, "HL marketOpen",
+      );
 
-    if (status.resting) {
-      console.error(`[Quant Live] Order resting for ${pair}, cancelling`);
-      try {
-        await sdk.exchange.cancelOrder({ coin: `${pair}-PERP`, o: status.resting.oid });
-      } catch (e) {
-        console.error(`[Quant Live] Cancel failed: ${e instanceof Error ? e.message : String(e)}`);
+      const statuses = result?.response?.data?.statuses;
+      if (!statuses || statuses.length === 0) {
+        console.error(`[Quant Live] Order failed for ${pair}: no statuses`);
+        console.error(`[Quant Live] Response: ${JSON.stringify(result)}`);
+        void notifyCriticalError(`HL order failed: ${pair} ${direction} $${sizeUsd} — no statuses`, "liveOpenPosition");
+        return null;
       }
-      return null;
-    }
 
-    if (!status.filled) {
-      const statusStr = JSON.stringify(status);
-      const isMarginError = statusStr.includes("Insufficient margin");
-      const isLiquidityError = statusStr.includes("could not immediately match");
-      console.error(`[Quant Live] Order rejected for ${pair}: ${statusStr}`);
-      if (!isMarginError && !isLiquidityError) {
-        void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${statusStr}`, "liveOpenPosition");
+      const status = statuses[0];
+
+      if (status.resting) {
+        console.error(`[Quant Live] Order resting for ${pair}, cancelling`);
+        try {
+          await sdk.exchange.cancelOrder({ coin: `${pair}-PERP`, o: status.resting.oid });
+        } catch (e) {
+          console.error(`[Quant Live] Cancel failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        return null;
       }
-      return null;
-    }
 
-    const fillPrice = parseFloat(status.filled.avgPx);
-    const fillSize = parseFloat(status.filled.totalSz);
+      if (!status.filled) {
+        const statusStr = JSON.stringify(status);
+        const isMarginError = statusStr.includes("Insufficient margin");
+        const isLiquidityError = statusStr.includes("could not immediately match");
+        console.error(`[Quant Live] Order rejected for ${pair}: ${statusStr}`);
+        if (!isMarginError && !isLiquidityError) {
+          void notifyCriticalError(`HL order rejected: ${pair} ${direction} $${sizeUsd} — ${statusStr}`, "liveOpenPosition");
+        }
+        return null;
+      }
+
+      fillPrice = parseFloat(status.filled.avgPx);
+      fillSize = parseFloat(status.filled.totalSz);
+    }
 
     if (!isFinite(fillPrice) || fillPrice <= 0) {
-      console.error(`[Quant Live] Invalid fill price for ${pair}: ${status.filled.avgPx}, closing orphan`);
+      console.error(`[Quant Live] Invalid fill price for ${pair}: ${fillPrice}, closing orphan`);
       try {
         await sdk.custom.marketClose(pair, undefined, undefined, MAX_SLIPPAGE);
         console.log(`[Quant Live] Orphan closed for ${pair} after invalid fill price`);
