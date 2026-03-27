@@ -13,33 +13,41 @@ export async function fetchCandles(
   interval: CandleInterval,
   count: number,
 ): Promise<OhlcvCandle[]> {
-  try {
-    await ensureConnected();
-    const sdk = getClient();
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await ensureConnected();
+      const sdk = getClient();
 
-    const endTime = Date.now();
-    const startTime = endTime - INTERVAL_MS[interval] * count;
+      const endTime = Date.now();
+      const startTime = endTime - INTERVAL_MS[interval] * count;
 
-    const raw = await sdk.info.getCandleSnapshot(pair, interval, startTime, endTime);
+      const raw = await sdk.info.getCandleSnapshot(pair, interval, startTime, endTime);
 
-    const candles: OhlcvCandle[] = raw.map((c) => ({
-      timestamp: c.t,
-      open: parseFloat(String(c.o)),
-      high: parseFloat(String(c.h)),
-      low: parseFloat(String(c.l)),
-      close: parseFloat(String(c.c)),
-      volume: parseFloat(String(c.v)),
-      trades: c.n,
-    }));
+      const candles: OhlcvCandle[] = raw.map((c) => ({
+        timestamp: c.t,
+        open: parseFloat(String(c.o)),
+        high: parseFloat(String(c.h)),
+        low: parseFloat(String(c.l)),
+        close: parseFloat(String(c.c)),
+        volume: parseFloat(String(c.v)),
+        trades: c.n,
+      }));
 
-    candles.sort((a, b) => a.timestamp - b.timestamp);
+      candles.sort((a, b) => a.timestamp - b.timestamp);
 
-    return candles;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Hyperliquid] Failed to fetch ${interval} candles for ${pair}: ${msg}`);
-    return [];
+      return candles;
+    } catch (err) {
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Hyperliquid] Failed to fetch ${interval} candles for ${pair} after ${maxRetries + 1} attempts: ${msg}`);
+      return [];
+    }
   }
+  return [];
 }
 
 export async function fetchAllCandles(
