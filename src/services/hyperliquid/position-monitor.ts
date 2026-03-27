@@ -61,10 +61,8 @@ const closingInProgress = new Set<string>(); // prevent double-close across loop
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
 const closeFailCounts = new Map<string, number>();
-const atrPeakPrices = new Map<string, number>(); // ATR trailing: track peak price per ensemble position
-const breakevenAppliedIds = new Set<string>(); // breakeven stop dedup (log once)
 const newsTradeAdviceCache = new Map<string, "HOLD" | "TAKE_PROFIT" | "CLOSE" | null>();
-let newsAdviceCacheTime = 0; // when cache was last populated
+let newsAdviceCacheTime = 0;
 let lastCriticalAlertMs = 0;
 const CRITICAL_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -73,45 +71,6 @@ function throttledCriticalAlert(msg: string, context: string): void {
   if (now - lastCriticalAlertMs < CRITICAL_ALERT_COOLDOWN_MS) return;
   lastCriticalAlertMs = now;
   void notifyCriticalError(msg, context);
-}
-
-// getBreakevenAtr removed: trailing stops disabled (system backtest showed they hurt)
-
-// ATR trailing removed: system backtest showed no trailing is optimal
-function _getAtrTrailStop_DISABLED(position: QuantPosition, currentPrice: number): number | null {
-  // Parse ATR from indicatorsAtEntry (format: "atr:0.001234")
-  const indicators = position.indicatorsAtEntry ?? "";
-  const atrMatch = indicators.match(/atr:([\d.]+)/);
-  if (!atrMatch) return null;
-  const atr = parseFloat(atrMatch[1]);
-  if (!atr || atr <= 0) return null;
-
-  const isLong = position.direction === "long";
-  const profitPrice = isLong
-    ? currentPrice - position.entryPrice
-    : position.entryPrice - currentPrice;
-
-  // Update peak price tracking
-  const prevPeak = atrPeakPrices.get(position.id);
-  const favorablePrice = isLong ? Math.max(currentPrice, prevPeak ?? currentPrice) : Math.min(currentPrice, prevPeak ?? currentPrice);
-  atrPeakPrices.set(position.id, favorablePrice);
-
-  // Determine trail multiplier based on profit vs ATR
-  let trailMultiplier: number;
-  if (profitPrice >= 2 * atr) {
-    trailMultiplier = 1.5;
-  } else if (profitPrice >= 1 * atr) {
-    trailMultiplier = 2;
-  } else {
-    return null; // No trailing yet, use initial SL (3x ATR set at entry)
-  }
-
-  // Compute trail stop from peak price
-  const trailStop = isLong
-    ? favorablePrice - trailMultiplier * atr
-    : favorablePrice + trailMultiplier * atr;
-
-  return trailStop;
 }
 
 async function tryClose(position: QuantPosition, reason: string, skipCancelReplace = false): Promise<void> {
@@ -530,12 +489,6 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
-    }
-    for (const id of atrPeakPrices.keys()) {
-      if (!openIds.has(id)) atrPeakPrices.delete(id);
-    }
-    for (const id of breakevenAppliedIds) {
-      if (!openIds.has(id)) breakevenAppliedIds.delete(id);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
