@@ -71,15 +71,15 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// Ensemble engine sizing (Kelly-optimal: GARCH heaviest, trend engines lighter)
-export const ENSEMBLE_POSITION_SIZE_USD = 2; // Donchian + Carry base size
-export const ENSEMBLE_MAX_CONCURRENT = 20; // Validated: +$0.39/day vs 10, no DD increase, captures all signals
+// Ensemble engine sizing (GARCH $12 + ST $3, max 10 -- optimized for $130 capital)
+export const ENSEMBLE_POSITION_SIZE_USD = 1; // Legacy fallback (engines use own constants)
+export const ENSEMBLE_MAX_CONCURRENT = 10;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)
-export const ENSEMBLE_TRADE_TYPES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "momentum-confirm"]);
+export const ENSEMBLE_TRADE_TYPES = new Set<string>(["supertrend-4h", "garch-v2"]);
 
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["donchian-trend", "supertrend-4h", "garch-v2", "carry-momentum", "momentum-confirm"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["supertrend-4h", "garch-v2"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

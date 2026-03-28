@@ -2,11 +2,8 @@ import { isQuantKilled } from "./risk-manager.js";
 import { updateBtcBounceCheck, updateMacroRegime, getMacroRegime } from "../market-regime/fear-greed.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
-import { runDonchianTrendCycle } from "./donchian-trend-engine.js";
 import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
-import { runCarryMomentumCycle } from "./carry-momentum-engine.js";
-import { runMomentumConfirmCycle } from "./momentum-confirm-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -56,30 +53,19 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     } catch { /* non-critical */ }
 
-    // 3 core engines always run
-    try { await runDonchianTrendCycle(); }
-    catch (err) { console.error(`[QuantScheduler] DonchianTrend error: ${err instanceof Error ? err.message : String(err)}`); }
-
+    // 2 engines: GARCH v2 $12 + Supertrend $3 (optimized for $130 capital)
     try { await runSupertrend4hCycle(); }
     catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
 
-    try { await runCarryMomentumCycle(); }
-    catch (err) { console.error(`[QuantScheduler] CarryMomentum error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    // GARCH v2: always-on at $3 size (small enough to not hurt, captures bear alpha)
-    // Day 1 live: garch-chan made +$7.34. Backtest PF 1.02 full period but validated p<0.0001
     try { await runGarchV2Cycle(); }
     catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
-
-    try { await runMomentumConfirmCycle(); }
-    catch (err) { console.error(`[QuantScheduler] MomentumConfirm error: ${err instanceof Error ? err.message : String(err)}`); }
 
     const regime = getMacroRegime();
 
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    console.log(`[QuantScheduler] Cycle: 5 engines | regime=${regime}`);
+    console.log(`[QuantScheduler] Cycle: 2 engines | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 
