@@ -3,7 +3,7 @@ import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss, parseIndicatorsMeta } from "./quant-utils.js";
-import { getExitAdvice } from "./news-exit-advisor.js";
+
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { getWsMids, isWsConnected } from "./ws-prices.js";
@@ -63,8 +63,6 @@ const closingInProgress = new Set<string>(); // prevent double-close across loop
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
 const closeFailCounts = new Map<string, number>();
-const newsTradeAdviceCache = new Map<string, "HOLD" | "TAKE_PROFIT" | "CLOSE" | null>();
-let newsAdviceCacheTime = 0;
 let lastCriticalAlertMs = 0;
 const CRITICAL_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -292,99 +290,6 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // AI-powered exit monitor for news-trade (every 1min, non-blocking)
-      if (position.tradeType === "news-trade") {
-        const holdMs = Date.now() - new Date(position.openedAt).getTime();
-        if (holdMs >= 5 * 60 * 1000 && peak <= trailCfg.activation) {
-          // Clear advice cache every 15s to trigger fresh AI call
-          if (Date.now() - newsAdviceCacheTime > 15 * 1000) {
-            newsTradeAdviceCache.clear();
-            newsAdviceCacheTime = Date.now();
-          }
-
-          const meta = parseIndicatorsMeta(position.indicatorsAtEntry);
-          const impact = position.indicatorsAtEntry?.split("|")[0]?.replace("impact:", "") ?? "high";
-          const eventTs = meta.eventTs ? parseInt(meta.eventTs) : (new Date(position.openedAt).getTime());
-
-          // Build batch + call AI for first position without cached advice
-          if (!newsTradeAdviceCache.has(position.id)) {
-            const etsIdx = position.indicatorsAtEntry?.indexOf(`ets:${meta.eventTs ?? ""}|`) ?? -1;
-            const newsContent = etsIdx >= 0
-              ? (position.indicatorsAtEntry?.slice(etsIdx + `ets:${meta.eventTs ?? ""}|`.length) ?? "")
-              : "";
-            const allEligible = positions.filter(p =>
-              p.tradeType === "news-trade" && Date.now() - new Date(p.openedAt).getTime() >= 5 * 60 * 1000,
-            );
-            // Mark ALL as pending BEFORE async call (prevents 20 concurrent AI calls)
-            for (const p of allEligible) newsTradeAdviceCache.set(p.id, null);
-
-            const posInfos = allEligible.map(p => {
-              const pRaw = (p.exchange === "lighter" ? lighterMids : mids)[p.pair];
-              const pPrice = pRaw ? parseFloat(pRaw) : p.entryPrice;
-              return {
-                pair: p.pair,
-                direction: p.direction as "long" | "short",
-                pricePct: p.direction === "long" ? (pPrice - p.entryPrice) / p.entryPrice : (p.entryPrice - pPrice) / p.entryPrice,
-                holdMinutes: Math.round((Date.now() - new Date(p.openedAt).getTime()) / 60000),
-              };
-            });
-            getExitAdvice(newsContent, impact, posInfos, eventTs).then(advice => {
-              for (const p of allEligible) newsTradeAdviceCache.set(p.id, advice.get(p.pair) ?? null);
-            }).catch(err => { console.error(`[PositionMonitor] AI exit advice failed: ${err instanceof Error ? err.message : String(err)}`); });
-          }
-
-          // Apply cached decision (non-blocking)
-          const decision = newsTradeAdviceCache.get(position.id);
-
-          // Hard code overrides - AI doesn't always follow rules
-          let finalDecision = decision;
-          if (decision === "TAKE_PROFIT" && pricePct <= 0) {
-            finalDecision = "CLOSE"; // can't take profit on a loss
-            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> CLOSE (position is ${(pricePct * 100).toFixed(2)}% = loss)`);
-          }
-          if (decision === "HOLD" && pricePct < -0.003 && holdMs > 15 * 60 * 1000) {
-            finalDecision = "CLOSE"; // holding a loser for 15min+, cut it
-            console.log(`[PositionMonitor] Override: HOLD -> CLOSE (${(pricePct * 100).toFixed(2)}% loss after ${Math.round(holdMs/60000)}min)`);
-          }
-          // Don't take profit on tiny moves (< 0.5%)
-          if (decision === "TAKE_PROFIT" && pricePct > 0 && pricePct < 0.005) {
-            finalDecision = "HOLD";
-            console.log(`[PositionMonitor] Override: TAKE_PROFIT -> HOLD (${(pricePct * 100).toFixed(2)}% < 0.5% min)`);
-          }
-
-          if (finalDecision === "TAKE_PROFIT") {
-            console.log(`[PositionMonitor] AI take-profit: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
-            newsTradeAdviceCache.delete(position.id);
-            await tryClose(position, "ai-take-profit");
-            continue;
-          }
-          if (finalDecision === "CLOSE") {
-            console.log(`[PositionMonitor] AI close: ${position.pair} ${position.direction} ${(pricePct * 100).toFixed(2)}%`);
-            newsTradeAdviceCache.delete(position.id);
-            await tryClose(position, "ai-stale-exit");
-            continue;
-          }
-          // HOLD: fall through to stagnation check
-          if (finalDecision === "HOLD") {
-            // fall through - 24h max hold still enforced below
-          } else if (finalDecision === null && holdMs >= 60 * 60 * 1000) {
-            // No AI advice after 1h (Cerebras down) - use fallback rules
-            if (pricePct > 0) {
-              console.log(`[PositionMonitor] Take profit (fallback): ${position.pair} +${(pricePct * 100).toFixed(2)}%`);
-              newsTradeAdviceCache.delete(position.id);
-              await tryClose(position, "stale-take-profit");
-              continue;
-            }
-            if (pricePct > -0.005) {
-              console.log(`[PositionMonitor] Stale exit (fallback): ${position.pair} ${(pricePct * 100).toFixed(2)}%`);
-              newsTradeAdviceCache.delete(position.id);
-              await tryClose(position, "stale-exit");
-              continue;
-            }
-          }
-        }
-      }
-
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
@@ -484,9 +389,6 @@ async function checkPositionStops(): Promise<void> {
     }
     for (const id of closeFailCounts.keys()) {
       if (!openIds.has(id)) closeFailCounts.delete(id);
-    }
-    for (const id of newsTradeAdviceCache.keys()) {
-      if (!openIds.has(id)) newsTradeAdviceCache.delete(id);
     }
     for (const id of nearSlIds.keys()) {
       if (!openIds.has(id)) nearSlIds.delete(id);
@@ -607,10 +509,6 @@ async function checkTrailActivePositions(): Promise<void> {
           await tryClose(position, "trailing-stop");
           continue;
         }
-      }
-
-      // news-trade exit handled by AI in main loop, skip in fast poll
-      if (position.tradeType === "news-trade") {
       }
 
       // Skip near-SL for ensemble engines
