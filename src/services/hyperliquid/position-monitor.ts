@@ -2,7 +2,7 @@ import { getClient, resetConnection } from "./client.js";
 import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-import { capStopLoss, parseIndicatorsMeta } from "./quant-utils.js";
+import { capStopLoss } from "./quant-utils.js";
 
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
