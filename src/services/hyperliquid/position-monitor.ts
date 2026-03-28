@@ -553,17 +553,16 @@ export function startPositionMonitor(): void {
     return;
   }
 
-  // Pre-populate trail dedup so we don't re-fire alerts on restart
+  // On startup: reset peak to 0 so trail builds from current price (prevents stale peaks from instantly triggering trail)
   const existing = getOpenQuantPositions();
   for (const pos of existing) {
-    if (pos.mode !== "live") continue;
-    const trailCfg = getTrailConfig(pos);
-    if ((pos.maxUnrealizedPnlPct ?? 0) > trailCfg.activation) {
-      trailActivatedIds.add(pos.id);
+    if ((pos.maxUnrealizedPnlPct ?? 0) > 0) {
+      pos.maxUnrealizedPnlPct = 0;
+      saveQuantPosition(pos);
     }
   }
-  if (trailActivatedIds.size > 0) {
-    console.log(`[PositionMonitor] Pre-populated ${trailActivatedIds.size} trail-activated positions`);
+  if (existing.length > 0) {
+    console.log(`[PositionMonitor] Reset peak PnL for ${existing.length} positions (trail starts fresh)`);
   }
 
   console.log(`[PositionMonitor] Started (interval: ${QUANT_POSITION_MONITOR_INTERVAL_MS}ms)`);
