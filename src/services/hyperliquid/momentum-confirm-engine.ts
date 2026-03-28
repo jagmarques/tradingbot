@@ -16,8 +16,8 @@ const SL_PCT = 0.03;
 const VOL_Z_THRESHOLD = 2.0;
 const FUND_Z_THRESHOLD = 2.0;
 const PRICE_Z_THRESHOLD = 1.0;
-const BTC_EMA_FAST = 20;
-const BTC_EMA_SLOW = 50;
+const BTC_EMA_FAST = 12;
+const BTC_EMA_SLOW = 21;
 
 function zScore(values: number[], idx: number, lookback: number): number {
   if (idx < lookback) return 0;
@@ -32,8 +32,8 @@ function zScore(values: number[], idx: number, lookback: number): number {
 }
 
 export async function runMomentumConfirmCycle(): Promise<void> {
-  const btcCandles = await fetchCandles("BTC", "1d", 60);
-  if (btcCandles.length < 52) return;
+  const btcCandles = await fetchCandles("BTC", "4h", 200);
+  if (btcCandles.length < BTC_EMA_SLOW + 2) return;
   const btcCompleted = btcCandles.slice(0, -1);
   const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
 

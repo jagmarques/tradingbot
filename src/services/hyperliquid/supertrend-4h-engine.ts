@@ -13,8 +13,8 @@ const TRADE_TYPE = "supertrend-4h" as const;
 const ST_PERIOD = 14;
 const ST_MULTIPLIER = 1.75;
 const ATR_SL_MULTIPLIER = 3;
-const BTC_EMA_FAST = 20;
-const BTC_EMA_SLOW = 50;
+const BTC_EMA_FAST = 12;
+const BTC_EMA_SLOW = 21;
 const BAR_MS = 4 * 60 * 60 * 1000;
 const ST_POSITION_SIZE_USD = 5; // Increased from $3 - now one of 3 core engines
 
@@ -92,9 +92,9 @@ export async function runSupertrend4hCycle(): Promise<void> {
   const currentBarOpen = Math.floor(now / BAR_MS) * BAR_MS;
   if (currentBarOpen <= lastProcessedBarOpen) return;
 
-  const btcCandles = await fetchCandles("BTC", "1d", 200);
-  if (btcCandles.length < BTC_EMA_SLOW + 1) {
-    console.log("[Supertrend4h] Insufficient BTC candles, skipping cycle");
+  const btcCandles = await fetchCandles("BTC", "4h", 200);
+  if (btcCandles.length < BTC_EMA_SLOW + 2) {
+    console.log("[Supertrend4h] Insufficient BTC 4h candles, skipping cycle");
     return;
   }
 

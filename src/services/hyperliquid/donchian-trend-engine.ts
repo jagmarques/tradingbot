@@ -14,8 +14,8 @@ const SMA_SLOW = 50;
 const DONCHIAN_EXIT_PERIOD = 15;
 const ATR_PERIOD = 14;
 const ATR_SL_MULTIPLIER = 3;
-const BTC_EMA_FAST = 20;
-const BTC_EMA_SLOW = 50;
+const BTC_EMA_FAST = 12;
+const BTC_EMA_SLOW = 21;
 
 let lastDailyCheckTs = 0;
 
@@ -25,9 +25,9 @@ export async function runDonchianTrendCycle(): Promise<void> {
   const todayStart = new Date(now).setUTCHours(0, 0, 0, 0);
   if (todayStart <= lastDailyCheckTs) return;
 
-  const btcCandles = await fetchCandles("BTC", "1d", 200);
-  if (btcCandles.length < 62) {
-    console.log("[DonchianTrend] Insufficient BTC candles, skipping cycle");
+  const btcCandles = await fetchCandles("BTC", "4h", 200);
+  if (btcCandles.length < BTC_EMA_SLOW + 2) {
+    console.log("[DonchianTrend] Insufficient BTC 4h candles, skipping cycle");
     return;
   }
 
