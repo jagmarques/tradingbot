@@ -31,13 +31,13 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "donchian-trend": { activation: 999, distance: 999 }, // No trailing (backtest proven: costs 65% profit)
-  "supertrend-4h": { activation: 999, distance: 999 },  // No trailing
-  "garch-v2": { activation: 999, distance: 999 },       // No trailing
-  "carry-momentum": { activation: 999, distance: 999 }, // No trailing
-  "momentum-confirm": { activation: 999, distance: 999 },// No trailing
+  "donchian-trend": { activation: 40, distance: 3 },    // 40% lev activation, 3% trail
+  "supertrend-4h": { activation: 40, distance: 3 },     // 40% lev activation, 3% trail
+  "garch-v2": { activation: 40, distance: 3 },          // 40% lev activation, 3% trail
+  "carry-momentum": { activation: 40, distance: 3 },    // 40% lev activation, 3% trail
+  "momentum-confirm": { activation: 40, distance: 3 },  // 40% lev activation, 3% trail
 };
-const DEFAULT_TRAIL = { activation: 20, distance: 5 };
+const DEFAULT_TRAIL = { activation: 40, distance: 3 };
 
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
   return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
@@ -251,18 +251,17 @@ async function checkPositionStops(): Promise<void> {
         : undefined;
       const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
 
-      // No trailing for ensemble engines (backtest proven: costs 65% profit)
-      const isEnsembleEngine = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "");
+      // Trail 40/3 with re-entry for all engines (+16% profit, -17% MaxDD validated)
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
         position.maxUnrealizedPnlPct = unrealizedPnlPct;
         saveQuantPosition(position);
       }
 
-      // Percentage-based trailing for non-ensemble engines only
+      // Percentage-based trailing for all engines: 40% activation, 3% trail
       const peak = position.maxUnrealizedPnlPct ?? 0;
       const trailCfg = getTrailConfig(position);
-      if (!isEnsembleEngine && peak > trailCfg.activation) {
+      if (peak > trailCfg.activation) {
         // alert once per live position
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
           trailActivatedIds.add(position.id);
@@ -417,8 +416,6 @@ async function checkTrailActivePositions(): Promise<void> {
 
     // Trail-active or near-SL positions only
     const trailCandidates = positions.filter(p => {
-      // Ensemble engines have no trailing, skip fast poll
-      if (ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? "")) return false;
       if (nearSlIds.has(p.id)) return true;
       const trailCfg = getTrailConfig(p);
       return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;
