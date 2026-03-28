@@ -16,7 +16,7 @@ const ATR_SL_MULTIPLIER = 3;
 const BTC_EMA_FAST = 12;
 const BTC_EMA_SLOW = 21;
 const BAR_MS = 4 * 60 * 60 * 1000;
-const ST_POSITION_SIZE_USD = 5; // Increased from $3 - now one of 3 core engines
+const ST_POSITION_SIZE_USD = 3; // Kelly-optimal: trend engines lighter
 
 let lastProcessedBarOpen = 0;
 

@@ -3,7 +3,8 @@
 // Uses REAL Hyperliquid hourly funding data
 // Negatively correlated with trend following (-0.11)
 import { openPosition, closePosition, getOpenQuantPositions } from "./executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_POSITION_SIZE_USD, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
+const CARRY_POSITION_SIZE_USD = 4; // Kelly-optimal
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
@@ -168,7 +169,7 @@ export async function runCarryMomentumCycle(): Promise<void> {
     const stopLoss = capStopLoss(c.price, rawStop, "short");
     console.log(`[CarryMomentum] ${c.pair} funding=${(c.avgFunding * 100).toFixed(4)}%/h mom=${(c.momentum * 100).toFixed(1)}% -> SHORT`);
     const pos = await openPosition(
-      c.pair, "short", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
+      c.pair, "short", CARRY_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
       stopLoss, 0, "trending", TRADE_TYPE, `fund:${c.avgFunding.toFixed(8)}|mom:${c.momentum.toFixed(4)}`, c.price,
     );
     if (pos) opened++;
@@ -185,7 +186,7 @@ export async function runCarryMomentumCycle(): Promise<void> {
     const stopLoss = capStopLoss(c.price, rawStop, "long");
     console.log(`[CarryMomentum] ${c.pair} funding=${(c.avgFunding * 100).toFixed(4)}%/h mom=${(c.momentum * 100).toFixed(1)}% -> LONG`);
     const pos = await openPosition(
-      c.pair, "long", ENSEMBLE_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
+      c.pair, "long", CARRY_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
       stopLoss, 0, "trending", TRADE_TYPE, `fund:${c.avgFunding.toFixed(8)}|mom:${c.momentum.toFixed(4)}`, c.price,
     );
     if (pos) opened++;

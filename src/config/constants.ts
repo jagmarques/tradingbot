@@ -71,8 +71,8 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// Ensemble engine sizing (Donchian-Trend + Supertrend-4h + GarchV2)
-export const ENSEMBLE_POSITION_SIZE_USD = 7; // Increased from $5 - 3 strong engines get bigger allocation
+// Ensemble engine sizing (Kelly-optimal: GARCH heaviest, trend engines lighter)
+export const ENSEMBLE_POSITION_SIZE_USD = 2; // Donchian + Carry base size
 export const ENSEMBLE_MAX_CONCURRENT = 20; // Validated: +$0.39/day vs 10, no DD increase, captures all signals
 export const ENSEMBLE_LEVERAGE = 10;
 
