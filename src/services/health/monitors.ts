@@ -127,6 +127,24 @@ export async function sendHourlyHeartbeat(): Promise<void> {
     `).get() as { today_pnl: number };
     const todayPnl = row.today_pnl;
 
+    // Unrealized P&L from open positions
+    let unrealizedPnl = 0;
+    try {
+      const { getClient } = await import("../hyperliquid/client.js");
+      const sdk = getClient();
+      const mids = await sdk.info.getAllMids(true) as Record<string, string>;
+      for (const pos of positions) {
+        const rawPrice = mids[pos.pair];
+        if (!rawPrice) continue;
+        const price = parseFloat(rawPrice);
+        if (isNaN(price)) continue;
+        const pricePct = pos.direction === "long"
+          ? (price - pos.entryPrice) / pos.entryPrice
+          : (pos.entryPrice - price) / pos.entryPrice;
+        unrealizedPnl += pricePct * pos.size * (pos.leverage ?? 10);
+      }
+    } catch { /* skip unrealized if price fetch fails */ }
+
     // Errors in last hour
     const oneHourAgo = Date.now() - 3600_000;
     const hourErrors = recentErrors.filter((e) => {
@@ -141,7 +159,7 @@ export async function sendHourlyHeartbeat(): Promise<void> {
       ? `${hourErrors.length} error(s)`
       : "No errors";
 
-    const message = `[HB] ${hhmm} UTC | ${positions.length} pos | ${formatPnl(todayPnl)} today | ${errStr}`;
+    const message = `[HB] ${hhmm} UTC | ${positions.length} pos | ${formatPnl(todayPnl)} realized | ${formatPnl(unrealizedPnl)} unr | ${errStr}`;
     await sendMessage(message);
     console.log(`[Monitor] Heartbeat: ${message}`);
   } catch (err) {
