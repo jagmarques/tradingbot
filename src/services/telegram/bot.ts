@@ -1629,7 +1629,9 @@ async function handleQuant(ctx: Context): Promise<void> {
     let liveBlock = "", livePnlTotal = 0, liveTrades = 0, liveUnrTotal = 0, liveDepTotal = 0, liveOpenTotal = 0;
     for (const [label, typeKey] of engines) {
       const isLiveEngine = QUANT_HYBRID_LIVE_ENGINES.has(typeKey);
-      if (!isLiveEngine) continue;
+      const hasOpenPos = (openCountByKey.get(makeKey(typeKey, "live")) ?? 0) > 0;
+      const hasHistory = getQuantStats(typeKey, "live").totalTrades > 0;
+      if (!isLiveEngine && !hasOpenPos && !hasHistory) continue;
       const stats = getQuantStats(typeKey, "live");
       liveBlock += sl(label, stats, typeKey, "live");
       livePnlTotal += stats.totalPnl;
