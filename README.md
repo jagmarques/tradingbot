@@ -1,24 +1,21 @@
 # Trading Bot
 
-Hyperliquid 5-engine trend ensemble, EVM insider copy trading. TypeScript, Docker, Coolify.
+Hyperliquid 2-engine quant ensemble, EVM insider copy trading. TypeScript, Docker, Coolify.
 
 ## Strategies
 
 ### Hyperliquid Quant Ensemble (LIVE)
 
-5-engine trend-following system on 25 perpetual futures pairs. Max 20 concurrent positions, 10x leverage.
+2-engine system on 25 perpetual futures pairs. Max 10 concurrent positions, 10x leverage.
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| Donchian Trend | SMA(20/50) daily cross | 15d close channel break | $7 | 60d |
+| GARCH v2 MTF | 1h+4h z-score extremes | 3% SL, 7% TP | $15 | 96h |
 | Supertrend 4h | ST(14,1.75) flip | ST flip | $5 | 60d |
-| GARCH v2 MTF | 1h+4h z-score extremes | 3% SL, 7% TP | $3 | 96h |
-| Carry Momentum | Weekly funding rebalance | Rebalance | $7 | 8d |
-| Momentum Confirm | Vol+funding+price z-scores | 3% SL | $3 | 48h |
 
-- BTC EMA(20)>EMA(50) filter for longs, shorts always allowed
+- BTC 4h EMA(12)>EMA(21) filter for longs, shorts always allowed
 - ATR(14)x3 stop-loss capped at 3.5%
-- No trailing stops (backtest proven: costs 65% profit)
+- Trailing stop 40/3 with scheduler re-entry
 - Maker entry (ALO) with taker fallback, dead-man switch
 
 ### TrumpGuard
