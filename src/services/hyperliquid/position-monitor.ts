@@ -31,13 +31,13 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 };
 
 const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "donchian-trend": { activation: 40, distance: 3 },    // 40% lev activation, 3% trail
-  "supertrend-4h": { activation: 40, distance: 3 },     // 40% lev activation, 3% trail
-  "garch-v2": { activation: 40, distance: 3 },          // 40% lev activation, 3% trail
-  "carry-momentum": { activation: 40, distance: 3 },    // 40% lev activation, 3% trail
-  "momentum-confirm": { activation: 40, distance: 3 },  // 40% lev activation, 3% trail
+  "donchian-trend": { activation: 20, distance: 3 },    // 20% lev activation, 3% trail
+  "supertrend-4h": { activation: 20, distance: 3 },     // 20% lev activation, 3% trail
+  "garch-v2": { activation: 20, distance: 3 },          // 20% lev activation, 3% trail
+  "carry-momentum": { activation: 20, distance: 3 },    // 20% lev activation, 3% trail
+  "momentum-confirm": { activation: 20, distance: 3 },  // 20% lev activation, 3% trail
 };
-const DEFAULT_TRAIL = { activation: 40, distance: 3 };
+const DEFAULT_TRAIL = { activation: 20, distance: 3 };
 
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
   return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
