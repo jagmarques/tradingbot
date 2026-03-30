@@ -71,9 +71,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// Ensemble engine sizing (GARCH $12 + ST $3, max 10 -- optimized for $130 capital)
+// Ensemble engine sizing (GARCH $15 + ST $5, max 15)
 export const ENSEMBLE_POSITION_SIZE_USD = 1; // Legacy fallback (engines use own constants)
-export const ENSEMBLE_MAX_CONCURRENT = 10;
+export const ENSEMBLE_MAX_CONCURRENT = 15;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)
