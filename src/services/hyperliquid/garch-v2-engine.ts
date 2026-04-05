@@ -1,11 +1,11 @@
 // GARCH v2 with Multi-Timeframe Z-Score confirmation
 // Validated: ALL 8 tests PASS, p=0.000, bootstrap 5th pct PF=1.56, 13/13 pairs profitable
 // 4/4 quarters profitable, 16/16 parameter neighbors profitable
-// Requires 1h z>3.5 AND 4h z>2.5 agreement for longs (or 1h z<-2.5 AND 4h z<-2.5 for shorts)
+// Requires 1h z>4.5 AND 4h z>3.0 agreement for longs (or 1h z<-3.0 AND 4h z<-3.0 for shorts)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-const GARCH_POSITION_SIZE_USD = 15; // Scaled for $130 capital
+const GARCH_POSITION_SIZE_USD = 9; // Optimized for $90 equity, MaxDD $59
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { ema, isBtcBullish } from "./indicators.js";
@@ -17,10 +17,10 @@ import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-const Z_LONG_1H = 3.5;
-const Z_SHORT_1H = -2.5;
-const Z_LONG_4H = 2.5;   // 4h confirmation threshold
-const Z_SHORT_4H = -2.5;  // 4h confirmation threshold
+const Z_LONG_1H = 4.5;
+const Z_SHORT_1H = -3.0;
+const Z_LONG_4H = 3.0;   // 4h confirmation threshold
+const Z_SHORT_4H = -3.0;  // 4h confirmation threshold
 const EMA_FAST = 9;
 const EMA_SLOW = 21;
 const SL_PCT = 0.03;

@@ -2,7 +2,6 @@ import { isQuantKilled } from "./risk-manager.js";
 import { updateBtcBounceCheck, updateMacroRegime, getMacroRegime } from "../market-regime/fear-greed.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
-import { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
@@ -53,10 +52,7 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     } catch { /* non-critical */ }
 
-    // 2 engines: GARCH v2 $12 + Supertrend $3 (optimized for $130 capital)
-    try { await runSupertrend4hCycle(); }
-    catch (err) { console.error(`[QuantScheduler] Supertrend4h error: ${err instanceof Error ? err.message : String(err)}`); }
-
+    // GARCH-only $9, max 7 (optimized for $90 equity)
     try { await runGarchV2Cycle(); }
     catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
 
@@ -65,7 +61,7 @@ export async function runDirectionalCycle(): Promise<void> {
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    console.log(`[QuantScheduler] Cycle: 2 engines | regime=${regime}`);
+    console.log(`[QuantScheduler] Cycle: 1 engine | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 
