@@ -1,18 +1,18 @@
 # Trading Bot
 
-Hyperliquid 2-engine quant ensemble, EVM insider copy trading. TypeScript, Docker, Coolify.
+Hyperliquid GARCH v2 quant engine, EVM insider copy trading. TypeScript, Docker, Coolify.
 
 ## Strategies
 
-### Hyperliquid Quant Ensemble (LIVE)
+### Hyperliquid GARCH v2 (LIVE)
 
-2-engine system on 25 perpetual futures pairs. Max 10 concurrent positions, 10x leverage.
+Single-engine z-score momentum on 25 perpetual futures pairs. Max 7 concurrent positions, 10x leverage.
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h+4h z-score extremes | 3% SL, 7% TP | $15 | 96h |
-| Supertrend 4h | ST(14,1.75) flip | ST flip | $5 | 60d |
+| GARCH v2 MTF | 1h z>4.5 + 4h z>3.0 | 3% SL, 7% TP | Auto (10% equity, $3-$20) | 72h |
 
+- Auto-scaler: position size = 10% of equity, clamped $3-$20
 - BTC 4h EMA(12)>EMA(21) filter for longs, shorts always allowed
 - ATR(14)x3 stop-loss capped at 3.5%
 - Trailing stop 40/3 with scheduler re-entry
