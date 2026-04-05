@@ -4,8 +4,20 @@
 // Requires 1h z>4.5 AND 4h z>3.0 agreement for longs (or 1h z<-3.0 AND 4h z<-3.0 for shorts)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
+import { getLiveBalance } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-const GARCH_POSITION_SIZE_USD = 9; // Optimized for $90 equity, MaxDD $59
+
+// Auto-scaler: 10% of equity, clamped $3-$20
+const SCALE_FACTOR = 0.10;
+const MIN_SIZE = 3;
+const MAX_SIZE = 20;
+async function computeGarchSize(): Promise<number> {
+  try {
+    const balance = await getLiveBalance();
+    const raw = Math.floor(balance * SCALE_FACTOR);
+    return Math.max(MIN_SIZE, Math.min(MAX_SIZE, raw));
+  } catch { return MIN_SIZE; }
+}
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import { ema, isBtcBullish } from "./indicators.js";
@@ -44,6 +56,8 @@ function computeZScore(candles: OhlcvCandle[]): number {
 }
 
 export async function runGarchV2Cycle(): Promise<void> {
+  const garchSizeUsd = await computeGarchSize();
+
   const btcCandles = await fetchCandles("BTC", "1h", 80);
   if (btcCandles.length < 30) {
     console.log("[GarchV2] Insufficient BTC candles, skipping");
@@ -134,7 +148,7 @@ export async function runGarchV2Cycle(): Promise<void> {
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, GARCH_POSITION_SIZE_USD * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
+        pair, direction, garchSizeUsd * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
