@@ -15,7 +15,7 @@ Single-engine z-score momentum on 25 perpetual futures pairs. Max 7 concurrent p
 - Auto-scaler: position size = 10% of equity, clamped $3-$20
 - BTC 4h EMA(12)>EMA(21) filter for longs, shorts always allowed
 - ATR(14)x3 stop-loss capped at 3.5%
-- Trailing stop 40/3 with scheduler re-entry
+- Stepped trailing: 25/6 -> 30/3 -> 35/1 (loose early, tight late)
 - Maker entry (ALO) with taker fallback, dead-man switch
 
 ### TrumpGuard

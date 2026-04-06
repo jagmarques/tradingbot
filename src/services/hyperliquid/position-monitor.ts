@@ -30,17 +30,27 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "news-trade": 24 * 60 * 60 * 1000,
 };
 
-const TRAIL_CONFIG_BY_ENGINE: Record<string, { activation: number; distance: number }> = {
-  "garch-v2": { activation: 30, distance: 3 },          // 30% lev activation, 3% trail
-  "donchian-trend": { activation: 999, distance: 999 }, // Dead engine, no trail
-  "supertrend-4h": { activation: 999, distance: 999 },  // Dead engine, no trail
-  "carry-momentum": { activation: 999, distance: 999 }, // Dead engine, no trail
-  "momentum-confirm": { activation: 999, distance: 999 },// Dead engine, no trail
-};
-const DEFAULT_TRAIL = { activation: 30, distance: 3 };
+// Stepped trail: 25/6 -> 30/3 -> 35/1 (loose early, tight late)
+const TRAIL_STEPS = [
+  { activation: 35, distance: 1 }, // Stage 3: tight lock
+  { activation: 30, distance: 3 }, // Stage 2: moderate
+  { activation: 25, distance: 6 }, // Stage 1: loose, let it run
+];
+const DEAD_TRAIL = { activation: 999, distance: 999 };
+const TRAIL_ENGINES = new Set(["garch-v2"]);
 
+function getSteppedTrailDistance(peak: number, tradeType: string): { activation: number; distance: number } {
+  if (!TRAIL_ENGINES.has(tradeType ?? "")) return DEAD_TRAIL;
+  // Find the highest stage the peak qualifies for (steps sorted high to low)
+  for (const step of TRAIL_STEPS) {
+    if (peak >= step.activation) return step;
+  }
+  return DEAD_TRAIL; // peak below lowest activation
+}
+
+// Legacy wrapper for non-stepped code paths
 function getTrailConfig(position: QuantPosition): { activation: number; distance: number } {
-  return TRAIL_CONFIG_BY_ENGINE[position.tradeType ?? ""] ?? DEFAULT_TRAIL;
+  return getSteppedTrailDistance(position.maxUnrealizedPnlPct ?? 0, position.tradeType ?? "");
 }
 
 // Intraday hard-stop counter: track recent stops, half size when 3+ in 2h
@@ -258,15 +268,14 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Percentage-based trailing for all engines: 40% activation, 3% trail
+      // Stepped trailing: 25/6 -> 30/3 -> 35/1 (loose early, tight late)
       const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailCfg = getTrailConfig(position);
-      if (peak > trailCfg.activation) {
-        // alert once per live position
+      const trailCfg = getSteppedTrailDistance(peak, position.tradeType ?? "");
+      if (peak >= trailCfg.activation) {
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
           trailActivatedIds.add(position.id);
           console.log(
-            `[PositionMonitor] Trail activated: ${position.pair} ${position.direction} at +${peak.toFixed(1)}% (threshold ${trailCfg.activation}%, trail ${trailCfg.distance}%)`,
+            `[PositionMonitor] Trail activated: ${position.pair} ${position.direction} at +${peak.toFixed(1)}% (stage ${trailCfg.activation}%, dist ${trailCfg.distance}%)`,
           );
           void notifyTrailActivation({
             pair: position.pair,
@@ -282,7 +291,7 @@ async function checkPositionStops(): Promise<void> {
         const trailTrigger = peak - trailCfg.distance;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(
-            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
+            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
           );
           await tryClose(position, "trailing-stop");
           continue;
