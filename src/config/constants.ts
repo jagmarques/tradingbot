@@ -34,6 +34,8 @@ export const QUANT_TRADING_PAIRS = [
   // Batch 3 (validated PF > 1.3 OOS on GARCH v2)
   "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "AAVE",
   "JUP", "POL", "CRV", "PYTH", "IMX", "BNB", "ONDO", "XLM", "DYDX", "ICP", "LTC", "MKR",
+  // Batch 4 (validated positive with SL 1% + BE +3% config)
+  "PENDLE", "PNUT", "ATOM", "TON", "SEI", "STX",
 ];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
