@@ -29,6 +29,9 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "news-trade": 24 * 60 * 60 * 1000,
 };
 
+// Breakeven stop: after peak reaches +3% leveraged PnL, close at entry price
+const BREAKEVEN_ACTIVATION_PCT = 3; // activate breakeven after +3% leveraged PnL peak
+
 // Stepped trail: 10/5->15/4->20/3->25/2->35/1.5->50/1
 const TRAIL_STEPS = [
   { activation: 50, distance: 1 },    // Stage 6: locked
@@ -383,11 +386,13 @@ async function checkTrailActivePositions(): Promise<void> {
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
-    // Trail-active or near-SL positions only
+    // Trail-active, breakeven-eligible, or near-SL positions
     const trailCandidates = positions.filter(p => {
       if (nearSlIds.has(p.id)) return true;
+      const peak = p.maxUnrealizedPnlPct ?? 0;
+      if (peak >= BREAKEVEN_ACTIVATION_PCT && TRAIL_ENGINES.has(p.tradeType ?? "")) return true;
       const trailCfg = getTrailConfig(p);
-      return trailActivatedIds.has(p.id) || (p.maxUnrealizedPnlPct ?? 0) > trailCfg.activation;
+      return trailActivatedIds.has(p.id) || peak > trailCfg.activation;
     });
 
     if (trailCandidates.length === 0) return;
@@ -428,6 +433,16 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
+
+      // Breakeven stop: if peak ever hit +3%, close at entry price
+      if (peak >= BREAKEVEN_ACTIVATION_PCT && unrealizedPnlPct <= 0 && TRAIL_ENGINES.has(position.tradeType ?? "")) {
+        console.log(
+          `[PositionMonitor] Breakeven stop: ${position.pair} ${position.direction} peaked at +${peak.toFixed(1)}%, now ${unrealizedPnlPct.toFixed(1)}%`,
+        );
+        await tryClose(position, "breakeven-stop");
+        continue;
+      }
+
       const trailCfg = getTrailConfig(position);
 
       if (peak > trailCfg.activation) {

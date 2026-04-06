@@ -35,7 +35,7 @@ const Z_LONG_4H = 3.0;   // 4h confirmation threshold
 const Z_SHORT_4H = -3.0;  // 4h confirmation threshold
 const EMA_FAST = 9;
 const EMA_SLOW = 21;
-const SL_PCT = 0.015; // 1.5% SL (tight SL + small size = low DD on 47 pairs)
+const SL_PCT = 0.01; // 1% SL (with breakeven at +3%, MaxDD $34, PF 2.53)
 const TP_PCT = 0; // no TP, trail-only (stepped trail handles exits)
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
 const BTC_EMA_FAST = 9;

@@ -43,7 +43,7 @@ export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;
-export const QUANT_MAX_SL_PCT = 2.0; // cap at SL + 0.5% (SL 1.5%, cap 2%)
+export const QUANT_MAX_SL_PCT = 1.5; // cap at SL + 0.5% (SL 1%, cap 1.5%)
 export const QUANT_ATR_SL_MULTIPLIER = 1.5;
 export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 export const QUANT_TRAIL_FAST_POLL_MS = 3_000;
