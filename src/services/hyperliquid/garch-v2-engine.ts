@@ -40,6 +40,7 @@ const TP_PCT = 0; // no TP, trail-only (stepped trail handles exits)
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
 const BTC_EMA_FAST = 9;
 const BTC_EMA_SLOW = 21;
+const BLOCKED_HOURS_UTC = new Set([22, 23]); // toxic hours, -$39 at h22, PF improves 1.90->2.03
 
 function computeZScore(candles: OhlcvCandle[]): number {
   if (candles.length < GARCH_VOL_WINDOW + GARCH_LOOKBACK + 1) return 0;
@@ -76,6 +77,13 @@ export async function runGarchV2Cycle(): Promise<void> {
   const ensembleCount = allPositions.filter(
     p => ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? ""),
   ).length;
+
+  // Block toxic UTC hours (h22-23: negative expectancy, proven by backtest)
+  const currentHourUTC = new Date().getUTCHours();
+  if (BLOCKED_HOURS_UTC.has(currentHourUTC)) {
+    console.log(`[GarchV2] Skipping cycle: hour ${currentHourUTC} UTC is blocked`);
+    return;
+  }
 
   for (const pair of QUANT_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
