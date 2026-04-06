@@ -49,88 +49,6 @@ export function inferExitReason(
   return `closed ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
-// Parse metadata from indicatorsAtEntry string (format: "impact:high|src:Trump|btc:87500|eq:150|ets:17743...")
-export function parseIndicatorsMeta(indicators?: string): {
-  btcPrice?: number;
-  equity?: number;
-  source?: string;
-  eventTs?: string;
-} {
-  if (!indicators) return {};
-  const parts = indicators.split("|");
-  const meta: Record<string, string> = {};
-  for (const part of parts) {
-    const idx = part.indexOf(":");
-    if (idx > 0) {
-      const key = part.slice(0, idx);
-      const val = part.slice(idx + 1);
-      if (key === "src" || key === "btc" || key === "eq" || key === "ets") {
-        meta[key] = val;
-      }
-    }
-  }
-  return {
-    btcPrice: meta.btc ? parseFloat(meta.btc) : undefined,
-    equity: meta.eq ? parseFloat(meta.eq) : undefined,
-    source: meta.src || undefined,
-    eventTs: meta.ets || undefined,
-  };
-}
-
-// ATR-based stop-loss price level
-export function calcAtrStopLoss(
-  entryPrice: number,
-  atr: number | null,
-  direction: "long" | "short",
-  multiplier: number = 1.5,
-  fallbackSlPct: number = 0.03,
-): number {
-  const minDistFrac = 0.005;
-  const minDist = entryPrice * minDistFrac;
-
-  let stop: number;
-  if (atr === null || atr <= 0) {
-    stop =
-      direction === "long"
-        ? entryPrice * (1 - fallbackSlPct)
-        : entryPrice * (1 + fallbackSlPct);
-  } else {
-    stop =
-      direction === "long"
-        ? entryPrice - multiplier * atr
-        : entryPrice + multiplier * atr;
-  }
-
-  // Enforce minimum distance from entry
-  if (direction === "long" && entryPrice - stop < minDist) {
-    stop = entryPrice - minDist;
-  } else if (direction === "short" && stop - entryPrice < minDist) {
-    stop = entryPrice + minDist;
-  }
-
-  return stop;
-}
-
-// Quarter-Kelly position size in USD
-export function calcKellySize(
-  confidence: number,
-  equity: number,
-  stopLossPct: number,
-  minSizeUsd: number = 10,
-): number {
-  if (confidence <= 50 || equity <= 0) return 0;
-
-  const edge = confidence / 100 - 0.5;
-  const kellyFraction = edge * 0.25;
-  const kellySize = equity * kellyFraction;
-
-  const balanceCap = equity * 0.2;
-  const riskCap = stopLossPct > 0 ? (equity * 0.02) / stopLossPct : kellySize;
-
-  const result = Math.min(kellySize, riskCap, balanceCap);
-  return result < minSizeUsd ? 0 : result;
-}
-
 // Rebase SL/TP from expected entry to actual fill (preserves % offset)
 export function rebaseStops(
   stopLoss: number,
@@ -144,4 +62,25 @@ export function rebaseStops(
     stopLoss: fillPrice * (1 + stopPct),
     takeProfit: fillPrice * (1 + tpPct),
   };
+}
+
+// Parse optional metadata embedded in indicatorsAtEntry JSON string
+export function parseIndicatorsMeta(raw?: string): {
+  btcPrice?: number;
+  equity?: number;
+  source?: string;
+  eventTs?: string;
+} {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      btcPrice: typeof parsed.btcPrice === "number" ? parsed.btcPrice : undefined,
+      equity: typeof parsed.equity === "number" ? parsed.equity : undefined,
+      source: typeof parsed.source === "string" ? parsed.source : undefined,
+      eventTs: typeof parsed.eventTs === "string" ? parsed.eventTs : undefined,
+    };
+  } catch {
+    return {};
+  }
 }

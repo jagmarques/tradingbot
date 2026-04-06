@@ -634,22 +634,15 @@ async function handleBalance(ctx: Context): Promise<void> {
 
   try {
     const { getAccountBalance } = await import("../hyperliquid/account.js");
-    const { getLighterAccountInfo, isLighterInitialized } = await import("../lighter/client.js");
     const env = loadEnv();
 
-    const [hlAccount, ltAccount] = await Promise.all([
-      env.HYPERLIQUID_WALLET_ADDRESS
-        ? getAccountBalance(env.HYPERLIQUID_WALLET_ADDRESS).catch(() => ({ equity: 0, balance: 0, unrealizedPnl: 0 }))
-        : Promise.resolve({ equity: 0, balance: 0, unrealizedPnl: 0 }),
-      isLighterInitialized()
-        ? getLighterAccountInfo().catch(() => ({ equity: 0, marginUsed: 0 }))
-        : Promise.resolve({ equity: 0, marginUsed: 0 }),
-    ]);
+    const hlAccount = env.HYPERLIQUID_WALLET_ADDRESS
+      ? await getAccountBalance(env.HYPERLIQUID_WALLET_ADDRESS).catch(() => ({ equity: 0, balance: 0, unrealizedPnl: 0 }))
+      : { equity: 0, balance: 0, unrealizedPnl: 0 };
 
     if (activeOpId !== myOpId) return;
 
-    const total = hlAccount.equity + ltAccount.equity;
-    const msg = `<b>Portfolio</b>\nHL: ${fmt(hlAccount.equity)} | LT: ${fmt(ltAccount.equity)}\n<b>Total: ${fmt(total)}</b>`;
+    const msg = `<b>Portfolio</b>\nHL: ${fmt(hlAccount.equity)}\n<b>Total: ${fmt(hlAccount.equity)}</b>`;
     await sendDataMessage(msg, backButton);
   } catch (err) {
     console.error("[Telegram] Balance error:", err);
@@ -688,16 +681,12 @@ async function handlePnl(ctx: Context): Promise<void> {
     const env = loadEnv();
     const quantPositions = getOpenQuantPositions();
     let quantUnrealized = 0;
-    let quantLiveUnrealized = 0;
-    let ltUnrealized = 0;
     if (env.QUANT_ENABLED === "true" && !!env.HYPERLIQUID_PRIVATE_KEY && quantPositions.length > 0) {
       try {
         const sdk = getClient();
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
-        let ltMids: Record<string, string> = {};
         // Exchange unrealized P&L
         const hlExUpnl: Record<string, number> = {};
-        let ltExUpnl: Record<string, number> = {};
         const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
         if (wallet) {
           try {
@@ -708,20 +697,6 @@ async function handlePnl(ctx: Context): Promise<void> {
               }
             }
           } catch { /* HL state unavailable */ }
-        }
-        const ltPositions = quantPositions.filter(p => p.exchange === "lighter");
-        if (ltPositions.length > 0) {
-          try {
-            const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
-            if (isLighterInitialized()) {
-              ltExUpnl = await getLighterUnrealizedPnl();
-              // Mid-prices only needed for paper positions
-              const paperPairs = [...new Set(ltPositions.filter(p => p.mode !== "live").map(p => p.pair))];
-              if (paperPairs.length > 0) {
-                ltMids = await getLighterAllMids(paperPairs);
-              }
-            }
-          } catch { /* Lighter unavailable */ }
         }
         // Proportional exchange unrealized split
         const livePairSize = new Map<string, number>();
@@ -735,15 +710,14 @@ async function handlePnl(ctx: Context): Promise<void> {
           let posUnr: number | undefined;
           if (pos.mode === "live") {
             const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-            const exVal = pos.exchange === "lighter" ? ltExUpnl[pos.pair] : hlExUpnl[pos.pair];
+            const exVal = hlExUpnl[pos.pair];
             const totalSize = livePairSize.get(k) ?? 0;
             if (exVal !== undefined && totalSize > 0) {
               posUnr = exVal * (pos.size / totalSize);
             }
           } else {
             // Paper: mid-price calc (no exchange data)
-            const priceSource = pos.exchange === "lighter" ? ltMids : mids;
-            const rawMid = priceSource[pos.pair];
+            const rawMid = mids[pos.pair];
             if (rawMid) {
               const cp = parseFloat(rawMid);
               if (!isNaN(cp)) {
@@ -755,10 +729,6 @@ async function handlePnl(ctx: Context): Promise<void> {
           }
           if (posUnr !== undefined) {
             quantUnrealized += posUnr;
-            if (pos.mode === "live") {
-              quantLiveUnrealized += posUnr;
-              if (pos.exchange === "lighter") ltUnrealized += posUnr;
-            }
           }
         }
       } catch { /* prices unavailable */ }
@@ -1421,10 +1391,8 @@ async function handleQuant(ctx: Context): Promise<void> {
   text += `${engineStatus}\n`;
 
   let mids: Record<string, string> = {};
-  let lighterMids: Record<string, string> = {};
   // Exchange unrealized P&L
   const hlExchangeUpnl: Record<string, number> = {};
-  let ltExchangeUpnl: Record<string, number> = {};
   if (openPositions.length > 0) {
     try {
       const sdk = getClient();
@@ -1443,20 +1411,6 @@ async function handleQuant(ctx: Context): Promise<void> {
       // Prices unavailable
     }
 
-    // Lighter unrealized + prices
-    const lighterPositions = openPositions.filter(p => p.exchange === "lighter");
-    if (lighterPositions.length > 0) {
-      try {
-        const { getLighterAllMids, isLighterInitialized, getLighterUnrealizedPnl } = await import("../lighter/client.js");
-        if (isLighterInitialized()) {
-          ltExchangeUpnl = await getLighterUnrealizedPnl();
-          const paperPairs = [...new Set(lighterPositions.filter(p => p.mode !== "live").map(p => p.pair))];
-          if (paperPairs.length > 0) {
-            lighterMids = await getLighterAllMids(paperPairs);
-          }
-        }
-      } catch { /* Lighter unavailable */ }
-    }
   }
 
   if (activeOpId !== myOpId) return;
@@ -1472,7 +1426,7 @@ async function handleQuant(ctx: Context): Promise<void> {
   const getExchangeUpnl = (pos: typeof openPositions[0]): number | undefined => {
     if (pos.mode !== "live") return undefined;
     const k = `${pos.exchange ?? "hl"}:${pos.pair}`;
-    const exVal = pos.exchange === "lighter" ? ltExchangeUpnl[pos.pair] : hlExchangeUpnl[pos.pair];
+    const exVal = hlExchangeUpnl[pos.pair];
     if (exVal === undefined) return undefined;
     const totalSize = livePairSize.get(k) ?? 0;
     if (totalSize === 0) return undefined;
@@ -1486,21 +1440,15 @@ async function handleQuant(ctx: Context): Promise<void> {
       pos.tradeType === "supertrend-4h" ? "[ST]" :
       pos.tradeType === "garch-v2" ? "[GV]" :
       pos.tradeType === "carry-momentum" ? "[CM]" :
-      pos.tradeType === "range-expansion" ? "[RE]" :
-      pos.tradeType === "garch-chan" ? "[G2]" :
-      pos.tradeType === "btc-mr" ? "[MR]" :
-      pos.tradeType === "btc-event" ? "[BE]" :
-      pos.tradeType === "news-trade" ? "[NT]" :
       pos.tradeType === "trump-event" ? "[TE]" :
       "[??]";
-    const exchTag = pos.exchange === "hyperliquid" ? "/HL" : pos.exchange === "lighter" ? "/LT" : "";
+    const exchTag = pos.exchange === "hyperliquid" ? "/HL" : "";
     let upnlStr = "";
     const exchangeUpnl = getExchangeUpnl(pos);
     if (exchangeUpnl !== undefined) {
       upnlStr = ` ${pnl(exchangeUpnl)}`;
     } else {
-      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
-      const rawMid = priceSource[pos.pair];
+      const rawMid = mids[pos.pair];
       if (rawMid) {
         const currentPrice = parseFloat(rawMid);
         if (!isNaN(currentPrice)) {
@@ -1530,16 +1478,8 @@ async function handleQuant(ctx: Context): Promise<void> {
     }
 
     if (isHybridOrLive && livePositions.length > 0) {
-      const liveHL = livePositions.filter(p => p.exchange !== "lighter");
-      const liveLT = livePositions.filter(p => p.exchange === "lighter");
-      if (liveHL.length > 0) {
-        text += `\n<b>LIVE HL (${liveHL.length})</b>\n`;
-        text += liveHL.map(formatPosLine).join("\n") + "\n";
-      }
-      if (liveLT.length > 0) {
-        text += `\n<b>LIVE LT (${liveLT.length})</b>\n`;
-        text += liveLT.map(formatPosLine).join("\n") + "\n";
-      }
+      text += `\n<b>LIVE HL (${livePositions.length})</b>\n`;
+      text += livePositions.map(formatPosLine).join("\n") + "\n";
     }
   }
 
@@ -1558,8 +1498,7 @@ async function handleQuant(ctx: Context): Promise<void> {
     const exUpnl = getExchangeUpnl(pos);
     if (exUpnl !== undefined) upnl = exUpnl;
     if (upnl === undefined) {
-      const priceSource = pos.exchange === "lighter" ? lighterMids : mids;
-      const rawMid = priceSource[pos.pair];
+      const rawMid = mids[pos.pair];
       if (!rawMid) continue;
       const currentPrice = parseFloat(rawMid);
       if (isNaN(currentPrice)) continue;
@@ -1593,15 +1532,10 @@ async function handleQuant(ctx: Context): Promise<void> {
   };
 
   const engines: [string, string][] = [
-    ["DT", "donchian-trend"],
-    ["ST", "supertrend-4h"],
     ["GV", "garch-v2"],
+    ["ST", "supertrend-4h"],
+    ["DT", "donchian-trend"],
     ["CM", "carry-momentum"],
-    ["RE", "range-expansion"],
-    ["G2", "garch-chan"],
-    ["MR", "btc-mr"],
-    ["BE", "btc-event"],
-    ["NT", "news-trade"],
     ["TE", "trump-event"],
   ];
 

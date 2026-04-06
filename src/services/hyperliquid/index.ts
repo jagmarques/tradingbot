@@ -1,6 +1,4 @@
 import { initHyperliquid, isHyperliquidInitialized, ensureConnected, getClient } from "./client.js";
-import { initLighter } from "../lighter/client.js";
-import { initLighterEngine } from "../lighter/executor.js";
 import { initPaperEngine } from "./paper.js";
 import { initLiveEngine, startHeartbeat, stopHeartbeat } from "./live-executor.js";
 import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
@@ -40,15 +38,6 @@ export function initQuant(): number {
     void verifyLiveConnection();
   }
 
-  // Initialize Lighter DEX if all 3 credentials are set
-  if (env.LIGHTER_PRIVATE_KEY && env.LIGHTER_API_KEY_INDEX != null && env.LIGHTER_ACCOUNT_INDEX != null) {
-    initLighter(env.LIGHTER_API_KEY_INDEX, env.LIGHTER_PRIVATE_KEY, env.LIGHTER_ACCOUNT_INDEX);
-    initLighterEngine();
-    if (!isPaperMode()) {
-      void verifyLighterConnection();
-    }
-  }
-
   seedDailyLossFromDb();
   startHlPriceWs();
   startPositionMonitor();
@@ -75,18 +64,6 @@ async function verifyLiveConnection(): Promise<void> {
   }
 }
 
-async function verifyLighterConnection(): Promise<void> {
-  try {
-    const { getLighterAllMids } = await import("../lighter/client.js");
-    const mids = await getLighterAllMids(["BTC", "ETH"]);
-    const pairCount = Object.keys(mids).length;
-    console.log(`[Quant] Lighter health check passed: ${pairCount} pairs available`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Quant] LIGHTER HEALTH CHECK FAILED: ${msg}`);
-  }
-}
-
 export function stopQuant(): void {
   stopQuantScheduler();
   stopPositionMonitor();
@@ -103,10 +80,7 @@ export { getAccountState, getRecentFills } from "./account.js";
 
 // Market data pipeline
 export { fetchCandles, fetchAllCandles } from "./candles.js";
-export { fetchFundingRate, fetchOpenInterest, fetchMarketContext } from "./market-data.js";
 export { computeIndicators } from "./indicators.js";
-export { classifyRegime } from "./regime.js";
-export { analyzePair, runMarketDataPipeline } from "./pipeline.js";
 
 // Risk Management
 export {
@@ -126,11 +100,5 @@ export { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js
 // Directional Trading Scheduler
 export { runDirectionalCycle, startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
 
-// Ensemble Engines
-export { runDonchianTrendCycle } from "./donchian-trend-engine.js";
-export { runSupertrend4hCycle } from "./supertrend-4h-engine.js";
-
-// Lighter DEX
-export { getLighterLivePositions } from "../lighter/executor.js";
 
 

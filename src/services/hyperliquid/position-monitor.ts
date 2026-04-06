@@ -1,5 +1,4 @@
 import { getClient, resetConnection } from "./client.js";
-import { getLighterAllMids, getLighterOpenPositions, isLighterInitialized } from "../lighter/client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
@@ -125,8 +124,7 @@ async function checkPositionStops(): Promise<void> {
     }
 
     let mids: Record<string, string> = {};
-    const hlPositions = positions.filter(p => p.exchange !== "lighter");
-    if (hlPositions.length > 0) {
+    if (positions.length > 0) {
       if (isWsConnected()) {
         mids = getWsMids();
       } else {
@@ -140,43 +138,6 @@ async function checkPositionStops(): Promise<void> {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
         }
-      }
-    }
-
-    let lighterMids: Record<string, string> = {};
-    const lighterPositions = positions.filter(p => p.exchange === "lighter");
-    if (lighterPositions.length > 0 && isLighterInitialized()) {
-      const lighterPairs = [...new Set(lighterPositions.map(p => p.pair))];
-      try {
-        lighterMids = await withTimeout(
-          getLighterAllMids(lighterPairs),
-          API_PRICE_TIMEOUT_MS + 5_000, "Lighter getAllMids",
-        );
-        const missing = lighterPairs.filter(p => !lighterMids[p]);
-        if (missing.length > 0) {
-          console.warn(`[PositionMonitor] Lighter missing prices for: ${missing.join(", ")}`);
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[PositionMonitor] Lighter price fetch failed: ${msg}`);
-        const liveLighter = lighterPositions.filter(p => p.mode === "live").length;
-        if (liveLighter > 0) {
-          throttledCriticalAlert(`Lighter prices failed: ${liveLighter} live position(s) unprotected: ${msg}`, "PositionMonitor");
-        }
-      }
-    }
-
-    // Exchange P&L for live Lighter
-    const lighterExchangePnl = new Map<string, number>(); // key: `${pair}:${direction}`
-    const liveLighterPositions = lighterPositions.filter(p => p.mode === "live");
-    if (liveLighterPositions.length > 0 && isLighterInitialized()) {
-      try {
-        const exchangePositions = await getLighterOpenPositions();
-        for (const ep of exchangePositions) {
-          lighterExchangePnl.set(`${ep.symbol}:${ep.side}`, ep.unrealizedPnlPct);
-        }
-      } catch (err) {
-        console.warn(`[PositionMonitor] Exchange P&L fetch failed, falling back to mid-price: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
@@ -194,8 +155,7 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      const priceSource = position.exchange === "lighter" ? lighterMids : mids;
-      const rawPrice = priceSource[position.pair];
+      const rawPrice = mids[position.pair];
 
       if (rawPrice === undefined) {
         console.log(`[PositionMonitor] No price data for ${position.pair}, skipping`);
@@ -256,10 +216,7 @@ async function checkPositionStops(): Promise<void> {
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
           : ((position.entryPrice - currentPrice) / position.entryPrice);
-      const exchangePnlPct = position.exchange === "lighter" && position.mode === "live"
-        ? lighterExchangePnl.get(`${position.pair}:${position.direction}`)
-        : undefined;
-      const unrealizedPnlPct = exchangePnlPct !== undefined ? exchangePnlPct : pricePct * (position.leverage ?? 10) * 100;
+      const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
 
       // Trail 40/3 with re-entry for all engines (+16% profit, -17% MaxDD validated)
 
@@ -434,42 +391,23 @@ async function checkTrailActivePositions(): Promise<void> {
 
     // Prices for trail-active pairs only
     let mids: Record<string, string> = {};
-    const hlCandidates = trailCandidates.filter(p => p.exchange !== "lighter");
-    if (hlCandidates.length > 0) {
-      if (isWsConnected()) {
-        mids = getWsMids();
-      } else {
-        try {
-          const sdk = getClient();
-          mids = await withTimeout(
-            sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-            API_PRICE_TIMEOUT_MS, "HL getAllMids (fast-poll)",
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[PositionMonitor] Fast-poll HL price fetch failed: ${msg}`);
-        }
-      }
-    }
-
-    let lighterMids: Record<string, string> = {};
-    const lighterCandidates = trailCandidates.filter(p => p.exchange === "lighter");
-    if (lighterCandidates.length > 0 && isLighterInitialized()) {
-      const lighterPairs = [...new Set(lighterCandidates.map(p => p.pair))];
+    if (isWsConnected()) {
+      mids = getWsMids();
+    } else {
       try {
-        lighterMids = await withTimeout(
-          getLighterAllMids(lighterPairs),
-          API_PRICE_TIMEOUT_MS + 1_000, "Lighter getAllMids (fast-poll)",
+        const sdk = getClient();
+        mids = await withTimeout(
+          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+          API_PRICE_TIMEOUT_MS, "HL getAllMids (fast-poll)",
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[PositionMonitor] Fast-poll Lighter price fetch failed: ${msg}`);
+        console.error(`[PositionMonitor] Fast-poll HL price fetch failed: ${msg}`);
       }
     }
 
     for (const position of trailCandidates) {
-      const priceSource = position.exchange === "lighter" ? lighterMids : mids;
-      const rawPrice = priceSource[position.pair];
+      const rawPrice = mids[position.pair];
       if (rawPrice === undefined) continue;
 
       const currentPrice = parseFloat(rawPrice);
@@ -479,7 +417,6 @@ async function checkTrailActivePositions(): Promise<void> {
         position.direction === "long"
           ? ((currentPrice - position.entryPrice) / position.entryPrice)
           : ((position.entryPrice - currentPrice) / position.entryPrice);
-      // Lighter fees=0, mid-price is exact
       const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
 
       if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {

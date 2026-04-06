@@ -1,5 +1,4 @@
 import { getClient } from "./client.js";
-import { getLighterMidPrice } from "../lighter/client.js";
 import type { QuantPosition, TradeType } from "./types.js";
 import {
   generateQuantId,
@@ -10,7 +9,6 @@ import {
 import { QUANT_DEFAULT_VIRTUAL_BALANCE, LIGHTER_PAPER_SPREAD_PCT } from "../../config/constants.js";
 import { calcPnl, rebaseStops, parseIndicatorsMeta } from "./quant-utils.js";
 import { notifyQuantTradeEntry, notifyQuantTradeExit } from "../telegram/notifications.js";
-import { fetchFundingRate } from "./market-data.js";
 import { recordStopLossCooldown } from "./scheduler.js";
 
 export const ISOLATED_ENGINE_TYPES: TradeType[] = [
@@ -55,10 +53,7 @@ export function getPaperPositions(): QuantPosition[] {
   );
 }
 
-async function fetchMidPriceForExchange(pair: string, exchange: "hyperliquid" | "lighter" = "hyperliquid"): Promise<number | null> {
-  if (exchange === "lighter") {
-    return getLighterMidPrice(pair);
-  }
+async function fetchMidPriceForExchange(pair: string, _exchange: "hyperliquid" | "lighter" = "hyperliquid"): Promise<number | null> {
   try {
     const sdk = getClient();
     const mids = await sdk.info.getAllMids(true) as Record<string, string>;
@@ -75,57 +70,8 @@ async function fetchMidPriceForExchange(pair: string, exchange: "hyperliquid" | 
 
 // Accrue funding income for arb positions (1h settle)
 export async function accrueFundingIncome(): Promise<void> {
-  const openPositions = getPaperPositions();
-  const fundingPositions = openPositions.filter(p => p.tradeType === "funding");
-
-  if (fundingPositions.length === 0) return;
-
-  const now = Date.now();
-  const FUNDING_PERIOD_MS = 1 * 60 * 60 * 1000; // 1 hour
-
-  for (const position of fundingPositions) {
-    const lastAccrual = lastFundingAccrual.get(position.id) ?? new Date(position.openedAt).getTime();
-    const elapsed = now - lastAccrual;
-
-    // Skip if < 1h elapsed
-    if (elapsed < 60 * 60 * 1000) continue;
-
-    try {
-      const fundingInfo = await fetchFundingRate(position.pair);
-      if (!fundingInfo) continue;
-
-      // Shorts collect +rate, longs collect -rate
-      const rate = fundingInfo.currentRate;
-      let fundingPayment: number;
-
-      if (position.direction === "short") {
-        fundingPayment = rate * position.size * position.leverage; // positive rate = shorts collect
-      } else {
-        fundingPayment = -rate * position.size * position.leverage; // negative rate = longs collect
-      }
-
-      const periodFraction = elapsed / FUNDING_PERIOD_MS;
-      const accruedPayment = fundingPayment * periodFraction;
-
-      if (Math.abs(accruedPayment) < 0.001) {
-        lastFundingAccrual.set(position.id, now);
-        continue;
-      }
-
-      lastFundingAccrual.set(position.id, now);
-
-      const prev = accumulatedFunding.get(position.id) ?? 0;
-      accumulatedFunding.set(position.id, prev + accruedPayment);
-
-      const sign = accruedPayment >= 0 ? "+" : "";
-      console.log(
-        `[Quant Paper] Funding accrual: ${position.pair} ${position.direction} ${sign}$${accruedPayment.toFixed(4)} (rate ${(rate * 100).toFixed(4)}%, ${(periodFraction * 100).toFixed(0)}% of period)`
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Quant Paper] Funding accrual error for ${position.pair}: ${msg}`);
-    }
-  }
+  // Funding positions are no longer active; this is a no-op placeholder.
+  return Promise.resolve();
 }
 
 export async function paperOpenPosition(
