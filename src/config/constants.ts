@@ -29,8 +29,11 @@ export const API_ORDER_TIMEOUT_MS = 15_000;
 export const QUANT_TRADING_PAIRS = [
   // Original 18
   "OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI", "ETH", "TIA", "SOL",
-  // New additions (validated PF > 1.2 OOS on Supertrend)
+  // Batch 2 (validated PF > 1.2 OOS on Supertrend)
   "ZEC", "AVAX", "NEAR", "kPEPE", "SUI", "HYPE", "FET",
+  // Batch 3 (validated PF > 1.3 OOS on GARCH v2)
+  "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "MANA", "AAVE", "GRT",
+  "JUP", "POL", "CRV", "PYTH", "IMX", "BNB", "ONDO", "XLM", "DYDX", "ICP", "LTC", "MKR",
 ];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
@@ -40,7 +43,7 @@ export const QUANT_FIXED_POSITION_SIZE_USD = 10;
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;
-export const QUANT_MAX_SL_PCT = 3.5;
+export const QUANT_MAX_SL_PCT = 2.0; // cap at SL + 0.5% (SL 1.5%, cap 2%)
 export const QUANT_ATR_SL_MULTIPLIER = 1.5;
 export const QUANT_POSITION_MONITOR_INTERVAL_MS = 10_000;
 export const QUANT_TRAIL_FAST_POLL_MS = 3_000;
@@ -71,9 +74,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// GARCH-only $9, max 7 (optimized for $90 equity, MaxDD $59)
+// GARCH-only $5, unlimited (optimized: 47 pairs, SL 1.5%, no TP, MaxDD $76)
 export const ENSEMBLE_POSITION_SIZE_USD = 1; // Legacy fallback
-export const ENSEMBLE_MAX_CONCURRENT = 7;
+export const ENSEMBLE_MAX_CONCURRENT = 999; // no limit, DD controlled by small SL + small size
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)

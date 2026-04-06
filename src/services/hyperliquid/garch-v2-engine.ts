@@ -7,10 +7,10 @@ import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getLiveBalance } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 
-// Auto-scaler: 10% of equity, clamped $3-$20
-const SCALE_FACTOR = 0.10;
+// Auto-scaler: 5% of equity, clamped $3-$10 (small size for 47-pair portfolio)
+const SCALE_FACTOR = 0.05;
 const MIN_SIZE = 3;
-const MAX_SIZE = 20;
+const MAX_SIZE = 10;
 async function computeGarchSize(): Promise<number> {
   try {
     const balance = await getLiveBalance();
@@ -35,9 +35,9 @@ const Z_LONG_4H = 3.0;   // 4h confirmation threshold
 const Z_SHORT_4H = -3.0;  // 4h confirmation threshold
 const EMA_FAST = 9;
 const EMA_SLOW = 21;
-const SL_PCT = 0.03;
-const TP_PCT = 0.07; // 7% take-profit (boosts WR from 34% to 46%)
-const MAX_PER_DIRECTION = 6;
+const SL_PCT = 0.015; // 1.5% SL (tight SL + small size = low DD on 47 pairs)
+const TP_PCT = 0; // no TP, trail-only (stepped trail handles exits)
+const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
 const BTC_EMA_FAST = 9;
 const BTC_EMA_SLOW = 21;
 
@@ -142,7 +142,7 @@ export async function runGarchV2Cycle(): Promise<void> {
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = direction === "long" ? entryPrice * (1 - SL_PCT) : entryPrice * (1 + SL_PCT);
       const stopLoss = capStopLoss(entryPrice, rawStop, direction);
-      const takeProfit = direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT);
+      const takeProfit = TP_PCT > 0 ? (direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT)) : 0;
       const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|ema9:${emaFast.toFixed(4)}|ema21:${emaSlow.toFixed(4)}`;
 
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
