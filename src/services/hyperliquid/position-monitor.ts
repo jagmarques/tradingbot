@@ -29,14 +29,14 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "news-trade": 24 * 60 * 60 * 1000,
 };
 
-// Stepped trail: 10/6->15/5->20/4->25/3->35/2->50/1 (lock small wins, tighten as it grows)
+// Stepped trail: 10/5->15/4->20/3->25/2->35/1.5->50/1
 const TRAIL_STEPS = [
-  { activation: 50, distance: 1 },  // Stage 6: locked
-  { activation: 35, distance: 2 },  // Stage 5: very tight
-  { activation: 25, distance: 3 },  // Stage 4: tight
-  { activation: 20, distance: 4 },  // Stage 3: moderate
-  { activation: 15, distance: 5 },  // Stage 2: loose
-  { activation: 10, distance: 6 },  // Stage 1: catch reversions early
+  { activation: 50, distance: 1 },    // Stage 6: locked
+  { activation: 35, distance: 1.5 },  // Stage 5: very tight
+  { activation: 25, distance: 2 },    // Stage 4: tight
+  { activation: 20, distance: 3 },    // Stage 3: moderate
+  { activation: 15, distance: 4 },    // Stage 2: loose
+  { activation: 10, distance: 5 },    // Stage 1: catch reversions early
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
