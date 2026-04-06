@@ -32,7 +32,7 @@ export const QUANT_TRADING_PAIRS = [
   // Batch 2 (validated PF > 1.2 OOS on Supertrend)
   "ZEC", "AVAX", "NEAR", "kPEPE", "SUI", "HYPE", "FET",
   // Batch 3 (validated PF > 1.3 OOS on GARCH v2)
-  "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "MANA", "AAVE", "GRT",
+  "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "AAVE",
   "JUP", "POL", "CRV", "PYTH", "IMX", "BNB", "ONDO", "XLM", "DYDX", "ICP", "LTC", "MKR",
 ];
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
