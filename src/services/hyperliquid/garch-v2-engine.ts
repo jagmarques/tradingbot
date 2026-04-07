@@ -29,10 +29,10 @@ import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-const Z_LONG_1H = 3.0;   // lowered from 4.5 (4h filter keeps quality, +16% more profit, same MaxDD)
+const Z_LONG_1H = 3.0;
 const Z_SHORT_1H = -3.0;
-const Z_LONG_4H = 3.0;
-const Z_SHORT_4H = -3.0;
+const Z_LONG_4H = 2.5;   // loosened from 3.0 (+$3.03/day, MaxDD $54, 0 days >$50)
+const Z_SHORT_4H = -2.5;
 const EMA_FAST = 9;
 const EMA_SLOW = 21;
 const SL_PCT = 0.01; // 1% SL (with breakeven at +3%, MaxDD $34, PF 2.53)
