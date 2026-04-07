@@ -29,14 +29,23 @@ export const API_ORDER_TIMEOUT_MS = 15_000;
 export const QUANT_TRADING_PAIRS = [
   // Original 18
   "OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI", "ETH", "TIA", "SOL",
-  // Batch 2 (validated PF > 1.2 OOS on Supertrend)
+  // Batch 2
   "ZEC", "AVAX", "NEAR", "kPEPE", "SUI", "HYPE", "FET",
-  // Batch 3 (validated PF > 1.3 OOS on GARCH v2)
+  // Batch 3
   "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "AAVE",
   "JUP", "POL", "CRV", "PYTH", "IMX", "BNB", "ONDO", "XLM", "DYDX", "ICP", "LTC", "MKR",
-  // Batch 4 (validated positive with SL 1% + BE +3% config)
+  // Batch 4
   "PENDLE", "PNUT", "ATOM", "TON", "SEI", "STX",
-];
+  // Batch 5 (74 new pairs, validated PF > 1.1 OOS on GARCH v2, 1h CD, $7)
+  "DYM", "CFX", "ALT", "BIO", "OMNI", "ORDI", "XAI", "SUSHI", "ME", "ZEN",
+  "TNSR", "CATI", "TURBO", "MOVE", "GALA", "STRK", "SAGA", "ILV", "GMX", "OM",
+  "CYBER", "NTRN", "BOME", "MEME", "ANIME", "BANANA", "ETC", "USUAL", "UMA", "USTC",
+  "MAV", "REZ", "NOT", "PENGU", "BIGTIME", "WCT", "EIGEN", "MANTA", "POLYX", "W",
+  "FXS", "GMT", "RSR", "PEOPLE", "YGG", "TRB", "ETHFI", "ENS", "OGN", "AXS",
+  "MINA", "LISTA", "NEO", "AI", "SCR", "APE", "KAITO", "AR", "BNT", "PIXEL",
+  "LAYER", "ZRO", "CELO", "ACE", "COMP", "RDNT", "ZK", "MET", "STG", "REQ",
+  "CAKE", "SUPER", "FTT", "STRAX",
+]; // 127 pairs total
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 

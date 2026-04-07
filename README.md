@@ -8,7 +8,7 @@ Hyperliquid GARCH v2 quant engine, EVM insider copy trading. TypeScript, Docker,
 
 GARCH (Generalized Autoregressive Conditional Heteroskedasticity) v2 is a multi-timeframe z-score momentum engine. It detects extreme price moves by computing how many standard deviations the current momentum is from the mean, using a GARCH-style volatility model. When both the 1-hour and 4-hour timeframes show extreme z-scores simultaneously, it enters a trade expecting the momentum to continue.
 
-Single-engine on 53 perpetual futures pairs. Unlimited concurrent positions, 10x leverage.
+Single-engine on 127 perpetual futures pairs. Unlimited concurrent positions, 10x leverage.
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
