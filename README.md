@@ -8,26 +8,29 @@ Hyperliquid GARCH v2 quant engine, EVM insider copy trading. TypeScript, Docker,
 
 GARCH (Generalized Autoregressive Conditional Heteroskedasticity) v2 is a multi-timeframe z-score momentum engine. It detects extreme price moves by computing how many standard deviations the current momentum is from the mean, using a GARCH-style volatility model. When both the 1-hour and 4-hour timeframes show extreme z-scores simultaneously, it enters a trade expecting the momentum to continue.
 
-Single-engine on 25 perpetual futures pairs. Max 7 concurrent positions, 10x leverage.
+Single-engine on 53 perpetual futures pairs. Unlimited concurrent positions, 10x leverage.
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h z>4.5 + 4h z>3.0 | 3% SL, 7% TP | Auto (10% equity, $3-$20) | 72h |
+| GARCH v2 MTF | 1h z>3.0 + 4h z>2.5 | 0.5% SL, BE +3%, trail | Auto (5% equity, $3-$10) | 72h |
 
 **How it works:**
-1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 25 pairs
-2. If 1h z-score > 4.5 AND 4h z-score > 3.0: open long (confirmed extreme bullish momentum)
-3. If 1h z-score < -3.0 AND 4h z-score < -3.0: open short (confirmed extreme bearish momentum)
+1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 53 pairs
+2. If 1h z-score > 3.0 AND 4h z-score > 2.5: open long (confirmed momentum)
+3. If 1h z-score < -3.0 AND 4h z-score < -2.5: open short (confirmed momentum)
 4. Additional filters: EMA(9)>EMA(21) trend alignment, BTC 1h EMA(9)>EMA(21) for longs
-5. Exit: 3% stop-loss, 7% take-profit, or 72h max hold
+5. Exit: 0.5% stop-loss, breakeven at +3%, or 6-stage stepped trail
+6. Hours 22-23 UTC blocked (negative expectancy)
 
 **Risk management:**
-- Auto-scaler: position size = 10% of equity, clamped $3-$20
+- Auto-scaler: position size = 5% of equity, clamped $3-$10
 - BTC EMA filter blocks longs when BTC is bearish, shorts always allowed
-- ATR(14)x3 stop-loss capped at 3.5%
-- Stepped trailing: 25/6 -> 30/3 -> 35/1 (loose at +25%, tighten at +30%, lock at +35%)
+- Stop-loss 0.5% fixed, capped at 1.0%
+- Breakeven stop: after +3% leveraged PnL, SL moves to entry price
+- 6-stage stepped trailing: 10/5 -> 15/4 -> 20/3 -> 25/2 -> 35/1.5 -> 50/1
 - Maker entry (ALO) with taker fallback, dead-man switch
 - Fear & Greed regime filter blocks longs in extreme fear
+- 1h SL cooldown per pair/direction
 
 ### TrumpGuard
 
