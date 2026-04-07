@@ -23,7 +23,7 @@ Single-engine on 127 perpetual futures pairs. Unlimited concurrent positions, 10
 6. Hours 22-23 UTC blocked (negative expectancy)
 
 **Risk management:**
-- Auto-scaler: position size = 7% of equity, clamped $3-$15
+- Auto-scaler: position size = 10% of equity, clamped $3-$15
 - Stop-loss 0.5% fixed, capped at 1.0%
 - Breakeven stop: after +2% leveraged PnL, SL moves to entry price
 - 6-stage stepped trailing: 10/5 -> 15/4 -> 20/3 -> 25/2 -> 35/1.5 -> 50/1
