@@ -7,10 +7,10 @@ import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getLiveBalance } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 
-// Auto-scaler: 5% of equity, clamped $3-$10 (small size for 47-pair portfolio)
-const SCALE_FACTOR = 0.05;
+// Auto-scaler: 7% of equity, clamped $3-$15 ($7 target on $90)
+const SCALE_FACTOR = 0.07;
 const MIN_SIZE = 3;
-const MAX_SIZE = 10;
+const MAX_SIZE = 15;
 async function computeGarchSize(): Promise<number> {
   try {
     const balance = await getLiveBalance();
@@ -20,7 +20,7 @@ async function computeGarchSize(): Promise<number> {
 }
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
-import { ema, isBtcBullish } from "./indicators.js";
+import { ema } from "./indicators.js";
 import { getRegimeBias } from "../market-regime/fear-greed.js";
 import type { OhlcvCandle } from "./types.js";
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
@@ -38,8 +38,6 @@ const EMA_SLOW = 21;
 const SL_PCT = 0.005; // 0.5% SL (with BE +3%: $3.37/day, MaxDD $33, PF 2.30)
 const TP_PCT = 0; // no TP, trail-only (stepped trail handles exits)
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
-const BTC_EMA_FAST = 9;
-const BTC_EMA_SLOW = 21;
 const BLOCKED_HOURS_UTC = new Set([22, 23]); // toxic hours, -$39 at h22, PF improves 1.90->2.03
 
 function computeZScore(candles: OhlcvCandle[]): number {
@@ -59,14 +57,7 @@ function computeZScore(candles: OhlcvCandle[]): number {
 export async function runGarchV2Cycle(): Promise<void> {
   const garchSizeUsd = await computeGarchSize();
 
-  const btcCandles = await fetchCandles("BTC", "1h", 80);
-  if (btcCandles.length < 30) {
-    console.log("[GarchV2] Insufficient BTC candles, skipping");
-    return;
-  }
-
-  const btcCompleted = btcCandles.slice(0, -1);
-  const btcBullish = isBtcBullish(btcCompleted, BTC_EMA_FAST, BTC_EMA_SLOW);
+  // BTC/EMA filters removed (backtest: no improvement, z-scores + BE sufficient)
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -110,10 +101,10 @@ export async function runGarchV2Cycle(): Promise<void> {
 
       let direction: "long" | "short" | null = null;
 
-      // Multi-timeframe confirmation: BOTH must agree
-      if (z1h > Z_LONG_1H && z4h > Z_LONG_4H && emaFast > emaSlow && btcBullish && longCount < MAX_PER_DIRECTION) {
+      // Multi-timeframe z-score confirmation only (EMA/BTC filters removed: +$0.41/day, same MaxDD)
+      if (z1h > Z_LONG_1H && z4h > Z_LONG_4H && longCount < MAX_PER_DIRECTION) {
         direction = "long";
-      } else if (z1h < Z_SHORT_1H && z4h < Z_SHORT_4H && emaFast < emaSlow && !btcBullish && shortCount < MAX_PER_DIRECTION) {
+      } else if (z1h < Z_SHORT_1H && z4h < Z_SHORT_4H && shortCount < MAX_PER_DIRECTION) {
         direction = "short";
       }
 

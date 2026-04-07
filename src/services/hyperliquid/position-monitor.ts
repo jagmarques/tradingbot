@@ -29,8 +29,8 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "news-trade": 24 * 60 * 60 * 1000,
 };
 
-// Breakeven stop: after peak reaches +3% leveraged PnL, close at entry price
-const BREAKEVEN_ACTIVATION_PCT = 3; // activate breakeven after +3% leveraged PnL peak
+// Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
+const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
 // Stepped trail: 10/5->15/4->20/3->25/2->35/1.5->50/1
 const TRAIL_STEPS = [

@@ -12,21 +12,20 @@ Single-engine on 53 perpetual futures pairs. Unlimited concurrent positions, 10x
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h z>3.0 + 4h z>2.5 | 0.5% SL, BE +3%, trail | Auto (5% equity, $3-$10) | 72h |
+| GARCH v2 MTF | 1h z>3.0 + 4h z>2.5 | 0.5% SL, BE +2%, trail | Auto (7% equity, $3-$15) | 72h |
 
 **How it works:**
 1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 53 pairs
-2. If 1h z-score > 3.0 AND 4h z-score > 2.5: open long (confirmed momentum)
-3. If 1h z-score < -3.0 AND 4h z-score < -2.5: open short (confirmed momentum)
-4. Additional filters: EMA(9)>EMA(21) trend alignment, BTC 1h EMA(9)>EMA(21) for longs
-5. Exit: 0.5% stop-loss, breakeven at +3%, or 6-stage stepped trail
+2. If 1h z-score > 3.0 AND 4h z-score > 2.5: open long
+3. If 1h z-score < -3.0 AND 4h z-score < -2.5: open short
+4. No EMA or BTC trend filters (z-scores + breakeven sufficient)
+5. Exit: 0.5% stop-loss, breakeven at +2%, or 6-stage stepped trail
 6. Hours 22-23 UTC blocked (negative expectancy)
 
 **Risk management:**
-- Auto-scaler: position size = 5% of equity, clamped $3-$10
-- BTC EMA filter blocks longs when BTC is bearish, shorts always allowed
+- Auto-scaler: position size = 7% of equity, clamped $3-$15
 - Stop-loss 0.5% fixed, capped at 1.0%
-- Breakeven stop: after +3% leveraged PnL, SL moves to entry price
+- Breakeven stop: after +2% leveraged PnL, SL moves to entry price
 - 6-stage stepped trailing: 10/5 -> 15/4 -> 20/3 -> 25/2 -> 35/1.5 -> 50/1
 - Maker entry (ALO) with taker fallback, dead-man switch
 - Fear & Greed regime filter blocks longs in extreme fear
