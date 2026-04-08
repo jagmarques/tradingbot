@@ -29,7 +29,6 @@ const Z_SHORT_1H = -2.0;
 const Z_LONG_4H = 1.5;
 const Z_SHORT_4H = -1.5;
 const SL_PCT = 0.003;
-const TP_PCT = 0;
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
 const BLOCKED_HOURS_UTC = new Set([22, 23]); // toxic hours, -$39 at h22, PF improves 1.90->2.03
 
@@ -99,17 +98,20 @@ export async function runGarchV2Cycle(): Promise<void> {
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = direction === "long" ? entryPrice * (1 - SL_PCT) : entryPrice * (1 + SL_PCT);
       const stopLoss = capStopLoss(entryPrice, rawStop, direction);
-      const takeProfit = TP_PCT > 0 ? (direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT)) : 0;
-      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}`;
+      const takeProfit = 0;
+      // No exchange SL -- bot monitors at 1h bar boundary (exchange stops fire on ticks, kills strategy)
+      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|sl:${stopLoss.toFixed(6)}`;
 
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x SL=${stopLoss.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x botSL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(
         pair, direction, garchSizeUsd, pairLeverage,
-        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
+        0, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
+      // Store real SL on position for bot-monitored 1h boundary check
       if (pos) {
+        pos.stopLoss = stopLoss;
         openPairs.add(pair);
       }
     } catch (err) {

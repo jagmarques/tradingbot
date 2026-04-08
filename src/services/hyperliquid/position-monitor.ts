@@ -220,13 +220,14 @@ async function checkPositionStops(): Promise<void> {
       // beats all trailing variants (+$1.90-2.00/day). Engine exit signals (Donchian channel,
       // Supertrend flip, stagnation) already manage winners. Trailing cuts them short.
 
-      // Stop-loss check: use position.stopLoss (Chandelier/PSAR update it each cycle)
+      // Stop-loss check: only at 1h bar boundary for GARCH (no exchange stop, bot-monitored)
+      // This matches the backtest which checks SL on 1h bar close, not intra-bar wicks
       const sl = position.stopLoss;
-      if (sl && isFinite(sl) && sl > 0) {
+      if (sl && isFinite(sl) && sl > 0 && trailExitAllowed) {
         const slHit = (position.direction === "long" && currentPrice <= sl) ||
           (position.direction === "short" && currentPrice >= sl);
         if (slHit) {
-          console.log(`[PositionMonitor] Stop hit: ${position.pair} ${position.direction} price=${currentPrice.toFixed(4)} sl=${sl.toFixed(4)}`);
+          console.log(`[PositionMonitor] Stop hit (1h): ${position.pair} ${position.direction} price=${currentPrice.toFixed(4)} sl=${sl.toFixed(4)}`);
           recentHardStops.push(Date.now());
           await tryClose(position, `stop-loss (price=${currentPrice.toPrecision(5)})`);
           recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
