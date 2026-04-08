@@ -32,14 +32,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
 const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
-// Stepped trail: 10/5->15/4->20/3->25/2->35/1.5->50/1
+// Stepped trail: 3/1.5->8/0.5->20/0.5 (checked at 1h bar boundaries only)
 const TRAIL_STEPS = [
-  { activation: 50, distance: 1 },    // Stage 6: locked
-  { activation: 35, distance: 1.5 },  // Stage 5: very tight
-  { activation: 25, distance: 2 },    // Stage 4: tight
-  { activation: 20, distance: 3 },    // Stage 3: moderate
-  { activation: 15, distance: 4 },    // Stage 2: loose
-  { activation: 10, distance: 5 },    // Stage 1: catch reversions early
+  { activation: 20, distance: 0.5 },  // Stage 3: locked tight
+  { activation: 8, distance: 0.5 },   // Stage 2: locked
+  { activation: 3, distance: 1.5 },   // Stage 1: early capture
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
@@ -76,6 +73,21 @@ let fastPollRunning = false;
 const trailActivatedIds = new Set<string>(); // trail alert dedup
 const closingInProgress = new Set<string>(); // prevent double-close across loops
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
+
+// Trail checks only at 1h bar boundaries (matches backtest resolution)
+// Peak tracking still happens every tick, but trail EXIT decision waits for bar close
+let lastTrailCheckHour = -1;
+function isNewHourBar(): boolean {
+  const currentHour = Math.floor(Date.now() / 3_600_000);
+  if (currentHour !== lastTrailCheckHour) {
+    lastTrailCheckHour = currentHour;
+    return true;
+  }
+  return false;
+}
+// Track per-position: should we evaluate trail this tick?
+// We always update peak, but only trigger exit at 1h boundary
+let trailExitAllowed = false;
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -115,6 +127,11 @@ async function checkPositionStops(): Promise<void> {
   if (monitorRunning) return;
   monitorRunning = true;
   try {
+    // Check if new 1h bar: trail exits only allowed at bar boundary
+    if (isNewHourBar()) {
+      trailExitAllowed = true;
+    }
+
     const positions: QuantPosition[] = getOpenQuantPositions();
 
     if (positions.length === 0) {
@@ -231,7 +248,7 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Stepped trailing: 25/6 -> 30/3 -> 35/1 (loose early, tight late)
+      // Stepped trailing: peak always updated, but exit only at 1h bar boundary
       const peak = position.maxUnrealizedPnlPct ?? 0;
       const trailCfg = getSteppedTrailDistance(peak, position.tradeType ?? "");
       if (peak >= trailCfg.activation) {
@@ -251,13 +268,16 @@ async function checkPositionStops(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        const trailTrigger = peak - trailCfg.distance;
-        if (unrealizedPnlPct <= trailTrigger) {
-          console.log(
-            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
-          );
-          await tryClose(position, "trailing-stop");
-          continue;
+        // Trail EXIT only fires at 1h bar boundary (matches backtest resolution)
+        if (trailExitAllowed) {
+          const trailTrigger = peak - trailCfg.distance;
+          if (unrealizedPnlPct <= trailTrigger) {
+            console.log(
+              `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
+            );
+            await tryClose(position, "trailing-stop");
+            continue;
+          }
         }
       }
 
@@ -353,6 +373,9 @@ async function checkPositionStops(): Promise<void> {
       }
     }
 
+    // Reset trail gate after all positions checked this tick
+    trailExitAllowed = false;
+
     // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
     for (const id of trailActivatedIds) {
@@ -434,14 +457,7 @@ async function checkTrailActivePositions(): Promise<void> {
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
 
-      // Breakeven stop: if peak ever hit +3%, close at entry price
-      if (peak >= BREAKEVEN_ACTIVATION_PCT && unrealizedPnlPct <= 0 && TRAIL_ENGINES.has(position.tradeType ?? "")) {
-        console.log(
-          `[PositionMonitor] Breakeven stop: ${position.pair} ${position.direction} peaked at +${peak.toFixed(1)}%, now ${unrealizedPnlPct.toFixed(1)}%`,
-        );
-        await tryClose(position, "breakeven-stop");
-        continue;
-      }
+      // Breakeven removed: tight trail at 3% replaces it (no fee drain)
 
       const trailCfg = getTrailConfig(position);
 
@@ -462,13 +478,16 @@ async function checkTrailActivePositions(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        const trailTrigger = peak - trailCfg.distance;
-        if (unrealizedPnlPct <= trailTrigger) {
-          console.log(
-            `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
-          );
-          await tryClose(position, "trailing-stop");
-          continue;
+        // Trail EXIT only at 1h bar boundary (fast poll still updates peak, but exit waits)
+        if (trailExitAllowed) {
+          const trailTrigger = peak - trailCfg.distance;
+          if (unrealizedPnlPct <= trailTrigger) {
+            console.log(
+              `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
+            );
+            await tryClose(position, "trailing-stop");
+            continue;
+          }
         }
       }
 
