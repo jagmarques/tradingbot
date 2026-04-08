@@ -312,41 +312,7 @@ async function checkPositionStops(): Promise<void> {
         : 0;
       const effectiveSl = hasValidStopLoss ? cappedSl : 0;
 
-      // Skip near-SL for ensemble engines (they use ATR-based stops)
-      const skipNearSl = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
-      if (hasValidStopLoss && !skipNearSl) {
-        const slDistance = Math.abs(position.entryPrice - effectiveSl);
-        const priceDistanceTowardSl =
-          position.direction === "long"
-            ? position.entryPrice - currentPrice   // long: price falling toward SL
-            : currentPrice - position.entryPrice;  // short: price rising toward SL
-
-        const nearSlThreshold = 0.75 * slDistance;
-        const recoveryThreshold = 0.20 * slDistance;
-
-        if (priceDistanceTowardSl >= nearSlThreshold) {
-          if (!nearSlIds.has(position.id)) {
-            nearSlIds.set(position.id, currentPrice);
-            console.log(
-              `[PositionMonitor] Near-SL: ${position.pair} ${position.direction} @ ${currentPrice} (SL ${effectiveSl.toPrecision(6)}, 75% threshold)`
-            );
-          }
-        } else if (nearSlIds.has(position.id)) {
-          const priceAtEntry = nearSlIds.get(position.id) ?? currentPrice;
-          const recovery =
-            position.direction === "long"
-              ? currentPrice - priceAtEntry   // long: price rising back up
-              : priceAtEntry - currentPrice;  // short: price falling back down
-          if (recovery >= recoveryThreshold) {
-            console.log(
-              `[PositionMonitor] Near-SL recovery exit: ${position.pair} ${position.direction} @ ${currentPrice} (recovered ${recovery.toPrecision(4)} of ${slDistance.toPrecision(4)} SL distance)`
-            );
-            nearSlIds.delete(position.id);
-            await tryClose(position, "near-sl-recovery");
-            continue;
-          }
-        }
-      }
+      // Near-SL recovery disabled: all exits at 1h boundary only (matches backtest)
 
       const stopLossBreached =
         hasValidStopLoss &&
@@ -360,17 +326,19 @@ async function checkPositionStops(): Promise<void> {
           ? currentPrice >= (position.takeProfit ?? 0)
           : currentPrice <= (position.takeProfit ?? 0));
 
-      // Stop-loss takes priority over take-profit
-      if (stopLossBreached) {
-        console.log(
-          `[PositionMonitor] Stop-loss triggered for ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
-        );
-        await tryClose(position, "stop-loss");
-      } else if (takeProfitBreached) {
-        console.log(
-          `[PositionMonitor] Take-profit triggered for ${position.pair} ${position.direction} @ ${currentPrice} (target: ${position.takeProfit})`,
-        );
-        await tryClose(position, "take-profit");
+      // Stop-loss and take-profit: only at 1h bar boundary (matches backtest)
+      if (trailExitAllowed) {
+        if (stopLossBreached) {
+          console.log(
+            `[PositionMonitor] Stop-loss triggered (1h): ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
+          );
+          await tryClose(position, "stop-loss");
+        } else if (takeProfitBreached) {
+          console.log(
+            `[PositionMonitor] Take-profit triggered for ${position.pair} ${position.direction} @ ${currentPrice} (target: ${position.takeProfit})`,
+          );
+          await tryClose(position, "take-profit");
+        }
       }
     }
 
@@ -492,37 +460,7 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Skip near-SL for ensemble engines
-      const skipNearSlFast = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "garch-chan";
-      const rawSlFast = position.stopLoss;
-      const sl = (rawSlFast && isFinite(rawSlFast) && rawSlFast > 0)
-        ? capStopLoss(position.entryPrice, rawSlFast, position.direction)
-        : null;
-      if (sl && !skipNearSlFast) {
-        const slDistance = Math.abs(position.entryPrice - sl);
-        const priceDistanceTowardSl =
-          position.direction === "long"
-            ? position.entryPrice - currentPrice
-            : currentPrice - position.entryPrice;
-        const nearSlThreshold = 0.75 * slDistance;
-        if (priceDistanceTowardSl >= nearSlThreshold) {
-          if (!nearSlIds.has(position.id)) {
-            nearSlIds.set(position.id, currentPrice);
-            console.log(`[PositionMonitor] Near-SL (fast): ${position.pair} ${position.direction} @ ${currentPrice}`);
-          }
-        } else if (nearSlIds.has(position.id)) {
-          const priceAtNearSl = nearSlIds.get(position.id) ?? currentPrice;
-          const recovery =
-            position.direction === "long"
-              ? currentPrice - priceAtNearSl
-              : priceAtNearSl - currentPrice;
-          if (recovery >= 0.20 * slDistance) {
-            console.log(`[PositionMonitor] Near-SL recovery exit (fast): ${position.pair} ${position.direction} @ ${currentPrice}`);
-            nearSlIds.delete(position.id);
-            await tryClose(position, "near-sl-recovery");
-          }
-        }
-      }
+      // Near-SL fast-poll disabled: all SL exits at 1h boundary only
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
