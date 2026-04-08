@@ -1,7 +1,6 @@
 // GARCH v2 with Multi-Timeframe Z-Score confirmation
-// Validated: ALL 8 tests PASS, p=0.000, bootstrap 5th pct PF=1.56, 13/13 pairs profitable
-// 4/4 quarters profitable, 16/16 parameter neighbors profitable
-// Requires 1h z>4.5 AND 4h z>3.0 agreement for longs (or 1h z<-3.0 AND 4h z<-3.0 for shorts)
+// 1h z>3.0 AND 4h z>2.5 for longs, 1h z<-3.0 AND 4h z<-2.5 for shorts
+// 127 pairs, real leverage (3x/5x/10x), no EMA/BTC/regime/volume filters
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getLiveBalance } from "./live-executor.js";
@@ -20,23 +19,17 @@ async function computeGarchSize(): Promise<number> {
 }
 import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
-import { ema } from "./indicators.js";
-import { getRegimeBias } from "../market-regime/fear-greed.js";
 import type { OhlcvCandle } from "./types.js";
-import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
-import { getRegimeSizeMultiplier } from "../market-regime/fear-greed.js";
 
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
 const Z_LONG_1H = 3.0;
 const Z_SHORT_1H = -3.0;
-const Z_LONG_4H = 2.5;   // loosened from 3.0 (+$3.03/day, MaxDD $54, 0 days >$50)
+const Z_LONG_4H = 2.5;
 const Z_SHORT_4H = -2.5;
-const EMA_FAST = 9;
-const EMA_SLOW = 21;
-const SL_PCT = 0.005; // 0.5% SL (with BE +3%: $3.37/day, MaxDD $33, PF 2.30)
-const TP_PCT = 0; // no TP, trail-only (stepped trail handles exits)
+const SL_PCT = 0.005;
+const TP_PCT = 0;
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
 const BLOCKED_HOURS_UTC = new Set([22, 23]); // toxic hours, -$39 at h22, PF improves 1.90->2.03
 
@@ -56,8 +49,6 @@ function computeZScore(candles: OhlcvCandle[]): number {
 
 export async function runGarchV2Cycle(): Promise<void> {
   const garchSizeUsd = await computeGarchSize();
-
-  // BTC/EMA filters removed (backtest: no improvement, z-scores + BE sufficient)
 
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
@@ -90,18 +81,11 @@ export async function runGarchV2Cycle(): Promise<void> {
       const completed1h = candles1h.slice(0, -1);
       const completed4h = candles4h.slice(0, -1);
 
-      // Z-scores on both timeframes
       const z1h = computeZScore(completed1h);
       const z4h = computeZScore(completed4h);
 
-      // EMA filter on 1h
-      const emaFast = ema(completed1h, EMA_FAST);
-      const emaSlow = ema(completed1h, EMA_SLOW);
-      if (isNaN(emaFast) || isNaN(emaSlow)) continue;
-
       let direction: "long" | "short" | null = null;
 
-      // Multi-timeframe z-score confirmation only (EMA/BTC filters removed: +$0.41/day, same MaxDD)
       if (z1h > Z_LONG_1H && z4h > Z_LONG_4H && longCount < MAX_PER_DIRECTION) {
         direction = "long";
       } else if (z1h < Z_SHORT_1H && z4h < Z_SHORT_4H && shortCount < MAX_PER_DIRECTION) {
@@ -110,44 +94,18 @@ export async function runGarchV2Cycle(): Promise<void> {
 
       if (!direction) continue;
 
-      const regimeBias = await getRegimeBias();
-      if (regimeBias === "short" && direction === "long") {
-        console.log(`[GarchV2] ${pair} long blocked by Fear regime`);
-        continue;
-      }
-      if (regimeBias === "long" && direction === "short") {
-        console.log(`[GarchV2] ${pair} short blocked by Greed regime`);
-        continue;
-      }
-
-      // Volume + Range confirmation filter (improves PF by 43%, $/day by 11%)
-      const signalBar = completed1h[completed1h.length - 1];
-      if (signalBar.volume > 0 && completed1h.length >= 21) {
-        let volSum = 0;
-        for (let v = completed1h.length - 21; v < completed1h.length - 1; v++) volSum += completed1h[v].volume;
-        const avgVol = volSum / 20;
-        const barRange = signalBar.high - signalBar.low;
-        // Need volume > 1.5× avg AND range > 1.5× recent average range
-        let rangeSum = 0;
-        for (let r = completed1h.length - 21; r < completed1h.length - 1; r++) rangeSum += (completed1h[r].high - completed1h[r].low);
-        const avgRange = rangeSum / 20;
-        if (avgVol > 0 && avgRange > 0 && (signalBar.volume < avgVol * 1.5 || barRange < avgRange * 1.5)) {
-          continue; // Low conviction signal, skip
-        }
-      }
-
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = direction === "long" ? entryPrice * (1 - SL_PCT) : entryPrice * (1 + SL_PCT);
       const stopLoss = capStopLoss(entryPrice, rawStop, direction);
       const takeProfit = TP_PCT > 0 ? (direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT)) : 0;
-      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|ema9:${emaFast.toFixed(4)}|ema21:${emaSlow.toFixed(4)}`;
+      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}`;
 
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)} TP=${takeProfit.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, garchSizeUsd * getEventSizeMultiplier() * getRegimeSizeMultiplier(), ENSEMBLE_LEVERAGE,
+        pair, direction, garchSizeUsd, ENSEMBLE_LEVERAGE,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {
