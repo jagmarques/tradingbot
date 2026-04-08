@@ -24,10 +24,10 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-const Z_LONG_1H = 2.5;
-const Z_SHORT_1H = -2.5;
-const Z_LONG_4H = 2.0;
-const Z_SHORT_4H = -2.0;
+const Z_LONG_1H = 2.0;
+const Z_SHORT_1H = -2.0;
+const Z_LONG_4H = 1.5;
+const Z_SHORT_4H = -1.5;
 const SL_PCT = 0.003;
 const TP_PCT = 0;
 const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
