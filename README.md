@@ -8,27 +8,26 @@ Hyperliquid GARCH v2 quant engine, EVM insider copy trading. TypeScript, Docker,
 
 GARCH (Generalized Autoregressive Conditional Heteroskedasticity) v2 is a multi-timeframe z-score momentum engine. It detects extreme price moves by computing how many standard deviations the current momentum is from the mean, using a GARCH-style volatility model. When both the 1-hour and 4-hour timeframes show extreme z-scores simultaneously, it enters a trade expecting the momentum to continue.
 
-Single-engine on 127 perpetual futures pairs. Unlimited concurrent positions, 10x leverage.
+Single-engine on 127 perpetual futures pairs. Real per-pair leverage (3x/5x/10x).
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h z>3.0 + 4h z>2.5 | 0.5% SL, BE +2%, trail | Auto (7% equity, $3-$15) | 72h |
+| GARCH v2 MTF | 1h z>2.0 + 4h z>1.5 | 0.3% SL, trail 7/3->15/2->30/1 | Auto (5% equity, $3-$15) | 72h |
 
 **How it works:**
-1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 53 pairs
-2. If 1h z-score > 3.0 AND 4h z-score > 2.5: open long
-3. If 1h z-score < -3.0 AND 4h z-score < -2.5: open short
-4. No EMA or BTC trend filters (z-scores + breakeven sufficient)
-5. Exit: 0.5% stop-loss, breakeven at +2%, or 6-stage stepped trail
+1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 127 pairs
+2. If 1h z-score > 2.0 AND 4h z-score > 1.5: open long
+3. If 1h z-score < -2.0 AND 4h z-score < -1.5: open short
+4. No EMA, BTC, regime, or volume filters (pure z-score)
+5. Exit: 0.3% stop-loss (fires every 10s) or 3-stage stepped trail (fires at 1h bar boundary)
 6. Hours 22-23 UTC blocked (negative expectancy)
 
 **Risk management:**
-- Auto-scaler: position size = 10% of equity, clamped $3-$15
-- Stop-loss 0.5% fixed, capped at 1.0%
-- Breakeven stop: after +2% leveraged PnL, SL moves to entry price
-- 6-stage stepped trailing: 10/5 -> 15/4 -> 20/3 -> 25/2 -> 35/1.5 -> 50/1
+- Auto-scaler: position size = 5% of equity, clamped $3-$15
+- Real per-pair leverage from HL API (3x/5x/10x), capped at 10x
+- Stop-loss 0.3% fixed, capped at 1.0%
+- 3-stage stepped trailing: 7/3 -> 15/2 -> 30/1 (checked at 1h bar boundaries only)
 - Maker entry (ALO) with taker fallback, dead-man switch
-- Fear & Greed regime filter blocks longs in extreme fear
 - 1h SL cooldown per pair/direction
 
 ### TrumpGuard
