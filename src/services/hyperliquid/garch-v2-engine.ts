@@ -111,6 +111,10 @@ export async function runGarchV2Cycle(): Promise<void> {
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, true,
       );
       if (pos) {
+        // Restore real SL on position (executor stored 0 to skip exchange stop)
+        pos.stopLoss = stopLoss;
+        const { saveQuantPosition: savePos } = await import("../database/quant.js");
+        savePos(pos);
         openPairs.add(pair);
       }
     } catch (err) {
