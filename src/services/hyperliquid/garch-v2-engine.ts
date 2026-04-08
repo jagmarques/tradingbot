@@ -7,8 +7,8 @@ import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getLiveBalance } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 
-// Auto-scaler: 10% of equity, clamped $3-$15 ($9 target on $90)
-const SCALE_FACTOR = 0.10;
+// Auto-scaler: 5% of equity, clamped $3-$15 ($5 target on $90, allows ~18 concurrent)
+const SCALE_FACTOR = 0.05;
 const MIN_SIZE = 3;
 const MAX_SIZE = 15;
 async function computeGarchSize(): Promise<number> {
