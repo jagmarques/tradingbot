@@ -12,7 +12,7 @@ Single-engine on 127 perpetual futures pairs. Real per-pair leverage (3x/5x/10x)
 
 | Engine | Entry Signal | Exit Signal | Size | Max Hold |
 |--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h z>2.0 + 4h z>1.5 | 0.3% SL, trail 7/3->15/2->30/1 | Auto (5% equity, $3-$15) | 72h |
+| GARCH v2 MTF | 1h z>2.0 + 4h z>1.5 | 0.3% SL, trail 7/3->15/2->30/1 | Auto (5% equity, $10-$15) | 72h |
 
 **How it works:**
 1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 127 pairs
@@ -23,7 +23,7 @@ Single-engine on 127 perpetual futures pairs. Real per-pair leverage (3x/5x/10x)
 6. Hours 22-23 UTC blocked (negative expectancy)
 
 **Risk management:**
-- Auto-scaler: position size = 5% of equity, clamped $3-$15
+- Auto-scaler: position size = 5% of equity, clamped $10-$15
 - Real per-pair leverage from HL API (3x/5x/10x), capped at 10x
 - Stop-loss 0.3% fixed, capped at 1.0%
 - 3-stage stepped trailing: 7/3 -> 15/2 -> 30/1 (checked at 1h bar boundaries only)
