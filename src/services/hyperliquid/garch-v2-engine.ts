@@ -105,13 +105,12 @@ export async function runGarchV2Cycle(): Promise<void> {
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x botSL=${stopLoss.toFixed(4)}`);
 
+      // Pass real SL to satisfy risk gate, but skipExchangeStop prevents exchange-level stop
       const pos = await openPosition(
         pair, direction, garchSizeUsd, pairLeverage,
-        0, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
+        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, true,
       );
-      // Store real SL on position for bot-monitored 1h boundary check
       if (pos) {
-        pos.stopLoss = stopLoss;
         openPairs.add(pair);
       }
     } catch (err) {

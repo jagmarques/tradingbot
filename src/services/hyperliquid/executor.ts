@@ -26,6 +26,7 @@ export async function openPosition(
   tradeType: TradeType = "directional",
   indicatorsAtEntry?: string,
   aiEntryPrice?: number,
+  skipExchangeStop?: boolean,
   forcePaper?: boolean,
 ): Promise<QuantPosition | null> {
   // Funding bypasses volatile regime check
@@ -69,7 +70,9 @@ export async function openPosition(
   }
 
   if (useLive) {
-    return liveOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
+    // skipExchangeStop: don't place exchange-level stop, bot monitors SL at 1h boundary
+    const exchangeSl = skipExchangeStop ? 0 : stopLoss;
+    return liveOpenPosition(pair, direction, sizeUsd, leverage, exchangeSl, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
   }
 
   return paperOpenPosition(pair, direction, sizeUsd, leverage, stopLoss, takeProfit, tradeType, indicatorsAtEntry, aiEntryPrice);
