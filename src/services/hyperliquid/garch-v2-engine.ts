@@ -1,10 +1,10 @@
 // GARCH v2 with Multi-Timeframe Z-Score confirmation
-// 1h z>3.0 AND 4h z>2.5 for longs, 1h z<-3.0 AND 4h z<-2.5 for shorts
+// 1h z>2.0 AND 4h z>1.5 for longs, 1h z<-2.0 AND 4h z<-1.5 for shorts
 // 127 pairs, real leverage (3x/5x/10x), no EMA/BTC/regime/volume filters
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
-import { getLiveBalance } from "./live-executor.js";
-import { QUANT_TRADING_PAIRS, ENSEMBLE_LEVERAGE, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
+import { getLiveBalance, getMaxLeverageForPair } from "./live-executor.js";
+import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 
 // Auto-scaler: 5% of equity, clamped $3-$15 ($5 target on $90, allows ~18 concurrent)
 const SCALE_FACTOR = 0.05;
@@ -102,10 +102,11 @@ export async function runGarchV2Cycle(): Promise<void> {
       const takeProfit = TP_PCT > 0 ? (direction === "long" ? entryPrice * (1 + TP_PCT) : entryPrice * (1 - TP_PCT)) : 0;
       const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}`;
 
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} SL=${stopLoss.toFixed(4)}`);
+      const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x SL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, garchSizeUsd, ENSEMBLE_LEVERAGE,
+        pair, direction, garchSizeUsd, pairLeverage,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice,
       );
       if (pos) {

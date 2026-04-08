@@ -59,6 +59,10 @@ function getMaxLeverage(pair: string): number {
   return maxLeverageMap?.get(pair) ?? 100;
 }
 
+export function getMaxLeverageForPair(pair: string): number {
+  return maxLeverageMap?.get(pair) ?? 3; // conservative default
+}
+
 function roundSize(size: number, decimals: number): number {
   const factor = 10 ** decimals;
   return Math.floor(size * factor) / factor;
