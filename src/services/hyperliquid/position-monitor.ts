@@ -267,16 +267,14 @@ async function checkPositionStops(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        // Trail EXIT only fires at 1h bar boundary (matches backtest resolution)
-        if (trailExitAllowed) {
-          const trailTrigger = peak - trailCfg.distance;
-          if (unrealizedPnlPct <= trailTrigger) {
-            console.log(
-              `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
-            );
-            await tryClose(position, "trailing-stop");
-            continue;
-          }
+        // Trail EXIT fires immediately when triggered (protects profits)
+        const trailTrigger = peak - trailCfg.distance;
+        if (unrealizedPnlPct <= trailTrigger) {
+          console.log(
+            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
+          );
+          await tryClose(position, "trailing-stop");
+          continue;
         }
       }
 
@@ -445,16 +443,14 @@ async function checkTrailActivePositions(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        // Trail EXIT only at 1h bar boundary (fast poll still updates peak, but exit waits)
-        if (trailExitAllowed) {
-          const trailTrigger = peak - trailCfg.distance;
-          if (unrealizedPnlPct <= trailTrigger) {
-            console.log(
-              `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
-            );
-            await tryClose(position, "trailing-stop");
-            continue;
-          }
+        // Trail EXIT fires immediately (fast poll, every 3s)
+        const trailTrigger = peak - trailCfg.distance;
+        if (unrealizedPnlPct <= trailTrigger) {
+          console.log(
+            `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
+          );
+          await tryClose(position, "trailing-stop");
+          continue;
         }
       }
 
