@@ -32,9 +32,9 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
 const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
-// Single-stage trail: 5/0.5 (checked at 1h bar boundaries only)
+// Single-stage trail: 9/0.5 (trail fires immediately, SL at 1h boundary)
 const TRAIL_STEPS = [
-  { activation: 5, distance: 0.5 },   // activate at +5% lev PnL, exit on 0.5% pullback
+  { activation: 9, distance: 0.5 },   // activate at +9% lev PnL, exit on 0.5% pullback
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
