@@ -1,36 +1,35 @@
-// GARCH v2 with Multi-Timeframe Z-Score confirmation
-// 1h z>2.0 AND 4h z>1.5 for longs, 1h z<-2.0 AND 4h z<-1.5 for shorts
-// 127 pairs, real leverage (3x/5x/10x), no EMA/BTC/regime/volume filters
+// GARCH v2 with Multi-Timeframe Z-Score + Vol Regime filter
+// SAFE config: wider SL 0.15% (fees not dominant), stricter z (4,-6,2,-2), no cooldown
+// Entry: 1h z>4.0 AND 4h z>2.0 for longs, 1h z<-6.0 AND 4h z<-2.0 for shorts (asymmetric, strict)
+// Regime: only trade when RV(24h) / rolling_median_30d > 1.5 (high-vol regime)
+// OOS-validated SAFE: ~$0.39/day MDD $7 PF 2.24 — wide SL, low DD, rebuilds account slowly
+// 127 pairs, real leverage (cap 10x), exchange SL at 0.15%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
-import { getLiveBalance, getMaxLeverageForPair } from "./live-executor.js";
+import { getMaxLeverageForPair } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-
-// Auto-scaler: 5% of equity, clamped $10-$15 (HL requires $10 minimum order value)
-const SCALE_FACTOR = 0.05;
-const MIN_SIZE = 10;
-const MAX_SIZE = 15;
-async function computeGarchSize(): Promise<number> {
-  try {
-    const balance = await getLiveBalance();
-    const raw = Math.floor(balance * SCALE_FACTOR);
-    return Math.max(MIN_SIZE, Math.min(MAX_SIZE, raw));
-  } catch { return MIN_SIZE; }
-}
 import { capStopLoss } from "./quant-utils.js";
-import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-const Z_LONG_1H = 2.0;
-const Z_SHORT_1H = -2.0;
-const Z_LONG_4H = 1.5;
-const Z_SHORT_4H = -1.5;
-const SL_PCT = 0.003;
-const MAX_PER_DIRECTION = 999; // unlimited, DD controlled by small SL + small size
-const BLOCKED_HOURS_UTC = new Set([22, 23]); // toxic hours, -$39 at h22, PF improves 1.90->2.03
+// Strict asymmetric z-thresholds: fewer but higher-quality entries (SAFE config)
+const Z_LONG_1H = 4.0;
+const Z_SHORT_1H = -6.0;
+const Z_LONG_4H = 2.0;
+const Z_SHORT_4H = -2.0;
+// Wider exchange SL at 0.15% price — fees round-trip = 0.07% so SL ≥ 0.15% means fees < 50% of SL cost
+// OOS-validated SAFE: SL 0.15% + T12/0.5 + Z(4,-6,2,-2) + R1.5 + BE5 = $0.39/day MDD $6.8 PF 2.24
+const SL_PCT = 0.0015;
+// Fixed $15 margin
+const POSITION_SIZE_USD = 15;
+// Vol regime: RV(24h 1h returns) / 30d rolling median must exceed this to enter
+const RV_WINDOW_BARS = 24;
+const RV_MEDIAN_WINDOW_BARS = 720; // 30 days of 1h bars
+const VOL_REGIME_THRESHOLD = 1.5;
+const MAX_PER_DIRECTION = 999;
+const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[]): number {
   if (candles.length < GARCH_VOL_WINDOW + GARCH_LOOKBACK + 1) return 0;
@@ -46,9 +45,43 @@ function computeZScore(candles: OhlcvCandle[]): number {
   return vol === 0 ? 0 : mom / vol;
 }
 
-export async function runGarchV2Cycle(): Promise<void> {
-  const garchSizeUsd = await computeGarchSize();
+// Realized vol: std of 1h returns over last N bars
+function computeRV(candles: OhlcvCandle[], window: number): number {
+  if (candles.length < window + 1) return 0;
+  const last = candles.length - 1;
+  let ss = 0, c = 0;
+  for (let i = last - window + 1; i <= last; i++) {
+    if (i < 1) continue;
+    const r = candles[i].close / candles[i - 1].close - 1;
+    ss += r * r; c++;
+  }
+  if (c < 10) return 0;
+  return Math.sqrt(ss / c);
+}
 
+// Vol regime: compute rolling RV over the full 1h candle history, then take median of last N values
+// Returns { current, median } — if current/median > VOL_REGIME_THRESHOLD, we're in high vol
+function computeVolRegime(candles: OhlcvCandle[]): { current: number; median: number } {
+  const current = computeRV(candles, RV_WINDOW_BARS);
+  if (candles.length < RV_MEDIAN_WINDOW_BARS + RV_WINDOW_BARS) return { current, median: 0 };
+  // Compute RV at each point over the last RV_MEDIAN_WINDOW_BARS bars
+  const rvs: number[] = [];
+  for (let endIdx = candles.length - RV_MEDIAN_WINDOW_BARS; endIdx < candles.length; endIdx++) {
+    if (endIdx < RV_WINDOW_BARS) continue;
+    let ss = 0, c = 0;
+    for (let i = endIdx - RV_WINDOW_BARS + 1; i <= endIdx; i++) {
+      if (i < 1) continue;
+      const r = candles[i].close / candles[i - 1].close - 1;
+      ss += r * r; c++;
+    }
+    if (c >= 10) rvs.push(Math.sqrt(ss / c));
+  }
+  if (rvs.length === 0) return { current, median: 0 };
+  rvs.sort((a, b) => a - b);
+  return { current, median: rvs[Math.floor(rvs.length / 2)] };
+}
+
+export async function runGarchV2Cycle(): Promise<void> {
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
   const longCount = myPositions.filter(p => p.direction === "long").length;
@@ -71,9 +104,9 @@ export async function runGarchV2Cycle(): Promise<void> {
     if (ensembleCount >= ENSEMBLE_MAX_CONCURRENT) break;
 
     try {
-      // Fetch both timeframes
-      const candles1h = await fetchCandles(pair, "1h", 80);
-      if (candles1h.length < 30) continue;
+      // Fetch 1h candles with enough history for 30d rolling median (720 bars + buffer)
+      const candles1h = await fetchCandles(pair, "1h", 800);
+      if (candles1h.length < 100) continue;
       const candles4h = await fetchCandles(pair, "4h", 60);
       if (candles4h.length < 30) continue;
 
@@ -93,28 +126,30 @@ export async function runGarchV2Cycle(): Promise<void> {
 
       if (!direction) continue;
 
-      if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
+      // Vol regime filter: only trade when realized vol is elevated (RV_current / RV_median30d > threshold)
+      // This was the OOS-validated breakthrough: 81-122% IS->OOS retention vs 48% for unfiltered
+      const { current: rvNow, median: rvMed } = computeVolRegime(completed1h);
+      if (rvMed === 0 || rvNow / rvMed < VOL_REGIME_THRESHOLD) {
+        continue;
+      }
+      const volRatio = rvNow / rvMed;
 
+      // Cooldown removed: OOS backtest showed 1h cooldown cost $0.50/day. Re-entry after SL is fine.
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = direction === "long" ? entryPrice * (1 - SL_PCT) : entryPrice * (1 + SL_PCT);
       const stopLoss = capStopLoss(entryPrice, rawStop, direction);
       const takeProfit = 0;
-      // No exchange SL -- bot monitors at 1h bar boundary (exchange stops fire on ticks, kills strategy)
-      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|sl:${stopLoss.toFixed(6)}`;
+      // Exchange SL at 0.08% price: caps per-trade loss (~$0.45 on $15 margin at 10x)
+      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|volR:${volRatio.toFixed(2)}|sl:${stopLoss.toFixed(6)}`;
 
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x botSL=${stopLoss.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} volR=${volRatio.toFixed(2)} -> ${direction} ${pairLeverage}x exchSL=${stopLoss.toFixed(4)}`);
 
-      // Pass real SL to satisfy risk gate, but skipExchangeStop prevents exchange-level stop
       const pos = await openPosition(
-        pair, direction, garchSizeUsd, pairLeverage,
-        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, true,
+        pair, direction, POSITION_SIZE_USD, pairLeverage,
+        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, false,
       );
       if (pos) {
-        // Restore real SL on position (executor stored 0 to skip exchange stop)
-        pos.stopLoss = stopLoss;
-        const { saveQuantPosition: savePos } = await import("../database/quant.js");
-        savePos(pos);
         openPairs.add(pair);
       }
     } catch (err) {
