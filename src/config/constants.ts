@@ -72,15 +72,16 @@ export const QUANT_LIQUIDATION_PENALTY_PCT = 1.5;
 export type QuantExchange = "hyperliquid" | "lighter";
 
 export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
+  "garch-v2": "hyperliquid",
+  "range-expansion": "hyperliquid",
+  // Legacy (dead engines, kept for historical position lookups)
   "garch-chan": "hyperliquid",
   "btc-mr": "hyperliquid",
   "btc-event": "hyperliquid",
   "news-trade": "hyperliquid",
   "donchian-trend": "hyperliquid",
   "supertrend-4h": "hyperliquid",
-  "garch-v2": "hyperliquid",
   "carry-momentum": "hyperliquid",
-  "range-expansion": "hyperliquid",
   "alt-rotation": "hyperliquid",
   "momentum-confirm": "hyperliquid",
 };
@@ -91,9 +92,9 @@ export const ENSEMBLE_MAX_CONCURRENT = 999; // no limit, DD controlled by small 
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)
-export const ENSEMBLE_TRADE_TYPES = new Set<string>(["garch-v2"]);
+export const ENSEMBLE_TRADE_TYPES = new Set<string>(["garch-v2", "range-expansion"]);
 
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-v2"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-v2", "range-expansion"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

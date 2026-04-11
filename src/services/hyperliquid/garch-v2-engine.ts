@@ -1,8 +1,7 @@
-// GARCH v2 with Multi-Timeframe Z-Score + Vol Regime filter
-// SAFE config: wider SL 0.15% (fees not dominant), stricter z (4,-6,2,-2), no cooldown
-// Entry: 1h z>4.0 AND 4h z>2.0 for longs, 1h z<-6.0 AND 4h z<-2.0 for shorts (asymmetric, strict)
+// GARCH v2 LONG-ONLY LOOSE — shorts all lost money OOS, disabled
+// Entry: 1h z>2.0 AND 4h z>1.5 (longs only, no shorts — Z_SHORT set to unreachable)
 // Regime: only trade when RV(24h) / rolling_median_30d > 1.5 (high-vol regime)
-// OOS-validated SAFE: ~$0.39/day MDD $7 PF 2.24 — wide SL, low DD, rebuilds account slowly
+// OOS-validated: ~$1.17/day MDD $17 PF 1.89 (as part of GARCH+REX portfolio at m$15 each)
 // 127 pairs, real leverage (cap 10x), exchange SL at 0.15%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
@@ -14,11 +13,12 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-// Strict asymmetric z-thresholds: fewer but higher-quality entries (SAFE config)
-const Z_LONG_1H = 4.0;
-const Z_SHORT_1H = -6.0;
-const Z_LONG_4H = 2.0;
-const Z_SHORT_4H = -2.0;
+// Long-only loose thresholds. Shorts disabled (unreachable value).
+// Cycle 6/7 finding: 34 short trades in OOS all lost money; removing shorts cut MDD by 60%.
+const Z_LONG_1H = 2.0;
+const Z_SHORT_1H = -999; // SHORTS DISABLED
+const Z_LONG_4H = 1.5;
+const Z_SHORT_4H = -999; // SHORTS DISABLED
 // Wider exchange SL at 0.15% price — fees round-trip = 0.07% so SL ≥ 0.15% means fees < 50% of SL cost
 // OOS-validated SAFE: SL 0.15% + T12/0.5 + Z(4,-6,2,-2) + R1.5 + BE5 = $0.39/day MDD $6.8 PF 2.24
 const SL_PCT = 0.0015;

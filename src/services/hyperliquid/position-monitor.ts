@@ -20,20 +20,23 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
 const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
-// Single-stage trail: 9/0.5 (trail fires immediately, SL at 1h boundary)
+// Multi-stage trail: 3/1 -> 9/0.5 -> 20/0.5 (Cycle 8 winner, +$0.15/day vs single-stage 9/0.5)
+// Activate early at +3% with loose 1% distance, tighten to 0.5% at +9%, keep 0.5% at +20%+
 const TRAIL_STEPS = [
-  { activation: 9, distance: 0.5 },   // activate at +9% lev PnL, exit on 0.5% pullback
+  { activation: 20, distance: 0.5 },  // +20%+ peak: tight 0.5% trail
+  { activation: 9,  distance: 0.5 },  // +9-20% peak: 0.5% trail
+  { activation: 3,  distance: 1.0 },  // +3-9% peak: loose 1.0% trail (catches marginal winners)
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
-const TRAIL_ENGINES = new Set(["garch-v2"]);
+const TRAIL_ENGINES = new Set(["garch-v2", "range-expansion"]);
 
 function getSteppedTrailDistance(peak: number, tradeType: string): { activation: number; distance: number } {
   if (!TRAIL_ENGINES.has(tradeType ?? "")) return DEAD_TRAIL;
-  // Find the highest stage the peak qualifies for (steps sorted high to low)
+  // Steps sorted high activation to low; pick the highest qualifying step
   for (const step of TRAIL_STEPS) {
     if (peak >= step.activation) return step;
   }
-  return DEAD_TRAIL; // peak below lowest activation
+  return DEAD_TRAIL; // peak below lowest activation (3%)
 }
 
 // Legacy wrapper for non-stepped code paths

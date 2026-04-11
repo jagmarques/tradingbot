@@ -3,6 +3,7 @@ import { updateBtcBounceCheck, updateMacroRegime, getMacroRegime } from "../mark
 import { getEventSizeMultiplier } from "../market-regime/event-calendar.js";
 import { fetchCandles } from "./candles.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
+import { runRangeExpansionCycle } from "./range-expansion-engine.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -52,16 +53,20 @@ export async function runDirectionalCycle(): Promise<void> {
       }
     } catch { /* non-critical */ }
 
-    // GARCH-only $9, max 7 (optimized for $90 equity)
+    // Engine 1: GARCH long-only loose (OOS $1.17/day MDD $17)
     try { await runGarchV2Cycle(); }
     catch (err) { console.error(`[QuantScheduler] GarchV2 error: ${err instanceof Error ? err.message : String(err)}`); }
+
+    // Engine 2: Range Expansion (OOS $1.24/day MDD $12, correlation 0.09 with GARCH = true diversifier)
+    try { await runRangeExpansionCycle(); }
+    catch (err) { console.error(`[QuantScheduler] RangeExpansion error: ${err instanceof Error ? err.message : String(err)}`); }
 
     const regime = getMacroRegime();
 
     const eventMult = getEventSizeMultiplier();
     if (eventMult < 1) console.log(`[QuantScheduler] Event risk: size x${eventMult}`);
 
-    console.log(`[QuantScheduler] Cycle: 1 engine | regime=${regime}`);
+    console.log(`[QuantScheduler] Cycle: 2 engines | regime=${regime}`);
   } finally { cycleRunning = false; }
 }
 
