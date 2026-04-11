@@ -218,10 +218,13 @@ async function checkPositionStops(): Promise<void> {
       // beats all trailing variants (+$1.90-2.00/day). Engine exit signals (Donchian channel,
       // Supertrend flip, stagnation) already manage winners. Trailing cuts them short.
 
-      // Stop-loss check: only at 1h bar boundary for GARCH (no exchange stop, bot-monitored)
-      // This matches the backtest which checks SL on 1h bar close, not intra-bar wicks
+      // Bot-level 1h SL check REMOVED for garch-v2: was firing at 1h boundary AFTER price had
+      // gapped past the SL, cancelling exchange stop and exiting at much worse market price.
+      // Real example: ARB exchange SL at 0.11874, bot fired at 0.1161, exited at 0.11596 = -$3.86 vs -$0.30 expected.
+      // Exchange SL handles this correctly. Other engines (non-garch-v2) keep the legacy behavior.
       const sl = position.stopLoss;
-      if (sl && isFinite(sl) && sl > 0 && trailExitAllowed) {
+      const isGarchV2 = position.tradeType === "garch-v2";
+      if (!isGarchV2 && sl && isFinite(sl) && sl > 0 && trailExitAllowed) {
         const slHit = (position.direction === "long" && currentPrice <= sl) ||
           (position.direction === "short" && currentPrice >= sl);
         if (slHit) {
@@ -323,7 +326,8 @@ async function checkPositionStops(): Promise<void> {
           : currentPrice <= (position.takeProfit ?? 0));
 
       // Stop-loss and take-profit: only at 1h bar boundary (matches backtest)
-      if (trailExitAllowed) {
+      // SKIP for garch-v2 — exchange SL handles stops, bot SL was overriding with worse market price
+      if (trailExitAllowed && position.tradeType !== "garch-v2") {
         if (stopLossBreached) {
           console.log(
             `[PositionMonitor] Stop-loss triggered (1h): ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
