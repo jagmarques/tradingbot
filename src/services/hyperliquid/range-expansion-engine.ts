@@ -17,24 +17,24 @@ const CLOSE_EXTREME_PCT = 0.25;   // close must be in upper/lower 25% of bar ran
 // Exit
 const SL_PCT = 0.0015;            // 0.15% price, exchange SL
 const POSITION_SIZE_USD = 15;
-// Vol regime filter (same as GARCH)
-const RV_WINDOW_BARS = 24;
-const RV_MEDIAN_WINDOW_BARS = 720;
-const VOL_REGIME_THRESHOLD = 1.5;
+// Vol regime filter: ATR-based (same as GARCH)
+// ATR14_1h_current / ATR14_1h_30d_median > 1.6
+const ATR_MEDIAN_WINDOW_BARS = 720;
+const VOL_REGIME_THRESHOLD = 1.6;
 // Hours
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
-// Compute ATR(14) on 1h closes
-function computeATR(candles: OhlcvCandle[], period: number): number {
-  if (candles.length < period + 1) return 0;
+// ATR(14) using Wilder smoothing ending at `endIdx` (inclusive)
+function computeATRAt(candles: OhlcvCandle[], endIdx: number, period: number): number {
+  if (endIdx < period + 1) return 0;
   const trs: number[] = [];
-  for (let i = 1; i < candles.length; i++) {
+  for (let i = 1; i <= endIdx; i++) {
     const hi = candles[i].high;
     const lo = candles[i].low;
     const pc = candles[i - 1].close;
     trs.push(Math.max(hi - lo, Math.abs(hi - pc), Math.abs(lo - pc)));
   }
-  // Wilder smoothing
+  if (trs.length < period) return 0;
   let atr = trs.slice(0, period).reduce((s, x) => s + x, 0) / period;
   for (let i = period; i < trs.length; i++) {
     atr = (atr * (period - 1) + trs[i]) / period;
@@ -42,38 +42,26 @@ function computeATR(candles: OhlcvCandle[], period: number): number {
   return atr;
 }
 
-// Realized vol: std of 1h returns over last N bars
-function computeRV(candles: OhlcvCandle[], window: number): number {
-  if (candles.length < window + 1) return 0;
-  const last = candles.length - 1;
-  let ss = 0, c = 0;
-  for (let i = last - window + 1; i <= last; i++) {
-    if (i < 1) continue;
-    const r = candles[i].close / candles[i - 1].close - 1;
-    ss += r * r; c++;
-  }
-  if (c < 10) return 0;
-  return Math.sqrt(ss / c);
+// Back-compat wrapper for existing caller (computeATR on full series ending at last bar)
+function computeATR(candles: OhlcvCandle[], period: number): number {
+  return computeATRAt(candles, candles.length - 1, period);
 }
 
-// Vol regime: rolling RV median over last N bars
+// Vol regime: ATR14_1h_current / ATR14_1h_30d_median > threshold
 function computeVolRegime(candles: OhlcvCandle[]): { current: number; median: number } {
-  const current = computeRV(candles, RV_WINDOW_BARS);
-  if (candles.length < RV_MEDIAN_WINDOW_BARS + RV_WINDOW_BARS) return { current, median: 0 };
-  const rvs: number[] = [];
-  for (let endIdx = candles.length - RV_MEDIAN_WINDOW_BARS; endIdx < candles.length; endIdx++) {
-    if (endIdx < RV_WINDOW_BARS) continue;
-    let ss = 0, c = 0;
-    for (let i = endIdx - RV_WINDOW_BARS + 1; i <= endIdx; i++) {
-      if (i < 1) continue;
-      const r = candles[i].close / candles[i - 1].close - 1;
-      ss += r * r; c++;
-    }
-    if (c >= 10) rvs.push(Math.sqrt(ss / c));
+  const current = computeATRAt(candles, candles.length - 1, ATR_PERIOD);
+  if (candles.length < ATR_MEDIAN_WINDOW_BARS + ATR_PERIOD + 1) return { current, median: 0 };
+  // Sample ATR at stride-6 points in the last 30d window (~120 samples for speed)
+  const atrs: number[] = [];
+  const start = candles.length - ATR_MEDIAN_WINDOW_BARS;
+  for (let endIdx = start; endIdx < candles.length; endIdx += 6) {
+    if (endIdx <= ATR_PERIOD) continue;
+    const atr = computeATRAt(candles, endIdx, ATR_PERIOD);
+    if (atr > 0) atrs.push(atr);
   }
-  if (rvs.length === 0) return { current, median: 0 };
-  rvs.sort((a, b) => a - b);
-  return { current, median: rvs[Math.floor(rvs.length / 2)] };
+  if (atrs.length === 0) return { current, median: 0 };
+  atrs.sort((a, b) => a - b);
+  return { current, median: atrs[Math.floor(atrs.length / 2)] };
 }
 
 export async function runRangeExpansionCycle(): Promise<void> {
@@ -124,10 +112,10 @@ export async function runRangeExpansionCycle(): Promise<void> {
       }
       if (!direction) continue;
 
-      // Vol regime filter (same as GARCH)
-      const { current: rvNow, median: rvMed } = computeVolRegime(completed1h);
-      if (rvMed === 0 || rvNow / rvMed < VOL_REGIME_THRESHOLD) continue;
-      const volRatio = rvNow / rvMed;
+      // Vol regime filter: ATR14_current / ATR14_30d_median > 1.6 (same as GARCH)
+      const { current: atrNow, median: atrMed } = computeVolRegime(completed1h);
+      if (atrMed === 0 || atrNow / atrMed < VOL_REGIME_THRESHOLD) continue;
+      const volRatio = atrNow / atrMed;
 
       // Entry at current price
       const entryPrice = signalBar.close;

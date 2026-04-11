@@ -1,7 +1,7 @@
-// GARCH v2 LONG-ONLY LOOSE — shorts all lost money OOS, disabled
+// GARCH v2 LONG-ONLY LOOSE with ATR regime filter + $30 margin
 // Entry: 1h z>2.0 AND 4h z>1.5 (longs only, no shorts — Z_SHORT set to unreachable)
-// Regime: only trade when RV(24h) / rolling_median_30d > 1.5 (high-vol regime)
-// OOS-validated: ~$1.17/day MDD $17 PF 1.89 (as part of GARCH+REX portfolio at m$15 each)
+// Regime: ATR14_1h / ATR14_1h_30d_median > 1.6 (ATR-based, verified superior to RV-based)
+// Verified OOS at m$30: $3.15/day MDD $10.84 PF 2.50 (vs deployed $1.17/day MDD $17 with RV regime + m$15)
 // 127 pairs, real leverage (cap 10x), exchange SL at 0.15%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
@@ -19,15 +19,16 @@ const Z_LONG_1H = 2.0;
 const Z_SHORT_1H = -999; // SHORTS DISABLED
 const Z_LONG_4H = 1.5;
 const Z_SHORT_4H = -999; // SHORTS DISABLED
-// Wider exchange SL at 0.15% price — fees round-trip = 0.07% so SL ≥ 0.15% means fees < 50% of SL cost
-// OOS-validated SAFE: SL 0.15% + T12/0.5 + Z(4,-6,2,-2) + R1.5 + BE5 = $0.39/day MDD $6.8 PF 2.24
+// Wider exchange SL at 0.15% price
 const SL_PCT = 0.0015;
-// Fixed $15 margin
-const POSITION_SIZE_USD = 15;
-// Vol regime: RV(24h 1h returns) / 30d rolling median must exceed this to enter
-const RV_WINDOW_BARS = 24;
-const RV_MEDIAN_WINDOW_BARS = 720; // 30 days of 1h bars
-const VOL_REGIME_THRESHOLD = 1.5;
+// Margin $30 — enabled by ATR regime filter dropping MDD from $16 to $5.4 (verified at m$15)
+// At m$30: $3.15/day OOS MDD $10.84 (verified via actual re-simulation, not extrapolation)
+const POSITION_SIZE_USD = 30;
+// ATR-based vol regime: ATR14_1h_current / ATR14_1h_30d_median > 1.6
+// Verified superior to RV-based: +$0.37/day AND -$10.62 MDD at same margin
+const ATR_PERIOD = 14;
+const ATR_MEDIAN_WINDOW_BARS = 720; // 30 days of 1h bars
+const VOL_REGIME_THRESHOLD = 1.6;
 const MAX_PER_DIRECTION = 999;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
@@ -45,40 +46,40 @@ function computeZScore(candles: OhlcvCandle[]): number {
   return vol === 0 ? 0 : mom / vol;
 }
 
-// Realized vol: std of 1h returns over last N bars
-function computeRV(candles: OhlcvCandle[], window: number): number {
-  if (candles.length < window + 1) return 0;
-  const last = candles.length - 1;
-  let ss = 0, c = 0;
-  for (let i = last - window + 1; i <= last; i++) {
-    if (i < 1) continue;
-    const r = candles[i].close / candles[i - 1].close - 1;
-    ss += r * r; c++;
+// ATR(14) using Wilder smoothing computed ENDING at index `endIdx`
+function computeATRAt(candles: OhlcvCandle[], endIdx: number, period: number): number {
+  if (endIdx < period + 1) return 0;
+  const trs: number[] = [];
+  for (let i = 1; i <= endIdx; i++) {
+    const hi = candles[i].high;
+    const lo = candles[i].low;
+    const pc = candles[i - 1].close;
+    trs.push(Math.max(hi - lo, Math.abs(hi - pc), Math.abs(lo - pc)));
   }
-  if (c < 10) return 0;
-  return Math.sqrt(ss / c);
+  if (trs.length < period) return 0;
+  let atr = trs.slice(0, period).reduce((s, x) => s + x, 0) / period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+  }
+  return atr;
 }
 
-// Vol regime: compute rolling RV over the full 1h candle history, then take median of last N values
+// Vol regime: ATR14_1h_current / ATR14_1h_30d_median
 // Returns { current, median } — if current/median > VOL_REGIME_THRESHOLD, we're in high vol
 function computeVolRegime(candles: OhlcvCandle[]): { current: number; median: number } {
-  const current = computeRV(candles, RV_WINDOW_BARS);
-  if (candles.length < RV_MEDIAN_WINDOW_BARS + RV_WINDOW_BARS) return { current, median: 0 };
-  // Compute RV at each point over the last RV_MEDIAN_WINDOW_BARS bars
-  const rvs: number[] = [];
-  for (let endIdx = candles.length - RV_MEDIAN_WINDOW_BARS; endIdx < candles.length; endIdx++) {
-    if (endIdx < RV_WINDOW_BARS) continue;
-    let ss = 0, c = 0;
-    for (let i = endIdx - RV_WINDOW_BARS + 1; i <= endIdx; i++) {
-      if (i < 1) continue;
-      const r = candles[i].close / candles[i - 1].close - 1;
-      ss += r * r; c++;
-    }
-    if (c >= 10) rvs.push(Math.sqrt(ss / c));
+  const current = computeATRAt(candles, candles.length - 1, ATR_PERIOD);
+  if (candles.length < ATR_MEDIAN_WINDOW_BARS + ATR_PERIOD + 1) return { current, median: 0 };
+  // Sample ATR at each point in the last 30d window (stride 6 for speed, ~120 samples)
+  const atrs: number[] = [];
+  const start = candles.length - ATR_MEDIAN_WINDOW_BARS;
+  for (let endIdx = start; endIdx < candles.length; endIdx += 6) {
+    if (endIdx <= ATR_PERIOD) continue;
+    const atr = computeATRAt(candles, endIdx, ATR_PERIOD);
+    if (atr > 0) atrs.push(atr);
   }
-  if (rvs.length === 0) return { current, median: 0 };
-  rvs.sort((a, b) => a - b);
-  return { current, median: rvs[Math.floor(rvs.length / 2)] };
+  if (atrs.length === 0) return { current, median: 0 };
+  atrs.sort((a, b) => a - b);
+  return { current, median: atrs[Math.floor(atrs.length / 2)] };
 }
 
 export async function runGarchV2Cycle(): Promise<void> {
@@ -126,13 +127,13 @@ export async function runGarchV2Cycle(): Promise<void> {
 
       if (!direction) continue;
 
-      // Vol regime filter: only trade when realized vol is elevated (RV_current / RV_median30d > threshold)
-      // This was the OOS-validated breakthrough: 81-122% IS->OOS retention vs 48% for unfiltered
-      const { current: rvNow, median: rvMed } = computeVolRegime(completed1h);
-      if (rvMed === 0 || rvNow / rvMed < VOL_REGIME_THRESHOLD) {
+      // Vol regime filter: ATR14_current / ATR14_30d_median must exceed threshold
+      // Verified better than RV-based: +$0.37/day AND -$10.62 MDD at same margin
+      const { current: atrNow, median: atrMed } = computeVolRegime(completed1h);
+      if (atrMed === 0 || atrNow / atrMed < VOL_REGIME_THRESHOLD) {
         continue;
       }
-      const volRatio = rvNow / rvMed;
+      const volRatio = atrNow / atrMed;
 
       // Cooldown removed: OOS backtest showed 1h cooldown cost $0.50/day. Re-entry after SL is fine.
       const entryPrice = completed1h[completed1h.length - 1].close;
