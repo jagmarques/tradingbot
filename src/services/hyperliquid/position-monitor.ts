@@ -1,7 +1,6 @@
 import { getClient, resetConnection } from "./client.js";
 import { getOpenQuantPositions, closePosition } from "./executor.js";
 import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQUID_MAINTENANCE_MARGIN_RATE, QUANT_LIQUIDATION_PENALTY_PCT, API_PRICE_TIMEOUT_MS, QUANT_TRADING_PAIRS, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-import { capStopLoss } from "./quant-utils.js";
 
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
@@ -13,20 +12,9 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 
 
-// Per-engine stagnation
+// Per-engine stagnation (max hold time)
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "donchian-trend": 60 * 24 * 60 * 60 * 1000, // 60d max hold
-  "supertrend-4h": 60 * 24 * 60 * 60 * 1000,  // 60d max hold
-  "garch-v2": 72 * 60 * 60 * 1000,             // 72h (3d) max hold - optimized for faster capital recycling
-  "carry-momentum": 8 * 24 * 60 * 60 * 1000,   // 8d max hold (7d + 1d buffer)
-  "momentum-confirm": 48 * 60 * 60 * 1000,     // 48h max hold
-  "alt-rotation": 4 * 24 * 60 * 60 * 1000,     // 4d max hold (3d rebalance + 1d buffer)
-  "range-expansion": 30 * 24 * 60 * 60 * 1000,  // 30d max hold
-  // Legacy engines (for existing DB positions until they close)
-  "garch-chan": 48 * 60 * 60 * 1000,
-  "btc-mr": 24 * 60 * 60 * 1000,
-  "btc-event": 24 * 60 * 60 * 1000,
-  "news-trade": 24 * 60 * 60 * 1000,
+  "garch-v2": 72 * 60 * 60 * 1000, // 72h (3d) max hold
 };
 
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
@@ -72,20 +60,8 @@ const trailActivatedIds = new Set<string>(); // trail alert dedup
 const closingInProgress = new Set<string>(); // prevent double-close across loops
 const nearSlIds = new Map<string, number>(); // positionId -> price at which near-SL was first detected
 
-// Trail checks only at 1h bar boundaries (matches backtest resolution)
-// Peak tracking still happens every tick, but trail EXIT decision waits for bar close
-let lastTrailCheckHour = -1;
-function isNewHourBar(): boolean {
-  const currentHour = Math.floor(Date.now() / 3_600_000);
-  if (currentHour !== lastTrailCheckHour) {
-    lastTrailCheckHour = currentHour;
-    return true;
-  }
-  return false;
-}
-// Track per-position: should we evaluate trail this tick?
-// We always update peak, but only trigger exit at 1h boundary
-let trailExitAllowed = false;
+// 1h-boundary SL/trail gate REMOVED — exchange SL handles stops, fast-poll handles trail.
+// Legacy gating caused gap losses (bot SL fired late at worse price than exchange SL).
 
 const closeFailCounts = new Map<string, number>();
 let lastCriticalAlertMs = 0;
@@ -125,11 +101,6 @@ async function checkPositionStops(): Promise<void> {
   if (monitorRunning) return;
   monitorRunning = true;
   try {
-    // Check if new 1h bar: trail exits only allowed at bar boundary
-    if (isNewHourBar()) {
-      trailExitAllowed = true;
-    }
-
     const positions: QuantPosition[] = getOpenQuantPositions();
 
     if (positions.length === 0) {
@@ -214,27 +185,8 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // ATR trailing DISABLED: system-level backtest showed no trailing (+$2.39/day)
-      // beats all trailing variants (+$1.90-2.00/day). Engine exit signals (Donchian channel,
-      // Supertrend flip, stagnation) already manage winners. Trailing cuts them short.
-
-      // Bot-level 1h SL check REMOVED for garch-v2: was firing at 1h boundary AFTER price had
-      // gapped past the SL, cancelling exchange stop and exiting at much worse market price.
-      // Real example: ARB exchange SL at 0.11874, bot fired at 0.1161, exited at 0.11596 = -$3.86 vs -$0.30 expected.
-      // Exchange SL handles this correctly. Other engines (non-garch-v2) keep the legacy behavior.
-      const sl = position.stopLoss;
-      const isGarchV2 = position.tradeType === "garch-v2";
-      if (!isGarchV2 && sl && isFinite(sl) && sl > 0 && trailExitAllowed) {
-        const slHit = (position.direction === "long" && currentPrice <= sl) ||
-          (position.direction === "short" && currentPrice >= sl);
-        if (slHit) {
-          console.log(`[PositionMonitor] Stop hit (1h): ${position.pair} ${position.direction} price=${currentPrice.toFixed(4)} sl=${sl.toFixed(4)}`);
-          recentHardStops.push(Date.now());
-          await tryClose(position, `stop-loss (price=${currentPrice.toPrecision(5)})`);
-          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
-          continue;
-        }
-      }
+      // SL handled by exchange stop orders (placed in live-executor at entry).
+      // Bot-level 1h-boundary SL check removed: caused gap losses by overriding exchange stop with worse market price.
 
       // Trailing stop
       const pricePct =
@@ -295,55 +247,9 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      const hasValidStopLoss =
-        position.stopLoss !== undefined &&
-        isFinite(position.stopLoss) &&
-        position.stopLoss > 0;
-
-      const hasValidTakeProfit =
-        position.takeProfit !== undefined &&
-        isFinite(position.takeProfit) &&
-        position.takeProfit > 0;
-
-      const rawSl = position.stopLoss ?? 0;
-      const cappedSl = hasValidStopLoss
-        ? capStopLoss(position.entryPrice, rawSl, position.direction)
-        : 0;
-      const effectiveSl = hasValidStopLoss ? cappedSl : 0;
-
-      // Near-SL recovery disabled: all exits at 1h boundary only (matches backtest)
-
-      const stopLossBreached =
-        hasValidStopLoss &&
-        (position.direction === "long"
-          ? currentPrice <= effectiveSl
-          : currentPrice >= effectiveSl);
-
-      const takeProfitBreached =
-        hasValidTakeProfit &&
-        (position.direction === "long"
-          ? currentPrice >= (position.takeProfit ?? 0)
-          : currentPrice <= (position.takeProfit ?? 0));
-
-      // Stop-loss and take-profit: only at 1h bar boundary (matches backtest)
-      // SKIP for garch-v2 — exchange SL handles stops, bot SL was overriding with worse market price
-      if (trailExitAllowed && position.tradeType !== "garch-v2") {
-        if (stopLossBreached) {
-          console.log(
-            `[PositionMonitor] Stop-loss triggered (1h): ${position.pair} ${position.direction} @ ${currentPrice} (stop: ${(position.stopLoss ?? 0).toPrecision(6)})`,
-          );
-          await tryClose(position, "stop-loss");
-        } else if (takeProfitBreached) {
-          console.log(
-            `[PositionMonitor] Take-profit triggered for ${position.pair} ${position.direction} @ ${currentPrice} (target: ${position.takeProfit})`,
-          );
-          await tryClose(position, "take-profit");
-        }
-      }
+      // Stop-loss and take-profit handled by exchange orders for garch-v2.
+      // Bot-level SL/TP checks removed: exchange stop is set at entry and fires at exact price.
     }
-
-    // Reset trail gate after all positions checked this tick
-    trailExitAllowed = false;
 
     // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
