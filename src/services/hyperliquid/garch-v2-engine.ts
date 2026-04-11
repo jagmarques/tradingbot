@@ -28,7 +28,8 @@ const POSITION_SIZE_USD = 30;
 // Verified superior to RV-based: +$0.37/day AND -$10.62 MDD at same margin
 const ATR_PERIOD = 14;
 const ATR_MEDIAN_WINDOW_BARS = 720; // 30 days of 1h bars
-const VOL_REGIME_THRESHOLD = 1.6;
+// Stricter threshold 1.8 = fewer but higher-quality signals. PF 2.50→2.72, MDD at m$30 drops $10.84→$6.27.
+const VOL_REGIME_THRESHOLD = 1.8;
 const MAX_PER_DIRECTION = 999;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
