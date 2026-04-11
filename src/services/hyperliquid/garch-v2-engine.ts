@@ -13,12 +13,9 @@ import type { OhlcvCandle } from "./types.js";
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 3;
 const GARCH_VOL_WINDOW = 20;
-// Long-only loose thresholds. Shorts disabled (unreachable value).
-// Cycle 6/7 finding: 34 short trades in OOS all lost money; removing shorts cut MDD by 60%.
+// Long-only thresholds. Shorts disabled (OOS-proven: 34 short trades all lost in Cycle 6/7).
 const Z_LONG_1H = 2.0;
-const Z_SHORT_1H = -999; // SHORTS DISABLED
 const Z_LONG_4H = 1.5;
-const Z_SHORT_4H = -999; // SHORTS DISABLED
 // Wider exchange SL at 0.15% price
 const SL_PCT = 0.0015;
 // Margin $30 — enabled by ATR regime filter dropping MDD from $16 to $5.4 (verified at m$15)
@@ -30,7 +27,6 @@ const ATR_PERIOD = 14;
 const ATR_MEDIAN_WINDOW_BARS = 720; // 30 days of 1h bars
 // Stricter threshold 1.8 = fewer but higher-quality signals. PF 2.50→2.72, MDD at m$30 drops $10.84→$6.27.
 const VOL_REGIME_THRESHOLD = 1.8;
-const MAX_PER_DIRECTION = 999;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[]): number {
@@ -86,8 +82,6 @@ function computeVolRegime(candles: OhlcvCandle[]): { current: number; median: nu
 export async function runGarchV2Cycle(): Promise<void> {
   const allPositions = getOpenQuantPositions();
   const myPositions = allPositions.filter(p => p.tradeType === TRADE_TYPE);
-  const longCount = myPositions.filter(p => p.direction === "long").length;
-  const shortCount = myPositions.filter(p => p.direction === "short").length;
   const openPairs = new Set(myPositions.map(p => p.pair));
 
   const ensembleCount = allPositions.filter(
@@ -118,15 +112,9 @@ export async function runGarchV2Cycle(): Promise<void> {
       const z1h = computeZScore(completed1h);
       const z4h = computeZScore(completed4h);
 
-      let direction: "long" | "short" | null = null;
-
-      if (z1h > Z_LONG_1H && z4h > Z_LONG_4H && longCount < MAX_PER_DIRECTION) {
-        direction = "long";
-      } else if (z1h < Z_SHORT_1H && z4h < Z_SHORT_4H && shortCount < MAX_PER_DIRECTION) {
-        direction = "short";
-      }
-
-      if (!direction) continue;
+      // Long-only: shorts disabled (backtest showed all short trades lost OOS)
+      if (!(z1h > Z_LONG_1H && z4h > Z_LONG_4H)) continue;
+      const direction = "long" as const;
 
       // Vol regime filter: ATR14_current / ATR14_30d_median must exceed threshold
       // Verified better than RV-based: +$0.37/day AND -$10.62 MDD at same margin

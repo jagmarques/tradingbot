@@ -1,34 +1,38 @@
 # Trading Bot
 
-Hyperliquid GARCH v2 quant engine, EVM insider copy trading. TypeScript, Docker, Coolify.
+Hyperliquid 2-engine quant portfolio, EVM insider copy trading. TypeScript, Docker, Coolify.
 
 ## Strategies
 
-### Hyperliquid GARCH v2 (LIVE)
+Two uncorrelated engines (correlation ~0.1) trade in parallel with ATR-based vol regime filter, exchange-level stops, and multi-stage trailing.
 
-GARCH (Generalized Autoregressive Conditional Heteroskedasticity) v2 is a multi-timeframe z-score momentum engine. It detects extreme price moves by computing how many standard deviations the current momentum is from the mean, using a GARCH-style volatility model. When both the 1-hour and 4-hour timeframes show extreme z-scores simultaneously, it enters a trade expecting the momentum to continue.
+### Engine A: GARCH v2 Long-Only (LIVE)
 
-Single-engine on 127 perpetual futures pairs. Real per-pair leverage (3x/5x/10x).
+Multi-timeframe z-score momentum. Enters longs when 1h and 4h z-scores are both elevated AND the market is in a high-vol regime. Shorts are disabled — they all lost money in OOS backtests.
 
-| Engine | Entry Signal | Exit Signal | Size | Max Hold |
-|--------|-------------|-------------|------|----------|
-| GARCH v2 MTF | 1h z>2.0 + 4h z>1.5 | 0.3% SL, trail 5/0.5 | Auto (5% equity, $10-$15) | 72h |
+### Engine B: Range Expansion (LIVE)
 
-**How it works:**
-1. Every 15 minutes, compute z-score on 1h and 4h bars for each of 127 pairs
-2. If 1h z-score > 2.0 AND 4h z-score > 1.5: open long
-3. If 1h z-score < -2.0 AND 4h z-score < -1.5: open short
-4. No EMA, BTC, regime, or volume filters (pure z-score)
-5. Exit: 0.3% bot-monitored SL or trailing stop (both at 1h bar boundary only, no exchange stop)
-6. Hours 22-23 UTC blocked (negative expectancy)
+Detects 1h bars where range > 2× ATR(14) with close in the upper/lower 25% of the bar. Takes continuation in the close direction. Uncorrelated with GARCH momentum.
 
-**Risk management:**
-- Auto-scaler: position size = 5% of equity, clamped $10-$15
-- Real per-pair leverage from HL API (3x/5x/10x), capped at 10x
-- Stop-loss 0.3% bot-monitored at 1h bar boundary (no exchange stop)
-- Single-stage trailing: 5/0.5 (activate at +5%, exit on 0.5% pullback, checked at 1h bar boundary)
-- Maker entry (ALO) with taker fallback, dead-man switch
-- 1h SL cooldown per pair/direction
+### Portfolio config
+
+| Engine | Entry | SL | Trail | Margin | Max Hold |
+|--------|-------|-----|-------|--------|----------|
+| GARCH v2 long-only | 1h z>2, 4h z>1.5, ATR regime>1.8 | 0.15% exch | 3/1 → 9/0.5 → 20/0.5 | $30 | 72h |
+| Range Expansion | range>2×ATR, close in 25%, ATR regime>1.6 | 0.15% exch | 3/1 → 9/0.5 → 20/0.5 | $15 | 72h |
+
+**Shared features:**
+- 127 perpetual futures pairs, real per-pair leverage (3x/5x/10x) capped at 10x
+- Hours 22-23 UTC blocked (negative expectancy)
+- Exchange stop-loss placed at entry (tick-level fill, no 1h boundary gap)
+- Multi-stage trailing stop fires via 3s fast-poll (not bar boundary)
+- ATR-based vol regime filter: ATR14_1h_current / ATR14_1h_30d_median must exceed threshold
+- No SL cooldown (increases profit without hurting DD)
+- Long-only on GARCH; Range Expansion takes both directions
+
+**Expected (OOS walk-forward Dec 2025 - Mar 2026):**
+- Combined: ~$5/day, MaxDD ~$14, PF 2.7
+- 97-102 pairs trading, ~1500 trades over 114 days
 
 ### TrumpGuard
 
