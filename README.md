@@ -4,35 +4,41 @@ Hyperliquid 2-engine quant portfolio, EVM insider copy trading. TypeScript, Dock
 
 ## Strategies
 
-Two uncorrelated engines (correlation ~0.1) trade in parallel with ATR-based vol regime filter, exchange-level stops, and multi-stage trailing.
+Two uncorrelated engines (correlation ~0.1) trade in parallel with exchange-level stops and multi-stage trailing. Auto-compounding scales margin with equity growth.
 
-### Engine A: GARCH v2 Long-Only (LIVE)
+### Engine A: GARCH v2 lb1/vw30 Long-Only (LIVE)
 
-Multi-timeframe z-score momentum. Enters longs when 1h and 4h z-scores are both elevated AND the market is in a high-vol regime. Shorts are disabled — they all lost money in OOS backtests.
+1-bar momentum z-score with 30-bar volatility window. Enters longs when 1h and 4h z-scores are both elevated. No ATR regime filter needed (lb1/vw30 is self-filtering). Shorts disabled (all lost money OOS).
 
 ### Engine B: Range Expansion (LIVE)
 
-Detects 1h bars where range > 2× ATR(14) with close in the upper/lower 25% of the bar. Takes continuation in the close direction. Uncorrelated with GARCH momentum.
+Detects 1h bars where range > 2x ATR(14) with close in upper/lower 25% of bar. Takes continuation in the close direction. Uses ATR vol regime filter (1.6 threshold). Uncorrelated with GARCH momentum.
 
 ### Portfolio config
 
 | Engine | Entry | SL | Trail | Margin | Max Hold |
 |--------|-------|-----|-------|--------|----------|
-| GARCH v2 long-only | 1h z>2, 4h z>1.5, ATR regime>1.8 | 0.15% exch | 3/1 → 9/0.5 → 20/0.5 | $30 | 72h |
-| Range Expansion | range>2×ATR, close in 25%, ATR regime>1.6 | 0.15% exch | 3/1 → 9/0.5 → 20/0.5 | $15 | 72h |
+| GARCH v2 lb1/vw30 | 1h z>2, 4h z>1.5, no ATR filter | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | auto (5% equity) | 72h |
+| Range Expansion | range>2xATR, close in 25%, ATR>1.6 | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | $15 | 72h |
 
 **Shared features:**
 - 127 perpetual futures pairs, real per-pair leverage (3x/5x/10x) capped at 10x
+- Max 7 concurrent positions across all engines
 - Hours 22-23 UTC blocked (negative expectancy)
-- Exchange stop-loss placed at entry (tick-level fill, no 1h boundary gap)
-- Multi-stage trailing stop fires via 3s fast-poll (not bar boundary)
-- ATR-based vol regime filter: ATR14_1h_current / ATR14_1h_30d_median must exceed threshold
-- No SL cooldown (increases profit without hurting DD)
+- Exchange stop-loss placed at entry (tick-level fill)
+- Multi-stage trailing stop checked at 1h bar boundaries
+- No SL cooldown (re-entry after SL is profitable)
 - Long-only on GARCH; Range Expansion takes both directions
 
-**Expected (OOS walk-forward Dec 2025 - Mar 2026):**
-- Combined: ~$5/day, MaxDD ~$14, PF 2.7
-- 97-102 pairs trading, ~1500 trades over 114 days
+**Auto-compounding (GARCH v2):**
+- Margin = 5% of account equity (fetched each cycle)
+- Clamped between $3 (minimum) and $50 (maximum)
+- As equity grows, margin scales automatically
+- At $60 equity: $3 margin. At $400 equity: $20 margin. At $1000 equity: $50 margin.
+
+**Verified performance (297 days, corrected MTM backtest):**
+- GARCH v2 at $20 margin mc7: $2.40/day, MTM MDD $32, PF 1.88, Calmar 0.074
+- MDD scales linearly with margin; Calmar ratio is constant at 0.074
 
 ### TrumpGuard
 
@@ -43,9 +49,8 @@ Monitors Trump Truth Social, Fed FOMC, Powell, White House RSS feeds. Opens pape
 Copies EVM token buys from high-scoring insider wallets.
 
 - Real-time buy/sell detection via Alchemy WebSocket
-- 47 tracked wallets on Ethereum
+- Tracked wallets on Ethereum
 - GoPlus security checks, $20k min liquidity
-- Dynamic position sizing: $3-$20 based on score
 - Rug detection via burn events + liquidity monitoring
 
 ### Unified Account (Hyperliquid)
