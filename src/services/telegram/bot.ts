@@ -844,12 +844,11 @@ async function handleTrades(ctx: Context): Promise<void> {
       }
       if (closedCopyTrades.length > 0) {
         message += `\n<b>Closed</b> ${closedCopyTrades.length} | ${pnl(realPnl)}\n`;
-        for (const t of closedCopyTrades.slice(0, 5)) {
+        for (const t of closedCopyTrades) {
           const pnlUsd = (t.pnlPct / 100) * t.amountUsd;
           const chainTag = t.chain.toUpperCase().slice(0, 3);
           message += `${t.tokenSymbol} | ${chainTag} | ${pnl(pnlUsd)} ${t.pnlPct > 0 ? "+" : ""}${t.pnlPct.toFixed(0)}%\n`;
         }
-        if (closedCopyTrades.length > 5) message += `... +${closedCopyTrades.length - 5} more\n`;
       }
       message += `\n`;
     }
