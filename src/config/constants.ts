@@ -86,9 +86,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// GARCH lb1/vw30 $10 mc5 — verified: $1.04/day MTM MDD $14.54 on $60 equity
+// GARCH lb1/vw30 $20 mc7 — verified: $2.40/day MTM MDD $32 on $60 equity
 export const ENSEMBLE_POSITION_SIZE_USD = 1; // Legacy fallback
-export const ENSEMBLE_MAX_CONCURRENT = 5; // mc5, MDD $14.54 at $10 margin
+export const ENSEMBLE_MAX_CONCURRENT = 7; // mc7 = best Calmar 0.074
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)

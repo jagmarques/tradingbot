@@ -18,7 +18,7 @@ Detects 1h bars where range > 2x ATR(14) with close in upper/lower 25% of bar. T
 
 | Engine | Entry | SL | Trail | Margin | Max Hold |
 |--------|-------|-----|-------|--------|----------|
-| GARCH v2 lb1/vw30 | 1h z>2, 4h z>1.5, no ATR filter | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | auto (5% equity) | 72h |
+| GARCH v2 lb1/vw30 | 1h z>2, 4h z>1.5, no ATR filter | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | $20 | 72h |
 | Range Expansion | range>2xATR, close in 25%, ATR>1.6 | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | $15 | 72h |
 
 **Shared features:**
@@ -30,15 +30,8 @@ Detects 1h bars where range > 2x ATR(14) with close in upper/lower 25% of bar. T
 - No SL cooldown (re-entry after SL is profitable)
 - Long-only on GARCH; Range Expansion takes both directions
 
-**Auto-compounding (GARCH v2):**
-- Margin = 5% of account equity (fetched each cycle)
-- Clamped between $3 (minimum) and $50 (maximum)
-- As equity grows, margin scales automatically
-- At $60 equity: $3 margin. At $400 equity: $20 margin. At $1000 equity: $50 margin.
-
 **Verified performance (297 days, corrected MTM backtest):**
-- GARCH v2 at $20 margin mc7: $2.40/day, MTM MDD $32, PF 1.88, Calmar 0.074
-- MDD scales linearly with margin; Calmar ratio is constant at 0.074
+- GARCH v2 $20 mc7: $2.40/day, MTM MDD $32, PF 1.88, Calmar 0.074
 
 ### TrumpGuard
 

@@ -1,8 +1,4 @@
-// GARCH v2 lb1/vw30 LONG-ONLY, $10 margin, mc5, no ATR filter, no cooldown
-// Entry: 1h z>2.0 AND 4h z>1.5 (longs only)
-// Key change: MOM_LB=1 VOL_WIN=30 (was 3/20) = 3x better Calmar ratio
-// Verified: $1.04/day, MTM MDD $14.54, PF 1.84, Calmar 0.071 (297 days, 125 pairs)
-// On $60 equity: worst DD to $45.46, recovery 14 days, monthly profit $31 (52%)
+// GARCH v2 lb1/vw30 long-only $20 mc7 | $2.40/day MDD $32 PF 1.88
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -18,8 +14,7 @@ const Z_LONG_1H = 2.0;
 const Z_LONG_4H = 1.5;
 // Exchange SL at 0.15% price
 const SL_PCT = 0.0015;
-// Fixed $10 margin — meets HL minimum $10 notional on all pairs (even 1x)
-const POSITION_SIZE_USD = 10;
+const POSITION_SIZE_USD = 20;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[]): number {
