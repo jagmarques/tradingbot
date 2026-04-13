@@ -16,7 +16,6 @@ export const ISOLATED_ENGINE_TYPES: TradeType[] = [
   "supertrend-4h",
   "garch-v2",
   "carry-momentum",
-  "range-expansion",
 ];
 
 const paperPositions = new Map<string, QuantPosition>();

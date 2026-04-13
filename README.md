@@ -1,50 +1,34 @@
 # Trading Bot
 
-Hyperliquid 2-engine quant portfolio, EVM insider copy trading. TypeScript, Docker, Coolify.
+Hyperliquid GARCH quant engine, EVM insider copy trading. TypeScript, Docker, Coolify.
 
-## Strategies
+## Strategy
 
-Two uncorrelated engines (correlation ~0.1) trade in parallel with exchange-level stops and multi-stage trailing. Auto-compounding scales margin with equity growth.
+### GARCH v2 lb1/vw30 Long-Only (LIVE)
 
-### Engine A: GARCH v2 lb1/vw30 Long-Only (LIVE)
+1-bar momentum z-score with 30-bar volatility window. Enters longs when 1h and 4h z-scores are both elevated. Shorts disabled (all lost money OOS).
 
-1-bar momentum z-score with 30-bar volatility window. Enters longs when 1h and 4h z-scores are both elevated. No ATR regime filter needed (lb1/vw30 is self-filtering). Shorts disabled (all lost money OOS).
+| Parameter | Value |
+|-----------|-------|
+| Entry | 1h z>2.0 AND 4h z>1.5 (long-only) |
+| SL | 0.3% exchange (10x pairs), 0.15% (3x/5x pairs) |
+| Trail | 3/1 -> 9/0.5 -> 20/0.5 (1h boundary) |
+| Margin | $20 fixed |
+| Max concurrent | 7 |
+| Max hold | 72h |
+| Cooldown | 1h per pair after SL |
+| Blocked hours | 22-23 UTC |
+| Pairs | 127 perpetual futures, leverage cap 10x |
 
-### Engine B: Range Expansion (LIVE)
-
-Detects 1h bars where range > 2x ATR(14) with close in upper/lower 25% of bar. Takes continuation in the close direction. Uses ATR vol regime filter (1.6 threshold). Uncorrelated with GARCH momentum.
-
-### Portfolio config
-
-| Engine | Entry | SL | Trail | Margin | Max Hold |
-|--------|-------|-----|-------|--------|----------|
-| GARCH v2 lb1/vw30 | 1h z>2, 4h z>1.5, no ATR filter | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | $20 | 72h |
-| Range Expansion | range>2xATR, close in 25%, ATR>1.6 | 0.15% exch | 3/1 -> 9/0.5 -> 20/0.5 | $15 | 72h |
-
-**Shared features:**
-- 127 perpetual futures pairs, real per-pair leverage (3x/5x/10x) capped at 10x
-- Max 7 concurrent positions across all engines
-- Hours 22-23 UTC blocked (negative expectancy)
-- Exchange stop-loss placed at entry (tick-level fill)
-- Multi-stage trailing stop checked at 1h bar boundaries
-- No SL cooldown (re-entry after SL is profitable)
-- Long-only on GARCH; Range Expansion takes both directions
-
-**Verified performance (297 days, corrected MTM backtest):**
-- GARCH v2 $20 mc7: $2.40/day, MTM MDD $32, PF 1.88, Calmar 0.074
+**Verified (297 days, MTM backtest):** $2.40/day, MDD $32, PF 1.88, Calmar 0.074
 
 ### TrumpGuard
 
-Monitors Trump Truth Social, Fed FOMC, Powell, White House RSS feeds. Opens paper positions on BTC/ETH/SOL on HIGH impact events. Does not close live positions.
+Monitors Trump Truth Social, Fed FOMC, Powell, White House RSS feeds. Opens paper positions on BTC/ETH/SOL on HIGH impact events.
 
 ### Insider Copy Trading (EVM)
 
-Copies EVM token buys from high-scoring insider wallets.
-
-- Real-time buy/sell detection via Alchemy WebSocket
-- Tracked wallets on Ethereum
-- GoPlus security checks, $20k min liquidity
-- Rug detection via burn events + liquidity monitoring
+Copies EVM token buys from high-scoring insider wallets via Alchemy WebSocket.
 
 ### Unified Account (Hyperliquid)
 
@@ -55,32 +39,13 @@ Copies EVM token buys from high-scoring insider wallets.
 
 | | Paper | Hybrid | Live |
 |---|-------|--------|------|
-| Quant Ensemble | Paper | Live | Live |
+| Quant | Paper | Live | Live |
 | Insider Copy | Paper | Paper | Live |
 | Set via | `TRADING_MODE=paper` | `TRADING_MODE=hybrid` | `TRADING_MODE=live` |
 
 ## Telegram
 
-| Command | Description |
-|---------|-------------|
-| `/balance` | Portfolio value |
-| `/pnl` | P&L with period tabs |
-| `/trades` | Open positions |
-| `/insiders` | Insider wallets |
-| `/stop` / `/resume` | Kill switch |
-| `/mode` | Switch trading mode |
-
-## Config
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TRADING_MODE` | `paper` | paper, hybrid, or live |
-| `QUANT_ENABLED` | `false` | Enable quant trading |
-| `DAILY_LOSS_LIMIT_USD` | `$25` | Daily loss limit per strategy |
-
-**Required:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-
-**Optional:** `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_WALLET_ADDRESS`, `PRIVATE_KEY_EVM`, `ETHERSCAN_API_KEY`, `ALCHEMY_API_KEY`
+`/balance` `/pnl` `/trades` `/insiders` `/stop` `/resume` `/mode`
 
 ## Setup
 
@@ -99,7 +64,3 @@ npm run dev
 ## Tech Stack
 
 TypeScript (strict), Node 22, Vitest, SQLite, Grammy, ethers.js, Hyperliquid SDK, Docker, Coolify
-
-## License
-
-MIT
