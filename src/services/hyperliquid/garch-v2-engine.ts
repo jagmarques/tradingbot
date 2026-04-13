@@ -4,6 +4,7 @@ import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
+import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
@@ -68,8 +69,8 @@ export async function runGarchV2Cycle(): Promise<void> {
       if (!(z1h > Z_LONG_1H && z4h > Z_LONG_4H)) continue;
       const direction = "long" as const;
 
-      // No ATR regime filter — lb1/vw30 z-score is self-filtering (verified: no-ATR has best Calmar)
-      // No cooldown — re-entry after SL is profitable (verified: cooldown hurts Calmar)
+      // 1h cooldown after SL to prevent repeated re-entry on same losing pair
+      if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       const entryPrice = completed1h[completed1h.length - 1].close;
       const rawStop = entryPrice * (1 - SL_PCT);

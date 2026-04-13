@@ -14,8 +14,8 @@ import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constan
 import { capStopLoss, calcPnl, inferExitReason, rebaseStops, parseIndicatorsMeta } from "../hyperliquid/quant-utils.js";
 
 const MAX_SLIPPAGE = 0.005;
-const MAKER_ENTRY_TIMEOUT_MS = 60_000;
-const MAKER_POLL_INTERVAL_MS = 5_000;
+const MAKER_ENTRY_TIMEOUT_MS = 5_000; // 5s maker attempt, then taker (was 60s — signal decays while waiting)
+const MAKER_POLL_INTERVAL_MS = 2_000;
 
 const livePositions = new Map<string, QuantPosition>();
 const positionContext = new Map<string, {
