@@ -1,15 +1,13 @@
-// GARCH v2 lb1/vw30 LONG-ONLY, auto-compounding, mc7, no ATR filter, no cooldown
+// GARCH v2 lb1/vw30 LONG-ONLY, $10 margin, mc5, no ATR filter, no cooldown
 // Entry: 1h z>2.0 AND 4h z>1.5 (longs only)
 // Key change: MOM_LB=1 VOL_WIN=30 (was 3/20) = 3x better Calmar ratio
-// Auto-compounding: margin = 5% of equity, clamped $3-$50
-// Verified at $20 margin mc7: $2.40/day, MTM MDD $32.39, PF 1.88, Calmar 0.074
+// Verified: $1.04/day, MTM MDD $14.54, PF 1.84, Calmar 0.071 (297 days, 125 pairs)
+// On $60 equity: worst DD to $45.46, recovery 14 days, monthly profit $31 (52%)
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
 import { capStopLoss } from "./quant-utils.js";
-import { getAccountBalance } from "./account.js";
-import { loadEnv } from "../../config/env.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
@@ -20,16 +18,9 @@ const Z_LONG_1H = 2.0;
 const Z_LONG_4H = 1.5;
 // Exchange SL at 0.15% price
 const SL_PCT = 0.0015;
-// Auto-compounding: margin = EQUITY_PCT of equity, clamped [MIN_MARGIN, MAX_MARGIN]
-const EQUITY_PCT = 0.05;      // 5% of equity per position
-const MIN_MARGIN = 3;         // $3 minimum (tiny account protection)
-const MAX_MARGIN = 50;        // $50 maximum (risk cap)
-const FALLBACK_MARGIN = 20;   // fallback if equity fetch fails
+// Fixed $10 margin — meets HL minimum $10 notional on all pairs (even 1x)
+const POSITION_SIZE_USD = 10;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
-
-// Cache equity for 5 minutes to avoid hammering the API every pair loop iteration
-let cachedMargin = FALLBACK_MARGIN;
-let cacheExpiry = 0;
 
 function computeZScore(candles: OhlcvCandle[]): number {
   if (candles.length < GARCH_VOL_WINDOW + GARCH_LOOKBACK + 1) return 0;
@@ -43,29 +34,6 @@ function computeZScore(candles: OhlcvCandle[]): number {
   if (returns.length < 10) return 0;
   const vol = Math.sqrt(returns.reduce((s, r) => s + r * r, 0) / returns.length);
   return vol === 0 ? 0 : mom / vol;
-}
-
-async function getCompoundedMargin(): Promise<number> {
-  const now = Date.now();
-  if (now < cacheExpiry) return cachedMargin;
-
-  try {
-    const env = loadEnv();
-    const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
-    if (!wallet) return FALLBACK_MARGIN;
-
-    const { equity } = await getAccountBalance(wallet);
-    if (equity <= 0) return FALLBACK_MARGIN;
-
-    const raw = Math.floor(equity * EQUITY_PCT);
-    const margin = Math.max(MIN_MARGIN, Math.min(MAX_MARGIN, raw));
-    cachedMargin = margin;
-    cacheExpiry = now + 5 * 60_000; // cache 5 min
-    console.log(`[GarchV2] Auto-compound: equity=$${equity.toFixed(2)} -> margin=$${margin} (${(EQUITY_PCT * 100).toFixed(0)}%)`);
-    return margin;
-  } catch {
-    return cachedMargin || FALLBACK_MARGIN;
-  }
 }
 
 export async function runGarchV2Cycle(): Promise<void> {
@@ -83,9 +51,6 @@ export async function runGarchV2Cycle(): Promise<void> {
     console.log(`[GarchV2] Skipping cycle: hour ${currentHourUTC} UTC is blocked`);
     return;
   }
-
-  // Auto-compounding: margin scales with equity
-  const positionSize = await getCompoundedMargin();
 
   for (const pair of QUANT_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
@@ -119,16 +84,10 @@ export async function runGarchV2Cycle(): Promise<void> {
 
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
 
-      // HL requires minimum $10 notional per order
-      const notional = positionSize * pairLeverage;
-      if (notional < 10) {
-        continue; // skip pairs where margin * leverage < $10
-      }
-
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x $${positionSize}mrg exchSL=${stopLoss.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x $${POSITION_SIZE_USD}mrg exchSL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(
-        pair, direction, positionSize, pairLeverage,
+        pair, direction, POSITION_SIZE_USD, pairLeverage,
         stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, false,
       );
       if (pos) {
