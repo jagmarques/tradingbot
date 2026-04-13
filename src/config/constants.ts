@@ -92,9 +92,9 @@ export const ENSEMBLE_MAX_CONCURRENT = 7; // mc7 = best Calmar 0.074
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)
-export const ENSEMBLE_TRADE_TYPES = new Set<string>(["garch-v2", "range-expansion"]);
+export const ENSEMBLE_TRADE_TYPES = new Set<string>(["garch-v2"]);
 
-export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-v2", "range-expansion"]);
+export const QUANT_HYBRID_LIVE_ENGINES = new Set<string>(["garch-v2"]);
 
 export function getEngineExchange(tradeType: string): QuantExchange {
   return QUANT_ENGINE_EXCHANGE[tradeType] ?? "hyperliquid";

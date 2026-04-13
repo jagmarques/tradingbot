@@ -28,7 +28,7 @@ const TRAIL_STEPS = [
   { activation: 3,  distance: 1.0 },  // +3-9% peak: loose 1.0% trail (catches marginal winners)
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
-const TRAIL_ENGINES = new Set(["garch-v2", "range-expansion"]);
+const TRAIL_ENGINES = new Set(["garch-v2"]);
 
 function getSteppedTrailDistance(peak: number, tradeType: string): { activation: number; distance: number } {
   if (!TRAIL_ENGINES.has(tradeType ?? "")) return DEAD_TRAIL;
