@@ -1533,10 +1533,6 @@ async function handleQuant(ctx: Context): Promise<void> {
 
   const engines: [string, string][] = [
     ["GV", "garch-v2"],
-    ["ST", "supertrend-4h"],
-    ["DT", "donchian-trend"],
-    ["CM", "carry-momentum"],
-    ["TE", "trump-event"],
   ];
 
   const hasLive = openPositions.some(p => p.mode === "live");
