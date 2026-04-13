@@ -70,17 +70,11 @@ function roundSize(size: number, decimals: number): number {
 
 function roundPrice(price: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  // Hyperliquid: 5 significant figures, conservative rounding
-  const abs = Math.abs(price);
-  let decimals: number;
-  if (abs < 0.001) decimals = 7;
-  else if (abs < 0.01) decimals = 6;
-  else if (abs < 0.1) decimals = 5;
-  else if (abs < 1) decimals = 4;
-  else if (abs < 10) decimals = 3;
-  else if (abs < 100) decimals = 2;
-  else if (abs < 1000) decimals = 1;
-  else decimals = 0;
+  // Hyperliquid: 5 significant figures for prices
+  // Use significant figures (not decimal places) to handle micro-price tokens
+  const sigFigs = 5;
+  const magnitude = Math.floor(Math.log10(Math.abs(price))) + 1;
+  const decimals = Math.max(0, sigFigs - magnitude);
   const factor = 10 ** decimals;
   return Math.round(price * factor) / factor;
 }
