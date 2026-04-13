@@ -118,6 +118,13 @@ export async function runGarchV2Cycle(): Promise<void> {
       const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|sl:${stopLoss.toFixed(6)}`;
 
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
+
+      // HL requires minimum $10 notional per order
+      const notional = positionSize * pairLeverage;
+      if (notional < 10) {
+        continue; // skip pairs where margin * leverage < $10
+      }
+
       console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x $${positionSize}mrg exchSL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(
