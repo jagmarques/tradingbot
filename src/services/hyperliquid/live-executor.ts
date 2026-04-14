@@ -124,14 +124,14 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
       console.error(`[Quant Live] Exchange stop not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
       // Close position immediately if SL can't be placed -- never run unprotected
       console.log(`[Quant Live] Closing ${position.pair} -- no exchange stop protection`);
-      void closePosition(position.id, "no-sl-protection");
+      void liveClosePosition(position.id, "no-sl-protection");
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[Quant Live] Exchange stop failed for ${position.pair}: ${msg}`);
     // Close position immediately if SL can't be placed
     console.log(`[Quant Live] Closing ${position.pair} -- exchange stop failed`);
-    void closePosition(position.id, "no-sl-protection");
+    void liveClosePosition(position.id, "no-sl-protection");
   }
 }
 
