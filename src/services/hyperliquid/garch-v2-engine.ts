@@ -3,7 +3,6 @@ import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-import { capStopLoss } from "./quant-utils.js";
 import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
@@ -75,21 +74,19 @@ export async function runGarchV2Cycle(): Promise<void> {
       // 1h cooldown after SL to prevent repeated re-entry on same losing pair
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
-      const entryPrice = completed1h[completed1h.length - 1].close;
       const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
 
-      // Wider SL for high leverage to prevent liquidation before SL fires
+      // SL percentage: wider for 10x to prevent liquidation
       const slPct = pairLeverage >= 10 ? SL_PCT_HIGH_LEV : SL_PCT_LOW_LEV;
-      const rawStop = entryPrice * (1 - slPct);
-      const stopLoss = capStopLoss(entryPrice, rawStop, direction);
+      // Pass SL=0 and slPct in indicators -- executor calculates SL from actual fill price
       const takeProfit = 0;
-      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|sl:${stopLoss.toFixed(6)}`;
+      const indicators = `z1h:${z1h.toFixed(2)}|z4h:${z4h.toFixed(2)}|slPct:${slPct}`;
 
-      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x $${POSITION_SIZE_USD}mrg exchSL=${stopLoss.toFixed(4)}`);
+      console.log(`[GarchV2] ${pair} z1h=${z1h.toFixed(2)} z4h=${z4h.toFixed(2)} -> ${direction} ${pairLeverage}x $${POSITION_SIZE_USD}mrg slPct=${(slPct * 100).toFixed(2)}%`);
 
       const pos = await openPosition(
         pair, direction, POSITION_SIZE_USD, pairLeverage,
-        stopLoss, takeProfit, "trending", TRADE_TYPE, indicators, entryPrice, false,
+        0, takeProfit, "trending", TRADE_TYPE, indicators, 0, false,
       );
       if (pos) {
         openPairs.add(pair);

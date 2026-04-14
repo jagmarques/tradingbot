@@ -68,10 +68,18 @@ function roundSize(size: number, decimals: number): number {
   return Math.floor(size * factor) / factor;
 }
 
-function roundPrice(price: number): number {
+function roundPrice(price: number, refPrice?: number): number {
   if (price === 0 || !isFinite(price)) return 0;
-  // Hyperliquid: 5 significant figures for prices
-  // Use significant figures (not decimal places) to handle micro-price tokens
+  // Match the precision of refPrice (the fill/entry price HL gave us)
+  // This guarantees the tick size is valid since HL already validated refPrice
+  if (refPrice && refPrice > 0) {
+    const refStr = refPrice.toString();
+    const dotIdx = refStr.indexOf(".");
+    const decimals = dotIdx >= 0 ? refStr.length - dotIdx - 1 : 0;
+    const factor = 10 ** decimals;
+    return Math.round(price * factor) / factor;
+  }
+  // Fallback: 5 significant figures
   const sigFigs = 5;
   const magnitude = Math.floor(Math.log10(Math.abs(price))) + 1;
   const decimals = Math.max(0, sigFigs - magnitude);
@@ -84,6 +92,11 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
   if (exchangeStopOids.has(position.id)) return;
   try {
     const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction);
+    // Round SL to match entry price's tick precision (HL validated the entry price)
+    const slRounded = roundPrice(sl, position.entryPrice);
+    // Verify SL is on the correct side of entry
+    if (position.direction === "long" && slRounded >= position.entryPrice) return;
+    if (position.direction === "short" && slRounded <= position.entryPrice) return;
     await ensureConnected();
     const sdk = getClient();
     const szMap = await getSzDecimals();
@@ -97,8 +110,8 @@ async function placeExchangeStop(position: QuantPosition): Promise<void> {
         coin: `${position.pair}-PERP`,
         is_buy: position.direction === "short",
         sz: sizeInCoins,
-        limit_px: roundPrice(sl),
-        order_type: { trigger: { triggerPx: roundPrice(sl), isMarket: true, tpsl: "sl" } },
+        limit_px: slRounded,
+        order_type: { trigger: { triggerPx: slRounded, isMarket: true, tpsl: "sl" } },
         reduce_only: true,
       }),
       API_ORDER_TIMEOUT_MS, "HL placeExchangeStop",
@@ -693,7 +706,17 @@ export async function liveOpenPosition(
 
     let adjStop = stopLoss;
     let adjTP = takeProfit;
-    if (aiEntryPrice && aiEntryPrice > 0) {
+
+    // If no SL passed (stopLoss=0), compute from fill price using slPct from indicators
+    if ((!adjStop || adjStop <= 0) && indicatorsAtEntry) {
+      const slPctMatch = indicatorsAtEntry.match(/slPct:([\d.]+)/);
+      if (slPctMatch) {
+        const slPct = parseFloat(slPctMatch[1]!);
+        adjStop = direction === "long" ? fillPrice * (1 - slPct) : fillPrice * (1 + slPct);
+        adjStop = capStopLoss(fillPrice, adjStop, direction);
+        console.log(`[Quant Live] SL from fill: ${fillPrice.toFixed(6)} - ${(slPct * 100).toFixed(2)}% = ${adjStop.toFixed(6)}`);
+      }
+    } else if (aiEntryPrice && aiEntryPrice > 0 && adjStop > 0) {
       const rebased = rebaseStops(stopLoss, takeProfit, aiEntryPrice, fillPrice);
       adjStop = rebased.stopLoss;
       adjTP = rebased.takeProfit;
