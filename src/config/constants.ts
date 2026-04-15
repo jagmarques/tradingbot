@@ -60,7 +60,7 @@ export const QUANT_POSITION_MONITOR_INTERVAL_MS = 3_000;
 export const QUANT_TRAIL_FAST_POLL_MS = 3_000;
 
 // Directional Trading Scheduler
-export const QUANT_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
+export const QUANT_SCHEDULER_INTERVAL_MS = 3 * 60 * 1000;
 
 // Paper Trading Validation
 export const QUANT_PAPER_VALIDATION_DAYS = 14;
