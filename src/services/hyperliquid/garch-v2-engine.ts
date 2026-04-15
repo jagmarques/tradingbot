@@ -50,12 +50,15 @@ export async function runGarchV2Cycle(): Promise<void> {
     return;
   }
 
+  let pairIdx = 0;
   for (const pair of QUANT_TRADING_PAIRS) {
     if (openPairs.has(pair)) continue;
     if (ensembleCount >= ENSEMBLE_MAX_CONCURRENT) break;
 
+    // Rate limit: 50ms between pairs to stay under HL's 120 req/min limit
+    if (pairIdx++ > 0) await new Promise(r => setTimeout(r, 50));
+
     try {
-      // Fetch 1h candles — need VOL_WIN+MOM_LB+2 completed bars minimum (34 bars)
       const candles1h = await fetchCandles(pair, "1h", 100);
       if (candles1h.length < 50) continue;
       const candles4h = await fetchCandles(pair, "4h", 60);
