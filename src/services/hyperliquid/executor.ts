@@ -46,7 +46,7 @@ export async function openPosition(
     ? allPositions.filter(p => p.mode === posMode && ENSEMBLE_TRADE_TYPES.has(p.tradeType ?? "")).length
     : allPositions.filter(p => p.mode === posMode && p.tradeType === tradeType).length;
   const maxPos = ENSEMBLE_TRADE_TYPES.has(tradeType) ? ENSEMBLE_MAX_CONCURRENT : 5;
-  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode, openPositionCount: openCountForEngine, maxConcurrentPositions: maxPos });
+  const riskCheck = validateRiskGates({ leverage, stopLoss, regime: effectiveRegime, strategy, mode: posMode, openPositionCount: openCountForEngine, maxConcurrentPositions: maxPos, indicators: indicatorsAtEntry });
   if (!riskCheck.allowed) {
     console.log(`[Quant Executor] Position blocked by risk gate: ${riskCheck.reason}`);
     return null;

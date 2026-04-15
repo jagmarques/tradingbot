@@ -174,8 +174,9 @@ export function validateRiskGates(params: {
   dailyLossLimit?: number;
   openPositionCount?: number;
   maxConcurrentPositions?: number;
+  indicators?: string;
 }): { allowed: boolean; reason: string } {
-  const { leverage, stopLoss, regime, strategy, mode = "live", dailyLossLimit, openPositionCount, maxConcurrentPositions } = params;
+  const { leverage, stopLoss, regime, strategy, mode = "live", dailyLossLimit, openPositionCount, maxConcurrentPositions, indicators } = params;
 
   // 1. Kill switch
   if (isQuantKilled()) {
@@ -214,11 +215,13 @@ export function validateRiskGates(params: {
     return leverageCheck;
   }
 
-  // 6. Stop-loss presence (directional validation handled by AI parser)
-  const stopLossCheck = checkStopLossPresent(stopLoss);
-  if (!stopLossCheck.allowed) {
-    console.log(`[RiskManager] Gate check: BLOCKED ${stopLossCheck.reason}`);
-    return stopLossCheck;
+  // 6. Stop-loss presence -- skip if slPct is in indicators (SL computed from fill price)
+  if (!indicators?.includes("slPct:")) {
+    const stopLossCheck = checkStopLossPresent(stopLoss);
+    if (!stopLossCheck.allowed) {
+      console.log(`[RiskManager] Gate check: BLOCKED ${stopLossCheck.reason}`);
+      return stopLossCheck;
+    }
   }
 
   console.log(`[RiskManager] Gate check: PASS`);
