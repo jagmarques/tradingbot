@@ -5,7 +5,6 @@ import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js"
 import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
 import { startQuantScheduler, stopQuantScheduler } from "./scheduler.js";
-import { startTrumpGuard, stopTrumpGuard } from "../trump-guard/index.js";
 import { seedDailyLossFromDb } from "./risk-manager.js";
 import { startHlPriceWs, stopHlPriceWs } from "./ws-prices.js";
 
@@ -43,7 +42,6 @@ export function initQuant(): number {
   startPositionMonitor();
   startQuantScheduler();
   startHeartbeat();
-  startTrumpGuard();
   const openPositions = loadOpenQuantPositions();
   const count = openPositions.length;
   console.log(`[Quant] Initialized (${getTradingMode()} mode), ${count} open positions`);
@@ -69,7 +67,6 @@ export function stopQuant(): void {
   stopPositionMonitor();
   stopHeartbeat();
   stopHlPriceWs();
-  stopTrumpGuard();
   console.log("[Quant] Stopped");
 }
 

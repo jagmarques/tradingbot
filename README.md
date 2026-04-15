@@ -22,10 +22,6 @@ Hyperliquid GARCH quant engine, EVM insider copy trading. TypeScript, Docker, Co
 
 **Verified (297 days, MTM backtest):** $2.40/day, MDD $32, PF 1.88, Calmar 0.074
 
-### TrumpGuard
-
-Monitors Trump Truth Social, Fed FOMC, Powell, White House RSS feeds. Opens paper positions on BTC/ETH/SOL on HIGH impact events.
-
 ### Insider Copy Trading (EVM)
 
 Copies EVM token buys from high-scoring insider wallets via Alchemy WebSocket.
