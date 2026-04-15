@@ -783,7 +783,7 @@ export async function liveOpenPosition(
     });
 
     console.log(`[Quant Live] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice} (${fillSize} coins)`);
-    void placeExchangeStop(position);
+    // No exchange stop -- software SL fires every 3s in position-monitor (avoids tick size issues + sends alerts)
     void placeExchangeTP(position);
     return position;
   } catch (err) {
@@ -891,7 +891,6 @@ export async function liveClosePosition(
       } else {
         console.error(`[Quant Live] Close failed for ${position.pair}: ${JSON.stringify(statuses)}`);
       }
-      void placeExchangeStop(position);
       void placeExchangeTP(position);
       return { success: false, pnl: 0 };
     }
@@ -1045,7 +1044,6 @@ export async function liveClosePosition(
       }
     }
 
-    void placeExchangeStop(position);
     void placeExchangeTP(position);
     return { success: false, pnl: 0 };
   } finally {
