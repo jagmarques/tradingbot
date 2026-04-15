@@ -87,53 +87,7 @@ function roundPrice(price: number, refPrice?: number): number {
   return Math.round(price * factor) / factor;
 }
 
-async function placeExchangeStop(position: QuantPosition): Promise<void> {
-  if (!position.stopLoss || !isFinite(position.stopLoss)) return;
-  if (exchangeStopOids.has(position.id)) return;
-  try {
-    const sl = capStopLoss(position.entryPrice, position.stopLoss, position.direction);
-    // Round SL to match entry price's tick precision (HL validated the entry price)
-    const slRounded = roundPrice(sl, position.entryPrice);
-    // Verify SL is on the correct side of entry
-    if (position.direction === "long" && slRounded >= position.entryPrice) return;
-    if (position.direction === "short" && slRounded <= position.entryPrice) return;
-    await ensureConnected();
-    const sdk = getClient();
-    const szMap = await getSzDecimals();
-    const decimals = szMap.get(position.pair);
-    if (decimals === undefined) return;
-    const notional = position.size * position.leverage;
-    const sizeInCoins = roundSize(notional / position.entryPrice, decimals);
-    if (sizeInCoins <= 0) return;
-    const result = await withTimeout(
-      sdk.exchange.placeOrder({
-        coin: `${position.pair}-PERP`,
-        is_buy: position.direction === "short",
-        sz: sizeInCoins,
-        limit_px: slRounded,
-        order_type: { trigger: { triggerPx: slRounded, isMarket: true, tpsl: "sl" } },
-        reduce_only: true,
-      }),
-      API_ORDER_TIMEOUT_MS, "HL placeExchangeStop",
-    );
-    const statuses = result?.response?.data?.statuses;
-    if (statuses?.[0]?.resting) {
-      exchangeStopOids.set(position.id, statuses[0].resting.oid);
-      console.log(`[Quant Live] Exchange stop placed for ${position.pair} @ ${sl}`);
-    } else {
-      console.error(`[Quant Live] Exchange stop not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
-      // Close position immediately if SL can't be placed -- never run unprotected
-      console.log(`[Quant Live] Closing ${position.pair} -- no exchange stop protection`);
-      void liveClosePosition(position.id, "no-sl-protection");
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Quant Live] Exchange stop failed for ${position.pair}: ${msg}`);
-    // Close position immediately if SL can't be placed
-    console.log(`[Quant Live] Closing ${position.pair} -- exchange stop failed`);
-    void liveClosePosition(position.id, "no-sl-protection");
-  }
-}
+
 
 async function placeExchangeTP(position: QuantPosition): Promise<void> {
   if (!position.takeProfit || !isFinite(position.takeProfit) || position.takeProfit <= 0) return;
@@ -232,7 +186,6 @@ export function initLiveEngine(): void {
     await reconcileWithExchange();
     await cancelAllExistingStops();
     for (const pos of getLivePositions()) {
-      if (pos.stopLoss && isFinite(pos.stopLoss)) await placeExchangeStop(pos);
       if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos);
     }
   }, 15_000);
