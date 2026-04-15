@@ -1,4 +1,4 @@
-// GARCH v2 lb1/vw30 long-only $20 mc7 | $2.40/day MDD $32 PF 1.88
+// GARCH v2 lb1/vw30 long-only $15 mc5 | $2.34/day MDD $34 PF 1.67
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -10,14 +10,14 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;     // 1-bar momentum (was 3)
 const GARCH_VOL_WINDOW = 30;  // 30-bar vol window (was 20)
 // Long-only thresholds
-const Z_LONG_1H = 2.0;
-const Z_LONG_4H = 1.5;
+const Z_LONG_1H = 1.5;
+const Z_LONG_4H = 1.0;
 // Exchange SL: 0.3% price for high-lev (10x), 0.15% for low-lev (3x/5x)
 // At 10x, 0.15% SL = 1.5% leveraged — too close to liquidation (5% maint margin)
 // At 10x, 0.3% SL = 3% leveraged — safe distance from liquidation
 const SL_PCT_LOW_LEV = 0.0015;  // 0.15% for 3x/5x
 const SL_PCT_HIGH_LEV = 0.003;  // 0.3% for 10x
-const POSITION_SIZE_USD = 20;
+const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[]): number {

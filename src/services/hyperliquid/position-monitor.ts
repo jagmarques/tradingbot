@@ -20,12 +20,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
 const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
-// Multi-stage trail: 3/1 -> 9/0.5 -> 20/0.5 (Cycle 8 winner, +$0.15/day vs single-stage 9/0.5)
-// Activate early at +3% with loose 1% distance, tighten to 0.5% at +9%, keep 0.5% at +20%+
+// Multi-stage trail: 2/0.5 -> 5/0.3 -> 10/0.3 (sweep winner, Calmar 0.072)
 const TRAIL_STEPS = [
-  { activation: 20, distance: 0.5 },  // +20%+ peak: tight 0.5% trail
-  { activation: 9,  distance: 0.5 },  // +9-20% peak: 0.5% trail
-  { activation: 3,  distance: 1.0 },  // +3-9% peak: loose 1.0% trail (catches marginal winners)
+  { activation: 10, distance: 0.3 },  // +10%+ peak: tight 0.3% trail
+  { activation: 5,  distance: 0.3 },  // +5-10% peak: 0.3% trail
+  { activation: 2,  distance: 0.5 },  // +2-5% peak: 0.5% trail
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);

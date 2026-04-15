@@ -10,17 +10,17 @@ Hyperliquid GARCH quant engine, EVM insider copy trading. TypeScript, Docker, Co
 
 | Parameter | Value |
 |-----------|-------|
-| Entry | 1h z>2.0 AND 4h z>1.5 (long-only) |
-| SL | 0.3% exchange (10x pairs), 0.15% (3x/5x pairs) |
-| Trail | 3/1 -> 9/0.5 -> 20/0.5 (1h boundary) |
-| Margin | $20 fixed |
-| Max concurrent | 7 |
+| Entry | 1h z>1.5 AND 4h z>1.0 (long-only) |
+| SL | 0.3% (10x pairs), 0.15% (3x/5x pairs) |
+| Trail | 2/0.5 -> 5/0.3 -> 10/0.3 (1h boundary) |
+| Margin | $15 fixed |
+| Max concurrent | 5 |
 | Max hold | 72h |
-| Cooldown | 1h per pair after SL |
+| Cooldown | 2h per pair after SL |
 | Blocked hours | 22-23 UTC |
-| Pairs | 127 perpetual futures, leverage cap 10x |
+| Pairs | 125 perpetual futures, leverage cap 10x |
 
-**Verified (297 days, MTM backtest):** $2.40/day, MDD $32, PF 1.88, Calmar 0.074
+**Verified (297 days, MTM backtest):** $2.34/day, MDD $34, PF 1.67, Calmar 0.069
 
 ### Insider Copy Trading (EVM)
 
