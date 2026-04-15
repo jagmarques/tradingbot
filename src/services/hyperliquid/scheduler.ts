@@ -62,7 +62,7 @@ export async function runDirectionalCycle(): Promise<void> {
 
 export function startQuantScheduler(): void {
   if (schedulerInterval !== null || initialRunTimeout !== null) return;
-  console.log("[QuantScheduler] Started (15m interval)");
+  console.log(`[QuantScheduler] Started (${CYCLE_MS / 60000}m interval)`);
   initialRunTimeout = setTimeout(() => { void runDirectionalCycle(); }, 15_000);
   schedulerInterval = setInterval(() => { void runDirectionalCycle(); }, CYCLE_MS);
 }
