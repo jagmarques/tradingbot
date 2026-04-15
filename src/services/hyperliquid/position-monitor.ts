@@ -188,8 +188,18 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // SL handled by exchange stop orders (placed in live-executor at entry).
-      // Bot-level 1h-boundary SL check removed: caused gap losses by overriding exchange stop with worse market price.
+      // Software SL check (backup for exchange stop -- detects fill faster, triggers alert)
+      if (position.stopLoss && position.stopLoss > 0) {
+        const slHit = position.direction === "long"
+          ? currentPrice <= position.stopLoss
+          : currentPrice >= position.stopLoss;
+        if (slHit) {
+          console.log(`[PositionMonitor] SL hit: ${position.pair} ${position.direction} price ${currentPrice} <= SL ${position.stopLoss}`);
+          await tryClose(position, "SL hit");
+          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
+          continue;
+        }
+      }
 
       // Trailing stop
       const pricePct =
