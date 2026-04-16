@@ -232,7 +232,7 @@ async function checkPositionStops(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        // Trail EXIT fires immediately when triggered (protects profits)
+        // Trail EXIT fires every poll (3s) - backtest must match this behavior
         const trailTrigger = peak - trailCfg.distance;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(

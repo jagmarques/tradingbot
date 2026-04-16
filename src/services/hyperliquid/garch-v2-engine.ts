@@ -1,4 +1,4 @@
-// GARCH v2 lb1/vw20 long-only $15 mc7 | $3.23/day MDD $31 PF 1.82
+// GARCH v2 lb1 1h:vw15 4h:vw20 long-only $15 mc15 | $4.06/day MDD $38 PF 1.73
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -7,25 +7,26 @@ import { isInStopLossCooldown } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
-const GARCH_LOOKBACK = 1;     // 1-bar momentum (was 3)
-const GARCH_VOL_WINDOW = 20;  // 20-bar vol window (best Calmar 0.104)
+const GARCH_LOOKBACK = 1;     // 1-bar momentum
+const GARCH_VOL_WINDOW_1H = 15;  // 15-bar vol window for 1h (ultra sweep winner)
+const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
 // Long-only thresholds
 const Z_LONG_1H = 1.5;
 const Z_LONG_4H = 1.0;
 // Exchange SL: 0.3% price for high-lev (10x), 0.15% for low-lev (3x/5x)
 // At 10x, 0.15% SL = 1.5% leveraged — too close to liquidation (5% maint margin)
 // At 10x, 0.3% SL = 3% leveraged — safe distance from liquidation
-const SL_PCT_LOW_LEV = 0.0015;  // 0.15% for 3x/5x
-const SL_PCT_HIGH_LEV = 0.003;  // 0.3% for 10x
+const SL_PCT_LOW_LEV = 0.0025;  // 0.25% for 3x/5x
+const SL_PCT_HIGH_LEV = 0.0045; // 0.45% for 10x
 const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
-function computeZScore(candles: OhlcvCandle[]): number {
-  if (candles.length < GARCH_VOL_WINDOW + GARCH_LOOKBACK + 1) return 0;
+function computeZScore(candles: OhlcvCandle[], volWindow: number): number {
+  if (candles.length < volWindow + GARCH_LOOKBACK + 1) return 0;
   const last = candles.length - 1;
   const mom = candles[last].close / candles[last - GARCH_LOOKBACK].close - 1;
   const returns: number[] = [];
-  for (let i = last - GARCH_VOL_WINDOW; i <= last; i++) {
+  for (let i = last - volWindow; i <= last; i++) {
     if (i < 1) continue;
     returns.push(candles[i].close / candles[i - 1].close - 1);
   }
@@ -67,8 +68,8 @@ export async function runGarchV2Cycle(): Promise<void> {
       const completed1h = candles1h.slice(0, -1);
       const completed4h = candles4h.slice(0, -1);
 
-      const z1h = computeZScore(completed1h);
-      const z4h = computeZScore(completed4h);
+      const z1h = computeZScore(completed1h, GARCH_VOL_WINDOW_1H);
+      const z4h = computeZScore(completed4h, GARCH_VOL_WINDOW_4H);
 
       // Long-only: shorts disabled
       if (!(z1h > Z_LONG_1H && z4h > Z_LONG_4H)) continue;

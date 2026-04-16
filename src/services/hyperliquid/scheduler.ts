@@ -8,7 +8,7 @@ let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
 const CYCLE_MS = 15 * 60 * 1000;
-const SL_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2h cooldown (sweep winner: PF 1.67, MDD $34)
+const SL_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h cooldown (ultra sweep winner)
 const slCooldowns = new Map<string, number>();
 
 export function recordStopLossCooldown(pair: string, direction: string, tradeType = "directional"): void {
