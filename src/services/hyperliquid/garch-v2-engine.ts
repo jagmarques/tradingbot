@@ -1,4 +1,4 @@
-// GARCH v2 lb1/vw30 long-only $15 mc5 | $2.34/day MDD $34 PF 1.67
+// GARCH v2 lb1/vw20 long-only $15 mc7 | $3.23/day MDD $31 PF 1.82
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -8,7 +8,7 @@ import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;     // 1-bar momentum (was 3)
-const GARCH_VOL_WINDOW = 30;  // 30-bar vol window (was 20)
+const GARCH_VOL_WINDOW = 20;  // 20-bar vol window (best Calmar 0.104)
 // Long-only thresholds
 const Z_LONG_1H = 1.5;
 const Z_LONG_4H = 1.0;

@@ -14,17 +14,15 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 // Per-engine stagnation (max hold time)
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-v2": 72 * 60 * 60 * 1000, // 72h (3d) max hold
+  "garch-v2": 120 * 60 * 60 * 1000, // 120h (5d) max hold
 };
 
 // Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
 const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
 
-// Multi-stage trail: 2/0.5 -> 5/0.3 -> 10/0.3 (sweep winner, Calmar 0.072)
+// Single-stage trail: 2/1.5 (deep sweep winner, Calmar 0.104)
 const TRAIL_STEPS = [
-  { activation: 10, distance: 0.3 },  // +10%+ peak: tight 0.3% trail
-  { activation: 5,  distance: 0.3 },  // +5-10% peak: 0.3% trail
-  { activation: 2,  distance: 0.5 },  // +2-5% peak: 0.5% trail
+  { activation: 2,  distance: 1.5 },  // +2%+ peak: 1.5% trail
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
