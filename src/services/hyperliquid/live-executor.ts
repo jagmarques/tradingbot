@@ -179,6 +179,20 @@ export function initLiveEngine(): void {
   const allOpen = loadOpenQuantPositions();
   const liveOnly = allOpen.filter(p => p.mode === "live" && p.exchange !== "lighter");
   for (const pos of liveOnly) {
+    // Recompute SL for garch-v2 positions using current config (fixes stale capped SL from old deploys)
+    if (pos.tradeType === "garch-v2" && pos.direction === "long" && pos.indicatorsAtEntry?.includes("slPct:") && pos.stopLoss && pos.stopLoss > 0) {
+      const slPctMatch = pos.indicatorsAtEntry.match(/slPct:([\d.]+)/);
+      if (slPctMatch) {
+        const slPct = parseFloat(slPctMatch[1]!);
+        const correctSl = pos.entryPrice * (1 - slPct);
+        const currentSlPct = Math.abs(pos.stopLoss / pos.entryPrice - 1);
+        if (Math.abs(currentSlPct - slPct) > 0.0005) {
+          console.log(`[Quant Live] Recomputing SL for ${pos.pair}: ${pos.stopLoss.toFixed(6)} (${(currentSlPct * 100).toFixed(2)}%) -> ${correctSl.toFixed(6)} (${(slPct * 100).toFixed(2)}%)`);
+          pos.stopLoss = correctSl;
+          saveQuantPosition(pos);
+        }
+      }
+    }
     livePositions.set(pos.id, pos);
   }
   console.log(`[Quant Live] Init: ${liveOnly.length} live positions restored from DB`);
