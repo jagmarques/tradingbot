@@ -179,14 +179,15 @@ export function initLiveEngine(): void {
   const allOpen = loadOpenQuantPositions();
   const liveOnly = allOpen.filter(p => p.mode === "live" && p.exchange !== "lighter");
   for (const pos of liveOnly) {
-    // Recompute SL for garch-v2 positions using current config (fixes stale capped SL from old deploys)
-    if (pos.tradeType === "garch-v2" && pos.direction === "long" && pos.indicatorsAtEntry?.includes("slPct:") && pos.stopLoss && pos.stopLoss > 0) {
+    // Recompute SL only if STILL in initial loss zone (don't overwrite breakeven or trailed SL)
+    if (pos.tradeType === "garch-v2" && pos.direction === "long" && pos.indicatorsAtEntry?.includes("slPct:") && pos.stopLoss && pos.stopLoss > 0 && pos.stopLoss < pos.entryPrice) {
       const slPctMatch = pos.indicatorsAtEntry.match(/slPct:([\d.]+)/);
       if (slPctMatch) {
         const slPct = parseFloat(slPctMatch[1]!);
         const correctSl = pos.entryPrice * (1 - slPct);
-        const currentSlPct = Math.abs(pos.stopLoss / pos.entryPrice - 1);
-        if (Math.abs(currentSlPct - slPct) > 0.0005) {
+        const currentSlPct = 1 - pos.stopLoss / pos.entryPrice;
+        // Only fix if SL is TIGHTER than expected (capped by old QUANT_MAX_SL_PCT=1.0)
+        if (currentSlPct < slPct - 0.0005) {
           console.log(`[Quant Live] Recomputing SL for ${pos.pair}: ${pos.stopLoss.toFixed(6)} (${(currentSlPct * 100).toFixed(2)}%) -> ${correctSl.toFixed(6)} (${(slPct * 100).toFixed(2)}%)`);
           pos.stopLoss = correctSl;
           saveQuantPosition(pos);
@@ -286,7 +287,7 @@ async function reconcileWithExchange(): Promise<void> {
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
         exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
       }
-      const fees = pos.size * pos.leverage * 0.00045 * 2;
+      const fees = pos.size * pos.leverage * 0.00035 * 2;
       const pnl = calcPnl(pos.direction, pos.entryPrice, exitPrice, pos.size, pos.leverage, fees);
       const now = new Date().toISOString();
 
@@ -869,7 +870,7 @@ export async function liveClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    const fees = position.size * position.leverage * 0.00045 * 2;
+    const fees = position.size * position.leverage * 0.00035 * 2;
     const pnl = calcPnl(position.direction, position.entryPrice, exitPrice, position.size, position.leverage, fees);
 
     const now = new Date().toISOString();
@@ -964,7 +965,7 @@ export async function liveClosePosition(
               const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
               reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
             }
-            const fees = position.size * position.leverage * 0.00045 * 2;
+            const fees = position.size * position.leverage * 0.00035 * 2;
             const estPnl = calcPnl(position.direction, position.entryPrice, reconPrice, position.size, position.leverage, fees);
             const now = new Date().toISOString();
             const exitReason = `${reason} (timeout-reconciled)`;

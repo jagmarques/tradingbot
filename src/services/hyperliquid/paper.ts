@@ -171,7 +171,7 @@ export async function paperClosePosition(
 
   const fees = posExchange === "lighter"
     ? position.size * position.leverage * LIGHTER_PAPER_SPREAD_PCT * 2
-    : position.size * position.leverage * 0.00045 * 2;
+    : position.size * position.leverage * 0.00035 * 2;
   const fundingPnl = accumulatedFunding.get(positionId) ?? 0;
   const rawPnl = calcPnl(position.direction, position.entryPrice, currentPrice, position.size, position.leverage, 0);
 

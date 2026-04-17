@@ -366,16 +366,10 @@ export function startPositionMonitor(): void {
     return;
   }
 
-  // On startup: reset peak to 0 so trail builds from current price (prevents stale peaks from instantly triggering trail)
+  // Keep persisted peak PnL - trail state survives restart
   const existing = getOpenQuantPositions();
-  for (const pos of existing) {
-    if ((pos.maxUnrealizedPnlPct ?? 0) > 0) {
-      pos.maxUnrealizedPnlPct = 0;
-      saveQuantPosition(pos);
-    }
-  }
   if (existing.length > 0) {
-    console.log(`[PositionMonitor] Reset peak PnL for ${existing.length} positions (trail starts fresh)`);
+    console.log(`[PositionMonitor] Loaded ${existing.length} positions with persisted peak PnL`);
   }
 
   console.log(`[PositionMonitor] Started (interval: ${QUANT_POSITION_MONITOR_INTERVAL_MS}ms)`);
