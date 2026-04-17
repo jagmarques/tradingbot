@@ -17,9 +17,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000, // 120h (5d) max hold
 };
 
-// Trail 20/8 + BE8% (novel sweep max profit winner)
+// 3-stage trail: 10/4 -> 15/8 -> 30/10 (stepped sweep winner, WR 60%)
 const TRAIL_STEPS = [
-  { activation: 20, distance: 8 },
+  { activation: 30, distance: 10 },
+  { activation: 15, distance: 8 },
+  { activation: 10, distance: 4 },
 ];
 const BREAKEVEN_PCT = 8;
 const DEAD_TRAIL = { activation: 999, distance: 999 };

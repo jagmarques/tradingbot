@@ -1,4 +1,4 @@
-// GARCH v2 $15 mc7 z2/2 SL1.5/2.0 T20/8 BE8% cd4h | 1m-verified: $5.42/day MDD $25 PF 2.48 Calmar 0.218
+// GARCH v2 $15 mc7 z2/2 SL2.0/2.5 T10/4-15/8-30/10 BE8% cd4h | 1m: $5.66/day MDD $24 PF 2.42 WR 60%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -13,9 +13,9 @@ const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
 // z2/2.0: strictest entries, best risk-adjusted profit
 const Z_LONG_1H = 2.0;
 const Z_LONG_4H = 2.0;
-// Tighter SL works with stricter entries (less noise chop)
-const SL_PCT_LOW_LEV = 0.015;
-const SL_PCT_HIGH_LEV = 0.020;
+// Wider SL works with 3-stage trail (60% WR verified)
+const SL_PCT_LOW_LEV = 0.020;
+const SL_PCT_HIGH_LEV = 0.025;
 const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
