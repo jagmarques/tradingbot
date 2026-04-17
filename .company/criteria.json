@@ -1,0 +1,11 @@
+{
+  "goal": "Find NON-GARCH strategy achieving >$5/day with MTM MDD <$20 on $90 equity, Hyperliquid perps",
+  "context": "GARCH z-score exhausted at $0.58/day MDD $20 (Calmar 0.029). Need Calmar >0.25. Fee 0.035% taker. 125 pairs in /tmp/bt-pair-cache-5m/",
+  "criteria": [
+    {"id": 1, "description": "At least 3 fundamentally different strategies tested (not z-score variants)", "passes": false, "evidence": null},
+    {"id": 2, "description": "All strategies use corrected engine (1h-only trail, MTM MDD, correct short PnL)", "passes": false, "evidence": null},
+    {"id": 3, "description": "At least one strategy achieves >$5/day with MTM MDD <$20", "passes": false, "evidence": null},
+    {"id": 4, "description": "Best strategy has WR >50% (high win rate, not low-WR momentum)", "passes": false, "evidence": null},
+    {"id": 5, "description": "Results are honest (no look-ahead bias, realistic fees, MTM MDD)", "passes": false, "evidence": null}
+  ]
+}

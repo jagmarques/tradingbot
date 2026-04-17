@@ -1,0 +1,211 @@
+==================================================================================================================================
+  VCAE — VOLATILITY CONTRACTION AFTER EXPANSION (3rd engine candidate)
+  Signal: 1h climax bar (range >= K*ATR, body>=0.6*range) + N monotonic contraction bars
+          + 20-bar structural anchor + body dry-up + trigger beyond climax midpoint
+  SL 0.15%, multi-stage trail 3/1 -> 9/0.5 -> 20/0.5, max hold 48h
+  Walk-forward: IS 2025-06 -> 2025-12, OOS 2025-12 -> 2026-03
+==================================================================================================================================
+
+Loading pairs...
+97 pairs loaded
+
+  Signal counts (entry bars, full loaded history):
+    base m2.0 n3 r0.6 anchor+dryup            key=m2_n3_r0.6_a1_d1                        short=31  long=41  total=72
+    climax 1.5                                key=m1.5_n3_r0.6_a1_d1                      short=37  long=52  total=89
+    climax 2.5                                key=m2.5_n3_r0.6_a1_d1                      short=25  long=35  total=60
+    n 2 bars                                  key=m2_n2_r0.6_a1_d1                        short=107  long=150  total=257
+    n 4 bars                                  key=m2_n4_r0.6_a1_d1                        short=5  long=8  total=13
+    ratio 0.5                                 key=m2_n3_r0.5_a1_d1                        short=25  long=40  total=65
+    ratio 0.7                                 key=m2_n3_r0.7_a1_d1                        short=31  long=43  total=74
+    no anchor                                 key=m2_n3_r0.6_a0_d1                        short=36  long=44  total=80
+    no dry-up                                 key=m2_n3_r0.6_a1_d0                        short=677  long=634  total=1311
+    no anchor no dry-up                       key=m2_n3_r0.6_a0_d0                        short=792  long=774  total=1566
+
+==================================================================================================================================
+  TEST 1/5/6: VCAE STANDALONE VARIANTS @ m$15 (base + sanity removals)
+==================================================================================================================================
+
+  VCAE base m2.0 n3 r0.6 anchor+dryup
+    IS  $/day -$0.00  MDD $0.80  PF 0.00  WR 0.0%  N=4  maxL -$0.40
+    OOS $/day +$0.01  MDD $0.27  PF 2.55  WR 25.0%  N=4  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE climax 1.5
+    IS  $/day -$0.00  MDD $0.80  PF 0.00  WR 0.0%  N=4  maxL -$0.40
+    OOS $/day +$0.00  MDD $0.84  PF 1.01  WR 25.0%  N=8  maxL -$0.44
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE climax 2.5
+    IS  $/day -$0.00  MDD $0.13  PF 0.00  WR 0.0%  N=1  maxL -$0.13
+    OOS $/day +$0.01  MDD $0.27  PF 2.55  WR 25.0%  N=4  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE n 2 bars
+    IS  $/day -$0.03  MDD $4.58  PF 0.14  WR 7.4%  N=27  maxL -$0.44
+    OOS $/day -$0.01  MDD $2.84  PF 0.54  WR 15.8%  N=19  maxL -$0.41
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE n 4 bars
+    IS  $/day +$0.00  MDD $0.00  PF Infinity  WR 0.0%  N=0  maxL +$0.00
+    OOS $/day -$0.01  MDD $0.57  PF 0.00  WR 0.0%  N=3  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE ratio 0.5
+    IS  $/day -$0.00  MDD $0.80  PF 0.00  WR 0.0%  N=4  maxL -$0.40
+    OOS $/day +$0.01  MDD $0.27  PF 2.55  WR 25.0%  N=4  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE ratio 0.7
+    IS  $/day -$0.00  MDD $0.80  PF 0.00  WR 0.0%  N=4  maxL -$0.40
+    OOS $/day +$0.00  MDD $0.57  PF 1.47  WR 16.7%  N=6  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE no anchor
+    IS  $/day -$0.01  MDD $0.93  PF 0.00  WR 0.0%  N=5  maxL -$0.40
+    OOS $/day +$0.00  MDD $0.58  PF 1.46  WR 20.0%  N=5  maxL -$0.36
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE no dry-up
+    IS  $/day -$0.09  MDD $17.78  PF 0.40  WR 16.0%  N=175  maxL -$0.45
+    OOS $/day +$0.02  MDD $5.61  PF 1.12  WR 25.7%  N=144  maxL -$0.44
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE no anchor no dry-up
+    IS  $/day -$0.12  MDD $22.01  PF 0.37  WR 15.5%  N=206  maxL -$0.45
+    OOS $/day +$0.02  MDD $8.13  PF 1.09  WR 24.6%  N=171  maxL -$0.44
+    OOS kill: FAIL - OOS $/day < $0.15
+
+==================================================================================================================================
+  TEST 6/7: VCAE LONG-ONLY and SHORT-ONLY (base params @ m$15)
+==================================================================================================================================
+  VCAE long-only (base)
+    IS  $/day -$0.00  MDD $0.67  PF 0.00  WR 0.0%  N=3  maxL -$0.40
+    OOS $/day +$0.00  MDD $0.00  PF Infinity  WR 0.0%  N=0  maxL +$0.00
+    OOS kill: FAIL - OOS $/day < $0.15
+
+  VCAE short-only (base)
+    IS  $/day -$0.00  MDD $0.13  PF 0.00  WR 0.0%  N=1  maxL -$0.13
+    OOS $/day +$0.01  MDD $0.27  PF 2.55  WR 25.0%  N=4  maxL -$0.22
+    OOS kill: FAIL - OOS $/day < $0.15
+
+==================================================================================================================================
+  STANDALONE SUMMARY @ m$15
+==================================================================================================================================
+Variant                                  IS$/d    ISMdd   ISPF   ISN    OOS$/d   OOSMdd  OOSPF  OOSN   kill
+----------------------------------------------------------------------------------------------------------------------------------
+base m2.0 n3 r0.6 anchor+dryup          -$0.00       $1   0.00     4    +$0.01       $0   2.55     4   FAIL
+climax 1.5                              -$0.00       $1   0.00     4    +$0.00       $1   1.01     8   FAIL
+climax 2.5                              -$0.00       $0   0.00     1    +$0.01       $0   2.55     4   FAIL
+n 2 bars                                -$0.03       $5   0.14    27    -$0.01       $3   0.54    19   FAIL
+n 4 bars                                +$0.00       $0 Infinity     0    -$0.01       $1   0.00     3   FAIL
+ratio 0.5                               -$0.00       $1   0.00     4    +$0.01       $0   2.55     4   FAIL
+ratio 0.7                               -$0.00       $1   0.00     4    +$0.00       $1   1.47     6   FAIL
+no anchor                               -$0.01       $1   0.00     5    +$0.00       $1   1.46     5   FAIL
+no dry-up                               -$0.09      $18   0.40   175    +$0.02       $6   1.12   144   FAIL
+no anchor no dry-up                     -$0.12      $22   0.37   206    +$0.02       $8   1.09   171   FAIL
+
+==================================================================================================================================
+  STATISTICAL-ARTIFACT CHECK
+==================================================================================================================================
+  Base (anchor+dryup):  OOS $/day +$0.01  MDD $0  PF 2.55  N=4
+  No anchor:            OOS $/day +$0.00  MDD $1  PF 1.46  N=5
+  No dry-up:            OOS $/day +$0.02  MDD $6  PF 1.12  N=144
+  No anchor no dry-up:  OOS $/day +$0.02  MDD $8  PF 1.09  N=171
+  -> Edge degrades when filters removed: structural components are load-bearing (not artifacts).
+
+==================================================================================================================================
+  TEST 7: PORTFOLIO GARCH + REX + VCAE (using best VCAE variant: no dry-up)
+==================================================================================================================================
+
+  Running standalone reference runs at m$10 (for additivity)...
+    A alone m$10  IS +$1.31/d MDD $8  OOS +$0.78/d MDD $11  N=851
+    B alone m$10  IS +$0.85/d MDD $16  OOS +$0.83/d MDD $8  N=772
+    V alone m$10  IS -$0.06/d MDD $12  OOS +$0.01/d MDD $4  N=144
+
+  --- A$15 + B$15 (no V, baseline) ---
+    IS  total +$593.41  $/day +$3.24  MDD $25.02  PF 2.69  N=2295
+        A=+$359.91 (1242)  B=+$233.50 (1053)  V=+$0.00 (0)
+    OOS total +$274.43  $/day +$2.41  MDD $15.40  PF 2.00  N=1623
+        A=+$133.33 (851)  B=+$141.11 (772)  V=+$0.00 (0)
+
+  --- A$15 + B$15 + V$5 ---
+    IS  total +$587.73  $/day +$3.21  MDD $25.18  PF 2.63  N=2470
+        A=+$359.91 (1242)  B=+$233.50 (1053)  V=-$5.68 (175)
+    OOS total +$275.27  $/day +$2.41  MDD $15.40  PF 1.98  N=1767
+        A=+$133.33 (851)  B=+$141.11 (772)  V=+$0.84 (144)
+
+  --- A$15 + B$15 + V$8 ---
+    IS  total +$584.31  $/day +$3.19  MDD $25.27  PF 2.60  N=2470
+        A=+$359.91 (1242)  B=+$233.50 (1053)  V=-$9.10 (175)
+    OOS total +$275.78  $/day +$2.42  MDD $15.40  PF 1.97  N=1767
+        A=+$133.33 (851)  B=+$141.11 (772)  V=+$1.35 (144)
+
+  --- A$15 + B$15 + V$10 ---
+    IS  total +$582.04  $/day +$3.18  MDD $25.34  PF 2.58  N=2470
+        A=+$359.91 (1242)  B=+$233.50 (1053)  V=-$11.37 (175)
+    OOS total +$276.12  $/day +$2.42  MDD $15.40  PF 1.96  N=1767
+        A=+$133.33 (851)  B=+$141.11 (772)  V=+$1.68 (144)
+
+  --- A$10 + B$10 + V$10 (balanced) ---
+    IS  total +$384.24  $/day +$2.10  MDD $17.00  PF 2.52  N=2470
+        A=+$239.94 (1242)  B=+$155.67 (1053)  V=-$11.37 (175)
+    OOS total +$184.64  $/day +$1.62  MDD $10.26  PF 1.94  N=1767
+        A=+$88.88 (851)  B=+$94.07 (772)  V=+$1.68 (144)
+
+  --- A$10 + B$10 (no V, bl10) ---
+    IS  total +$395.61  $/day +$2.16  MDD $16.68  PF 2.69  N=2295
+        A=+$239.94 (1242)  B=+$155.67 (1053)  V=+$0.00 (0)
+    OOS total +$182.96  $/day +$1.60  MDD $10.26  PF 2.00  N=1623
+        A=+$88.88 (851)  B=+$94.07 (772)  V=+$0.00 (0)
+
+  --- A$10 + V$10 (A+V only) ---
+    IS  total +$228.57  $/day +$1.25  MDD $8.14  PF 2.60  N=1417
+        A=+$239.94 (1242)  B=+$0.00 (0)  V=-$11.37 (175)
+    OOS total +$90.57  $/day +$0.79  MDD $11.57  PF 1.80  N=995
+        A=+$88.88 (851)  B=+$0.00 (0)  V=+$1.68 (144)
+
+  --- B$10 + V$10 (B+V only) ---
+    IS  total +$144.30  $/day +$0.79  MDD $16.36  PF 2.12  N=1228
+        A=+$0.00 (0)  B=+$155.67 (1053)  V=-$11.37 (175)
+    OOS total +$95.75  $/day +$0.84  MDD $8.01  PF 2.00  N=916
+        A=+$0.00 (0)  B=+$94.07 (772)  V=+$1.68 (144)
+
+==================================================================================================================================
+  OOS CORRELATION ANALYSIS (daily P&L)
+==================================================================================================================================
+  corr(A,B) = 0.096
+  corr(A,V) = -0.015
+  corr(B,V) = 0.029
+
+  ADDITIVITY (A$10+B$10+V$10):
+    Expected $/day (sum of singles): +$1.62
+    Actual   $/day:                  +$1.62
+    Delta:                           -$0.00
+    Expected MDD (sum of singles):   $22.74
+    Actual   MDD:                    $10.26
+    MDD reduction (diversification): $12.48
+
+  VCAE MARGINAL CONTRIBUTION TO A+B PORTFOLIO (OOS):
+    Baseline A$10+B$10:        $/day +$1.60  MDD $10.26
+    With VCAE A$10+B$10+V$10:  $/day +$1.62  MDD $10.26
+    Marginal $/day from V:     +$0.01
+    Marginal MDD change:       $+0.00
+    Standalone V m$10 OOS:     +$0.01/d  MDD $3.74
+    -> V retains most of its standalone edge (uncorrelated).
+
+==================================================================================================================================
+  PRIMARY SPEC: A$15 + B$15 + V$5-$10  vs  A$15+B$15 baseline (OOS marginal)
+==================================================================================================================================
+  Baseline A$15+B$15:        OOS +$2.41/d  MDD $15.40  PF 2.00  N=1623
+  A$15 + B$15 + V$5: OOS +$2.41/d  MDD $15.40  PF 1.98  | marginal +$0.01/d  $-0.00 MDD
+  A$15 + B$15 + V$8: OOS +$2.42/d  MDD $15.40  PF 1.97  | marginal +$0.01/d  $-0.00 MDD
+  A$15 + B$15 + V$10: OOS +$2.42/d  MDD $15.40  PF 1.96  | marginal +$0.01/d  +$0.00 MDD
+
+==================================================================================================================================
+  VERDICT
+==================================================================================================================================
+  Best VCAE variant: no dry-up  (key=m2_n3_r0.6_a1_d0)
+    IS  $/day -$0.09  MDD $17.78  PF 0.40  N=175
+    OOS $/day +$0.02  MDD $5.61  PF 1.12  N=144
+  KILL: OOS $/day < $0.15
+  Verdict: DO NOT DEPLOY as 3rd engine.

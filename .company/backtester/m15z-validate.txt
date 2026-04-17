@@ -1,0 +1,96 @@
+==================================================================================================================================
+  M15z6 VALIDATION — walk-forward + concentration analysis
+  IS: 2025-06-01 -> 2025-12-01 (183d)
+  OOS: 2025-12-01 -> 2026-03-25 (114d)
+==================================================================================================================================
+
+Loading...
+102 pairs loaded
+
+=== WALK-FORWARD VALIDATION ===
+
+z-threshold     Period     $/day     MDD    PF    WR%     MaxL      N
+----------------------------------------------------------------------------------------------------------------------------------
+z>5/<-5         IS       +$21.42    $153  6.57    9.8   -$0.22   7812
+                OOS       +$3.89     $43  1.92   15.0   -$0.22   5692
+                FULL     +$14.69    $153  4.68   12.0   -$0.22  13504
+
+z>5.5/<-5.5     IS       +$21.69     $55 13.80   12.1   -$0.22   3566
+                OOS       +$2.40     $32  2.09   16.1   -$0.22   3023
+                FULL     +$14.28     $55  8.56   14.0   -$0.22   6589
+
+z>6/<-6         IS        +$9.49     $19 15.29   13.6   -$0.22   1402
+                OOS       +$1.25     $19  2.15   17.3   -$0.22   1529
+                FULL      +$6.33     $19  8.64   15.5   -$0.22   2931
+
+z>6.5/<-6.5     IS        +$0.12      $5  1.61   10.8   -$0.22    389
+                OOS       +$0.21     $14  1.50   13.3   -$0.22    580
+                FULL      +$0.15     $14  1.55   12.3   -$0.22    969
+
+z>7/<-7         IS        +$0.02      $4  1.56   10.6   -$0.22     85
+                OOS       -$0.02      $7  0.82    7.1   -$0.22    154
+                FULL      +$0.00      $7  1.07    8.4   -$0.22    239
+
+z>8/<-8         IS        +$0.01      $0  9.90   20.0   -$0.07      5
+                OOS       -$0.00      $0  0.00    0.0   -$0.07      2
+                FULL      +$0.01      $0  6.60   14.3   -$0.07      7
+
+
+=== CONCENTRATION ANALYSIS (z=6 full period) ===
+
+Total: 2931 trades, +$1878.98 net, PF 8.64
+
+Top 10 winning trades:
+  RENDER     short  +$121.65 trail
+  ZK         short  +$109.41 trail
+  ONDO       short   +$85.41 trail
+  SUSHI      short   +$76.32 trail
+  MINA       short   +$69.13 trail
+  W          short   +$62.63 trail
+  STRK       short   +$59.53 trail
+  OGN        short   +$56.84 trail
+  IMX        short   +$56.45 trail
+  PYTH       short   +$54.28 trail
+
+Top 10 losing trades:
+  JUP        long     -$0.22 sl
+  JUP        long     -$0.22 sl
+  ONDO       long     -$0.22 sl
+  TRX        long     -$0.22 sl
+  TRX        long     -$0.22 sl
+  JUP        long     -$0.22 sl
+  CRV        long     -$0.22 sl
+  ONDO       long     -$0.22 sl
+  AAVE       long     -$0.22 sl
+  BCH        long     -$0.22 sl
+
+Top 10 pairs by PnL:
+  RENDER      +$123.16 trades=28
+  ZK          +$118.80 trades=33
+  ONDO         +$86.14 trades=38
+  SUSHI        +$79.67 trades=29
+  MINA         +$69.94 trades=25
+  W            +$63.11 trades=27
+  OGN          +$61.21 trades=33
+  PYTH         +$59.88 trades=33
+  STRK         +$59.41 trades=23
+  IMX          +$58.59 trades=25
+
+Bottom 10 pairs by PnL:
+  BCH           -$4.60 trades=46
+  TRX           -$3.79 trades=41
+  ZRO           -$3.04 trades=32
+  STRAX         -$2.77 trades=30
+  STG           -$2.09 trades=31
+  CRV           -$2.02 trades=32
+  LISTA         -$1.55 trades=32
+  COMP          -$1.41 trades=21
+  ZEN           -$1.25 trades=33
+  CYBER         -$1.13 trades=23
+
+Top 5 pairs contribution: +$477.71 (25% of total)
+Top 10 pairs contribution: +$779.91 (42% of total)
+Single biggest trade: +$121.65 (6% of total)
+Single biggest day: +$1717.44 (91% of total)
+Top 5 days contribution: +$1849.41 (98% of total)
+Total days traded: 280

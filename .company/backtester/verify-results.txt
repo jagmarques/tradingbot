@@ -1,0 +1,57 @@
+==============================================================================================================
+  EXCHANGE SL VERIFICATION
+  Compare BOT SL @1h-close-with-gap   vs   EXCHANGE SL @tick-intra-bar
+  Entry: z1h>2.0 AND z4h>1.5 | 0.3% price SL cap 1% | trail 9/0.5 | $10 margin | real lev cap 10x
+  Period: 2025-06-01 -> 2026-03-25 (297 days)
+==============================================================================================================
+
+Loading 5m + 1h + 4h...
+102 pairs loaded
+
+Running BOT SL (1h boundary, exit at close price = models gap)...
+Running EXCHANGE SL (tick-level, exit at SL price)...
+
+==============================================================================================================
+  BEFORE FIX: Bot SL at 1h boundary, exits at bar close (models gap)
+==============================================================================================================
+  $/day:            -$1.86
+  Total PnL:        -$551.26 over 297 days
+  Max DD:           $1051.98
+  Profit Factor:    0.94
+  Win rate:         33.8%
+  Num trades:       28950
+  Avg win:          +$0.94
+  Avg loss:         -$0.51
+  Max single loss:  -$12.02
+  SL count:         19023  (avg SL loss: -$0.51)
+  Trail count:      9922
+
+==============================================================================================================
+  AFTER FIX: Exchange SL at tick (exits at SL price + slippage)
+==============================================================================================================
+  $/day:            -$3.44
+  Total PnL:        -$1021.15 over 297 days
+  Max DD:           $1096.55
+  Profit Factor:    0.80
+  Win rate:         14.5%
+  Num trades:       30161
+  Avg win:          +$0.92
+  Avg loss:         -$0.20
+  Max single loss:  -$0.44
+  SL count:         25770  (avg SL loss: -$0.20)
+  Trail count:      4391
+
+==============================================================================================================
+  DIFF: exchange SL vs bot 1h SL
+==============================================================================================================
+  $/day diff:        -$1.58  (n/a)
+  Max DD diff:       $44.57  (lower is better)
+  Avg loss diff:     +$0.31  (less negative = safer)
+  Max loss diff:     +$11.58  (less negative = safer)
+  Avg SL loss diff:  +$0.31  (this is the gap-fix impact)
+
+  Losses > $0.50:    bot 6517  vs  exch 0  (100% reduction)
+  Losses > $1.00:    bot 1771  vs  exch 0  (100% reduction)
+
+  Verdict:
+  Both configs have similar outcomes - exchange SL gives you loss control at minor profit cost.

@@ -1,0 +1,67 @@
+═══════════════════════════════════════════════════════════════
+Structure Trend-Break Backtest
+Pairs: 111  Margin: $15  Lev: 10x  Notional: $150
+IS: 2023-01-01 -> 2025-09-01
+OOS: 2025-09-01 -> 2026-04-01
+SL: pivot-buffered (0.15%-2%), Trail: 3/1 -> 9/0.5 -> 20/0.5, MaxHold: 48h
+═══════════════════════════════════════════════════════════════
+
+─── All configs (sorted by OOS $/day) ─────────────────────
+config                        IS:                                                            OOS:
+piv3_k4_rev          IS n=11813 pf= 0.52 $/d= -3.10 dd=3057  | OOS n= 2735 wr= 46.4% pf= 0.53 $/d= -3.26 dd= 705
+piv2_k4_rev          IS n=11878 pf= 0.51 $/d= -3.15 dd=3059  | OOS n= 2693 wr= 46.2% pf= 0.49 $/d= -3.46 dd= 736
+piv5_k4_rev          IS n=11877 pf= 0.49 $/d= -3.24 dd=3149  | OOS n= 2575 wr= 46.9% pf= 0.44 $/d= -3.67 dd= 781
+piv2_k4_cont         IS n=15466 pf= 0.60 $/d= -3.98 dd=3880  | OOS n= 3514 wr= 55.5% pf= 0.59 $/d= -3.90 dd= 836
+piv3_k4_cont         IS n=15648 pf= 0.65 $/d= -3.41 dd=3316  | OOS n= 3126 wr= 55.7% pf= 0.53 $/d= -4.24 dd= 898
+piv5_k4_cont         IS n=14797 pf= 0.62 $/d= -3.38 dd=3274  | OOS n= 3417 wr= 53.4% pf= 0.49 $/d= -5.01 dd=1055
+piv2_k4_both         IS n=27273 pf= 0.56 $/d= -7.10 dd=6908  | OOS n= 6167 wr= 51.4% pf= 0.55 $/d= -7.33 dd=1560
+piv3_k4_both         IS n=27433 pf= 0.60 $/d= -6.50 dd=6316  | OOS n= 5845 wr= 51.4% pf= 0.53 $/d= -7.45 dd=1594
+piv5_k4_both         IS n=26637 pf= 0.57 $/d= -6.61 dd=6415  | OOS n= 5981 wr= 50.7% pf= 0.47 $/d= -8.60 dd=1828
+piv3_k3_rev          IS n=37959 pf= 0.54 $/d= -9.16 dd=8906  | OOS n= 9064 wr= 47.1% pf= 0.50 $/d=-11.41 dd=2429
+piv2_k3_rev          IS n=37394 pf= 0.53 $/d= -9.18 dd=8929  | OOS n= 9465 wr= 47.2% pf= 0.49 $/d=-11.67 dd=2476
+piv5_k3_rev          IS n=38640 pf= 0.52 $/d= -9.79 dd=9514  | OOS n= 8775 wr= 47.7% pf= 0.48 $/d=-11.68 dd=2478
+piv2_k3_cont         IS n=50267 pf= 0.60 $/d=-12.03 dd=11714  | OOS n=11720 wr= 55.6% pf= 0.57 $/d=-13.63 dd=2943
+piv3_k3_cont         IS n=50215 pf= 0.62 $/d=-11.60 dd=11283  | OOS n=11384 wr= 55.7% pf= 0.53 $/d=-14.80 dd=3158
+piv5_k3_cont         IS n=48115 pf= 0.63 $/d=-10.32 dd=10042  | OOS n=11293 wr= 53.4% pf= 0.49 $/d=-16.73 dd=3559
+piv2_k3_both         IS n=87409 pf= 0.57 $/d=-21.12 dd=20553  | OOS n=21093 wr= 51.9% pf= 0.54 $/d=-25.20 dd=5353
+piv3_k3_both         IS n=87990 pf= 0.59 $/d=-20.69 dd=20122  | OOS n=20379 wr= 51.9% pf= 0.52 $/d=-26.11 dd=5558
+piv5_k3_both         IS n=86605 pf= 0.59 $/d=-20.07 dd=19499  | OOS n=20042 wr= 50.9% pf= 0.49 $/d=-28.34 dd=6016
+piv5_k2_rev          IS n=121137 pf= 0.54 $/d=-29.38 dd=28581  | OOS n=30146 wr= 47.6% pf= 0.49 $/d=-39.81 dd=8465
+piv3_k2_rev          IS n=121136 pf= 0.55 $/d=-28.37 dd=27607  | OOS n=32062 wr= 47.2% pf= 0.49 $/d=-40.80 dd=8662
+piv2_k2_rev          IS n=122537 pf= 0.53 $/d=-29.97 dd=29171  | OOS n=32428 wr= 46.5% pf= 0.48 $/d=-41.03 dd=8704
+piv2_k2_cont         IS n=157807 pf= 0.60 $/d=-36.55 dd=35587  | OOS n=41138 wr= 55.6% pf= 0.56 $/d=-48.18 dd=10262
+piv3_k2_cont         IS n=157524 pf= 0.61 $/d=-35.44 dd=34487  | OOS n=40032 wr= 55.4% pf= 0.54 $/d=-51.26 dd=10905
+piv5_k2_cont         IS n=155944 pf= 0.63 $/d=-33.42 dd=32509  | OOS n=39096 wr= 54.4% pf= 0.50 $/d=-55.20 dd=11748
+piv2_k2_both         IS n=279214 pf= 0.57 $/d=-66.17 dd=64427  | OOS n=73179 wr= 51.7% pf= 0.53 $/d=-88.85 dd=18887
+piv3_k2_both         IS n=277858 pf= 0.59 $/d=-63.54 dd=61840  | OOS n=71811 wr= 51.8% pf= 0.52 $/d=-91.69 dd=19487
+piv5_k2_both         IS n=276539 pf= 0.59 $/d=-62.64 dd=60937  | OOS n=69136 wr= 51.4% pf= 0.50 $/d=-94.83 dd=20150
+
+─── Best config: piv3_k4_rev ─────────────────────────────
+  IS                         n=11813  wr= 48.2%  pf= 0.52  $/day= -3.10  maxDD=$3057  total=$-3010
+  OOS                        n= 2735  wr= 46.4%  pf= 0.53  $/day= -3.26  maxDD=$ 705  total=$-691
+
+Kill threshold: OOS $/day < $0.30 OR MDD > $20
+Best OOS $/day=-3.26 MDD=$705 -> KILLED
+
+─── Best config per-mode breakdown (all trades) ───────────
+  OOS rev-long               n= 1722  wr= 45.7%  pf= 0.52  $/day= -2.20  maxDD=$ 478  total=$-465
+  OOS rev-short              n= 1013  wr= 47.6%  pf= 0.56  $/day= -1.08  maxDD=$ 243  total=$-227
+
+─── Best config per-direction (OOS) ──────────────────────
+  OOS longs                  n= 1722  wr= 45.7%  pf= 0.52  $/day= -2.20  maxDD=$ 478  total=$-465
+  OOS shorts                 n= 1013  wr= 47.6%  pf= 0.56  $/day= -1.08  maxDD=$ 243  total=$-227
+
+─── Trade count / month (OOS) ─────────────────────────────
+  2025-09  n= 427  pnl=$  -61.06
+  2025-10  n= 338  pnl=$ -104.97
+  2025-11  n= 403  pnl=$  -94.60
+  2025-12  n= 259  pnl=$  -74.01
+  2026-01  n= 305  pnl=$ -117.99
+  2026-02  n= 469  pnl=$  -88.89
+  2026-03  n= 534  pnl=$ -149.94
+
+─── GARCH correlation proxy (daily pnl vs proxy signal) ───
+  Pearson r (strat pnl vs GARCH-proxy daily signal count) = 0.004  over 212 days
+  Interpretation: |r|<0.2 uncorrelated, 0.2-0.5 weak, >0.5 correlated
+
+═══════════════════════════════════════════════════════════════

@@ -1,0 +1,115 @@
+==================================================================================================================================
+  PAIR SELECTION & HOUR ANALYSIS — find profitable subset using in-sample, validate OOS
+  Base config: long>4, short<-6, z4=3, margin=$30, BE@7%, trail 9/0.5
+  In-sample: 2025-06-01 -> 2025-12-01 (183 days)
+  Out-of-sample: 2025-12-01 -> 2026-03-25 (114 days)
+==================================================================================================================================
+
+Loading...
+102 pairs loaded
+
+STEP 1: IN-SAMPLE full run (all pairs)
+  All 102 pairs IS: $/day=+$0.94, PF=1.46, trades=844
+
+  Top 20 pairs (IS P&L):
+    CFX          +$36.86 trades=  13 wr= 31%
+    KAITO        +$36.04 trades=  18 wr= 39%
+    REZ          +$11.83 trades=   9 wr= 33%
+    CATI         +$11.20 trades=  10 wr= 30%
+    ZEN          +$11.19 trades=  14 wr= 43%
+    SAND          +$9.95 trades=   8 wr= 38%
+    XAI           +$9.86 trades=   6 wr= 17%
+    TON           +$9.74 trades=   4 wr= 50%
+    ACE           +$9.61 trades=   7 wr= 29%
+    MEME          +$7.93 trades=  11 wr= 18%
+    IMX           +$7.68 trades=  13 wr= 23%
+    ZK            +$7.62 trades=  11 wr= 27%
+    XLM           +$7.16 trades=   7 wr= 43%
+    OGN           +$6.83 trades=   7 wr= 29%
+    ILV           +$6.25 trades=  17 wr= 18%
+    NTRN          +$5.66 trades=   6 wr= 33%
+    SUSHI         +$5.14 trades=   9 wr= 33%
+    CAKE          +$5.13 trades=   9 wr= 33%
+    BIO           +$5.09 trades=  16 wr= 19%
+    USUAL         +$4.93 trades=   8 wr= 38%
+
+  Bottom 20 pairs (IS P&L):
+    PENGU         -$6.84 trades=  14 wr=  7%
+    MKR           -$6.05 trades=   7 wr= 14%
+    ZRO           -$6.00 trades=   9 wr=  0%
+    LTC           -$5.78 trades=   8 wr= 13%
+    DYDX          -$5.34 trades=   8 wr=  0%
+    CRV           -$4.00 trades=   3 wr=  0%
+    OM            -$4.00 trades=  10 wr=  0%
+    RSR           -$4.00 trades=  10 wr=  0%
+    BNB           -$3.92 trades=  10 wr= 30%
+    DYM           -$3.60 trades=   9 wr=  0%
+    MAV           -$3.60 trades=   9 wr=  0%
+    AXS           -$3.33 trades=   5 wr=  0%
+    USTC          -$3.20 trades=   8 wr=  0%
+    ANIME         -$3.20 trades=   8 wr=  0%
+    BANANA        -$3.17 trades=  12 wr=  8%
+    STRAX         -$3.06 trades=   7 wr= 14%
+    TRB           -$2.93 trades=   8 wr=  0%
+    FIL           -$2.92 trades=  12 wr= 17%
+    POL           -$2.67 trades=   4 wr=  0%
+    JUP           -$2.67 trades=   2 wr=  0%
+
+  Hourly P&L distribution (IS, by entry hour):
+    h00:   -$13.30 trades=  93 avg= -$0.14
+    h01:    +$4.24 trades=  20 avg= +$0.21
+    h02:    -$1.92 trades=  12 avg= -$0.16
+    h03:    -$2.91 trades=  12 avg= -$0.24
+    h04:    -$2.28 trades=  67 avg= -$0.03
+    h05:   +$17.04 trades=  20 avg= +$0.85
+    h06:    -$6.13 trades=  22 avg= -$0.28
+    h07:    -$0.63 trades=   7 avg= -$0.09
+    h08:    -$9.22 trades=  71 avg= -$0.13
+    h09:    -$7.37 trades=  21 avg= -$0.35
+    h10:    -$0.84 trades=  15 avg= -$0.06
+    h11:    +$3.43 trades=   7 avg= +$0.49
+    h12:   +$23.18 trades=  55 avg= +$0.42
+    h13:   +$11.80 trades=  24 avg= +$0.49
+    h14:    -$5.01 trades=  21 avg= -$0.24
+    h15:    -$2.13 trades=   4 avg= -$0.53
+    h16:  +$128.76 trades= 163 avg= +$0.79
+    h17:   +$25.00 trades=  72 avg= +$0.35
+    h18:    +$7.11 trades=  21 avg= +$0.34
+    h19:    -$8.67 trades=  16 avg= -$0.54
+    h20:   +$11.12 trades=  72 avg= +$0.15
+    h21:    +$1.37 trades=  29 avg= +$0.05
+    h22:    +$0.00 trades=   0 avg=    —  
+    h23:    +$0.00 trades=   0 avg=    —  
+  Bad hours (negative IS P&L): 0, 2, 3, 4, 6, 7, 8, 9, 10, 14, 15, 19
+
+STEP 2: IN-SAMPLE filtered by top-N positive pairs
+  56 pairs are IS-positive (out of 102)
+  Top  10 pairs IS: $/day=   +$0.84 MDD=$   6 PF=5.25 trades=  100
+  Top  20 pairs IS: $/day=   +$1.18 MDD=$  12 PF=4.07 trades=  203
+  Top  30 pairs IS: $/day=   +$1.39 MDD=$  13 PF=3.31 trades=  296
+  Top  40 pairs IS: $/day=   +$1.50 MDD=$  14 PF=2.92 trades=  374
+  Top  50 pairs IS: $/day=   +$1.54 MDD=$  16 PF=2.64 trades=  444
+  Top  60 pairs IS: $/day=   +$1.55 MDD=$  18 PF=2.49 trades=  484
+  Top  56 pairs IS: $/day=   +$1.55 MDD=$  18 PF=2.49 trades=  484
+
+STEP 3: OUT-OF-SAMPLE validation (best IS subset applied to OOS)
+  All pairs OOS: $/day=+$1.20 MDD=$23 PF=1.47 trades=657
+  Top  10 pairs OOS: $/day=   +$0.20 MDD=$   7 PF=1.67 trades=   77
+  Top  20 pairs OOS: $/day=   +$0.43 MDD=$   8 PF=1.85 trades=  143
+  Top  30 pairs OOS: $/day=   +$0.44 MDD=$   9 PF=1.56 trades=  210
+  Top  40 pairs OOS: $/day=   +$0.59 MDD=$  13 PF=1.60 trades=  271
+  Top  50 pairs OOS: $/day=   +$0.64 MDD=$  15 PF=1.52 trades=  331
+  Top  60 pairs OOS: $/day=   +$0.72 MDD=$  16 PF=1.51 trades=  378
+
+STEP 4: OOS with IS bad hours also blocked
+  Blocked hours: 0, 2, 3, 4, 6, 7, 8, 9, 10, 14, 15, 19, 22, 23
+  All pairs + bad hours blocked OOS: $/day=+$0.55 MDD=$23 PF=1.30
+  Top  20 pairs + bad hours blocked OOS: $/day=   +$0.27 MDD=$   5 PF=1.79 trades=   99
+  Top  30 pairs + bad hours blocked OOS: $/day=   +$0.30 MDD=$   9 PF=1.57 trades=  146
+  Top  50 pairs + bad hours blocked OOS: $/day=   +$0.45 MDD=$  15 PF=1.53 trades=  236
+
+STEP 5: FULL period (IS+OOS) with top-N pairs
+  All pairs full: $/day=+$1.04 MDD=$31 PF=1.46 trades=1501
+  Top  20 pairs full: $/day=   +$0.89 MDD=$  12 PF=3.07 trades=  346
+  Top  30 pairs full: $/day=   +$1.02 MDD=$  13 PF=2.54 trades=  506
+  Top  50 pairs full: $/day=   +$1.20 MDD=$  16 PF=2.14 trades=  775

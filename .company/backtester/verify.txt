@@ -1,0 +1,170 @@
+============================================================================================================================================
+  VERIFICATION — 3 findings (ATR regime, compounding, REX trail)
+  IS 2025-06 -> 2025-12, OOS 2025-12 -> 2026-03-25
+============================================================================================================================================
+
+Loading pairs...
+97 pairs loaded
+
+============================================================================================================================================
+  FINDING 1 — ATR regime filter (thr 1.6) vs deployed RV regime (thr 1.5)
+  GARCH long-only, SL 0.15%, multi-stage trail 3/1 -> 9/0.5 -> 20/0.5, block h22-23, max hold 72h
+============================================================================================================================================
+
+  [A] Baseline: deployed RV regime thr 1.5, m$15 (slip 1.5x)
+  IS : $/day +$1.87  total +$341.31  MDD $8.70  PF 3.01  WR 31.5%  N=1303  maxL -$0.45
+     garch: +$341.31 (1303 trades)
+  OOS: $/day +$1.20  total +$136.38  MDD $16.04  PF 2.01  WR 25.1%  N=858  maxL -$0.45
+     garch: +$136.38 (858 trades)
+
+  [B] ATR regime thr 1.6, m$15 (slip 1.5x)
+  IS : $/day +$1.58  total +$288.72  MDD $22.61  PF 1.93  WR 25.3%  N=2034  maxL -$0.45
+     garch: +$288.72 (2034 trades)
+  OOS: $/day +$1.57  total +$179.32  MDD $5.42  PF 2.50  WR 26.1%  N=844  maxL -$0.45
+     garch: +$179.32 (844 trades)
+
+  [C] ATR regime thr 1.6, m$30 (slip 1.5x)
+  IS : $/day +$3.16  total +$577.44  MDD $45.21  PF 1.93  WR 25.3%  N=2034  maxL -$0.91
+     garch: +$577.44 (2034 trades)
+  OOS: $/day +$3.15  total +$358.64  MDD $10.84  PF 2.50  WR 26.1%  N=844  maxL -$0.91
+     garch: +$358.64 (844 trades)
+
+  [D] RV regime thr 1.5, m$30 (for scaling comparison)
+  IS : $/day +$3.73  total +$682.62  MDD $17.40  PF 3.01  WR 31.5%  N=1303  maxL -$0.91
+     garch: +$682.62 (1303 trades)
+  OOS: $/day +$2.39  total +$272.75  MDD $32.09  PF 2.01  WR 25.1%  N=858  maxL -$0.91
+     garch: +$272.75 (858 trades)
+
+  Stress: slip 2.5x
+
+  [B'] ATR@1.6 m$15 slip 2.5
+  OOS: $/day +$1.41  total +$160.38  MDD $6.44  PF 2.16  WR 26.1%  N=844  maxL -$0.54
+     garch: +$160.38 (844 trades)
+
+  [A'] RV@1.5 m$15 slip 2.5
+  OOS: $/day +$1.02  total +$116.68  MDD $19.20  PF 1.75  WR 25.1%  N=858  maxL -$0.54
+     garch: +$116.68 (858 trades)
+
+  FINDING 1 VERDICT:
+    Claim ATR@1.6 m$15:     $/day ≈ +$1.58  MDD ≈ $5.5
+    Actual ATR@1.6 m$15:    $/day +$1.57  MDD $5.42
+    Claim RV@1.5 m$15:      $/day ≈ +$1.17  MDD ≈ $17
+    Actual RV@1.5 m$15:     $/day +$1.20  MDD $16.04
+    Delta ATR vs RV (OOS):  $/day +$0.38  MDD -10.62
+
+    LINEAR SCALING CHECK (ATR@1.6, m$30 / m$15):
+      $/day ratio: 2.00x  (perfect linear = 2.00x)
+      MDD ratio:   2.00x  (perfect linear = 2.00x)
+      -> Linear scaling HOLDS.
+
+============================================================================================================================================
+  FINDING 3 — REX standalone: multi-stage trail vs single-stage 9/0.5
+  REX entry: 1h range >= 2.0*ATR, close in extreme 25%, regime RV>1.5, SL 0.15%, m$15, maxhold 12h
+============================================================================================================================================
+
+  [E] REX multi-stage 3/1 -> 9/0.5 -> 20/0.5
+  IS : $/day +$1.04  total +$190.21  MDD $23.41  PF 2.24  WR 26.9%  N=1054  maxL -$0.45
+     rex:   +$190.21 (1054 trades)
+  OOS: $/day +$1.37  total +$155.95  MDD $11.64  PF 2.44  WR 27.0%  N=773  maxL -$0.45
+     rex:   +$155.95 (773 trades)
+
+  [F] REX single-stage 9/0.5
+  IS : $/day +$1.28  total +$233.50  MDD $24.36  PF 2.42  WR 21.1%  N=1053  maxL -$0.45
+     rex:   +$233.50 (1053 trades)
+  OOS: $/day +$1.24  total +$141.11  MDD $11.64  PF 2.14  WR 17.5%  N=772  maxL -$0.45
+     rex:   +$141.11 (772 trades)
+
+  Stress slip 2.5:
+    REX multi  OOS: +$1.23/day MDD $13.42
+    REX single OOS: +$1.07/day MDD $15.28
+
+  FINDING 3 VERDICT:
+    Claim multi:   +$1.10/day MDD $13
+    Actual multi:  +$1.37/day MDD $11.64
+    Claim single:  +$1.24/day MDD $12
+    Actual single: +$1.24/day MDD $11.64
+    Single - multi $/day: -$0.13
+    -> Multi-stage WINS. Claim is FALSE.
+
+============================================================================================================================================
+  FINDING 2 — Compounding $60 start, 20%+20%, cap $80/engine
+  Equity updates trade-by-trade; margin = pct * equity, clamped [$5, cap]
+============================================================================================================================================
+
+  [G-80] Compound 20%/20%, start $60, cap $80
+    IS-end equity:   $1548.18
+    OOS-final:       $3134.74  (growth: 5124.6%)
+    Peak equity:     $3156.37
+    MaxDD $:         $67.69
+    MaxDD % of peak: 11.4%
+    At-cap entries:  2328/3292 (70.7%)
+    Avg margin G/R:  $65.66 / $68.47
+    Final margin G/R:$80.00 / $80.00
+    Trades G/R:      1813 / 1479
+    $/day avg:       +$10.35
+    $/day final-scale: +$12.35
+
+  [G-200] Compound 20%/20%, start $60, cap $200
+    IS-end equity:   $2939.70
+    OOS-final:       $6867.70  (growth: 11346.2%)
+    Peak equity:     $6921.78
+    MaxDD $:         $184.80
+    MaxDD % of peak: 11.4%
+    At-cap entries:  1983/3233 (61.3%)
+    Avg margin G/R:  $140.51 / $149.18
+    Final margin G/R:$200.00 / $200.00
+    Trades G/R:      1800 / 1433
+    $/day avg:       +$22.92
+    $/day final-scale: +$31.65
+
+  [G-500] Compound 20%/20%, start $60, cap $500
+    IS-end equity:   $4943.90
+    OOS-final:       $14881.38  (growth: 24702.3%)
+    Peak equity:     $15016.57
+    MaxDD $:         $432.52
+    MaxDD % of peak: 11.4%
+    At-cap entries:  1753/3153 (55.6%)
+    Avg margin G/R:  $305.29 / $328.11
+    Final margin G/R:$500.00 / $500.00
+    Trades G/R:      1757 / 1396
+    $/day avg:       +$49.90
+    $/day final-scale: +$78.79
+
+  [G-1000] Compound 20%/20%, start $60, cap $1000
+    IS-end equity:   $6236.09
+    OOS-final:       $26352.88  (growth: 43821.5%)
+    Peak equity:     $26623.27
+    MaxDD $:         $788.63
+    MaxDD % of peak: 11.4%
+    At-cap entries:  1512/3112 (48.6%)
+    Avg margin G/R:  $549.72 / $589.58
+    Final margin G/R:$1000.00 / $1000.00
+    Trades G/R:      1737 / 1375
+    $/day avg:       +$88.53
+    $/day final-scale: +$155.41
+
+  FINDING 2 VERDICT:
+    Cap$  | Final$  | Peak$  | MDD$  | MDD%  | AtCap% | Trades | $/day | final-scale $/day
+    $80   | $3135   | $3156  | $68   | 11.4% |    71% | 3292   |  +$10.35 |  +$12.35
+    $200  | $6868   | $6922  | $185  | 11.4% |    61% | 3233   |  +$22.92 |  +$31.65
+    $500  | $14881  | $15017 | $433  | 11.4% |    56% | 3153   |  +$49.90 |  +$78.79
+    $1000 | $26353  | $26623 | $789  | 11.4% |    49% | 3112   |  +$88.53 | +$155.41
+
+    Claim: $60 -> $3000+, MDD% < 33%
+    Actual cap$80: $60 -> $3135, MDD% 11.4%
+    -> PARTIAL COMPOUNDING: 71% at cap. Compounding active early, then capped.
+
+============================================================================================================================================
+  FINAL VERDICT
+============================================================================================================================================
+  1) ATR regime (thr 1.6) vs RV regime (thr 1.5) at m$15:
+     ATR: +$1.57/day MDD $5.42
+     RV:  +$1.20/day MDD $16.04
+     DEPLOY
+  2) Compounding $60 -> claim $3000+:
+     cap$80: ended at $3135, atCap 71%
+     DEPLOY
+  3) REX single-stage vs multi-stage trail:
+     multi:  +$1.37/day MDD $11.64
+     single: +$1.24/day MDD $11.64
+     KEEP MULTI-STAGE

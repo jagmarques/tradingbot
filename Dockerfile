@@ -14,12 +14,13 @@ FROM node:22-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-# Create data directory for SQLite persistence
 RUN mkdir -p /app/data
 
 RUN groupadd -g 1001 botuser && \
