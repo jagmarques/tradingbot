@@ -17,23 +17,19 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000, // 120h (5d) max hold
 };
 
-// Breakeven stop: after peak reaches +2% leveraged PnL, close at entry price
-const BREAKEVEN_ACTIVATION_PCT = 2; // lowered from 3% (catches more reversions, +$0.03/day)
-
-// Single-stage trail: 2/1.5 (deep sweep winner, Calmar 0.104)
+// Trail 10/5: wider than fees to avoid loss-on-exit
 const TRAIL_STEPS = [
-  { activation: 2,  distance: 1.5 },  // +2%+ peak: 1.5% trail
+  { activation: 10, distance: 5 },
 ];
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
 function getSteppedTrailDistance(peak: number, tradeType: string): { activation: number; distance: number } {
   if (!TRAIL_ENGINES.has(tradeType ?? "")) return DEAD_TRAIL;
-  // Steps sorted high activation to low; pick the highest qualifying step
   for (const step of TRAIL_STEPS) {
     if (peak >= step.activation) return step;
   }
-  return DEAD_TRAIL; // peak below lowest activation (3%)
+  return DEAD_TRAIL;
 }
 
 // Legacy wrapper for non-stepped code paths
@@ -212,36 +208,8 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Stepped trailing: peak always updated, but exit only at 1h bar boundary
-      const peak = position.maxUnrealizedPnlPct ?? 0;
-      const trailCfg = getSteppedTrailDistance(peak, position.tradeType ?? "");
-      if (peak >= trailCfg.activation) {
-        if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
-          trailActivatedIds.add(position.id);
-          console.log(
-            `[PositionMonitor] Trail activated: ${position.pair} ${position.direction} at +${peak.toFixed(1)}% (stage ${trailCfg.activation}%, dist ${trailCfg.distance}%)`,
-          );
-          void notifyTrailActivation({
-            pair: position.pair,
-            direction: position.direction,
-            entryPrice: position.entryPrice,
-            currentPrice: currentPrice,
-            unrealizedPnlPct: peak,
-            trailActivation: trailCfg.activation,
-            trailDistance: trailCfg.distance,
-            tradeType: position.tradeType ?? "directional",
-          });
-        }
-        // Trail EXIT fires every poll (3s) - backtest must match this behavior
-        const trailTrigger = peak - trailCfg.distance;
-        if (unrealizedPnlPct <= trailTrigger) {
-          console.log(
-            `[PositionMonitor] Trailing stop: ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}% (stage ${trailCfg.activation}/${trailCfg.distance})`,
-          );
-          await tryClose(position, "trailing-stop");
-          continue;
-        }
-      }
+      // Trail check handled by fast-poll only (checkTrailActivePositions)
+      // Duplicate check removed - was firing trail twice every 3s causing premature exits
 
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
@@ -294,13 +262,11 @@ async function checkTrailActivePositions(): Promise<void> {
   try {
     const positions: QuantPosition[] = getOpenQuantPositions();
 
-    // Trail-active, breakeven-eligible, or near-SL positions
+    // Trail-active positions only
     const trailCandidates = positions.filter(p => {
-      if (nearSlIds.has(p.id)) return true;
       const peak = p.maxUnrealizedPnlPct ?? 0;
-      if (peak >= BREAKEVEN_ACTIVATION_PCT && TRAIL_ENGINES.has(p.tradeType ?? "")) return true;
       const trailCfg = getTrailConfig(p);
-      return trailActivatedIds.has(p.id) || peak > trailCfg.activation;
+      return trailActivatedIds.has(p.id) || peak >= trailCfg.activation;
     });
 
     if (trailCandidates.length === 0) return;
@@ -342,11 +308,9 @@ async function checkTrailActivePositions(): Promise<void> {
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
 
-      // Breakeven removed: tight trail at 3% replaces it (no fee drain)
-
       const trailCfg = getTrailConfig(position);
 
-      if (peak > trailCfg.activation) {
+      if (peak >= trailCfg.activation) {
         if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
           trailActivatedIds.add(position.id);
           console.log(
@@ -363,7 +327,6 @@ async function checkTrailActivePositions(): Promise<void> {
             tradeType: position.tradeType ?? "directional",
           });
         }
-        // Trail EXIT fires immediately (fast poll, every 3s)
         const trailTrigger = peak - trailCfg.distance;
         if (unrealizedPnlPct <= trailTrigger) {
           console.log(
@@ -374,7 +337,6 @@ async function checkTrailActivePositions(): Promise<void> {
         }
       }
 
-      // Near-SL fast-poll disabled: all SL exits at 1h boundary only
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -1,4 +1,4 @@
-// GARCH v2 lb1 1h:vw15 4h:vw20 long-only $15 mc15 | $4.06/day MDD $38 PF 1.73
+// GARCH v2 lb1 1h:vw15 4h:vw20 long-only $15 mc5 SL0.8/1.0 T10/5 | 1m-verified: $3.41/day MDD $47 PF 1.37 WR 42%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -13,11 +13,10 @@ const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
 // Long-only thresholds
 const Z_LONG_1H = 1.5;
 const Z_LONG_4H = 1.0;
-// Exchange SL: 0.3% price for high-lev (10x), 0.15% for low-lev (3x/5x)
-// At 10x, 0.15% SL = 1.5% leveraged — too close to liquidation (5% maint margin)
-// At 10x, 0.3% SL = 3% leveraged — safe distance from liquidation
-const SL_PCT_LOW_LEV = 0.0025;  // 0.25% for 3x/5x
-const SL_PCT_HIGH_LEV = 0.0045; // 0.45% for 10x
+// Wider SL to avoid noise chop-out (1m backtest: WR 42% vs 20% with tight SL)
+// At 10x, 1.0% SL = 10% leveraged loss — still far from 50% liquidation
+const SL_PCT_LOW_LEV = 0.008;   // 0.8% for 3x/5x
+const SL_PCT_HIGH_LEV = 0.010;  // 1.0% for 10x
 const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
