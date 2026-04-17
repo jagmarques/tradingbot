@@ -23,12 +23,6 @@ COPY --from=builder /app/dist ./dist
 
 RUN mkdir -p /app/data
 
-RUN groupadd -g 1001 botuser && \
-    useradd -u 1001 -g botuser -s /bin/sh botuser && \
-    chown -R botuser:botuser /app/data
-
-USER botuser
-
 ENV DOTENV_CONFIG_QUIET=true
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
