@@ -17,10 +17,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000, // 120h (5d) max hold
 };
 
-// Trail 10/5: wider than fees to avoid loss-on-exit
+// Trail 10/3 + BE5% (1m winner)
 const TRAIL_STEPS = [
-  { activation: 10, distance: 5 },
+  { activation: 10, distance: 3 },
 ];
+const BREAKEVEN_PCT = 5;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
@@ -208,8 +209,13 @@ async function checkPositionStops(): Promise<void> {
         saveQuantPosition(position);
       }
 
-      // Trail check handled by fast-poll only (checkTrailActivePositions)
-      // Duplicate check removed - was firing trail twice every 3s causing premature exits
+      // Breakeven: move SL to entry when peak hits BREAKEVEN_PCT leveraged
+      const peak = position.maxUnrealizedPnlPct ?? 0;
+      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && position.stopLoss !== position.entryPrice) {
+        position.stopLoss = position.entryPrice;
+        saveQuantPosition(position);
+        console.log(`[PositionMonitor] Breakeven: ${position.pair} SL -> entry ${position.entryPrice} (peak +${peak.toFixed(1)}%)`);
+      }
 
       // Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
@@ -307,6 +313,13 @@ async function checkTrailActivePositions(): Promise<void> {
       }
 
       const peak = position.maxUnrealizedPnlPct ?? 0;
+
+      // Breakeven: move SL to entry when peak hits BREAKEVEN_PCT
+      if (peak >= BREAKEVEN_PCT && position.stopLoss !== position.entryPrice) {
+        position.stopLoss = position.entryPrice;
+        saveQuantPosition(position);
+        console.log(`[PositionMonitor] Breakeven (fast): ${position.pair} SL -> entry ${position.entryPrice}`);
+      }
 
       const trailCfg = getTrailConfig(position);
 
