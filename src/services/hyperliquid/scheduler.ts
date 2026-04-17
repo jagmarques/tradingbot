@@ -2,12 +2,13 @@ import { isQuantKilled } from "./risk-manager.js";
 import { updateBtcBounceCheck, updateMacroRegime, getMacroRegime } from "../market-regime/fear-greed.js";
 import { fetchCandles } from "./candles.js";
 import { runGarchV2Cycle } from "./garch-v2-engine.js";
+import { QUANT_SCHEDULER_INTERVAL_MS } from "../../config/constants.js";
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
-const CYCLE_MS = 15 * 60 * 1000;
+const CYCLE_MS = QUANT_SCHEDULER_INTERVAL_MS;
 const SL_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h cooldown (ultra sweep winner)
 const slCooldowns = new Map<string, number>();
 
