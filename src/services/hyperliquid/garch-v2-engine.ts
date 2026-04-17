@@ -54,8 +54,8 @@ export async function runGarchV2Cycle(): Promise<void> {
     if (openPairs.has(pair)) continue;
     if (ensembleCount >= ENSEMBLE_MAX_CONCURRENT) break;
 
-    // Rate limit: 50ms between pairs to stay under HL's 120 req/min limit
-    if (pairIdx++ > 0) await new Promise(r => setTimeout(r, 50));
+    // Rate limit: 150ms between pairs to avoid HL 429s (127 pairs x 2 fetches = 38s/cycle)
+    if (pairIdx++ > 0) await new Promise(r => setTimeout(r, 150));
 
     try {
       const candles1h = await fetchCandles(pair, "1h", 100);
