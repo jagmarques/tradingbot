@@ -1,4 +1,4 @@
-// GARCH v2 $15 mc5 z2/1.8 SL2.5/3.0 T15/5 BE5% cd4h | 1m-verified: $4.09/day MDD $22 PF 2.11 Calmar 0.188
+// GARCH v2 $15 mc7 z2/2 SL1.5/2.0 T20/8 BE8% cd4h | 1m-verified: $5.42/day MDD $25 PF 2.48 Calmar 0.218
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -10,12 +10,12 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;     // 1-bar momentum
 const GARCH_VOL_WINDOW_1H = 15;  // 15-bar vol window for 1h (ultra sweep winner)
 const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
-// z4h 1.8 = highest-quality entries, lowest MDD
+// z2/2.0: strictest entries, best risk-adjusted profit
 const Z_LONG_1H = 2.0;
-const Z_LONG_4H = 1.8;
-// SL 2.5/3.0: maximum noise tolerance for quality entries
-const SL_PCT_LOW_LEV = 0.025;
-const SL_PCT_HIGH_LEV = 0.030;
+const Z_LONG_4H = 2.0;
+// Tighter SL works with stricter entries (less noise chop)
+const SL_PCT_LOW_LEV = 0.015;
+const SL_PCT_HIGH_LEV = 0.020;
 const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
