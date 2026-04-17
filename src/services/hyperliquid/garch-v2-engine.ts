@@ -1,4 +1,4 @@
-// GARCH v2 $15 mc5 SL1.5/2.0 T10/3 BE5% cd4h | 1m-verified: $3.86/day MDD $49 PF 1.49 WR 40%
+// GARCH v2 $15 mc5 z2/1.5 SL1.5/2.0 T20/8 BE8% cd4h | 1m-verified: $4.17/day MDD $28 PF 1.87 Calmar 0.148
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -10,9 +10,9 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;     // 1-bar momentum
 const GARCH_VOL_WINDOW_1H = 15;  // 15-bar vol window for 1h (ultra sweep winner)
 const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
-// Long-only thresholds
-const Z_LONG_1H = 1.5;
-const Z_LONG_4H = 1.0;
+// Tighter z-thresholds: higher-quality entries, lower MDD
+const Z_LONG_1H = 2.0;
+const Z_LONG_4H = 1.5;
 // SL 1.5/2.0: wider survives noise. At 10x, 2% SL = 20% leveraged
 const SL_PCT_LOW_LEV = 0.015;
 const SL_PCT_HIGH_LEV = 0.020;

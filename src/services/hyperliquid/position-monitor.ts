@@ -17,11 +17,11 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000, // 120h (5d) max hold
 };
 
-// Trail 10/3 + BE5% (1m winner)
+// Trail 20/8 + BE8% (1m quality winner)
 const TRAIL_STEPS = [
-  { activation: 10, distance: 3 },
+  { activation: 20, distance: 8 },
 ];
-const BREAKEVEN_PCT = 5;
+const BREAKEVEN_PCT = 8;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
