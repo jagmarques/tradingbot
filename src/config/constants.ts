@@ -26,26 +26,15 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
+// Top-50 pairs by solo backtest profitability (bt-1m-per-pair.ts, live config).
+// Pruning from 125 to 50 drops MDD 37% while only losing 14% of $/day (Calmar 0.188 -> 0.256).
 export const QUANT_TRADING_PAIRS = [
-  // Original 18
-  "OP", "WIF", "ARB", "LDO", "TRUMP", "DASH", "DOT", "ENA", "DOGE", "APT", "LINK", "ADA", "WLD", "XRP", "UNI", "ETH", "TIA", "SOL",
-  // Batch 2
-  "ZEC", "AVAX", "NEAR", "kPEPE", "SUI", "HYPE", "FET",
-  // Batch 3
-  "FIL", "ALGO", "BCH", "JTO", "SAND", "BLUR", "TAO", "RENDER", "TRX", "AAVE",
-  "JUP", "POL", "CRV", "PYTH", "IMX", "BNB", "ONDO", "XLM", "DYDX", "ICP", "LTC", "MKR",
-  // Batch 4
-  "PENDLE", "PNUT", "ATOM", "TON", "SEI", "STX",
-  // Batch 5 (74 new pairs, validated PF > 1.1 OOS on GARCH v2, 1h CD, $7)
-  "DYM", "CFX", "ALT", "BIO", "OMNI", "ORDI", "XAI", "SUSHI", "ME", "ZEN",
-  "TNSR", "CATI", "TURBO", "MOVE", "GALA", "STRK", "SAGA", "ILV", "GMX", "OM",
-  "CYBER", "NTRN", "BOME", "MEME", "ANIME", "BANANA", "ETC", "USUAL", "UMA", "USTC",
-  "MAV", "REZ", "NOT", "PENGU", "BIGTIME", "WCT", "EIGEN", "MANTA", "POLYX", "W",
-  "FXS", "GMT", "RSR", "PEOPLE", "YGG", "TRB", "ETHFI", "ENS", "OGN", "AXS",
-  "MINA", "LISTA", "NEO", "AI", "SCR", "APE", "KAITO", "AR", "BNT", "PIXEL",
-  "LAYER", "ZRO", "CELO", "ACE", "COMP", "RDNT", "ZK", "MET", "STG", "REQ",
-  "CAKE", "SUPER", "FTT", "STRAX",
-]; // 127 pairs total
+  "ETH", "ZEC", "YGG", "STRAX", "WLD", "PENGU", "DOGE", "ARB", "FIL", "OP",
+  "AVAX", "NEO", "JTO", "KAITO", "SUSHI", "EIGEN", "LINK", "ADA", "ZK", "CELO",
+  "STX", "AAVE", "BANANA", "FET", "PEOPLE", "UNI", "ORDI", "TURBO", "WCT", "TIA",
+  "MEME", "ETC", "DYDX", "BIO", "CAKE", "APE", "ENA", "SAND", "IMX", "ZEN",
+  "SOL", "ICP", "STRK", "APT", "PENDLE", "RSR", "ETHFI", "RENDER", "ACE", "CYBER",
+]; // 50 pairs total
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
