@@ -13,7 +13,7 @@ import { withTimeout } from "../../utils/timeout.js";
 import { API_ORDER_TIMEOUT_MS, API_PRICE_TIMEOUT_MS } from "../../config/constants.js";
 import { capStopLoss, calcPnl, inferExitReason, rebaseStops, parseIndicatorsMeta } from "../hyperliquid/quant-utils.js";
 
-const MAX_SLIPPAGE = 0.005;
+const MAX_SLIPPAGE = 0.002; // 20bp cap (was 50bp) - matches backtest spread assumption
 const MAKER_ENTRY_TIMEOUT_MS = 5_000; // 5s maker attempt, then taker (was 60s — signal decays while waiting)
 const MAKER_POLL_INTERVAL_MS = 2_000;
 
@@ -226,7 +226,8 @@ async function reconcileWithExchange(): Promise<void> {
 
     for (const coin of exchangeCoins) { // orphan check
       if (!trackedPairs.has(coin) && !openingPairs.has(coin)) {
-        // Restore orphan to DB instead of closing (survives redeploys)
+        // Restore orphan to DB as garch-v2 (only live engine). No TP (trail-only).
+        // SL at 3% matches slPct default for 10x pairs.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ap = exchangePositions.find((p: any) => p.position.coin === coin);
         if (ap) {
@@ -234,21 +235,24 @@ async function reconcileWithExchange(): Promise<void> {
           const pos = ap.position as any;
           const szi = parseFloat(pos.szi);
           const entryPx = parseFloat(pos.entryPx);
+          const leverage = parseInt(pos.leverage?.value ?? "10", 10) || 10;
           const direction = szi > 0 ? "long" as const : "short" as const;
-          const size = Math.abs(szi) * entryPx / 10; // approximate $size at 10x
+          const size = Math.abs(szi) * entryPx / leverage;
+          const slPct = leverage >= 10 ? 0.030 : 0.025;
           const restored: QuantPosition = {
             id: generateQuantId(),
             pair: coin,
             direction,
             entryPrice: entryPx,
             size: Math.round(size * 100) / 100,
-            leverage: 10,
-            stopLoss: direction === "long" ? entryPx * (1 - 0.035) : entryPx * (1 + 0.035),
-            takeProfit: direction === "long" ? entryPx * (1 + 0.018) : entryPx * (1 - 0.018),
+            leverage,
+            stopLoss: direction === "long" ? entryPx * (1 - slPct) : entryPx * (1 + slPct),
+            takeProfit: 0, // garch-v2 is trail-only
             mode: "live",
             status: "open",
             openedAt: new Date().toISOString(),
-            tradeType: "supertrend-4h",  // Default for orphan restoration (most common live engine)
+            tradeType: "garch-v2",
+            indicatorsAtEntry: `slPct:${slPct}`,
             unrealizedPnl: 0,
             closedAt: null as any,
             exitPrice: 0,
@@ -257,7 +261,7 @@ async function reconcileWithExchange(): Promise<void> {
           };
           livePositions.set(restored.id, restored);
           saveQuantPosition(restored);
-          console.log(`[Quant Live] RESTORED orphan ${coin} ${direction} @ ${entryPx}`);
+          console.log(`[Quant Live] RESTORED orphan ${coin} ${direction} @ ${entryPx} (garch-v2, lev=${leverage}x, SL=${(slPct * 100).toFixed(1)}%)`);
         }
       }
     }

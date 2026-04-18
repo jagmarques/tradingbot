@@ -9,7 +9,8 @@ let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
 const CYCLE_MS = QUANT_SCHEDULER_INTERVAL_MS;
-const SL_COOLDOWN_MS = 1 * 60 * 60 * 1000; // 1h cooldown (final sweep max profit)
+const SL_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h cooldown (matches bt-1m-mega cd4h)
+const H1_ENTRY_WINDOW_MIN = 5; // allow entries only in first 5 min of each hour (matches bt 1h boundary)
 const slCooldowns = new Map<string, number>();
 
 export function recordStopLossCooldown(pair: string, direction: string, tradeType = "directional"): void {
@@ -21,6 +22,12 @@ export function isInStopLossCooldown(pair: string, direction: string, tradeType 
   if (!ts) return false;
   if (Date.now() - ts > SL_COOLDOWN_MS) { slCooldowns.delete(`${pair}:${direction}:${tradeType}`); return false; }
   return true;
+}
+
+// Gate entries to first H1_ENTRY_WINDOW_MIN minutes of each hour, mirroring backtest's 1h-boundary entries.
+// Prevents systematic intra-hour drift where live enters 3-30 min after signal, filling at worse prices.
+export function isInH1EntryWindow(): boolean {
+  return new Date().getUTCMinutes() < H1_ENTRY_WINDOW_MIN;
 }
 
 export async function runDirectionalCycle(): Promise<void> {

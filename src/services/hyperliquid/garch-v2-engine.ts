@@ -3,7 +3,7 @@ import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
 import { QUANT_TRADING_PAIRS, ENSEMBLE_MAX_CONCURRENT, ENSEMBLE_TRADE_TYPES } from "../../config/constants.js";
-import { isInStopLossCooldown } from "./scheduler.js";
+import { isInStopLossCooldown, isInH1EntryWindow } from "./scheduler.js";
 import type { OhlcvCandle } from "./types.js";
 
 const TRADE_TYPE = "garch-v2" as const;
@@ -46,6 +46,13 @@ export async function runGarchV2Cycle(): Promise<void> {
   const currentHourUTC = new Date().getUTCHours();
   if (BLOCKED_HOURS_UTC.has(currentHourUTC)) {
     console.log(`[GarchV2] Skipping cycle: hour ${currentHourUTC} UTC is blocked`);
+    return;
+  }
+
+  // Only enter near 1h boundary to match backtest timing. Scheduler fires every 3min,
+  // but backtest only enters at bar close. Out-of-window cycles still run monitoring,
+  // but this function is entries-only so we bail.
+  if (!isInH1EntryWindow()) {
     return;
   }
 
