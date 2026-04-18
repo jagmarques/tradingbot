@@ -9,7 +9,7 @@ let initialRunTimeout: ReturnType<typeof setTimeout> | null = null;
 let cycleRunning = false;
 
 const CYCLE_MS = QUANT_SCHEDULER_INTERVAL_MS;
-const SL_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4h cooldown (ultra sweep winner)
+const SL_COOLDOWN_MS = 1 * 60 * 60 * 1000; // 1h cooldown (final sweep max profit)
 const slCooldowns = new Map<string, number>();
 
 export function recordStopLossCooldown(pair: string, direction: string, tradeType = "directional"): void {

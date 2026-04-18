@@ -1,4 +1,4 @@
-// GARCH v2 $15 mc7 z2/2 SL2.0/2.5 T10/4-15/8-30/10 BE8% cd4h | 1m: $5.66/day MDD $24 PF 2.42 WR 60%
+// GARCH v2 $15 mc7 z2/2 SL2.0/2.5 T15/8-30/10 BE8% cd1h mh48h | 1m: $6.05/day MDD $24.8 PF 2.51 WR 46%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
