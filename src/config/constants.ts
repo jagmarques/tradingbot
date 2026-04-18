@@ -86,9 +86,9 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
   "momentum-confirm": "hyperliquid",
 };
 
-// GARCH $15 mc10 z2/2 SL2.5/3.0 T15/6-30/5-50/3 BE8% — 1m: $6.80/day MDD $33
+// GARCH $15 mc5 z2/1.8 SL2.5/3.0 T15/5 BE5% cd4h mh120h — bt-1m-mega: $4.09/day MDD $21.8
 export const ENSEMBLE_POSITION_SIZE_USD = 1;
-export const ENSEMBLE_MAX_CONCURRENT = 10;
+export const ENSEMBLE_MAX_CONCURRENT = 5;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)

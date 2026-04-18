@@ -113,17 +113,9 @@ function checkStopLossPresent(stopLoss: number): {
 }
 
 function checkDailyDrawdown(strategy: string, mode: "live" | "paper" = "live", limit: number = QUANT_DAILY_DRAWDOWN_LIMIT): { allowed: boolean; reason: string } {
-  // Paper: no daily loss limit
-  if (mode === "paper") return { allowed: true, reason: "" };
-  const key = `${mode}:${strategy}`;
-  resetIfStale(key);
-  const loss = dailyLossMap.get(key) ?? 0;
-  if (loss >= limit) {
-    return {
-      allowed: false,
-      reason: `Rolling 24h loss for ${strategy}(${mode}): $${loss.toFixed(2)} exceeds limit $${limit}`,
-    };
-  }
+  // Daily DD halt disabled to match backtest (bt-1m-mega has no daily loss halt).
+  // Halt would block recovery trades that bt captures. Parameters kept for future use.
+  void strategy; void mode; void limit;
   return { allowed: true, reason: "" };
 }
 

@@ -12,18 +12,16 @@ import { notifyCriticalError, notifyTrailActivation } from "../telegram/notifica
 
 
 
-// Max hold: 48h (final sweep winner, faster capital rotation)
+// Max hold: 120h matches bt-1m-mega MAX_HOLD_H = 120
 const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
-  "garch-v2": 48 * 60 * 60 * 1000,
+  "garch-v2": 120 * 60 * 60 * 1000,
 };
 
-// 3-stage smart trail: 15/6 -> 30/5 -> 50/3 (tighter as profit grows, locks wins)
+// Single-stage trail 15/5 matches bt-1m-mega winner (T15/5)
 const TRAIL_STEPS = [
-  { activation: 50, distance: 3 },
-  { activation: 30, distance: 5 },
-  { activation: 15, distance: 6 },
+  { activation: 15, distance: 5 },
 ];
-const BREAKEVEN_PCT = 8;
+const BREAKEVEN_PCT = 5;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
