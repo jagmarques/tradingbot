@@ -1,4 +1,4 @@
-// GARCH v2 $15 mc7 z2/2 SL2.0/2.5 T15/8-30/10 BE8% cd1h mh48h | 1m: $6.05/day MDD $24.8 PF 2.51 WR 46%
+// GARCH v2 $15 mc10 z2/2 SL2.5/3.0 T15/6-30/5-50/3 BE8% cd1h mh48h | 1m: $6.80/day MDD $33 PF 2.42 WR 49%
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -13,9 +13,9 @@ const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
 // z2/2.0: strictest entries, best risk-adjusted profit
 const Z_LONG_1H = 2.0;
 const Z_LONG_4H = 2.0;
-// Wider SL works with 3-stage trail (60% WR verified)
-const SL_PCT_LOW_LEV = 0.020;
-const SL_PCT_HIGH_LEV = 0.025;
+// SL 2.5/3.0 with smart 3-stage trail
+const SL_PCT_LOW_LEV = 0.025;
+const SL_PCT_HIGH_LEV = 0.030;
 const POSITION_SIZE_USD = 15;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
