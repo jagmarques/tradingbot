@@ -18,11 +18,17 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000,
 };
 
-// Single-stage trail 15/5 matches bt-1m-mega winner (T15/5)
+// 3-stage stepped trail T50/3-30/5-15/8 — locks tighter at higher peaks (top-50 winner)
 const TRAIL_STEPS = [
-  { activation: 15, distance: 5 },
+  { activation: 50, distance: 3 },
+  { activation: 30, distance: 5 },
+  { activation: 15, distance: 8 },
 ];
 const BREAKEVEN_PCT = 5;
+// Second breakeven: when peak hits BE2_PCT leveraged, lock in BE2_LOCK_PCT of profit (leveraged).
+// Converts to price-pct via leverage. E.g. lev=10, lock=5% leveraged => SL = entry + 0.5% price.
+const BE2_PCT = 15;
+const BE2_LOCK_PCT = 5;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
@@ -223,11 +229,27 @@ async function checkPositionStops(): Promise<void> {
       }
       const peak = position.maxUnrealizedPnlPct ?? 0;
 
-      // 3. Breakeven: move SL to entry when peak hits BREAKEVEN_PCT leveraged
-      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && position.stopLoss !== position.entryPrice) {
+      // 3a. Breakeven stage 1: move SL to entry when peak hits BREAKEVEN_PCT leveraged
+      const curSl = position.stopLoss ?? 0;
+      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && curSl < position.entryPrice) {
         position.stopLoss = position.entryPrice;
         saveQuantPosition(position);
         console.log(`[PositionMonitor] Breakeven: ${position.pair} SL -> entry ${position.entryPrice} (peak +${peak.toFixed(1)}%)`);
+      }
+      // 3b. Breakeven stage 2: lock profit above entry when peak hits BE2_PCT leveraged.
+      // Leveraged-lock -> price-pct via leverage: lock_price_pct = BE2_LOCK_PCT / leverage / 100
+      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BE2_PCT) {
+        const lockPricePct = BE2_LOCK_PCT / (position.leverage ?? 10) / 100;
+        const be2Sl = position.direction === "long"
+          ? position.entryPrice * (1 + lockPricePct)
+          : position.entryPrice * (1 - lockPricePct);
+        const sl = position.stopLoss ?? 0;
+        const shouldMove = position.direction === "long" ? sl < be2Sl : sl > be2Sl;
+        if (shouldMove) {
+          position.stopLoss = be2Sl;
+          saveQuantPosition(position);
+          console.log(`[PositionMonitor] BE2 lock: ${position.pair} SL -> ${be2Sl.toFixed(6)} (+${BE2_LOCK_PCT}% lev profit, peak +${peak.toFixed(1)}%)`);
+        }
       }
 
       // 4. Trail check using bar close (bt: currentLevPnl from bar.c)
