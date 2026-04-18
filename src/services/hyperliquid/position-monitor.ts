@@ -5,6 +5,7 @@ import { QUANT_POSITION_MONITOR_INTERVAL_MS, QUANT_TRAIL_FAST_POLL_MS, HYPERLIQU
 import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { getWsMids, isWsConnected } from "./ws-prices.js";
+import { fetchCandles } from "./candles.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
@@ -104,37 +105,49 @@ async function checkPositionStops(): Promise<void> {
       return;
     }
 
-    // Kill switch blocks opens, not monitoring.
-
     // Accrue funding for paper positions
     const hasPaperPositions = positions.some(p => p.mode === "paper");
     if (hasPaperPositions) {
       await accrueFundingIncome();
     }
 
+    // Fetch mid prices (paper liquidation check, fallback when 1m fetch fails)
     let mids: Record<string, string> = {};
-    if (positions.length > 0) {
-      if (isWsConnected()) {
-        mids = getWsMids();
-      } else {
-        try {
-          const sdk = getClient();
-          mids = await withTimeout(
-            sdk.info.getAllMids(true) as Promise<Record<string, string>>,
-            API_PRICE_TIMEOUT_MS, "HL getAllMids",
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
-        }
+    if (isWsConnected()) {
+      mids = getWsMids();
+    } else {
+      try {
+        const sdk = getClient();
+        mids = await withTimeout(
+          sdk.info.getAllMids(true) as Promise<Record<string, string>>,
+          API_PRICE_TIMEOUT_MS, "HL getAllMids",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[PositionMonitor] Hyperliquid price fetch failed: ${msg}`);
       }
     }
+
+    // Fetch 1m candles for each open position in parallel.
+    // Backtest uses bar.high for peak and bar.low for SL trigger; the in-progress 1m bar
+    // on HL updates tick-by-tick so high/low expand continuously - same semantics as bt.
+    const candleFetches = await Promise.all(
+      positions.map(async pos => {
+        try {
+          const c = await fetchCandles(pos.pair, "1m", 3);
+          return { id: pos.id, candles: c };
+        } catch {
+          return { id: pos.id, candles: [] };
+        }
+      }),
+    );
+    const candlesByPosId = new Map(candleFetches.map(f => [f.id, f.candles]));
 
     const activePairs = new Set(QUANT_TRADING_PAIRS);
 
     let orphanClosed = false;
     for (const position of positions) {
-      // Skip orphan check for engines with their own pair lists
+      // Orphan pair removed from universe
       const hasOwnPairList = ENSEMBLE_TRADE_TYPES.has(position.tradeType ?? "") || position.tradeType === "news-trade" || position.tradeType === "btc-event";
       if (!hasOwnPairList && position.mode === "live" && !activePairs.has(position.pair)) {
         if (orphanClosed) await new Promise(r => setTimeout(r, 5000));
@@ -144,36 +157,34 @@ async function checkPositionStops(): Promise<void> {
         continue;
       }
 
-      const rawPrice = mids[position.pair];
+      const candles = candlesByPosId.get(position.id) ?? [];
+      const latestBar = candles.length > 0 ? candles[candles.length - 1] : null;
+      const midRaw = mids[position.pair];
+      const midPrice = midRaw !== undefined ? parseFloat(midRaw) : NaN;
 
-      if (rawPrice === undefined) {
-        console.log(`[PositionMonitor] No price data for ${position.pair}, skipping`);
-        continue;
-      }
+      // Bar extremes with mid fallback if 1m fetch failed.
+      const barHigh = latestBar ? latestBar.high : midPrice;
+      const barLow = latestBar ? latestBar.low : midPrice;
+      const barClose = latestBar ? latestBar.close : midPrice;
 
-      const currentPrice = parseFloat(rawPrice);
-
-      if (isNaN(currentPrice)) {
-        console.log(`[PositionMonitor] Invalid price for ${position.pair}: ${rawPrice}, skipping`);
+      if (!isFinite(barClose) || barClose <= 0) {
+        console.log(`[PositionMonitor] No price/candle data for ${position.pair}, skipping`);
         continue;
       }
 
       // Paper liquidation check
-      if (position.mode === "paper") {
+      if (position.mode === "paper" && isFinite(midPrice)) {
         const priceDiff = position.direction === "long"
-          ? currentPrice - position.entryPrice
-          : position.entryPrice - currentPrice;
+          ? midPrice - position.entryPrice
+          : position.entryPrice - midPrice;
         const unrealizedPnl = (priceDiff / position.entryPrice) * position.size * position.leverage;
-        // TODO: Use Lighter-specific maintenance margin rates when available
         const maintRate = HYPERLIQUID_MAINTENANCE_MARGIN_RATE[position.pair] ?? 0.02;
         const notional = position.size * position.leverage;
         const maintenanceMargin = maintRate * notional;
         const equity = position.size + unrealizedPnl;
 
         if (unrealizedPnl < 0 && equity <= maintenanceMargin) {
-          console.log(
-            `[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} equity $${equity.toFixed(2)} <= maintenance margin $${maintenanceMargin.toFixed(2)} (${(maintRate * 100).toFixed(2)}% of $${notional.toFixed(0)} notional)`
-          );
+          console.log(`[PositionMonitor] LIQUIDATION: ${position.pair} ${position.direction} equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)}`);
           await tryClose(position, `liquidation (equity $${equity.toFixed(2)} <= margin $${maintenanceMargin.toFixed(2)})`);
           const penaltyUsd = position.size * (QUANT_LIQUIDATION_PENALTY_PCT / 100);
           deductLiquidationPenalty(position.id, penaltyUsd);
@@ -182,77 +193,91 @@ async function checkPositionStops(): Promise<void> {
         }
       }
 
-      // Software SL check (backup for exchange stop -- detects fill faster, triggers alert)
+      // === Backtest-parity block (bt-1m-mega.ts semantics) ===
+      // Order: SL check -> peak update -> BE check -> trail check -> stagnation
+
+      // 1. SL check using bar extremes (matches bt: bar.l <= stopLoss for longs, bar.h >= stopLoss for shorts)
       if (position.stopLoss && position.stopLoss > 0) {
         const slHit = position.direction === "long"
-          ? currentPrice <= position.stopLoss
-          : currentPrice >= position.stopLoss;
+          ? barLow <= position.stopLoss
+          : barHigh >= position.stopLoss;
         if (slHit) {
-          console.log(`[PositionMonitor] SL hit: ${position.pair} ${position.direction} price ${currentPrice} <= SL ${position.stopLoss}`);
+          const hitPrice = position.direction === "long" ? barLow : barHigh;
+          console.log(`[PositionMonitor] SL hit: ${position.pair} ${position.direction} 1m.${position.direction === "long" ? "low" : "high"}=${hitPrice.toFixed(6)} vs SL=${position.stopLoss.toFixed(6)}`);
           await tryClose(position, "SL hit");
           recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }
 
-      // Trailing stop
-      const pricePct =
-        position.direction === "long"
-          ? ((currentPrice - position.entryPrice) / position.entryPrice)
-          : ((position.entryPrice - currentPrice) / position.entryPrice);
-      const unrealizedPnlPct = pricePct * (position.leverage ?? 10) * 100;
+      // 2. Peak update using bar extremes (bt: bestLevPnl = (bar.h/entry - 1)*lev*100 for longs)
+      const favorableExtreme = position.direction === "long" ? barHigh : barLow;
+      const peakPriceMove = position.direction === "long"
+        ? (favorableExtreme - position.entryPrice) / position.entryPrice
+        : (position.entryPrice - favorableExtreme) / position.entryPrice;
+      const peakLevPnlPct = peakPriceMove * (position.leverage ?? 10) * 100;
 
-      // Trail 40/3 with re-entry for all engines (+16% profit, -17% MaxDD validated)
-
-      if (unrealizedPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
-        position.maxUnrealizedPnlPct = unrealizedPnlPct;
+      if (peakLevPnlPct > (position.maxUnrealizedPnlPct ?? 0)) {
+        position.maxUnrealizedPnlPct = peakLevPnlPct;
         saveQuantPosition(position);
       }
-
-      // Breakeven: move SL to entry when peak hits BREAKEVEN_PCT leveraged
       const peak = position.maxUnrealizedPnlPct ?? 0;
+
+      // 3. Breakeven: move SL to entry when peak hits BREAKEVEN_PCT leveraged
       if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && position.stopLoss !== position.entryPrice) {
         position.stopLoss = position.entryPrice;
         saveQuantPosition(position);
         console.log(`[PositionMonitor] Breakeven: ${position.pair} SL -> entry ${position.entryPrice} (peak +${peak.toFixed(1)}%)`);
       }
 
-      // Stagnation exit (funding holds indefinitely)
+      // 4. Trail check using bar close (bt: currentLevPnl from bar.c)
+      const currentPriceMove = position.direction === "long"
+        ? (barClose - position.entryPrice) / position.entryPrice
+        : (position.entryPrice - barClose) / position.entryPrice;
+      const currentLevPnlPct = currentPriceMove * (position.leverage ?? 10) * 100;
+
+      const trailCfg = getSteppedTrailDistance(peak, position.tradeType ?? "");
+      if (peak >= trailCfg.activation && trailCfg.activation < 999) {
+        if (position.mode === "live" && !trailActivatedIds.has(position.id)) {
+          trailActivatedIds.add(position.id);
+          void notifyTrailActivation({
+            pair: position.pair, direction: position.direction,
+            entryPrice: position.entryPrice, currentPrice: barClose,
+            unrealizedPnlPct: peak, trailActivation: trailCfg.activation,
+            trailDistance: trailCfg.distance, tradeType: position.tradeType ?? "directional",
+          });
+        }
+        if (currentLevPnlPct <= peak - trailCfg.distance) {
+          console.log(`[PositionMonitor] Trail hit: ${position.pair} peak=${peak.toFixed(1)}% now=${currentLevPnlPct.toFixed(1)}% dist=${trailCfg.distance}%`);
+          await tryClose(position, "trailing-stop");
+          continue;
+        }
+      }
+
+      // 5. Stagnation exit (funding holds indefinitely)
       if (position.tradeType !== "funding") {
         const holdMs = Date.now() - new Date(position.openedAt).getTime();
         const stagnationMs = STAGNATION_MS_BY_TRADE_TYPE[position.tradeType ?? ""]
           ?? (4 * 60 * 60 * 1000 * 20);
         if (holdMs >= stagnationMs) {
-          console.log(
-            `[PositionMonitor] Stagnation exit: ${position.pair} ${position.direction} held ${stagnationMs < 3_600_000 ? `${Math.round(holdMs / 60_000)}m` : `${(holdMs / 3_600_000).toFixed(0)}h`} (limit ${stagnationMs < 3_600_000 ? `${Math.round(stagnationMs / 60_000)}m` : `${(stagnationMs / 3_600_000).toFixed(0)}h`}), P&L ${unrealizedPnlPct.toFixed(2)}%`,
-          );
+          console.log(`[PositionMonitor] Stagnation exit: ${position.pair} held ${(holdMs / 3_600_000).toFixed(1)}h, P&L ${currentLevPnlPct.toFixed(2)}%`);
           await tryClose(position, "stagnation");
           continue;
         }
       }
-
-      // Stop-loss and take-profit handled by exchange orders for garch-v2.
-      // Bot-level SL/TP checks removed: exchange stop is set at entry and fires at exact price.
     }
 
     // Prune stale entries for closed positions
     const openIds = new Set(positions.map(p => p.id));
-    for (const id of trailActivatedIds) {
-      if (!openIds.has(id)) trailActivatedIds.delete(id);
-    }
-    for (const id of closeFailCounts.keys()) {
-      if (!openIds.has(id)) closeFailCounts.delete(id);
-    }
-    for (const id of nearSlIds.keys()) {
-      if (!openIds.has(id)) nearSlIds.delete(id);
-    }
+    for (const id of trailActivatedIds) if (!openIds.has(id)) trailActivatedIds.delete(id);
+    for (const id of closeFailCounts.keys()) if (!openIds.has(id)) closeFailCounts.delete(id);
+    for (const id of nearSlIds.keys()) if (!openIds.has(id)) nearSlIds.delete(id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[PositionMonitor] Error checking positions: ${msg}`);
     if (msg.includes("timed out") || msg.includes("ECONNR") || msg.includes("fetch failed")) {
       resetConnection();
     }
-    // Alert if live positions are unprotected
     const liveCount = getOpenQuantPositions().filter(p => p.mode === "live").length;
     if (liveCount > 0) {
       throttledCriticalAlert(`Monitor failed: ${liveCount} live position(s) unprotected: ${msg}`, "PositionMonitor");

@@ -59,7 +59,7 @@ export interface QuantAccountState {
   positions: QuantPosition[];
 }
 
-export type CandleInterval = "15m" | "1h" | "4h" | "1d";
+export type CandleInterval = "1m" | "15m" | "1h" | "4h" | "1d";
 
 export interface OhlcvCandle {
   timestamp: number; // open time in ms

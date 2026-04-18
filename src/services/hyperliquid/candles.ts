@@ -2,6 +2,7 @@ import { ensureConnected, getClient } from "./client.js";
 import type { CandleInterval, OhlcvCandle } from "./types.js";
 
 const INTERVAL_MS: Record<CandleInterval, number> = {
+  "1m": 60 * 1000,
   "15m": 15 * 60 * 1000,
   "1h": 60 * 60 * 1000,
   "4h": 4 * 60 * 60 * 1000,
@@ -54,7 +55,8 @@ export async function fetchAllCandles(
   pair: string,
   count: number,
 ): Promise<Record<CandleInterval, OhlcvCandle[]>> {
-  const [candles15m, candles1h, candles4h, candles1d] = await Promise.all([
+  const [candles1m, candles15m, candles1h, candles4h, candles1d] = await Promise.all([
+    fetchCandles(pair, "1m", count),
     fetchCandles(pair, "15m", count),
     fetchCandles(pair, "1h", count),
     fetchCandles(pair, "4h", count),
@@ -62,6 +64,7 @@ export async function fetchAllCandles(
   ]);
 
   return {
+    "1m": candles1m,
     "15m": candles15m,
     "1h": candles1h,
     "4h": candles4h,
