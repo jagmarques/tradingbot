@@ -18,17 +18,15 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000,
 };
 
-// 3-stage stepped trail T50/3-30/5-15/8 — locks tighter at higher peaks (top-50 winner)
+// Single-stage T25/3 — activate at peak +25% leveraged, exit on 3% drop. B+ winner.
 const TRAIL_STEPS = [
-  { activation: 50, distance: 3 },
-  { activation: 30, distance: 5 },
-  { activation: 15, distance: 8 },
+  { activation: 25, distance: 3 },
 ];
 const BREAKEVEN_PCT = 5;
 // Second breakeven: when peak hits BE2_PCT leveraged, lock in BE2_LOCK_PCT of profit (leveraged).
-// Converts to price-pct via leverage. E.g. lev=10, lock=5% leveraged => SL = entry + 0.5% price.
-const BE2_PCT = 15;
-const BE2_LOCK_PCT = 5;
+// B+ uses 20->lock10: after peak +20% leveraged, SL moves to entry + 1% price (= +10% leveraged).
+const BE2_PCT = 20;
+const BE2_LOCK_PCT = 10;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 

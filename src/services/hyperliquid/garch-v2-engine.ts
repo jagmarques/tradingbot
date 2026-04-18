@@ -10,9 +10,9 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;     // 1-bar momentum
 const GARCH_VOL_WINDOW_1H = 15;  // 15-bar vol window for 1h (ultra sweep winner)
 const GARCH_VOL_WINDOW_4H = 20;  // 20-bar vol window for 4h
-// z2.0/2.0 — stricter 4h gate per top-50 winner
-const Z_LONG_1H = 2.0;
-const Z_LONG_4H = 2.0;
+// z1.8/1.8 — looser entries, more trade volume (B+ config)
+const Z_LONG_1H = 1.8;
+const Z_LONG_4H = 1.8;
 // SL 2.5/3.0 with smart 3-stage trail
 const SL_PCT_LOW_LEV = 0.025;
 const SL_PCT_HIGH_LEV = 0.030;
