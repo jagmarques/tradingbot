@@ -18,15 +18,15 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000,
 };
 
-// Single-stage T25/3 — activate at peak +25% leveraged, exit on 3% drop. B+ winner.
+// Single-stage T15/5 — activate at peak +15% leveraged, exit on 5% drop. M-safest winner.
 const TRAIL_STEPS = [
-  { activation: 25, distance: 3 },
+  { activation: 15, distance: 5 },
 ];
 const BREAKEVEN_PCT = 5;
 // Second breakeven: when peak hits BE2_PCT leveraged, lock in BE2_LOCK_PCT of profit (leveraged).
-// B+ uses 20->lock10: after peak +20% leveraged, SL moves to entry + 1% price (= +10% leveraged).
-const BE2_PCT = 20;
-const BE2_LOCK_PCT = 10;
+// M-safest uses 10->lock5: after peak +10% leveraged, SL moves to entry + 0.5% price (= +5% leveraged).
+const BE2_PCT = 10;
+const BE2_LOCK_PCT = 5;
 const DEAD_TRAIL = { activation: 999, distance: 999 };
 const TRAIL_ENGINES = new Set(["garch-v2"]);
 
