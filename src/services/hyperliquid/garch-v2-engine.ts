@@ -16,7 +16,7 @@ const Z_LONG_4H = 1.0;
 // SL 1.5/2.0 — tight to cap small losses (V-best-Calmar)
 const SL_PCT_LOW_LEV = 0.015;
 const SL_PCT_HIGH_LEV = 0.020;
-const POSITION_SIZE_USD = 15;
+const POSITION_SIZE_USD = 5; // Scaled down for ~$26 live equity (fits 5 concurrent; scale up as equity grows)
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[], volWindow: number): number {
