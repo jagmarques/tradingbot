@@ -6,6 +6,7 @@ import { recordStopLossCooldown } from "./scheduler.js";
 import { withTimeout } from "../../utils/timeout.js";
 import { getWsMids, isWsConnected } from "./ws-prices.js";
 import { fetchCandles } from "./candles.js";
+import { updateExchangeStop } from "./live-executor.js";
 import type { QuantPosition } from "./types.js";
 import { accrueFundingIncome, deductLiquidationPenalty } from "./paper.js";
 import { saveQuantPosition } from "../database/quant.js";
@@ -232,6 +233,7 @@ async function checkPositionStops(): Promise<void> {
       if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && curSl < position.entryPrice) {
         position.stopLoss = position.entryPrice;
         saveQuantPosition(position);
+        if (position.mode === "live") void updateExchangeStop(position);
         console.log(`[PositionMonitor] Breakeven: ${position.pair} SL -> entry ${position.entryPrice} (peak +${peak.toFixed(1)}%)`);
       }
       // 3b. Breakeven stage 2: lock profit above entry when peak hits BE2_PCT leveraged.
@@ -246,6 +248,7 @@ async function checkPositionStops(): Promise<void> {
         if (shouldMove) {
           position.stopLoss = be2Sl;
           saveQuantPosition(position);
+          if (position.mode === "live") void updateExchangeStop(position);
           console.log(`[PositionMonitor] BE2 lock: ${position.pair} SL -> ${be2Sl.toFixed(6)} (+${BE2_LOCK_PCT}% lev profit, peak +${peak.toFixed(1)}%)`);
         }
       }

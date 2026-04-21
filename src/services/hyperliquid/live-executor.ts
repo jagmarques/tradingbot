@@ -139,6 +139,51 @@ async function cancelExchangeStop(positionId: string, pair: string): Promise<voi
   exchangeStopOids.delete(positionId);
 }
 
+// Place exchange-side trigger stop so SL fills at exact price (matches backtest semantics).
+// Reduces slippage on losses from ~15-20bp to near-zero.
+export async function placeExchangeStop(position: QuantPosition): Promise<void> {
+  if (!position.stopLoss || !isFinite(position.stopLoss) || position.stopLoss <= 0) return;
+  if (exchangeStopOids.has(position.id)) return;
+  try {
+    await ensureConnected();
+    const sdk = getClient();
+    const szMap = await getSzDecimals();
+    const decimals = szMap.get(position.pair);
+    if (decimals === undefined) return;
+    const notional = position.size * position.leverage;
+    const sizeInCoins = roundSize(notional / position.entryPrice, decimals);
+    if (sizeInCoins <= 0) return;
+    const sl = roundPrice(position.stopLoss, position.entryPrice);
+    const result = await withTimeout(
+      sdk.exchange.placeOrder({
+        coin: `${position.pair}-PERP`,
+        is_buy: position.direction === "short",
+        sz: sizeInCoins,
+        limit_px: sl,
+        order_type: { trigger: { triggerPx: sl, isMarket: true, tpsl: "sl" } },
+        reduce_only: true,
+      }),
+      API_ORDER_TIMEOUT_MS, "HL placeExchangeStop",
+    );
+    const statuses = result?.response?.data?.statuses;
+    if (statuses?.[0]?.resting) {
+      exchangeStopOids.set(position.id, statuses[0].resting.oid);
+      console.log(`[Quant Live] Exchange SL placed for ${position.pair} @ ${sl}`);
+    } else {
+      console.error(`[Quant Live] Exchange SL not resting for ${position.pair}: ${JSON.stringify(statuses)}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Quant Live] Exchange SL failed for ${position.pair}: ${msg}`);
+  }
+}
+
+// Called when BE/BE2/trail moves SL. Cancels old stop and places new at updated price.
+export async function updateExchangeStop(position: QuantPosition): Promise<void> {
+  await cancelExchangeStop(position.id, position.pair);
+  await placeExchangeStop(position);
+}
+
 async function cancelExchangeTP(positionId: string, pair: string): Promise<void> {
   const oid = exchangeTpOids.get(positionId);
   if (!oid) return;
@@ -755,7 +800,8 @@ export async function liveOpenPosition(
     });
 
     console.log(`[Quant Live] OPEN ${direction.toUpperCase()} ${pair} $${actualSizeUsd.toFixed(2)}x${leverage} @ ${fillPrice} (${fillSize} coins)`);
-    // No exchange stop -- software SL fires every 3s in position-monitor (avoids tick size issues + sends alerts)
+    // Exchange-side stop: matches backtest exact-fill semantics (was software SL + market-close, which bled ~15bp per loss)
+    void placeExchangeStop(position);
     void placeExchangeTP(position);
     return position;
   } catch (err) {
