@@ -246,6 +246,7 @@ export function initLiveEngine(): void {
     await reconcileWithExchange();
     await cancelAllExistingStops();
     for (const pos of getLivePositions()) {
+      await placeExchangeStop(pos);
       if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos);
     }
   }, 15_000);
