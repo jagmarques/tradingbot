@@ -363,10 +363,27 @@ async function checkTrailActivePositions(): Promise<void> {
       const peak = position.maxUnrealizedPnlPct ?? 0;
 
       // Breakeven: move SL to entry when peak hits BREAKEVEN_PCT
-      if (peak >= BREAKEVEN_PCT && position.stopLoss !== position.entryPrice) {
+      const curSl = position.stopLoss ?? 0;
+      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BREAKEVEN_PCT && curSl < position.entryPrice) {
         position.stopLoss = position.entryPrice;
         saveQuantPosition(position);
+        if (position.mode === "live") void updateExchangeStop(position);
         console.log(`[PositionMonitor] Breakeven (fast): ${position.pair} SL -> entry ${position.entryPrice}`);
+      }
+      // BE2 lock in fast-poll too
+      if (TRAIL_ENGINES.has(position.tradeType ?? "") && peak >= BE2_PCT) {
+        const lockPricePct = BE2_LOCK_PCT / (position.leverage ?? 10) / 100;
+        const be2Sl = position.direction === "long"
+          ? position.entryPrice * (1 + lockPricePct)
+          : position.entryPrice * (1 - lockPricePct);
+        const sl = position.stopLoss ?? 0;
+        const shouldMove = position.direction === "long" ? sl < be2Sl : sl > be2Sl;
+        if (shouldMove) {
+          position.stopLoss = be2Sl;
+          saveQuantPosition(position);
+          if (position.mode === "live") void updateExchangeStop(position);
+          console.log(`[PositionMonitor] BE2 lock (fast): ${position.pair} SL -> ${be2Sl.toFixed(6)}`);
+        }
       }
 
       const trailCfg = getTrailConfig(position);

@@ -70,9 +70,17 @@ export async function runDirectionalCycle(): Promise<void> {
 
 export function startQuantScheduler(): void {
   if (schedulerInterval !== null || initialRunTimeout !== null) return;
-  console.log(`[QuantScheduler] Started (${CYCLE_MS / 60000}m interval)`);
-  initialRunTimeout = setTimeout(() => { void runDirectionalCycle(); }, 15_000);
-  schedulerInterval = setInterval(() => { void runDirectionalCycle(); }, CYCLE_MS);
+  // Align first cycle to next h1 boundary + 10s buffer for HL to publish the closed bar.
+  // Matches bt entry timing (exactly at h1 open). Subsequent cycles run every 3min within the hour.
+  const now = Date.now();
+  const H_MS = 60 * 60 * 1000;
+  const nextH1Plus10s = Math.ceil(now / H_MS) * H_MS + 10_000;
+  const firstDelay = Math.max(5_000, nextH1Plus10s - now);
+  console.log(`[QuantScheduler] Started — first cycle in ${Math.round(firstDelay/1000)}s (h1-aligned), then every ${CYCLE_MS / 60000}m`);
+  initialRunTimeout = setTimeout(() => {
+    void runDirectionalCycle();
+    schedulerInterval = setInterval(() => { void runDirectionalCycle(); }, CYCLE_MS);
+  }, firstDelay);
 }
 
 export function stopQuantScheduler(): void {
