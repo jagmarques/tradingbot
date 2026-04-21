@@ -17,8 +17,9 @@ const Z_LONG_4H = 1.5;
 const SL_PCT_LOW_LEV = 0.020;
 const SL_PCT_HIGH_LEV = 0.025;
 const POSITION_SIZE_USD = 5; // Scaled down for ~$26 live equity (fits 5 concurrent; scale up as equity grows)
-// Block catastrophic hours: 5-8 UTC (EU-open thin liquidity: 69% of losses from 28% of volume per forensics) + 22-23 UTC (prior bt).
-const BLOCKED_HOURS_UTC = new Set([5, 6, 7, 8, 22, 23]);
+// Blocked hours 22-23 UTC (prior bt). Dropped 5-8 UTC block: verified bt shows it costs $0.74/day
+// (hours profitable in 297d bt average, only adverse in last 7 live days — not structural).
+const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[], volWindow: number): number {
   if (candles.length < volWindow + GARCH_LOOKBACK + 1) return 0;
