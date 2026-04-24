@@ -141,7 +141,7 @@ export async function sendHourlyHeartbeat(): Promise<void> {
         const pricePct = pos.direction === "long"
           ? (price - pos.entryPrice) / pos.entryPrice
           : (pos.entryPrice - price) / pos.entryPrice;
-        unrealizedPnl += pricePct * pos.size * (pos.leverage ?? 10);
+        unrealizedPnl += pricePct * pos.size * (pos.leverage ?? 5);
       }
     } catch { /* skip unrealized if price fetch fails */ }
 

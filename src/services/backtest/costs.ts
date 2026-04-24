@@ -29,8 +29,8 @@ const SPREAD_MAP: Record<string, number> = {
 };
 
 export const DEFAULT_COST_CONFIG: CostConfig = {
-  makerFeePct: 0.0001,      // 0.01% Hyperliquid maker
-  takerFeePct: 0.00035,     // 0.035% Hyperliquid taker
+  makerFeePct: 0.00015,     // 0.015% Hyperliquid maker
+  takerFeePct: 0.00045,     // 0.045% Hyperliquid taker base
   spreadMap: SPREAD_MAP,
   defaultSpreadPct: 0.0004, // 0.04% half-spread fallback
   slippageMultiplierOnSL: 1.5, // 1.5x spread on hard stop fills (adverse slippage)

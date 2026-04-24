@@ -109,8 +109,14 @@ export async function paperOpenPosition(
     const slPctMatch = indicatorsAtEntry.match(/slPct:([\d.]+)/);
     if (slPctMatch) {
       const slPct = parseFloat(slPctMatch[1]!);
-      adjStop = direction === "long" ? price * (1 - slPct) : price * (1 + slPct);
+      if (isFinite(slPct) && slPct > 0) {
+        adjStop = direction === "long" ? price * (1 - slPct) : price * (1 + slPct);
+      }
     }
+  }
+  if (!adjStop || !isFinite(adjStop) || adjStop <= 0) {
+    console.error(`[Quant Paper] ${pair} rejected: no valid stop-loss (adjStop=${adjStop}, indicators=${indicatorsAtEntry})`);
+    return null;
   }
 
   const entryPrice = price;

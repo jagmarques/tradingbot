@@ -1,5 +1,9 @@
+import * as fs from "fs";
+import * as path from "path";
 import { getDb } from "../database/db.js";
 import { isPaperMode } from "../../config/env.js";
+
+const KILL_FLAG_PATH = process.env.KILL_FLAG_PATH ?? "/app/data/quant-killed.flag";
 
 export interface Trade {
   id: string;
@@ -26,6 +30,7 @@ export interface PnlBreakdown {
 }
 
 let killSwitchActive = false;
+try { killSwitchActive = fs.existsSync(KILL_FLAG_PATH); } catch { /* ignore */ }
 let tradingPaused = false;
 let _startBalance = 0;
 
@@ -39,10 +44,17 @@ export function canTrade(): boolean {
 
 export function activateKillSwitch(): void {
   killSwitchActive = true;
+  try {
+    fs.mkdirSync(path.dirname(KILL_FLAG_PATH), { recursive: true });
+    fs.writeFileSync(KILL_FLAG_PATH, new Date().toISOString());
+  } catch (err) {
+    console.error(`[Risk] Kill flag write failed: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 export function deactivateKillSwitch(): void {
   killSwitchActive = false;
+  try { if (fs.existsSync(KILL_FLAG_PATH)) fs.unlinkSync(KILL_FLAG_PATH); } catch { /* ignore */ }
 }
 
 export function pauseTrading(reason: string): void {
