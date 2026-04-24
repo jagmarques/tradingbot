@@ -13,14 +13,17 @@ const LB = 1;
 const OOS_START = new Date("2025-06-01").getTime();
 const OOS_END = new Date("2026-03-25").getTime();
 const OOS_DAYS = (OOS_END - OOS_START) / D;
-// Spreads measured from HL L2 book 2026-04-24. Values in fraction (e.g. 1e-4 = 1bp).
-// Illiquid pairs added: RSR 22bp, APE 20bp, IMX 17bp, MEME 17bp, ACE 16bp, CELO 12bp, ORDI 11bp, PEOPLE 11bp.
+// Spreads measured or estimated from HL L2 book 2026-04-24.
+// Measured: RSR 22bp, APE 20bp, IMX 17bp, MEME 17bp, ACE 16bp, CELO 12bp, ORDI 11bp, PEOPLE 11bp.
+// Estimated 12bp for micro-caps / recent listings (unmeasured, conservative).
 const SP: Record<string, number> = {
   XRP: 1.05e-4, DOGE: 1.35e-4, ETH: 1e-4, SOL: 2e-4, SUI: 1.85e-4, AVAX: 2.55e-4, ARB: 2.6e-4,
   ENA: 2.55e-4, UNI: 2.75e-4, APT: 3.2e-4, LINK: 3.45e-4, DOT: 4.95e-4, WIF: 5.05e-4, ADA: 5.55e-4,
   LDO: 5.8e-4, OP: 6.2e-4, NEAR: 3.5e-4, FET: 4e-4,
   RSR: 22.4e-4, APE: 19.9e-4, IMX: 17.2e-4, MEME: 17.1e-4, ACE: 15.6e-4, CELO: 12.4e-4,
   ORDI: 11.5e-4, PEOPLE: 11.2e-4,
+  STRAX: 12e-4, YGG: 12e-4, BANANA: 12e-4, ZEN: 12e-4, BIO: 12e-4, WCT: 12e-4, CYBER: 12e-4,
+  STRK: 12e-4, ETHFI: 12e-4, KAITO: 12e-4, PENGU: 12e-4,
 };
 const DEFAULT_SPREAD = 8e-4; // raised from 5bp to 8bp; covers illiquid pairs not explicitly mapped
 const RENAME: Record<string, string> = { kPEPE: "1000PEPE" };

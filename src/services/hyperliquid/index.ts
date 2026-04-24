@@ -1,6 +1,6 @@
 import { initHyperliquid, isHyperliquidInitialized, ensureConnected, getClient } from "./client.js";
 import { initPaperEngine } from "./paper.js";
-import { initLiveEngine, startHeartbeat, stopHeartbeat } from "./live-executor.js";
+import { initLiveEngine, startHeartbeat, stopHeartbeat, stopReconcile } from "./live-executor.js";
 import { loadOpenQuantPositions, setPaperStartDate } from "../database/quant.js";
 import { loadEnv, isPaperMode, getTradingMode } from "../../config/env.js";
 import { startPositionMonitor, stopPositionMonitor } from "./position-monitor.js";
@@ -62,10 +62,11 @@ async function verifyLiveConnection(): Promise<void> {
   }
 }
 
-export function stopQuant(): void {
+export async function stopQuant(): Promise<void> {
   stopQuantScheduler();
   stopPositionMonitor();
-  stopHeartbeat();
+  stopReconcile();
+  await stopHeartbeat();
   stopHlPriceWs();
   console.log("[Quant] Stopped");
 }

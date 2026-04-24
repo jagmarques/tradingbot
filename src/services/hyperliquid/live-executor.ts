@@ -25,11 +25,13 @@ const closingSet = new Set<string>();
 const openingPairs = new Set<string>();
 const exchangeStopOids = new Map<string, number>();
 const exchangeTpOids = new Map<string, number>();
+const stopUpdateInFlight = new Set<string>(); // per-position mutex for updateExchangeStop
 
 let szDecimalsMap: Map<string, number> | null = null;
 let maxLeverageMap: Map<string, number> | null = null;
 let metaFetchedAt = 0;
 const META_TTL_MS = 60 * 60 * 1000;
+let reconcileInterval: ReturnType<typeof setInterval> | null = null;
 
 // Dead-man's switch: schedule auto-cancel of all orders if bot stops heartbeating
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;   // send heartbeat every 5 min
@@ -178,20 +180,26 @@ export async function placeExchangeStop(position: QuantPosition): Promise<void> 
   }
 }
 
-// Atomic swap: place new stop, then cancel old. Never leaves position unprotected.
+// Atomic swap with per-position mutex. Place new, cancel old. Never stacks orders.
 export async function updateExchangeStop(position: QuantPosition): Promise<void> {
-  const oldOid = exchangeStopOids.get(position.id);
-  if (oldOid !== undefined) exchangeStopOids.delete(position.id);
-  await placeExchangeStop(position);
-  const newOid = exchangeStopOids.get(position.id);
-  if (newOid !== undefined && oldOid !== undefined && newOid !== oldOid) {
-    try {
-      const sdk = getClient();
-      await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: oldOid });
-    } catch { /* best effort */ }
-  } else if (newOid === undefined && oldOid !== undefined) {
-    exchangeStopOids.set(position.id, oldOid);
-    console.error(`[Quant Live] Exchange SL swap failed for ${position.pair}, kept old @ oid ${oldOid}`);
+  if (stopUpdateInFlight.has(position.id)) return; // another swap in progress
+  stopUpdateInFlight.add(position.id);
+  try {
+    const oldOid = exchangeStopOids.get(position.id);
+    if (oldOid !== undefined) exchangeStopOids.delete(position.id);
+    await placeExchangeStop(position);
+    const newOid = exchangeStopOids.get(position.id);
+    if (newOid !== undefined && oldOid !== undefined && newOid !== oldOid) {
+      try {
+        const sdk = getClient();
+        await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: oldOid });
+      } catch { /* best effort */ }
+    } else if (newOid === undefined && oldOid !== undefined) {
+      exchangeStopOids.set(position.id, oldOid);
+      console.error(`[Quant Live] Exchange SL swap failed for ${position.pair}, kept old @ oid ${oldOid}`);
+    }
+  } finally {
+    stopUpdateInFlight.delete(position.id);
   }
 }
 
@@ -262,7 +270,16 @@ export function initLiveEngine(): void {
     }
     await cancelAllExistingStops();
   }, 15_000);
-  setInterval(() => void reconcileWithExchange(), 5 * 60 * 1000);
+  if (reconcileInterval === null) {
+    reconcileInterval = setInterval(() => void reconcileWithExchange(), 5 * 60 * 1000);
+  }
+}
+
+export function stopReconcile(): void {
+  if (reconcileInterval !== null) {
+    clearInterval(reconcileInterval);
+    reconcileInterval = null;
+  }
 }
 
 async function reconcileWithExchange(): Promise<void> {
@@ -320,8 +337,7 @@ async function reconcileWithExchange(): Promise<void> {
           livePositions.set(restored.id, restored);
           saveQuantPosition(restored);
           console.log(`[Quant Live] RESTORED orphan ${coin} ${direction} @ ${entryPx} (garch-v2, lev=${leverage}x, SL=${(slPct * 100).toFixed(1)}%)`);
-          // Place exchange SL immediately; adopted orphans were running unprotected.
-          void placeExchangeStop(restored);
+          await placeExchangeStop(restored); // await so oid is registered before startup loop runs
         }
       }
     }
@@ -1134,22 +1150,20 @@ export function startHeartbeat(): void {
   console.log("[Quant Live] Dead-man switch started (5m heartbeat, 10m timeout)");
 }
 
-export function stopHeartbeat(): void {
+export async function stopHeartbeat(): Promise<void> {
   if (heartbeatInterval !== null) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
-  // Clear scheduled cancel so orders stay alive after graceful shutdown
+  // Await scheduleCancel(null) so exchange stops aren't wiped after Coolify SIGTERM.
   if (!isPaperMode()) {
-    void (async () => {
-      try {
-        await ensureConnected();
-        const sdk = getClient();
-        await sdk.exchange.scheduleCancel(null);
-        console.log("[Quant Live] Dead-man switch cleared (graceful shutdown)");
-      } catch {
-        // best effort
-      }
-    })();
+    try {
+      await ensureConnected();
+      const sdk = getClient();
+      await withTimeout(sdk.exchange.scheduleCancel(null), 5_000, "scheduleCancel(null)");
+      console.log("[Quant Live] Dead-man switch cleared (graceful shutdown)");
+    } catch (err) {
+      console.error(`[Quant Live] Failed to clear dead-man switch: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }

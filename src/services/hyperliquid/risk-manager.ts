@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import {
   HYPERLIQUID_MAX_LEVERAGE,
   QUANT_DAILY_DRAWDOWN_LIMIT,
@@ -5,7 +7,11 @@ import {
 import type { MarketRegime } from "./types.js";
 import { sumRecentQuantLosses } from "../database/quant.js";
 
+// Persist kill switch to disk so /stop survives restarts.
+const KILL_FLAG_PATH = process.env.KILL_FLAG_PATH ?? "/app/data/quant-killed.flag";
 let quantKilled = false;
+try { quantKilled = fs.existsSync(KILL_FLAG_PATH); } catch { /* ignore */ }
+if (quantKilled) console.log("[RiskManager] Kill switch restored from disk: ACTIVE");
 const dailyLossMap = new Map<string, number>();
 const lastLossTimestampMap = new Map<string, number>();
 
@@ -27,9 +33,17 @@ export function isQuantKilled(): boolean {
 
 export function setQuantKilled(killed: boolean): void {
   quantKilled = killed;
-  console.log(
-    `[RiskManager] Quant kill switch: ${killed ? "ACTIVATED" : "DEACTIVATED"}`,
-  );
+  try {
+    if (killed) {
+      fs.mkdirSync(path.dirname(KILL_FLAG_PATH), { recursive: true });
+      fs.writeFileSync(KILL_FLAG_PATH, new Date().toISOString());
+    } else if (fs.existsSync(KILL_FLAG_PATH)) {
+      fs.unlinkSync(KILL_FLAG_PATH);
+    }
+  } catch (err) {
+    console.error(`[RiskManager] Kill flag persist failed: ${err instanceof Error ? err.message : err}`);
+  }
+  console.log(`[RiskManager] Quant kill switch: ${killed ? "ACTIVATED" : "DEACTIVATED"}`);
 }
 
 export function recordDailyLoss(loss: number, strategy: string, mode: "live" | "paper" = "live"): void {

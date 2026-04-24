@@ -97,7 +97,7 @@ async function shutdown(signal: string): Promise<void> {
   try {
     stopMonitors();
     stopPnlCron();
-    stopQuant();
+    await stopQuant();
     stopBot();
     stopHealthServer();
     closeDb();
