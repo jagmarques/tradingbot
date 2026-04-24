@@ -277,7 +277,6 @@ async function checkPositionStops(): Promise<void> {
         if (currentLevPnlPct <= peak - trailCfg.distance) {
           console.log(`[PositionMonitor] Trail hit: ${position.pair} peak=${peak.toFixed(1)}% now=${currentLevPnlPct.toFixed(1)}% dist=${trailCfg.distance}%`);
           await tryClose(position, "trailing-stop");
-          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }
@@ -416,7 +415,6 @@ async function checkTrailActivePositions(): Promise<void> {
             `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await tryClose(position, "trailing-stop");
-          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }
