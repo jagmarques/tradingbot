@@ -167,10 +167,14 @@ async function checkPositionStops(): Promise<void> {
       const midRaw = mids[position.pair];
       const midPrice = midRaw !== undefined ? parseFloat(midRaw) : NaN;
 
-      // Bar extremes with mid fallback if 1m fetch failed.
-      const barHigh = latestBar ? latestBar.high : midPrice;
-      const barLow = latestBar ? latestBar.low : midPrice;
-      const barClose = latestBar ? latestBar.close : midPrice;
+      // Bar must be strictly post-entry, else its high/low may include pre-entry ticks
+      // (the 1m bar in progress when we opened covers the full minute regardless of entry time).
+      // Falling through to mid matches bt behavior: bt only sees bars AFTER entryTime.
+      const openedAtMs = new Date(position.openedAt).getTime();
+      const barPostEntry = latestBar !== null && latestBar.timestamp > openedAtMs;
+      const barHigh = barPostEntry ? latestBar!.high : midPrice;
+      const barLow = barPostEntry ? latestBar!.low : midPrice;
+      const barClose = barPostEntry ? latestBar!.close : midPrice;
 
       if (!isFinite(barClose) || barClose <= 0) {
         console.log(`[PositionMonitor] No price/candle data for ${position.pair}, skipping`);
@@ -273,6 +277,7 @@ async function checkPositionStops(): Promise<void> {
         if (currentLevPnlPct <= peak - trailCfg.distance) {
           console.log(`[PositionMonitor] Trail hit: ${position.pair} peak=${peak.toFixed(1)}% now=${currentLevPnlPct.toFixed(1)}% dist=${trailCfg.distance}%`);
           await tryClose(position, "trailing-stop");
+          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }
@@ -411,6 +416,7 @@ async function checkTrailActivePositions(): Promise<void> {
             `[PositionMonitor] Trailing stop (fast): ${position.pair} ${position.direction} peaked at ${peak.toFixed(2)}%, now ${unrealizedPnlPct.toFixed(2)}%`,
           );
           await tryClose(position, "trailing-stop");
+          recordStopLossCooldown(position.pair, position.direction, position.tradeType ?? "directional");
           continue;
         }
       }
