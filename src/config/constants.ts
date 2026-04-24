@@ -30,11 +30,7 @@ export const API_ORDER_TIMEOUT_MS = 15_000;
 // Pruning from 125 to 50 drops MDD 37% while only losing 14% of $/day (Calmar 0.188 -> 0.256).
 export const QUANT_TRADING_PAIRS = [
   "ETH", "ZEC", "YGG", "STRAX", "WLD", "PENGU", "DOGE", "ARB", "FIL", "OP",
-  "AVAX", "NEO", "JTO", "KAITO", "SUSHI", "EIGEN", "LINK", "ADA", "ZK", "CELO",
-  "STX", "AAVE", "BANANA", "FET", "PEOPLE", "UNI", "ORDI", "TURBO", "WCT", "TIA",
-  "MEME", "ETC", "DYDX", "BIO", "CAKE", "APE", "ENA", "SAND", "IMX", "ZEN",
-  "SOL", "ICP", "STRK", "APT", "PENDLE", "RSR", "ETHFI", "RENDER", "ACE", "CYBER",
-]; // 50 pairs total
+]; // Bplus-top10 — best per-pair Calmar set
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
@@ -77,7 +73,7 @@ export const QUANT_ENGINE_EXCHANGE: Record<string, QuantExchange> = {
 
 // GARCH $15 mc5 z1.0/1.0 SL1.5/2.0 T15/5 BE5%+BE2(10->lock5) cd4h mh120h — V-best-Calmar: $6.03/day MDD $26.7 WR 48% 14 trades/day
 export const ENSEMBLE_POSITION_SIZE_USD = 1;
-export const ENSEMBLE_MAX_CONCURRENT = 5;
+export const ENSEMBLE_MAX_CONCURRENT = 7;
 export const ENSEMBLE_LEVERAGE = 10;
 
 // Ensemble engine trade types (shared across engines, executor, position-monitor)

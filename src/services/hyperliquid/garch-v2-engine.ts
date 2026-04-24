@@ -1,4 +1,4 @@
-// GARCH v2 mc5 z1.5/1.5 SL2.0/2.5 T15/5 BE5%+BE2(10->5) cd4h mh120h cap5x
+// GARCH v2 Bplus-top10: mc7 z1.8/1.8 SL2.5/3.0 T25/3 BE5+BE2(20->10) cd4h mh120h cap10x
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -10,11 +10,11 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;
 const GARCH_VOL_WINDOW_1H = 15;
 const GARCH_VOL_WINDOW_4H = 20;
-const Z_LONG_1H = 1.5;
-const Z_LONG_4H = 1.5;
-const SL_PCT_LOW_LEV = 0.020;
-const SL_PCT_HIGH_LEV = 0.025;
-const POSITION_SIZE_USD = 5;
+const Z_LONG_1H = 1.8;
+const Z_LONG_4H = 1.8;
+const SL_PCT_LOW_LEV = 0.025;
+const SL_PCT_HIGH_LEV = 0.030;
+const POSITION_SIZE_USD = 10;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[], volWindow: number): number {
