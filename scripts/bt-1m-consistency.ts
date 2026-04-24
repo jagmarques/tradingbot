@@ -136,7 +136,7 @@ function sim(cfg: Cfg): Stats {
         if (step) { const cur = (bC / pos.entryPrice - 1) * pos.leverage * 100; if (cur <= pos.peakLevPnlPct - step.d) { xp = bC; rs = "trail"; } }
       }
       if (xp > 0) {
-        const es = rs === "sl" ? pos.spread * 1.5 : pos.spread;
+        const es = rs === "sl" ? pos.spread * 0.75 : pos.spread/2; // half-spread on exit; SL gets +0.5x adverse slip
         const fp = xp * (1 - es);
         const pnl = (fp / pos.entryPrice - 1) * pos.notional - pos.notional * FEE * 2;
         open.splice(i, 1); rp += pnl; tt++;
@@ -165,7 +165,7 @@ function sim(cfg: Cfg): Stats {
       const h1i = p.h1Map.get(ts); if (h1i === undefined || h1i < 20) continue;
       const z1 = p.z1h[h1i - 1]!; if (z1 <= cfg.z1h) continue;
       const z4 = get4h(p, ts); if (z4 <= cfg.z4h) continue;
-      const ep = p.h1.o[h1i]! * (1 + p.spread);
+      const ep = p.h1.o[h1i]! * (1 + p.spread/2); // half-spread on entry (was full = double-counted)
       const slPct = p.leverage >= 10 ? cfg.slHigh : cfg.slLow;
       const sl = ep * (1 - slPct);
       const no = MARGIN * p.leverage;
