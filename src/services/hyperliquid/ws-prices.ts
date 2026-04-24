@@ -6,7 +6,9 @@ const PING_INTERVAL_MS = 50_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-const midsCache = new Map<string, number>();
+interface MidEntry { price: number; ts: number; }
+const midsCache = new Map<string, MidEntry>();
+const MID_MAX_AGE_MS = 30_000; // filter entries older than this from getWsMids
 let ws: WebSocket | null = null;
 let started = false;
 let connected = false;
@@ -55,7 +57,7 @@ function connect(): void {
           for (const [coin, priceStr] of Object.entries(payload.mids)) {
             const price = parseFloat(priceStr);
             if (isFinite(price) && price > 0) {
-              midsCache.set(coin, price);
+              midsCache.set(coin, { price, ts: Date.now() });
             }
           }
         }
@@ -103,8 +105,9 @@ export function stopHlPriceWs(): void {
 
 export function getWsMids(): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const [coin, price] of midsCache.entries()) {
-    result[coin] = String(price);
+  const cutoff = Date.now() - MID_MAX_AGE_MS;
+  for (const [coin, entry] of midsCache.entries()) {
+    if (entry.ts >= cutoff) result[coin] = String(entry.price);
   }
   return result;
 }

@@ -65,7 +65,7 @@ export function getMaxLeverageForPair(pair: string): number {
 
 function roundSize(size: number, decimals: number): number {
   const factor = 10 ** decimals;
-  return Math.floor(size * factor) / factor;
+  return Math.round(size * factor) / factor;
 }
 
 function roundPrice(price: number, refPrice?: number): number {
@@ -178,10 +178,22 @@ export async function placeExchangeStop(position: QuantPosition): Promise<void> 
   }
 }
 
-// Called when BE/BE2/trail moves SL. Cancels old stop and places new at updated price.
+// Called when BE/BE2/trail moves SL. Atomic swap: place NEW first, then cancel OLD.
+// Never leaves position unprotected. If place fails, old stop stays in force.
 export async function updateExchangeStop(position: QuantPosition): Promise<void> {
-  await cancelExchangeStop(position.id, position.pair);
+  const oldOid = exchangeStopOids.get(position.id);
+  if (oldOid !== undefined) exchangeStopOids.delete(position.id); // let placeExchangeStop through
   await placeExchangeStop(position);
+  const newOid = exchangeStopOids.get(position.id);
+  if (newOid !== undefined && oldOid !== undefined && newOid !== oldOid) {
+    try {
+      const sdk = getClient();
+      await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: oldOid });
+    } catch { /* best effort */ }
+  } else if (newOid === undefined && oldOid !== undefined) {
+    exchangeStopOids.set(position.id, oldOid); // restore old oid so future cancels work
+    console.error(`[Quant Live] Exchange SL swap failed for ${position.pair}, kept old @ oid ${oldOid}`);
+  }
 }
 
 async function cancelExchangeTP(positionId: string, pair: string): Promise<void> {
