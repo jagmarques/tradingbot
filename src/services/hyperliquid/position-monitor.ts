@@ -139,7 +139,8 @@ async function checkPositionStops(): Promise<void> {
     const candleFetches = await Promise.all(
       positions.map(async pos => {
         try {
-          const c = await fetchCandles(pos.pair, "1m", 3);
+          // 5s timeout guards against monitor starvation if HL hangs — mid-price fallback still protects via SL check.
+          const c = await withTimeout(fetchCandles(pos.pair, "1m", 3), 5_000, `1m candles ${pos.pair}`);
           return { id: pos.id, candles: c };
         } catch {
           return { id: pos.id, candles: [] };

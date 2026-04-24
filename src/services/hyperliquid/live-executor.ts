@@ -320,6 +320,8 @@ async function reconcileWithExchange(): Promise<void> {
           livePositions.set(restored.id, restored);
           saveQuantPosition(restored);
           console.log(`[Quant Live] RESTORED orphan ${coin} ${direction} @ ${entryPx} (garch-v2, lev=${leverage}x, SL=${(slPct * 100).toFixed(1)}%)`);
+          // Place exchange SL immediately; adopted orphans were running unprotected.
+          void placeExchangeStop(restored);
         }
       }
     }
@@ -365,8 +367,8 @@ async function reconcileWithExchange(): Promise<void> {
         unrealizedPnl: pnl,
         exitReason: reason,
       };
-      livePositions.set(pos.id, closedPosition);
       saveQuantPosition(closedPosition);
+      livePositions.delete(pos.id); // free memory, getLivePositions already filters open-only
       const ctx = positionContext.get(pos.id);
       const reconIndMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? pos.indicatorsAtEntry);
       const reconHoldMs = Date.now() - new Date(pos.openedAt).getTime();
@@ -426,12 +428,31 @@ async function setLeverage(pair: string, leverage: number): Promise<boolean> {
   }
 }
 
+// Sum all fills for an oid, returning VWAP price and total filled size.
+// Single-tranche selection (what the old code did) under-reports multi-fill orders.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function sumFillsForOid(sdk: any, wallet: string, oid: number): Promise<{ totalSize: number; vwap: number }> {
+  try {
+    const fills = await sdk.info.getUserFills(wallet, true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const matching = (fills as any[]).filter((f: any) => f.oid === oid);
+    if (matching.length === 0) return { totalSize: 0, vwap: 0 };
+    let totalSize = 0, totalNotional = 0;
+    for (const f of matching) {
+      const sz = parseFloat(f.sz);
+      const px = parseFloat(f.px);
+      if (isFinite(sz) && isFinite(px)) { totalSize += sz; totalNotional += sz * px; }
+    }
+    return { totalSize, vwap: totalSize > 0 ? totalNotional / totalSize : 0 };
+  } catch { return { totalSize: 0, vwap: 0 }; }
+}
+
 async function makerEntryWithFallback(
   pair: string,
   isBuy: boolean,
   sizeInCoins: number,
   midPrice: number,
-): Promise<{ fillPrice: number; fillSize: number } | null> {
+): Promise<{ fillPrice: number; fillSize: number; partial: boolean } | null> {
   const sdk = getClient();
   const env = loadEnv();
   const wallet = env.HYPERLIQUID_WALLET_ADDRESS;
@@ -463,7 +484,7 @@ async function makerEntryWithFallback(
       const fp = parseFloat(status.filled.avgPx);
       const fs = parseFloat(status.filled.totalSz);
       console.log(`[Quant Live] Maker entry filled immediately for ${pair} @ ${fp}`);
-      return { fillPrice: fp, fillSize: fs };
+      return { fillPrice: fp, fillSize: fs, partial: false };
     }
 
     // Resting — poll for fill
@@ -483,24 +504,11 @@ async function makerEntryWithFallback(
           const st = orderStatus?.status ?? order?.status;
 
           if (st === "filled") {
-            // Get fill price from recent fills
-            let fp = 0;
-            let fs = 0;
-            try {
-              const fills = await sdk.info.getUserFills(wallet, true);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchingFill = (fills as any[])
-                .filter((f: any) => f.oid === oid)
-                .sort((a: any, b: any) => b.time - a.time)[0];
-              if (matchingFill) {
-                fp = parseFloat(matchingFill.px);
-                fs = parseFloat(matchingFill.sz);
-              }
-            } catch { /* fallback below */ }
-            if (!fp || !isFinite(fp)) fp = limitPrice;
-            if (!fs || !isFinite(fs)) fs = sizeInCoins;
-            console.log(`[Quant Live] Maker entry filled for ${pair} @ ${fp} (${((Date.now() - startTime) / 1000).toFixed(0)}s)`);
-            return { fillPrice: fp, fillSize: fs };
+            const { totalSize, vwap } = await sumFillsForOid(sdk, wallet, oid);
+            const fp = vwap > 0 ? vwap : limitPrice;
+            const fs = totalSize > 0 ? totalSize : sizeInCoins;
+            console.log(`[Quant Live] Maker entry filled for ${pair} ${fs} @ ${fp} (${((Date.now() - startTime) / 1000).toFixed(0)}s)`);
+            return { fillPrice: fp, fillSize: fs, partial: false };
           }
 
           if (st === "canceled" || st === "rejected" || st === "marginCanceled") {
@@ -512,39 +520,26 @@ async function makerEntryWithFallback(
         }
       }
 
-      // Timeout — cancel and fall back to taker
+      // Timeout — cancel. If partial fill occurred, accept partial; do NOT taker-fill the already-filled portion.
       console.log(`[Quant Live] Maker entry timeout for ${pair} (${MAKER_ENTRY_TIMEOUT_MS / 1000}s), cancelling`);
       try {
         await sdk.exchange.cancelOrder({ coin: `${pair}-PERP`, o: oid });
         console.log(`[Quant Live] Maker order cancelled for ${pair}`);
       } catch (cancelErr) {
-        // Order may have been filled between last poll and cancel
         const cancelMsg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
         console.log(`[Quant Live] Maker cancel result for ${pair}: ${cancelMsg}`);
+      }
 
-        // Check if it filled during cancel
-        if (wallet) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const finalStatus = await sdk.info.getOrderStatus(wallet, oid, true) as any;
-            if (finalStatus?.status === "filled" || finalStatus?.order?.status === "filled") {
-              const fills = await sdk.info.getUserFills(wallet, true);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchingFill = (fills as any[])
-                .filter((f: any) => f.oid === oid)
-                .sort((a: any, b: any) => b.time - a.time)[0];
-              if (matchingFill) {
-                const fp = parseFloat(matchingFill.px);
-                const fs = parseFloat(matchingFill.sz);
-                console.log(`[Quant Live] Maker entry filled during cancel for ${pair} @ ${fp}`);
-                return { fillPrice: fp, fillSize: fs };
-              }
-            }
-          } catch { /* fall back to taker */ }
+      // After cancel attempt, re-query fills to see how much (if any) filled
+      if (wallet) {
+        const { totalSize, vwap } = await sumFillsForOid(sdk, wallet, oid);
+        if (totalSize > 0) {
+          console.log(`[Quant Live] Maker partial fill for ${pair}: ${totalSize} / ${sizeInCoins} @ ${vwap}, accepting (no taker fallback)`);
+          return { fillPrice: vwap, fillSize: totalSize, partial: totalSize < sizeInCoins };
         }
       }
 
-      return null; // Fall back to taker
+      return null; // No fill at all — fall back to taker
     }
 
     // ALO rejected (would cross spread) — fall back to taker
@@ -947,8 +942,8 @@ export async function liveClosePosition(
       exitReason: reason,
     };
 
-    livePositions.set(positionId, closedPosition);
     saveQuantPosition(closedPosition);
+    livePositions.delete(positionId); // free memory
 
     const ctx = positionContext.get(positionId);
     const indMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? position.indicatorsAtEntry);
@@ -1036,8 +1031,8 @@ export async function liveClosePosition(
               ...position, status: "closed", closedAt: now,
               exitPrice: reconPrice, realizedPnl: estPnl, unrealizedPnl: estPnl, exitReason,
             };
-            livePositions.set(positionId, reconciled);
             saveQuantPosition(reconciled);
+            livePositions.delete(positionId); // free memory
             const ctx = positionContext.get(positionId);
             const trIndMeta = parseIndicatorsMeta(ctx?.indicatorsAtEntry ?? position.indicatorsAtEntry);
             const trHoldMs = Date.now() - new Date(position.openedAt).getTime();
@@ -1108,6 +1103,8 @@ export async function getLiveBalance(): Promise<number> {
 
 // --- Dead-man's switch (scheduleCancel heartbeat) ---
 
+let heartbeatConsecutiveFailures = 0;
+
 async function sendHeartbeat(): Promise<void> {
   try {
     await ensureConnected();
@@ -1115,10 +1112,17 @@ async function sendHeartbeat(): Promise<void> {
     const cancelAt = Date.now() + HEARTBEAT_TIMEOUT_MS;
     await sdk.exchange.scheduleCancel(cancelAt);
     console.log(`[Quant Live] Heartbeat: orders auto-cancel at ${new Date(cancelAt).toISOString()}`);
+    heartbeatConsecutiveFailures = 0;
   } catch (err) {
+    heartbeatConsecutiveFailures++;
     const msg = err instanceof Error ? err.message : String(err);
-    // Log but do not crash; next heartbeat will retry
-    console.error(`[Quant Live] Heartbeat failed: ${msg}`);
+    console.error(`[Quant Live] Heartbeat failed (${heartbeatConsecutiveFailures} in a row): ${msg}`);
+    if (heartbeatConsecutiveFailures >= 2) {
+      void notifyCriticalError(
+        `Heartbeat failed ${heartbeatConsecutiveFailures}x — HL will auto-cancel all stops if next fails. ${msg}`,
+        "sendHeartbeat",
+      );
+    }
   }
 }
 
