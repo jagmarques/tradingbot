@@ -104,6 +104,14 @@ export async function paperOpenPosition(
       );
     }
   }
+  // If caller passed stopLoss=0 with slPct: in indicators, compute SL from fill price (live parity).
+  if ((!adjStop || adjStop <= 0) && indicatorsAtEntry) {
+    const slPctMatch = indicatorsAtEntry.match(/slPct:([\d.]+)/);
+    if (slPctMatch) {
+      const slPct = parseFloat(slPctMatch[1]!);
+      adjStop = direction === "long" ? price * (1 - slPct) : price * (1 + slPct);
+    }
+  }
 
   const entryPrice = price;
 
