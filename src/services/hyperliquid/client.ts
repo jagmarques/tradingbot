@@ -3,6 +3,7 @@ import { HYPERLIQUID_API_TIMEOUT_MS } from "../../config/constants.js";
 
 let sdk: Hyperliquid | null = null;
 let connected = false;
+let connectingPromise: Promise<void> | null = null;
 
 export function initHyperliquid(
   privateKey: string,
@@ -38,37 +39,38 @@ export function resetConnection(): void {
 
 export async function ensureConnected(): Promise<void> {
   if (!sdk) {
-    throw new Error(
-      "[Hyperliquid] SDK not initialized. Call initHyperliquid first.",
-    );
+    throw new Error("[Hyperliquid] SDK not initialized. Call initHyperliquid first.");
   }
-
   if (connected) return;
+  if (connectingPromise) return connectingPromise; // dedupe concurrent callers
 
   const RETRY_DELAY_MS = 2_000;
   const MAX_ATTEMPTS = 2;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  connectingPromise = (async () => {
     try {
-      const connectPromise = sdk.connect();
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Connection timed out")),
-          HYPERLIQUID_API_TIMEOUT_MS,
-        ),
-      );
-      await Promise.race([connectPromise, timeout]);
-      connected = true;
-      console.log("[Hyperliquid] Connected");
-      return;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[Hyperliquid] Connection attempt ${attempt} failed: ${msg}`);
-      if (attempt < MAX_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const connectPromise = sdk!.connect();
+          const timeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Connection timed out")), HYPERLIQUID_API_TIMEOUT_MS),
+          );
+          await Promise.race([connectPromise, timeout]);
+          connected = true;
+          console.log("[Hyperliquid] Connected");
+          return;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[Hyperliquid] Connection attempt ${attempt} failed: ${msg}`);
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+          }
+        }
       }
+      throw new Error("[Hyperliquid] Failed to connect after retries");
+    } finally {
+      connectingPromise = null;
     }
-  }
-
-  throw new Error("[Hyperliquid] Failed to connect after retries");
+  })();
+  return connectingPromise;
 }

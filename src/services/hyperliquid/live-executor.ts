@@ -178,11 +178,10 @@ export async function placeExchangeStop(position: QuantPosition): Promise<void> 
   }
 }
 
-// Called when BE/BE2/trail moves SL. Atomic swap: place NEW first, then cancel OLD.
-// Never leaves position unprotected. If place fails, old stop stays in force.
+// Atomic swap: place new stop, then cancel old. Never leaves position unprotected.
 export async function updateExchangeStop(position: QuantPosition): Promise<void> {
   const oldOid = exchangeStopOids.get(position.id);
-  if (oldOid !== undefined) exchangeStopOids.delete(position.id); // let placeExchangeStop through
+  if (oldOid !== undefined) exchangeStopOids.delete(position.id);
   await placeExchangeStop(position);
   const newOid = exchangeStopOids.get(position.id);
   if (newOid !== undefined && oldOid !== undefined && newOid !== oldOid) {
@@ -191,7 +190,7 @@ export async function updateExchangeStop(position: QuantPosition): Promise<void>
       await sdk.exchange.cancelOrder({ coin: `${position.pair}-PERP`, o: oldOid });
     } catch { /* best effort */ }
   } else if (newOid === undefined && oldOid !== undefined) {
-    exchangeStopOids.set(position.id, oldOid); // restore old oid so future cancels work
+    exchangeStopOids.set(position.id, oldOid);
     console.error(`[Quant Live] Exchange SL swap failed for ${position.pair}, kept old @ oid ${oldOid}`);
   }
 }
@@ -217,14 +216,13 @@ async function cancelAllExistingStops(): Promise<void> {
     if (!wallet) return;
     const orders: Array<{ coin: string; oid: number; reduceOnly?: boolean }> =
       await sdk.info.getUserOpenOrders(wallet);
-    const stops = orders.filter(o => o.reduceOnly);
+    const tracked = new Set([...exchangeStopOids.values(), ...exchangeTpOids.values()]);
+    const stops = orders.filter(o => o.reduceOnly && !tracked.has(o.oid));
     if (stops.length === 0) return;
-    console.log(`[Quant Live] Cancelling ${stops.length} stale stops/TPs`);
+    console.log(`[Quant Live] Cancelling ${stops.length} stale stops/TPs (preserving ${tracked.size} tracked)`);
     for (const o of stops) {
       try { await sdk.exchange.cancelOrder({ coin: o.coin, o: o.oid }); } catch { /* best effort */ }
     }
-    exchangeStopOids.clear();
-    exchangeTpOids.clear();
   } catch (err) {
     console.error(`[Quant Live] Failed to cancel stops: ${err instanceof Error ? err.message : err}`);
   }
@@ -254,13 +252,15 @@ export function initLiveEngine(): void {
     livePositions.set(pos.id, pos);
   }
   console.log(`[Quant Live] Init: ${liveOnly.length} live positions restored from DB`);
+  if (isPaperMode()) return; // paper mode: skip exchange calls
   setTimeout(async () => {
     await reconcileWithExchange();
-    await cancelAllExistingStops();
+    // Place new stops first so positions stay protected, then cancel stale ones.
     for (const pos of getLivePositions()) {
       await placeExchangeStop(pos);
       if (pos.takeProfit && isFinite(pos.takeProfit) && pos.takeProfit > 0) await placeExchangeTP(pos);
     }
+    await cancelAllExistingStops();
   }, 15_000);
   setInterval(() => void reconcileWithExchange(), 5 * 60 * 1000);
 }
@@ -351,7 +351,7 @@ async function reconcileWithExchange(): Promise<void> {
         const mids = (await sdk.info.getAllMids(true)) as Record<string, string>;
         exitPrice = parseFloat(mids[pos.pair] ?? "0") || pos.entryPrice;
       }
-      const fees = pos.size * pos.leverage * 0.00035 * 2;
+      const fees = pos.size * pos.leverage * 0.00045 * 2;
       const pnl = calcPnl(pos.direction, pos.entryPrice, exitPrice, pos.size, pos.leverage, fees);
       const now = new Date().toISOString();
 
@@ -428,8 +428,7 @@ async function setLeverage(pair: string, leverage: number): Promise<boolean> {
   }
 }
 
-// Sum all fills for an oid, returning VWAP price and total filled size.
-// Single-tranche selection (what the old code did) under-reports multi-fill orders.
+// Sum all fills for an oid, returning total size and VWAP.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sumFillsForOid(sdk: any, wallet: string, oid: number): Promise<{ totalSize: number; vwap: number }> {
   try {
@@ -699,15 +698,15 @@ export async function liveOpenPosition(
       fillSize = parseFloat(status.filled.totalSz);
     }
 
-    if (!isFinite(fillPrice) || fillPrice <= 0) {
-      console.error(`[Quant Live] Invalid fill price for ${pair}: ${fillPrice}, closing orphan`);
+    if (!isFinite(fillPrice) || fillPrice <= 0 || !isFinite(fillSize) || fillSize <= 0) {
+      console.error(`[Quant Live] Invalid fill data for ${pair}: price=${fillPrice} size=${fillSize}, closing orphan`);
       try {
         await sdk.custom.marketClose(pair, undefined, undefined, MAX_SLIPPAGE);
-        console.log(`[Quant Live] Orphan closed for ${pair} after invalid fill price`);
+        console.log(`[Quant Live] Orphan closed for ${pair} after invalid fill`);
       } catch (closeErr) {
         const closeMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
         console.error(`[Quant Live] ORPHAN CLOSE FAILED after invalid fill: ${pair}: ${closeMsg}`);
-        void notifyCriticalError(`ORPHAN after invalid fill price: ${pair} still open on exchange`, "liveOpenPosition");
+        void notifyCriticalError(`ORPHAN after invalid fill: ${pair} price=${fillPrice} size=${fillSize}`, "liveOpenPosition");
       }
       return null;
     }
@@ -928,7 +927,7 @@ export async function liveClosePosition(
       return { success: false, pnl: 0 };
     }
 
-    const fees = position.size * position.leverage * 0.00035 * 2;
+    const fees = position.size * position.leverage * 0.00045 * 2;
     const pnl = calcPnl(position.direction, position.entryPrice, exitPrice, position.size, position.leverage, fees);
 
     const now = new Date().toISOString();
@@ -1023,7 +1022,7 @@ export async function liveClosePosition(
               const mids = (await sdk2.info.getAllMids(true)) as Record<string, string>;
               reconPrice = parseFloat(mids[position.pair] ?? "0") || position.entryPrice;
             }
-            const fees = position.size * position.leverage * 0.00035 * 2;
+            const fees = position.size * position.leverage * 0.00045 * 2;
             const estPnl = calcPnl(position.direction, position.entryPrice, reconPrice, position.size, position.leverage, fees);
             const now = new Date().toISOString();
             const exitReason = `${reason} (timeout-reconciled)`;

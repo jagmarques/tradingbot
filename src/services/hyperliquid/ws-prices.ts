@@ -75,6 +75,7 @@ function connect(): void {
     connected = false;
     clearPing();
     ws = null;
+    midsCache.clear(); // drop cached mids so callers fall back to REST until fresh data arrives
     if (!stopped) {
       console.log("[HlPriceWs] Disconnected, reconnecting...");
       scheduleReconnect();

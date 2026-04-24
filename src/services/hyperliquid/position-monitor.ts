@@ -139,7 +139,6 @@ async function checkPositionStops(): Promise<void> {
     const candleFetches = await Promise.all(
       positions.map(async pos => {
         try {
-          // 5s timeout guards against monitor starvation if HL hangs — mid-price fallback still protects via SL check.
           const c = await withTimeout(fetchCandles(pos.pair, "1m", 3), 5_000, `1m candles ${pos.pair}`);
           return { id: pos.id, candles: c };
         } catch {
@@ -168,9 +167,7 @@ async function checkPositionStops(): Promise<void> {
       const midRaw = mids[position.pair];
       const midPrice = midRaw !== undefined ? parseFloat(midRaw) : NaN;
 
-      // Bar must be strictly post-entry, else its high/low may include pre-entry ticks
-      // (the 1m bar in progress when we opened covers the full minute regardless of entry time).
-      // Falling through to mid matches bt behavior: bt only sees bars AFTER entryTime.
+      // Skip bars that opened before entry — would contaminate peak with pre-entry ticks.
       const openedAtMs = new Date(position.openedAt).getTime();
       const barPostEntry = latestBar !== null && latestBar.timestamp > openedAtMs;
       const barHigh = barPostEntry ? latestBar!.high : midPrice;

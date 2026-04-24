@@ -7,7 +7,7 @@ import * as fs from "fs";
 
 const CACHE_1M = "/tmp/bt-pair-cache-1m";
 const H = 3_600_000, H4 = 4 * H, D = 86_400_000;
-const FEE = 0.00035, MARGIN = 15, MAX_HOLD_H = 120;
+const FEE = 0.00045, MARGIN = 15, MAX_HOLD_H = 120; // 0.045% HL taker base rate
 const BLOCK_HOURS = new Set([22, 23]);
 const LB = 1;
 const OOS_START = new Date("2025-06-01").getTime();
