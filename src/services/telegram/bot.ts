@@ -280,6 +280,7 @@ bot.callbackQuery("insiders_wallets", async (ctx) => {
     }
   });
   bot.callbackQuery(/^mode_/, async (ctx) => {
+    if (!isAuthorized(ctx)) { await ctx.answerCallbackQuery().catch(() => {}); return; }
     try {
       const mode = ctx.callbackQuery.data.replace("mode_", "") as "paper" | "hybrid" | "live";
       setTradingMode(mode);

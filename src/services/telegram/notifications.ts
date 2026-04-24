@@ -70,7 +70,7 @@ export async function notifyKillSwitch(activated: boolean, reason?: string): Pro
       `⛔ <b>KILL SWITCH ACTIVATED</b>\n\n` +
       `All trading has been stopped.\n` +
       (reason ? `Reason: ${reason}\n` : "") +
-      `Use /unkill to resume.`;
+      `Use /resume to restart.`;
     await sendMessage(message);
   } else {
     await sendMessage(`✅ Kill switch deactivated. Trading can resume.`);

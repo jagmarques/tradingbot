@@ -218,14 +218,14 @@ export function generatePnlChart(history: Array<{ date: string; pnl: number }>):
 export function startPnlCron(): void {
   if (cronJob) return;
 
-  // Run at 23:59 every day
+  // Run at 23:59 UTC to match UTC-tagged daily rows
   cronJob = cron.schedule("59 23 * * *", () => {
     try {
       takeDailySnapshot();
     } catch (err) {
       console.error("[PnL] Snapshot cron error:", err);
     }
-  });
+  }, { timezone: "UTC" });
 
   // Take initial snapshot on startup
   try {
