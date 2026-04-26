@@ -1,4 +1,4 @@
-// GARCH v2 Bplus-top10: mc7 z1.8/1.8 SL2.5/3.0 T25/3 BE5+BE2(20->10) cd4h mh120h cap10x
+// GARCH v2 walk-forward winner: mc7 z3.0/1.5 SL2.5/3.0 T20/5 no-BE cd4h mh120h cap10x
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -10,8 +10,8 @@ const TRADE_TYPE = "garch-v2" as const;
 const GARCH_LOOKBACK = 1;
 const GARCH_VOL_WINDOW_1H = 15;
 const GARCH_VOL_WINDOW_4H = 20;
-const Z_LONG_1H = 1.8;
-const Z_LONG_4H = 1.8;
+const Z_LONG_1H = 3.0;
+const Z_LONG_4H = 1.5;
 const SL_PCT_LOW_LEV = 0.025;
 const SL_PCT_HIGH_LEV = 0.030;
 const POSITION_SIZE_USD = 10;
