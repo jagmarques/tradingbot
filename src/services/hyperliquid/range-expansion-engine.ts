@@ -126,7 +126,7 @@ export async function runRangeExpansionCycle(): Promise<void> {
       const rangeToAtr = (barRange / atr).toFixed(2);
       const indicators = `rng/atr:${rangeToAtr}|closePos:${closePositionInBar.toFixed(2)}|volR:${volRatio.toFixed(2)}`;
 
-      const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
+      const pairLeverage = Math.min(await getMaxLeverageForPair(pair), 10);
       console.log(`[RangeExpansion] ${pair} range/atr=${rangeToAtr} closePos=${closePositionInBar.toFixed(2)} volR=${volRatio.toFixed(2)} -> ${direction} ${pairLeverage}x exchSL=${stopLoss.toFixed(4)}`);
 
       const pos = await openPosition(

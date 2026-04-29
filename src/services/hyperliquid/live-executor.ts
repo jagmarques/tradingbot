@@ -61,8 +61,14 @@ function getMaxLeverage(pair: string): number {
   return maxLeverageMap?.get(pair) ?? 100;
 }
 
-export function getMaxLeverageForPair(pair: string): number {
-  return maxLeverageMap?.get(pair) ?? 3; // conservative default
+export async function getMaxLeverageForPair(pair: string): Promise<number> {
+  await fetchMeta();
+  const lev = maxLeverageMap?.get(pair);
+  if (lev === undefined) {
+    console.error(`[Quant Live] No leverage in HL meta for ${pair} — using 10x fallback`);
+    return 10;
+  }
+  return lev;
 }
 
 function roundSize(size: number, decimals: number): number {
@@ -239,6 +245,11 @@ async function cancelAllExistingStops(): Promise<void> {
 export function initLiveEngine(): void {
   livePositions.clear();
   szDecimalsMap = null;
+  maxLeverageMap = null;
+  metaFetchedAt = 0;
+  // Force fetch meta on first use; engines can `await getMaxLeverageForPair`
+  // and never see a stale "default" value again.
+  void fetchMeta().catch(err => console.error(`[Quant Live] init fetchMeta failed: ${err instanceof Error ? err.message : err}`));
   const allOpen = loadOpenQuantPositions();
   const liveOnly = allOpen.filter(p => p.mode === "live" && p.exchange !== "lighter");
   for (const pos of liveOnly) {

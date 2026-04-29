@@ -73,7 +73,7 @@ export async function runGarchV2Cycle(): Promise<void> {
       const direction = "long" as const;
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
-      const pairLeverage = Math.min(getMaxLeverageForPair(pair), 10);
+      const pairLeverage = Math.min(await getMaxLeverageForPair(pair), 10);
 
       const slPct = pairLeverage >= 10 ? SL_PCT_HIGH_LEV : SL_PCT_LOW_LEV;
       const takeProfit = 0;
