@@ -1,28 +1,35 @@
 # Trading Bot
 
-Hyperliquid GARCH quant engine, EVM insider copy trading. TypeScript, Docker, Coolify.
+Hyperliquid GARCH quant engine + EVM insider copy trading. TypeScript, Docker, Coolify.
 
 ## Strategy
 
-### GARCH v2 Long-Only (LIVE)
+### GARCH v2 LONG+SHORT (LIVE)
 
-1-bar momentum z-score with mixed vol windows (1h:vw15, 4h:vw20). Enters longs when BOTH z-scores > 2.0. Shorts disabled.
+1-bar momentum z-score with mixed vol windows (1h:vw15, 4h:vw20). Asymmetric thresholds: longs need z>3.0, shorts need z<-3.5 (higher conviction to avoid bull-regime squeezes).
 
 | Parameter | Value |
 |-----------|-------|
-| Entry | 1h z>2.0 AND 4h z>2.0 (long-only) |
+| Entry LONG | 1h z > 3.0 AND 4h z > 1.5 |
+| Entry SHORT | 1h z < -3.5 AND 4h z < -1.5 (asymmetric) |
 | SL | 3.0% (10x pairs), 2.5% (3x/5x pairs) |
-| Breakeven | SL -> entry at peak +8% leveraged |
-| Trail | 3-stage: 15/6 -> 30/5 -> 50/3 (tightens as profit grows) |
-| Margin | $15 fixed |
-| Max concurrent | 10 |
-| Max hold | 48h |
-| Cooldown | 1h per pair after SL |
+| Trail | T20/5 (lock at peak-5pp once peak >= +20% lev) |
+| Breakeven | none (trail handles it) |
+| Margin | $10 fixed |
+| Max concurrent | 7 |
+| Max hold | 120h |
+| Cooldown | 4h per pair+direction after SL |
 | Blocked hours | 22-23 UTC |
-| Scheduler | 3-min cycle |
-| Pairs | 125 perpetual futures, leverage cap 10x |
+| Scheduler | 3-min cycle, 1h-boundary entries |
+| Pairs | 15 (top-Calmar prune from 50 universe) |
+| Leverage | per-pair max via HL meta, capped 10x |
 
-**Verified (297 days, 1m resolution backtest):** $6.80/day, MDD $33, PF 2.42, WR 49%
+**Pairs (15):** ETH, ZEC, YGG, STRAX, WLD, PENGU, DOGE, ARB, FIL, OP, AVAX, NEO, JTO, KAITO, SUSHI
+
+**Backtest (297 days OOS, 1m resolution, $10 margin):**
+- $0.59/day, MDD $20, Calmar 0.029, WR 78%
+- 116 longs + 32 shorts = 148 trades = ~0.50/day
+- Validated: walk-forward 3/4 quarters, bootstrap p=0.0004, top-1 = 17%
 
 ### Insider Copy Trading (EVM)
 
