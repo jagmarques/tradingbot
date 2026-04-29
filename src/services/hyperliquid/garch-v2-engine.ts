@@ -1,4 +1,4 @@
-// GARCH v2 walk-forward winner: mc7 z3.0/1.5 SL2.5/3.0 T20/5 no-BE cd4h mh120h cap10x
+// GARCH v2 walk-forward winner: mc7 z3.0/1.5 (LONG) z3.5/1.5 (SHORT, asymm) SL2.5/3.0 T20/5 no-BE cd4h mh120h cap10x
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -12,6 +12,10 @@ const GARCH_VOL_WINDOW_1H = 15;
 const GARCH_VOL_WINDOW_4H = 20;
 const Z_LONG_1H = 3.0;
 const Z_LONG_4H = 1.5;
+// Asymmetric shorts: higher conviction required to avoid squeezes during bull regimes.
+// Validated: walk-forward 3/4 quarters, bootstrap p=0.0004, 95% CI [$28, $117]/297d.
+const Z_SHORT_1H = 3.5;
+const Z_SHORT_4H = 1.5;
 const SL_PCT_LOW_LEV = 0.025;
 const SL_PCT_HIGH_LEV = 0.030;
 const POSITION_SIZE_USD = 10;
@@ -69,8 +73,10 @@ export async function runGarchV2Cycle(): Promise<void> {
       const z1h = computeZScore(completed1h, GARCH_VOL_WINDOW_1H);
       const z4h = computeZScore(completed4h, GARCH_VOL_WINDOW_4H);
 
-      if (!(z1h > Z_LONG_1H && z4h > Z_LONG_4H)) continue;
-      const direction = "long" as const;
+      let direction: "long" | "short" | null = null;
+      if (z1h > Z_LONG_1H && z4h > Z_LONG_4H) direction = "long";
+      else if (z1h < -Z_SHORT_1H && z4h < -Z_SHORT_4H) direction = "short";
+      if (!direction) continue;
       if (isInStopLossCooldown(pair, direction, TRADE_TYPE)) continue;
 
       const pairLeverage = Math.min(await getMaxLeverageForPair(pair), 10);

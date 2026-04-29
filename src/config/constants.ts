@@ -26,11 +26,13 @@ export const API_PRICE_TIMEOUT_MS = 10_000;
 export const API_ORDER_TIMEOUT_MS = 15_000;
 
 // Quant Market Data Pipeline
-// Top-50 pairs by solo backtest profitability (bt-1m-per-pair.ts, live config).
-// Pruning from 125 to 50 drops MDD 37% while only losing 14% of $/day (Calmar 0.188 -> 0.256).
+// Top-15 pairs by per-pair Calmar. Validated against top-10/20/25/35/50 sweep.
+// Top-15 vs top-10: +21% $/day (0.29 -> 0.35) and +44% trade rate (0.27 -> 0.39).
+// LONG+SHORT (z=3.0/1.5 long, z=3.5/1.5 short, asymmetric) on top-15: $0.59/day, MDD $20, Calmar 0.029.
 export const QUANT_TRADING_PAIRS = [
   "ETH", "ZEC", "YGG", "STRAX", "WLD", "PENGU", "DOGE", "ARB", "FIL", "OP",
-]; // Bplus-top10 — best per-pair Calmar set
+  "AVAX", "NEO", "JTO", "KAITO", "SUSHI",
+]; // Bplus-top15
 export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 

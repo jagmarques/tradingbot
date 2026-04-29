@@ -254,17 +254,26 @@ export function initLiveEngine(): void {
   const liveOnly = allOpen.filter(p => p.mode === "live" && p.exchange !== "lighter");
   for (const pos of liveOnly) {
     // Recompute SL only if STILL in initial loss zone (don't overwrite breakeven or trailed SL)
-    if (pos.tradeType === "garch-v2" && pos.direction === "long" && pos.indicatorsAtEntry?.includes("slPct:") && pos.stopLoss && pos.stopLoss > 0 && pos.stopLoss < pos.entryPrice) {
-      const slPctMatch = pos.indicatorsAtEntry.match(/slPct:([\d.]+)/);
-      if (slPctMatch) {
-        const slPct = parseFloat(slPctMatch[1]!);
-        const correctSl = pos.entryPrice * (1 - slPct);
-        const currentSlPct = 1 - pos.stopLoss / pos.entryPrice;
-        // Only fix if SL is TIGHTER than expected (capped by old QUANT_MAX_SL_PCT=1.0)
-        if (currentSlPct < slPct - 0.0005) {
-          console.log(`[Quant Live] Recomputing SL for ${pos.pair}: ${pos.stopLoss.toFixed(6)} (${(currentSlPct * 100).toFixed(2)}%) -> ${correctSl.toFixed(6)} (${(slPct * 100).toFixed(2)}%)`);
-          pos.stopLoss = correctSl;
-          saveQuantPosition(pos);
+    if (pos.tradeType === "garch-v2" && pos.indicatorsAtEntry?.includes("slPct:") && pos.stopLoss && pos.stopLoss > 0) {
+      const inInitialLossZone = pos.direction === "long"
+        ? pos.stopLoss < pos.entryPrice
+        : pos.stopLoss > pos.entryPrice;
+      if (inInitialLossZone) {
+        const slPctMatch = pos.indicatorsAtEntry.match(/slPct:([\d.]+)/);
+        if (slPctMatch) {
+          const slPct = parseFloat(slPctMatch[1]!);
+          const correctSl = pos.direction === "long"
+            ? pos.entryPrice * (1 - slPct)
+            : pos.entryPrice * (1 + slPct);
+          const currentSlPct = pos.direction === "long"
+            ? 1 - pos.stopLoss / pos.entryPrice
+            : pos.stopLoss / pos.entryPrice - 1;
+          // Only fix if SL is TIGHTER than expected (capped by old QUANT_MAX_SL_PCT)
+          if (currentSlPct < slPct - 0.0005) {
+            console.log(`[Quant Live] Recomputing SL for ${pos.pair} ${pos.direction}: ${pos.stopLoss.toFixed(6)} (${(currentSlPct * 100).toFixed(2)}%) -> ${correctSl.toFixed(6)} (${(slPct * 100).toFixed(2)}%)`);
+            pos.stopLoss = correctSl;
+            saveQuantPosition(pos);
+          }
         }
       }
     }
