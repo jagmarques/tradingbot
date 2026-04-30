@@ -19,9 +19,9 @@ const STAGNATION_MS_BY_TRADE_TYPE: Record<string, number> = {
   "garch-v2": 120 * 60 * 60 * 1000,
 };
 
-// Walk-forward winner: activate trail at peak +20% leveraged, exit on 5% drop. No BE/BE2.
+// Cycle 7 winner C2: activate trail at peak +15% leveraged, exit on 4% drop. No BE/BE2.
 const TRAIL_STEPS = [
-  { activation: 20, distance: 5 },
+  { activation: 15, distance: 4 },
 ];
 const BREAKEVEN_PCT = 0; // 0 = disabled (gated below)
 const BE2_PCT = 0;

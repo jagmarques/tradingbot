@@ -1,4 +1,4 @@
-// GARCH v2 walk-forward winner: mc7 z3.0/1.5 (LONG) z3.5/1.5 (SHORT, asymm) SL2.5/3.0 T20/5 no-BE cd4h mh120h cap10x
+// GARCH v2 winner C2 (cycle 7): mc7 z3.0/1.5 (LONG) z3.0/1.5 (SHORT, symm) SL3.0/3.5 T15/4 no-BE cd4h mh120h cap10x
 import { fetchCandles } from "./candles.js";
 import { openPosition, getOpenQuantPositions } from "./executor.js";
 import { getMaxLeverageForPair } from "./live-executor.js";
@@ -12,12 +12,13 @@ const GARCH_VOL_WINDOW_1H = 15;
 const GARCH_VOL_WINDOW_4H = 20;
 const Z_LONG_1H = 3.0;
 const Z_LONG_4H = 1.5;
-// Asymmetric shorts: higher conviction required to avoid squeezes during bull regimes.
-// Validated: walk-forward 3/4 quarters, bootstrap p=0.0004, 95% CI [$28, $117]/297d.
-const Z_SHORT_1H = 3.5;
+// Symmetric shorts at z=3.0 with wider SL (cycle 7 reconciliation):
+// 648-config sweep + bt-add-shorts.ts engine validation: Calmar 0.029 vs deployed 0.017 (+76%),
+// $0.55/d vs $0.36/d, MDD $18.7 vs $21.7. Engine parity confirmed across both backtest scripts.
+const Z_SHORT_1H = 3.0;
 const Z_SHORT_4H = 1.5;
-const SL_PCT_LOW_LEV = 0.025;
-const SL_PCT_HIGH_LEV = 0.030;
+const SL_PCT_LOW_LEV = 0.030;
+const SL_PCT_HIGH_LEV = 0.035;
 const POSITION_SIZE_USD = 10;
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
