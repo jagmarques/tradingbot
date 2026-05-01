@@ -37,7 +37,7 @@ export const QUANT_CANDLE_LOOKBACK_COUNT = 100;
 export const QUANT_PIPELINE_TIMEOUT_MS = 30_000;
 
 // Quant Position Sizing
-export const QUANT_FIXED_POSITION_SIZE_USD = 3;
+export const QUANT_FIXED_POSITION_SIZE_USD = 20;
 
 // Quant Risk Management
 export const QUANT_DAILY_DRAWDOWN_LIMIT = 25;

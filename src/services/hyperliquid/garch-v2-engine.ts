@@ -19,7 +19,7 @@ const Z_SHORT_1H = 3.0;
 const Z_SHORT_4H = 1.5;
 const SL_PCT_LOW_LEV = 0.030;
 const SL_PCT_HIGH_LEV = 0.035;
-const POSITION_SIZE_USD = 3; // sized for $45 wallet: 7 concurrent × $3 = $21 max margin used
+const POSITION_SIZE_USD = 20; // 7 concurrent × $20 = $140 max margin used
 const BLOCKED_HOURS_UTC = new Set([22, 23]);
 
 function computeZScore(candles: OhlcvCandle[], volWindow: number): number {
