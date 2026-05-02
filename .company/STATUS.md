@@ -1,74 +1,103 @@
-# Company Status — Push GARCH to $5/day MDD<$20
+# ZEC Trail-Close Re-Entry Investigation - STATUS (2026-05-02)
 
-## Goal
-Find GARCH z-score backtest config achieving >$5/day AND MaxDD <$20.
+## Verdict: **NOT A BUG. Immaterial impact either way.**
 
-## VERDICT: IMPOSSIBLE — 2 cycles, 644 configs tested
+## Live event recap
+- 2026-05-01: bot OPEN LONG ZEC @ 362.67, peak +19.91%, trail-close @ 367.89 (+$0.39)
+- 5 minutes later: bot OPEN LONG ZEC @ 376.44, peak +22.5%, trail-close @ 383.64 (+$0.55)
+- Net: +$0.94 across 2 trades on same pair same direction.
 
-The $5/day + MDD<$20 target is structurally unachievable with the GARCH z-score strategy. The Calmar ratio ($/day per $1 MDD) caps at 0.177 across all configs. At MDD $20, maximum achievable is $3.54/day.
+## Why it happened (mechanical trace)
 
-## Best Config Found (MDD < $20)
+The engine has 6 entry gates in `runGarchV2Cycle` (`garch-v2-engine.ts:60-81`):
+1. open-pairs dedup (currently-open only)
+2. ensemble max-concurrent (7)
+3. blocked UTC hours 22-23
+4. H1 entry window (first 5 min)
+5. z-score (z1h>=3, z4h>=1.5)
+6. SL cooldown (4h, **SL hits only**)
 
-**top5+alt5C $16mrg mc3 tr80/8 SL3%+zrev (parallel engine)**
+After ZEC trail-closed:
+- gate 1: ZEC no longer in `openPairs` -> pass
+- gate 6: `isInStopLossCooldown` returns false because trail close path skips `recordStopLossCooldown` (`position-monitor.ts:272-275` and `408-413`) -> pass
+- z-score remained >3.0 next cycle -> pass
+- engine opened a fresh ZEC long
+
+## This is INTENTIONAL
+
+Two git commits prove deliberate design:
+
+| Commit | Date | Message |
+|--------|------|---------|
+| `9ba08b3` | earlier | Add stop-loss cooldown to prevent re-entry loops |
+| `9e14a4f` | 2026-04-24 | **Match backtest no cooldown on trail exits** |
+
+Commit `9e14a4f` explicitly DELETED `recordStopLossCooldown(...)` from both trail-stop call sites because the backtest does not apply cooldown to trail exits — and the deployed validation ($0.59/day, Calmar 0.029, MDD $20, 297d OOS) was produced WITH this behavior.
+
+## Backtest evidence (full top-15, 297-day OOS, with corrected SL+spreads)
 
 | Metric | Value |
 |--------|-------|
-| $/day | +$3.31 |
-| MaxDD | $19 |
-| Profit Factor | 3.94 |
-| Win Rate | 52.9% |
-| Avg Win | +$4.33 |
-| Avg Loss | -$1.23 |
-| Max Single Loss | -$4.96 |
-| Trades | 575 (297 days) |
+| Total trades | 200 (trail 152 / sl 48 / maxh 0) |
+| Total $/day | $0.55 ($1.10 at $20 margin) |
+| Re-entry events | **5** (trail-close → same pair+dir open within 60min) |
+| Re-entry win rate | 40% (2/5 winners) |
+| Re-entry avg P&L | -$0.250/trade |
+| Worse-fill rate | 80% (4/5 had worse entry than prior close) |
+| Counterfactual hold | -$5.05 (vs actual +$11.80 combined) |
+| Counterfactual beats actual | 20% of events (1/5) |
+| 1h cooldown $/day delta | **+$0.004/day = $1.46/year** |
 
-Engine 1: ETH, SOL, DOGE, XRP, LINK ($16 margin, mc3)
-Engine 2: SUI, ENA, HYPE, FET, WIF ($16 margin, mc3)
-Both: z1h>3.0, z4h>2.0, SL 3% exchange, z-reversal exit, trail 80/8
+Re-entries are slightly -EV, but the absolute impact is negligible: 5 events × -$0.25 ≈ -$1.50/year. Adding cooldown would save ~$1.46/year — rounding error vs strategy total ($402/year at $20 margin).
 
-## If MDD Constraint Relaxed
+Note: re-entry events cluster on event days. 3 of 5 happened on 2025-12-01 (market squeeze), 1 on 2026-01-19, 1 on 2026-03-15.
 
-| Config | $/day | MDD | PF |
-|--------|-------|-----|-----|
-| top5+alt5C $22mrg mc3 | $4.55 | $26 | 3.94 |
-| top5+alt5B $30mrg mc3 | $5.55 | $35 | 2.84 |
-| top5+alt5C $30mrg mc3 | $6.20 | $36 | 3.94 |
-| QUAD all4sets $22mrg mc2 | $6.94 | $51 | 2.78 |
-| allPairs $30mrg mc15 (125 pairs) | $8.14 | $55 | 1.98 |
+## Trail tightness sweep (full top-15)
 
-## Key Findings
+| Variant | $/day | MDD | Calmar | WR% |
+|---------|------:|----:|-------:|----:|
+| **T15/4 (deployed)** | **0.56** | **15.5** | **0.0358** | 76% |
+| T15/3 | 0.54 | 15.5 | 0.0349 | 76% |
+| T20/5 | 0.60 | 21.5 | 0.0278 | 69% |
+| T25/8 | 0.59 | 29.1 | 0.0202 | 62% |
+| T30/10 | 0.65 | 30.4 | 0.0215 | 58% |
+| No trail + z-rev | 0.47 | 241.9 | 0.0020 | 38% |
 
-1. **Calmar ceiling at 0.177** — consistent across all pair universes, margin levels, trails. No config breaks this.
+**T15/4 wins Calmar.** Walk-forward 4/4 quarters profitable. Pure z-rev catastrophic (MDD $242). Trail IS the MDD control.
 
-2. **Parallel engines work** — running two non-overlapping 5-pair sets gives additive profit with sub-additive MDD due to decorrelation.
+## Pair count sweep (full top-50, 297-day OOS, $20 margin)
 
-3. **alt5C is the best complement to top5** — SUI, ENA, HYPE, FET, WIF have PF 3.94 combined vs 2.84 for alt5B and 2.58 for alt5A.
+| #pairs | $/day | MDD | PF | Calmar |
+|-------:|------:|----:|---:|-------:|
+| 10 | 0.94 | 27.1 | 3.49 | **0.035** |
+| **15 (deployed)** | **1.11** | **31.5** | **2.83** | **0.035** ✓ |
+| 20 | 1.04 | 35.0 | 2.38 | 0.030 |
+| 25 | 1.09 | 37.5 | 2.27 | 0.029 |
+| 35 | 1.19 | 40.0 | 2.07 | 0.030 |
+| 50 | 1.22 | 42.6 | 1.89 | 0.029 |
 
-4. **Loose trails dominate** — tr80/8 > tr50/5 > tr30/3 > tr9/0.5. Z-score momentum produces occasional 50-100% leveraged winners; tight trails cut them.
+Top-50 makes 10% more $/day but MDD 35% worse → Calmar drops 17%. **KEEP TOP-15.**
 
-5. **More pairs hurt after ~20** — 125 pairs dropped PF from 3.00 to 1.98 vs 22 pairs. Microcaps have weaker z-score signals.
+## Honest limits — what the backtest doesn't model
 
-6. **Multi-stage trails don't help** — early activation at +10% locks small gains z-reversal already captures.
+| Issue | Direction | Magnitude |
+|-------|-----------|----------:|
+| Funding cost on shorts | Backtest TOO OPTIMISTIC | -$0.20/day adverse (~$73/year) |
+| Maker rebate (live tries maker first) | Backtest TOO PESSIMISTIC | +$0.05/day favorable |
+| API/exchange downtime | Backtest TOO OPTIMISTIC | -1-2% rare events |
+| Real fill on micro-caps | Now bumped to 15bp (was 12bp) | -$0.02/day fixed |
+| Survivorship bias | Slightly optimistic | <1% |
 
-## Exhaustive Search Space
+**Realistic forward expectation: ~$0.85-0.90/day at $20 margin** ($25-30/month). Funding cost on shorts is the biggest unmodeled drag, 48× larger than the re-entry "issue".
 
-- Margins: $5, $7, $8, $9, $10, $12, $14, $15, $16, $17, $18, $19, $20, $22, $25, $30, $35, $40, $45, $50, $55, $60
-- Pair universes: top5, top8, top10, top12, top15, alt5A/B/C, allPairs (22 and 125)
-- Trails: 9/0.5 through 120/12, multi-stage (8 variants), no-trail
-- Z-thresholds: z1.5/1 through z3/2
-- MaxConcurrent: 1 to 25
-- Risk wrappers: cooldowns 4-48h, daily stops $3-$15, loss streak stops 3-8
-- Direction: both, long-only
-- Exits: z-reversal, conditional z-reversal (losing only), BTC regime, time-based
-- Parallel engines: 2-engine (6 combos), triple, quad, asymmetric margin
-- SL widths: 1.5%, 2%, 3%, 4%, 5%, 7%
+## What the user should do
 
-## Scripts
-- `scripts/bt-push-profit.ts` — 1100-line parallel-engine backtest
-- `scripts/bt-exchange-sl-research.ts` — 1300-line exchange SL research (earlier work)
+**Nothing.** The behavior is intentional, the absolute impact ($1.46/year) is rounding error, and the validated $/day already accounts for re-entries. If looking for $/day improvements, focus on funding cost on shorts, not re-entry cooldown.
 
-## Recommendation
-
-Deploy the **top5+alt5C $16mrg mc3 tr80/8 SL3%+zrev** config for $3.31/day at MDD $19.
-Or accept MDD $26 and use $22 margin for $4.55/day.
-$5/day requires MDD $35+ — no way around it with z-score momentum.
+## Files produced
+- `.company/messages/cto-trail-trace.md` (code trace, file:line cited)
+- `.company/messages/backtester-reentry.md` (200 trades, 5 re-entry events)
+- `.company/messages/risk-trail-tightness.md` (8-variant trail sweep + walk-forward)
+- `scripts/bt-reentry-analysis.ts` (engine + re-entry counter, fixed SL constants)
+- `scripts/bt-trail-tightness.ts` (8-variant trail sweep, fixed spreads)
+- `scripts/bt-pair-count-c2.ts` (10-50 pair sweep on C2 config, fixed SL+spreads)

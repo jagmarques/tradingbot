@@ -15,10 +15,10 @@ Hyperliquid GARCH quant engine + EVM insider copy trading. TypeScript, Docker, C
 | SL | 3.5% (10x pairs), 3.0% (3x/5x pairs) |
 | Trail | T15/4 (lock at peak-4pp once peak >= +15% lev) |
 | Breakeven | none (trail handles it) |
-| Margin | $3 (sized for $45 wallet; raise to $10 at $200) |
+| Margin | $20 (7 concurrent × $20 = $140 max margin used) |
 | Max concurrent | 7 |
 | Max hold | 120h |
-| Cooldown | 4h per pair+direction after SL |
+| Cooldown | 4h per pair+direction after SL only (trail-close: no cooldown, by design — matches backtest) |
 | Blocked hours | 22-23 UTC |
 | Scheduler | 3-min cycle, 1h-boundary entries |
 | Pairs | 15 (top-Calmar prune from 50 universe) |
@@ -26,16 +26,23 @@ Hyperliquid GARCH quant engine + EVM insider copy trading. TypeScript, Docker, C
 
 **Pairs (15):** ETH, ZEC, YGG, STRAX, WLD, PENGU, DOGE, ARB, FIL, OP, AVAX, NEO, JTO, KAITO, SUSHI
 
-**Backtest (297 days OOS, 1m resolution, $10 margin):**
-- $0.55/day, MDD $18.7, Calmar 0.029, WR ~76%
-- ~0.5 trades/day, mix of longs and shorts
-- Validated: 648-config sweep + walk-forward + parity reconciliation across 2 engines
+**Backtest (297 days OOS, 1m resolution, all 50 universe pairs cached):**
+- Top-15 at $20 margin: $1.10/day, MDD $31.5, Calmar 0.035, WR 76%
+- Top-15 at $10 margin: $0.55/day, MDD $15.5, Calmar 0.0358, WR 76%
+- Walk-forward: 4/4 quarters profitable
+- Validated: 648-config sweep + 8-variant trail sweep + 6-variant pair-count sweep
+- Top-15 wins Calmar across all sweeps (10/15/20/25/35/50 pair tests; 15 is the optimum)
 
-**Live expected at $45 wallet ($3 margin):**
-- ~$0.16/day = ~$5/month, MDD ~$5
+**Live expected (deployed today at $20 margin):**
+- ~$25-35/month average, MDD ~$30
+- Per-quarter range: $7-70/month (Q4 strongest, Q1 slowest in OOS)
+- Forward expectation reduced ~20% for unmodeled funding cost on shorts
 
-**Live expected at $200 wallet ($10 margin):**
-- ~$0.55/day = ~$16/month, MDD ~$19
+**Backtest caveats** (factor in for forward expectation):
+- Funding rate on shorts NOT modeled (~$0.20/day adverse, ~$73/year cost)
+- Maker rebate NOT modeled (~$0.05/day favorable when maker fills)
+- Spread for micro-caps set at 15bp (realistic for $200 fills)
+- Exchange downtime / API failures NOT modeled
 
 ### Insider Copy Trading (EVM)
 
